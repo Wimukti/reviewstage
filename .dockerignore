@@ -1,0 +1,14 @@
+.git
+.env
+*.log
+docs
+deploy
+dashboard-ui/node_modules
+dashboard-ui/e2e/.fixture
+dashboard-ui/e2e/.auth.json
+dashboard-ui/test-results
+dashboard-ui/playwright-report
+bin/static
+state
+queue.json
+__pycache__

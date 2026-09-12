@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       react:
-        specifier: 19.1.1
-        version: 19.1.1
+        specifier: 19.2.8
+        version: 19.2.8
       react-dom:
         specifier: 19.1.1
-        version: 19.1.1(react@19.1.1)
+        version: 19.1.1(react@19.2.8)
       react-markdown:
         specifier: ^10.1.0
-        version: 10.1.0(@types/react@19.2.18)(react@19.1.1)
+        version: 10.1.0(@types/react@19.2.18)(react@19.2.8)
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
@@ -661,8 +661,8 @@ packages:
       '@types/react': '>=18'
       react: '>=18'
 
-  react@19.1.1:
-    resolution: {integrity: sha512-w8nqGImo45dmMIfljjMwOGtbmC/mk4CMYhWIicdSflH91J9TyCyczcPFXJzrZ/ZXcgGRFeP6BU0BEJTw6tZdfQ==}
+  react@19.2.8:
+    resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
     engines: {node: '>=0.10.0'}
 
   remark-gfm@4.0.1:
@@ -1444,12 +1444,12 @@ snapshots:
 
   property-information@7.2.0: {}
 
-  react-dom@19.1.1(react@19.1.1):
+  react-dom@19.1.1(react@19.2.8):
     dependencies:
-      react: 19.1.1
+      react: 19.2.8
       scheduler: 0.26.0
 
-  react-markdown@10.1.0(@types/react@19.2.18)(react@19.1.1):
+  react-markdown@10.1.0(@types/react@19.2.18)(react@19.2.8):
     dependencies:
       '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
@@ -1458,7 +1458,7 @@ snapshots:
       hast-util-to-jsx-runtime: 2.3.6
       html-url-attributes: 3.0.1
       mdast-util-to-hast: 13.2.1
-      react: 19.1.1
+      react: 19.2.8
       remark-parse: 11.0.0
       remark-rehype: 11.1.2
       unified: 11.0.5
@@ -1467,7 +1467,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  react@19.1.1: {}
+  react@19.2.8: {}
 
   remark-gfm@4.0.1:
     dependencies:

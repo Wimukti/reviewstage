@@ -818,7 +818,7 @@ function PrBanners({ data }: { data: PrData }) {
         <div className="banner info">
           <span>🎯</span>
           <div>
-            <b>Focused review.</b> You asked Robin to focus on: “{data.focus}”.
+            <b>Focused review.</b> You asked ReviewStage to focus on: “{data.focus}”.
           </div>
         </div>
       )}

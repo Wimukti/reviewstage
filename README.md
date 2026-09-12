@@ -1,6 +1,6 @@
-# Robin — the Claude PR review bot
+# ReviewStage — the Claude PR review bot
 
-**Robin drafts the PR reviews you owe your team, and lets you send them with a click — under
+**ReviewStage drafts the PR reviews you owe your team, and lets you send them with a click — under
 your own name, never automatically.** A reviewer's assistant, not a review bot.
 
 Someone requests your review on a Cut+Dry PR → you get a **Slack ping** → you click through
@@ -15,11 +15,11 @@ all — it only produces a JSON file the dashboard renders.
 - **Per-reviewer identity** — every comment and approval posts under *your* GitHub account
   (your own token), never a bot. One box serves the whole team; the review is shared per PR,
   posting/approval is per person.
-- **Learnings loop** — when you drop a finding as noise or reword one, Robin remembers and
+- **Learnings loop** — when you drop a finding as noise or reword one, ReviewStage remembers and
   feeds it into the next review of the repo, so it stops repeating what you reject.
 - **Deliberate run** — starting a review is a small form, not a one-click: choose **Quick /
   Standard / Deep** effort (auto-suggested from the diff) and optionally add a **focus note**
-  ("pay attention to the order-flow cost calc") that Robin folds in on top of the skill.
+  ("pay attention to the order-flow cost calc") that ReviewStage folds in on top of the skill.
 - **Re-run with history** — re-run at a different effort or focus any time; the previous run is
   kept in **history** and viewable, never overwritten.
 - **Stop** — a running review can be stopped from the progress panel.
@@ -27,9 +27,9 @@ all — it only produces a JSON file the dashboard renders.
   shared **team default** or **your own skill**. The team default is editable in the browser and
   protected (it can't be blanked, and restoring the built-in takes a typed confirm).
 - **Quick-add a rule** — type a preference in plain words ("don't ask for a Jira link in code
-  comments") and Robin tidies it into the skill's *Team rules* section — no editing the whole
+  comments") and ReviewStage tidies it into the skill's *Team rules* section — no editing the whole
   file.
-- **Bring your own review skill** — paste your `pr-review` skill in Integrations; Robin runs
+- **Bring your own review skill** — paste your `pr-review` skill in Integrations; ReviewStage runs
   its logic and appends its own output contract so any skill works. A **Skills** page scores
   each skill by how often its findings are kept vs dropped — the signal for improving the
   shared default.
@@ -41,7 +41,7 @@ all — it only produces a JSON file the dashboard renders.
   your plan; otherwise they use the shared box login.
 - **Guided setup** — a first-run tour walks a new user through connecting Claude & Slack and
   picking a skill before their first review (re-runnable from "Take a tour" in the sidebar).
-- **Human-gated & COMMENT-only** — nothing auto-posts, and Robin never requests changes or
+- **Human-gated & COMMENT-only** — nothing auto-posts, and ReviewStage never requests changes or
   blocks a merge.
 
 ```

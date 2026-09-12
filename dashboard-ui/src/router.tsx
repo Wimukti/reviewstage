@@ -1,4 +1,4 @@
-// Tiny hand-rolled router (no react-router — matches Mynt). Robin serves at the site root;
+// Tiny hand-rolled router (no react-router). ReviewStage serves at the site root;
 // it still also answers under the legacy /prbot prefix, so we strip a leading /prbot when
 // reading the URL (old bookmarks/Slack links) and always build clean root-relative links.
 
@@ -15,7 +15,7 @@ export function toPath(loc: string): string {
 export function navigate(to: string): void {
   const url = to.replace(LEGACY, "") || "/";
   window.history.pushState({}, "", url);
-  window.dispatchEvent(new Event("robin:navigate"));
+  window.dispatchEvent(new Event("reviewstage:navigate"));
 }
 
 export function useLocation(): { path: string; search: URLSearchParams } {
@@ -27,10 +27,10 @@ export function useLocation(): { path: string; search: URLSearchParams } {
   useEffect(() => {
     const on = () => setLoc(read());
     window.addEventListener("popstate", on);
-    window.addEventListener("robin:navigate", on);
+    window.addEventListener("reviewstage:navigate", on);
     return () => {
       window.removeEventListener("popstate", on);
-      window.removeEventListener("robin:navigate", on);
+      window.removeEventListener("reviewstage:navigate", on);
     };
   }, []);
   return loc;

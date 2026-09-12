@@ -52,7 +52,7 @@ import prbot_learn
 import prbot_md
 import prbot_rollup
 
-BRAND = "Robin"                    # product name shown beside the logo (see prbot_assets)
+BRAND = "ReviewStage"                    # product name shown beside the logo (see prbot_assets)
 CLAUDE_ICON = ("<svg viewBox='0 0 24 24' width=18 height=18 fill=currentColor aria-hidden=true>"
                "<path d='M12 2c.3 3.1 1 4.9 2.2 6 1.1 1.2 2.9 1.9 6 2.2-3.1.3-4.9 1-6 2.2"
                "-1.2 1.1-1.9 2.9-2.2 6-.3-3.1-1-4.9-2.2-6C8.6 11.2 6.8 10.5 3.7 10.2"
@@ -569,7 +569,7 @@ def restore_global_skill():
 # --- Phase 5: skill audit trail (GitOps-on-save) ---------------------------------------------
 # Dashboard edits to the review skills also commit to a local git repo in $ROOT/skills, so the
 # team's review standard has a real who/when/why history. Local history only (no remote push
-# needed); the human editor is the commit AUTHOR, Robin is the committer. Best-effort — a save
+# needed); the human editor is the commit AUTHOR, ReviewStage is the committer. Best-effort — a save
 # must never fail because git did.
 def _skills_git(*args):
     return subprocess.run(["git", "-C", str(SKILLS_DIR), *args],
@@ -580,8 +580,8 @@ def ensure_skills_repo():
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     if not (SKILLS_DIR / ".git").is_dir():
         _skills_git("init", "-q")
-        _skills_git("config", "user.email", "robin@robin.local")
-        _skills_git("config", "user.name", "Robin")
+        _skills_git("config", "user.email", "reviewstage@reviewstage.local")
+        _skills_git("config", "user.name", "ReviewStage")
 
 
 def commit_skill_change(editor, summary):
@@ -593,7 +593,7 @@ def commit_skill_change(editor, summary):
         if not _skills_git("status", "--porcelain").stdout.strip():
             return
         _skills_git("commit", "-q", "-m", summary,
-                    "--author", f"{editor} <{editor}@robin.local>")
+                    "--author", f"{editor} <{editor}@reviewstage.local>")
     except Exception:
         pass
 
@@ -620,7 +620,7 @@ def save_user_skill(login, text):
 
 # Quick-add house rules: a reviewer types a plain-English preference ("don't ask for a Jira link
 # in code comments") and it's tidied into a bullet under a managed "## Team rules" section, kept
-# last in the doc so appends are trivial. Robin reads the whole skill, so the rule just applies.
+# last in the doc so appends are trivial. ReviewStage reads the whole skill, so the rule just applies.
 RULES_MARKER = "## Team rules"
 RULES_INTRO = ("Rules added from the dashboard — apply these on every review "
                "(they override the general guidance above when they conflict):")
@@ -2601,7 +2601,7 @@ class Handler(BaseHTTPRequestHandler):
             save_skill(target, new_text)
             commit_skill_change(user, f"Added a rule to {who}: {tidy_rule(rule)}")
             print(f"skill rule added to {target}: {tidy_rule(rule)!r}", flush=True)
-            return ok(f"Added to {who} — Robin will apply it on every review: "
+            return ok(f"Added to {who} — ReviewStage will apply it on every review: "
                       f"<b>{html.escape(tidy_rule(rule))}</b>")
 
         # The team default is shared — restoring the built-in wipes everyone's edits, so it takes
@@ -2634,7 +2634,7 @@ class Handler(BaseHTTPRequestHandler):
         save_skill(target, text)
         commit_skill_change(user, f"Edited {who}")
         print(f"skill saved: {target} ({len(text)} chars)", flush=True)
-        return ok(f"Saved {who} — reviews now use it (with Robin's output format appended).")
+        return ok(f"Saved {who} — reviews now use it (with ReviewStage's output format appended).")
 
     def _settings_result(self, user, form):
         """Save the Slack ID and/or replace the GitHub PAT → banner HTML. Settings token assumed

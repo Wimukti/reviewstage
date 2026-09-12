@@ -1,12 +1,12 @@
-# Robin — Multi-Reviewer Redundancy & Trust Build Plan (v2)
+# ReviewStage — Multi-Reviewer Redundancy & Trust Build Plan (v2)
 
-Purpose: a spec you can hand directly to Claude to implement in Robin. Goal: let several
+Purpose: a spec you can hand directly to Claude to implement in ReviewStage. Goal: let several
 reviewers be assigned to the same PR (required by how Cut+Dry works today) without wasteful
 duplicate analysis, while turning "several independent reviews" into an *actual, measurable*
 confidence signal instead of an assumed one — and producing credible data to pitch wider
 adoption after the one-week pilot.
 
-Builds on Robin's existing architecture: Python stdlib backend, per-PR **per-reviewer**
+Builds on ReviewStage's existing architecture: Python stdlib backend, per-PR **per-reviewer**
 file-based state (`STATE/<pr>/users/<login>/…`), React SPA, per-user GitHub identity + Claude
 account, existing Learnings / Skills / token-usage-chip features. No new infrastructure.
 
@@ -16,7 +16,7 @@ account, existing Learnings / Skills / token-usage-chip features. No new infrast
 
 v1 was a strong plan with three problems. This v2 resolves them:
 
-1. **Phase 1 no longer re-shares reviews.** Robin deliberately un-shared reviews (each reviewer
+1. **Phase 1 no longer re-shares reviews.** ReviewStage deliberately un-shared reviews (each reviewer
    runs their own, owns it, and one running never blocks/overwrites another). v1's cross-reviewer
    cache quietly reversed that. **v2 scopes the cache to per-user re-runs only** — reusing *your
    own* identical re-run on the same commit. Cross-user sharing is explicitly deferred (see
@@ -56,7 +56,7 @@ looked up again. (Content-addressed / idempotency-key pattern.)
      is manually invalidated.
    - `schema_version` — a constant bumped whenever the review prompt/output format changes.
 2. Storage: one file per entry under the reviewer's own dir, `STATE/<pr>/users/<login>/cache/<cache_key>.json`,
-   written atomically (temp + rename, as Robin's state model already does). Store the full review
+   written atomically (temp + rename, as ReviewStage's state model already does). Store the full review
    result (findings, explainer, "what I checked/dropped," token usage) + `{created_at, source_run_id}`.
 3. On trigger: compute `cache_key` before spending tokens. On hit, skip the LLM call and build a
    fresh run from the cached payload — the run's `run_id`, its select/edit/drop/post/approve state
@@ -123,7 +123,7 @@ Two references map to two *different* jobs; keep them separate:
   "how many reviewers picked the same top finding," which is the wrong thing to measure.
 
 1. **Finding fingerprint** for matching across independent runs on the same PR SHA:
-   `{file_path, line_range (fuzzy-matched via Robin's existing diff-anchor logic), severity bucket,
+   `{file_path, line_range (fuzzy-matched via ReviewStage's existing diff-anchor logic), severity bucket,
    short semantic signature}`. Exact text won't match across skills/models; a *structural* match
    (same file, overlapping lines, same severity) is enough to start. **Do not** over-engineer into a
    semantic-similarity model. Treat matching as **noisy**: it will false-converge (same line,
@@ -153,7 +153,7 @@ Two references map to two *different* jobs; keep them separate:
    *independent* runs on that SHA. Two cautions built in, not bolted on:
    - It is a **precision signal to improve toward**, never a marketing %. (Independent data shows
      AI-authored suggestions get adopted far less than human ones; read this number as
-     human+Robin agreement, not proof.)
+     human+ReviewStage agreement, not proof.)
    - Because Phase 2 pushes reviewers to *diverge*, raw agreement can look *lower* exactly when the
      system is working as intended. Report it only over comparable/independent runs, and pair it
      with the divergence count so "low agreement" reads as "broad coverage", not "bad reviews".
@@ -174,16 +174,16 @@ engineers, not just leadership.
 
 **Design principle:** separate leading indicators (usage, keep-rate, agreement) from lagging ones
 (cycle time, defect escape) so week-1 data isn't oversold. One new read-only page,
-`/dashboard/rollup`, computed by aggregating files Robin already writes — no new instrumentation.
+`/dashboard/rollup`, computed by aggregating files ReviewStage already writes — no new instrumentation.
 
 | Metric | Source | Type |
 |---|---|---|
 | Reviews run this week, by reviewer and PR | run history | leading / usage |
 | Findings keep-rate (% posted as-is vs edited/dropped) | Learnings (`prbot_learn`) | leading / precision |
-| Median "review requested" → first Robin-assisted comment posted | requested-at + post timestamps *(see note)* | lagging / cycle time |
+| Median "review requested" → first ReviewStage-assisted comment posted | requested-at + post timestamps *(see note)* | lagging / cycle time |
 | Tokens spent vs. estimated engineer-hours saved (runs × ~20 min baseline — **label as estimate**) | token-usage chip | leading / cost-ROI |
 | Agreement rate across multi-reviewer PRs, **independence-weighted** (Phase 3) | agreement index | leading / confidence — **the differentiator** |
-| 2-3 curated "Robin caught this" examples | posted findings | qualitative |
+| 2-3 curated "ReviewStage caught this" examples | posted findings | qualitative |
 
 **Note / one real gap:** the cycle-time metric needs a clean **requested-at** timestamp.
 `pr-watch` tracks per-`<pr>:<login>` seen-state but does not clearly persist a usable requested-at.
@@ -196,22 +196,22 @@ to 2-3 more teams, not immediate company-wide. Controlled, reversible steps buil
 trust than a big-bang launch.
 
 **Acceptance criteria:** the rollup renders for the past 7 days with no manual entry beyond the
-curated anecdotes; every number is traceable to a file Robin writes (with `requested_at` added).
+curated anecdotes; every number is traceable to a file ReviewStage writes (with `requested_at` added).
 
 ---
 
 ## Phase 5 — Team-skill audit trail (GitOps-on-save — small, but four named parts)
 
-**Problem:** engineers distrust opaque AI output. Robin already counters this (Learnings, token
+**Problem:** engineers distrust opaque AI output. ReviewStage already counters this (Learnings, token
 transparency, human-only post/approve). What's missing: the *review standard itself* has no audit
 trail. The team-default skill is edited from the dashboard and lives in mutable box state
 (`$ROOT/skills/_global.md`) — **not** version-controlled. (The installed `pr-review` skill is in
 git; the editable team default is not.)
 
 **Design — GitOps / config-as-code.** Keep `_global.md` as the working copy, but wire the
-dashboard's save to *also* commit, so every change to "what Robin looks for" has real git history
+dashboard's save to *also* commit, so every change to "what ReviewStage looks for" has real git history
 (who, when, why). This is small and well-defined — but **four moving parts, not one line**:
-1. **Which repo** the team skill commits to — a dedicated skills repo, or the robin checkout at
+1. **Which repo** the team skill commits to — a dedicated skills repo, or the ReviewStage checkout at
    `~/claude-pr-review-bot` (whose `$ROOT/skills/` is currently *not* a git checkout).
 2. **A bot commit identity** (author/email) for dashboard-driven commits, plus the human editor's
    login in the commit message/trailer.
@@ -247,7 +247,7 @@ edits do not silently overwrite each other.
 ## Explicitly out of scope for now
 
 - **Cross-reviewer cache sharing** — deferred; only with the two guardrails in Phase 1's "Deferred".
-- **Semantic/fuzzy caching across different commits or PRs** — Robin's diffs are exact and small;
+- **Semantic/fuzzy caching across different commits or PRs** — ReviewStage's diffs are exact and small;
   content-addressed exact-match is sufficient.
 - **A semantic-similarity model for finding-matching** — start structural + human-confirm.
 - **No new database, no background jobs** — every phase uses the file-based per-PR/per-user state.

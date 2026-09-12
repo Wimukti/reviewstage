@@ -61,7 +61,7 @@ require_env() {
 }
 
 # --- signed links ----------------------------------------------------------------------------
-# Robin is served over the PUBLIC internet (the staging ALB answers
+# ReviewStage is served over the PUBLIC internet (the staging ALB answers
 # *.staging.eng.cutanddry.com with no auth in front), so every link carries an
 # HMAC over action+pr+expiry. Unsigned or expired links are rejected server-side.
 sign() { printf '%s' "$1" | openssl dgst -sha256 -hmac "$PRBOT_SECRET" -r | cut -d' ' -f1; }
@@ -101,7 +101,7 @@ slack_post() {
     fi
     [ "$mode" = reply ] && [ -f "$ts_file" ] && thread=$(cat "$ts_file")
     body=$(echo "$payload" | jq --arg ch "$SLACK_CHANNEL" --arg th "$thread" \
-      '. + {channel:$ch, text:"Robin PR review"} + (if $th=="" then {} else {thread_ts:$th} end)')
+      '. + {channel:$ch, text:"ReviewStage PR review"} + (if $th=="" then {} else {thread_ts:$th} end)')
     resp=$(curl -fsS -X POST -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
       -H 'Content-type: application/json; charset=utf-8' --data "$body" \
       https://slack.com/api/chat.postMessage 2>/dev/null)

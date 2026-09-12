@@ -1,4 +1,4 @@
-"""Insights rollup — aggregated from files Robin already writes, ALL-TIME, from day one.
+"""Insights rollup — aggregated from files ReviewStage already writes, ALL-TIME, from day one.
 
 No new instrumentation: walks per-PR/per-user state (run history), learnings.jsonl (keep-rate),
 usage.json (tokens + model), and the agreement indices. Returns headline totals, a per-day series

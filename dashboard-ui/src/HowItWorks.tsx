@@ -12,15 +12,15 @@ const STEPS: Step[] = [
   {
     n: 1,
     title: "A review is requested",
-    txt: "A teammate adds you as a reviewer on a PR. Robin notices within 3 minutes and sends you a Slack card — no need to watch GitHub.",
+    txt: "A teammate adds you as a reviewer on a PR. ReviewStage notices within 3 minutes and sends you a Slack card — no need to watch GitHub.",
     img: "slack",
   },
   {
     n: 2,
-    title: "Robin drafts the review",
+    title: "ReviewStage drafts the review",
     txt: (
       <>
-        You click through to the PR. Robin checks out the branch and runs the{" "}
+        You click through to the PR. ReviewStage checks out the branch and runs the{" "}
         <code>pr-review</code> skill against the real diff — about 10–15 minutes for a 25-file PR.
         Nothing is posted to GitHub in this step.
       </>
@@ -41,7 +41,7 @@ const STEPS: Step[] = [
   {
     n: 4,
     title: "Post — as you",
-    txt: "The selected comments post to the PR as inline review comments under your own GitHub name. Always a plain COMMENT review — Robin never requests changes or blocks a merge.",
+    txt: "The selected comments post to the PR as inline review comments under your own GitHub name. Always a plain COMMENT review — ReviewStage never requests changes or blocks a merge.",
     img: "post",
   },
   {
@@ -60,7 +60,7 @@ const GUARANTEES = [
   },
   {
     t: "💬 Comments, not blocks",
-    d: "Robin posts plain review comments — it never requests changes or blocks a merge.",
+    d: "ReviewStage posts plain review comments — it never requests changes or blocks a merge.",
   },
   {
     t: "🔒 Your credentials, encrypted",
@@ -79,7 +79,7 @@ export function HowItWorks() {
     <>
       <h1>How {d.brand} works</h1>
       <p className="lead">
-        Robin drafts the PR reviews you owe your team, and lets you send them with a click. It's an
+        ReviewStage drafts the PR reviews you owe your team, and lets you send them with a click. It's an
         assistant — you stay the reviewer.
       </p>
       <div className="flow">

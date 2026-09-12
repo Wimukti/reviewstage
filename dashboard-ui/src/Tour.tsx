@@ -10,33 +10,33 @@ interface TourStep {
 
 const TOUR: TourStep[] = [
   {
-    title: "Welcome to Robin 👋",
-    text: "Robin drafts the PR reviews you owe your team. You tick what's worth saying and post it — as yourself. Here's the 30-second setup.",
+    title: "Welcome to ReviewStage 👋",
+    text: "ReviewStage drafts the PR reviews you owe your team. You tick what's worth saying and post it — as yourself. Here's the 30-second setup.",
   },
   {
     sel: '[data-tour="integrations"]',
     title: "1. Connect your accounts",
-    text: "Start in Integrations: add your Claude account (reviews run on it) and your Slack member ID (so Robin can ping you when a review is requested).",
+    text: "Start in Integrations: add your Claude account (reviews run on it) and your Slack member ID (so ReviewStage can ping you when a review is requested).",
   },
   {
     sel: '[data-tour="skills"]',
     title: "2. Pick a review skill",
-    text: "Robin follows a review skill. The shared team default works out of the box — or bring your own here. You can switch any time.",
+    text: "ReviewStage follows a review skill. The shared team default works out of the box — or bring your own here. You can switch any time.",
   },
   {
     sel: '[data-tour="queuelist"]',
     title: "3. Your review queue",
-    text: "PRs waiting on your review land here. Open one, choose an effort level, and Robin drafts the review — nothing posts to GitHub without your click.",
+    text: "PRs waiting on your review land here. Open one, choose an effort level, and ReviewStage drafts the review — nothing posts to GitHub without your click.",
   },
   {
     title: "You're set 🎉",
-    text: "Open a PR from your queue to run your first review. You stay the reviewer — Robin just does the reading and drafting.",
+    text: "Open a PR from your queue to run your first review. You stay the reviewer — ReviewStage just does the reading and drafting.",
     cta: { label: "Go to Integrations", to: "/integrations" },
   },
 ];
 
-const SEEN_KEY = "robin_tour";
-const EVT = "robin:start-tour";
+const SEEN_KEY = "reviewstage_tour";
+const EVT = "reviewstage:start-tour";
 
 // Fire from anywhere (e.g. the sidebar) to (re)open the tour.
 export function startTour() {

@@ -1,130 +1,104 @@
-# ReviewStage — the Claude PR review bot
+<p align="center">
+  <a href="https://github.com/Wimukti/reviewstage/actions/workflows/website.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Wimukti/reviewstage/website.yml?branch=main&label=CI"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://wimukti.github.io/reviewstage/"><img alt="GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f"></a>
+</p>
 
-**ReviewStage drafts the PR reviews you owe your team, and lets you send them with a click — under
-your own name, never automatically.** A reviewer's assistant, not a review bot.
+<h1 align="center">ReviewStage</h1>
 
-Someone requests your review on a PR → you get a **Slack ping** → you click through to a
-**dashboard** → the agent has already read the diff and written findings → you tick the ones
-worth posting, edit any of them, post **as yourself**, and approve — in one place.
+<p align="center"><strong>Stage your PR review. Post it as yourself.</strong></p>
 
-Nothing reaches GitHub without a human clicking. The review step never writes to GitHub at
-all — it only produces a JSON file the dashboard renders.
+<p align="center">
+  <a href="https://wimukti.github.io/reviewstage/">Website</a> ·
+  <a href="https://wimukti.github.io/reviewstage/start/">Docs</a> ·
+  <a href="https://wimukti.github.io/reviewstage/start/install/">Install</a> ·
+  <a href="https://wimukti.github.io/reviewstage/developers/contributing/">Contributing</a> ·
+  <a href="https://wimukti.github.io/reviewstage/security/">Security</a>
+</p>
 
-## Features
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="website/src/assets/screenshots/hero-dark.png">
+  <img alt="ReviewStage PR page: the agent's assessment above a list of findings, each with a checkbox, severity, file and line, and an editable body. A sticky bar shows the selected count and one Post to GitHub button." src="website/src/assets/screenshots/hero-light.png">
+</picture>
 
-- **Per-reviewer identity** — every comment and approval posts under *your* GitHub account
-  (your own token), never a bot. One server serves the whole team; the review is shared per
-  PR, posting/approval is per person.
-- **Learnings loop** — when you drop a finding as noise or reword one, ReviewStage remembers and
-  feeds it into the next review of the repo, so it stops repeating what you reject.
-- **Deliberate run** — starting a review is a small form, not a one-click: choose **Quick /
-  Standard / Deep** effort (auto-suggested from the diff) and optionally add a **focus note**
-  ("pay attention to the checkout total calc") that ReviewStage folds in on top of the skill.
-- **Re-run with history** — re-run at a different effort or focus any time; the previous run is
-  kept in **history** and viewable, never overwritten.
-- **Stop** — a running review can be stopped from the progress panel.
-- **Choose which skill runs** — the **Skills** page has one selector: run reviews with the
-  shared **team default** or **your own skill**. The team default is editable in the browser and
-  protected (it can't be blanked, and restoring the built-in takes a typed confirm).
-- **Quick-add a rule** — type a preference in plain words ("don't ask for a ticket link in code
-  comments") and ReviewStage tidies it into the skill's *Team rules* section — no editing the
-  whole file.
-- **Bring your own review skill** — paste your `pr-review` skill in Integrations; ReviewStage runs
-  its logic and appends its own output contract so any skill works. A **Skills** page scores
-  each skill by how often its findings are kept vs dropped — the signal for improving the
-  shared default.
-- **Risk-area context** — list the paths your team treats as high-stakes in `RISK_PATHS` and a
-  review flags when the PR touches them, so the reviewer looks harder there. Context only — it
-  never routes or auto-posts.
-- **GitHub suggestion blocks** — findings can carry a one-click-apply code fix for the author.
-- **Re-review on push** — flags a review as stale when the author pushes new commits.
-- **Per-user Claude account** — connect your own Claude account so reviews you start bill to
-  your plan; otherwise they use the shared server login.
-- **Guided setup** — a first-run tour walks a new user through connecting Claude & Slack and
-  picking a skill before their first review (re-runnable from "Take a tour" in the sidebar).
-- **Human-gated & COMMENT-only** — nothing auto-posts, and ReviewStage never requests changes or
-  blocks a merge.
+> [!NOTE]
+> ReviewStage is beta software. The gate — nothing reaches GitHub without a signed-in person clicking, under their own name — has been stable since the first version. The install, the UI and the configuration keys are still moving. Pin a tag if you deploy it for a team.
 
-```
-review requested
-  └─ pr-watch.sh (cron, every 3 min) → queue.json + Slack card
-       └─ you click "Open review"  → /pr?pr=N   (first visit starts the review)
-            └─ run-review.sh → claude -p → review.json          (~10–15 min)
-                 └─ Slack: verdict + link back to the dashboard
-                      └─ select / edit findings → Post to GitHub  (plain COMMENT review)
-                           └─ Approve → LGTM comment + approval
+ReviewStage is an open-source, self-hosted PR review assistant built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code). It drafts your review from the real diff, on your own Claude plan, and stages every finding privately in a dashboard. You tick the ones worth posting, edit any of them, and post them as a plain `COMMENT` review under your own GitHub account. Approval is a separate click. Nothing posts until you click.
+
+## Quick start
+
+```bash
+git clone https://github.com/Wimukti/reviewstage && cd reviewstage
+cp .env.example .env          # set REPO and a read-only GITHUB_PAT
+docker compose up -d
+bin/doctor.sh                 # checks Docker, .env, and that the service is healthy
 ```
 
-## Why this exists
+Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped to the repository, connect your Claude account, and paste a PR URL. `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://wimukti.github.io/reviewstage/start/first-review/).
 
-The manual version of this is: notice a review request, pull the branch, run the `pr-review`
-skill in Claude Code, read the output, decide what's worth saying, retype it into GitHub.
-That is 20 minutes of context-switching per PR, and it is the part that gets skipped when
-you're busy.
+## Why not an auto-review bot?
 
-This automates every step except the two that need judgment: **which findings are worth
-posting**, and **whether to approve**. Those stay clicks.
+**Bots get ignored.** A comment from a bot account is one more notification to scroll past, and on a busy repository it is the first thing people learn to filter. A comment from a colleague, in their words, gets read and answered. ReviewStage produces the second kind.
 
-Two things it deliberately does *not* do:
+**Accountability has to sit with a person.** A wrong nit costs a reply; a wrong approval ships a bug. So ReviewStage never requests changes, never blocks a merge, and never approves on its own. The agent's verdict is shown to you as an assessment. Posting and approving are two different buttons, and the agent can press neither: the script that runs the review has no GitHub write path at all.
 
-- **It never posts as a bot.** Every comment, review and approval goes out under your own
-  GitHub account, via your own token. If your name is on it, you chose it.
-- **It never requests changes.** Posting is always a plain `COMMENT` review — these are
-  review notes, not a merge block. The agent's verdict is shown to you as an *assessment*
-  and nothing more.
+**It runs on your plan, so it runs when you click.** Each reviewer connects their own Claude account in the browser; a review is a real agent run against a real diff — 10 to 15 minutes for a 25-file PR — billed to whoever started it. That is why it is click-to-run rather than on every push, and why the run form asks for an effort level before it starts.
 
-## Get started
+## Highlights
 
-- **[docs/SETUP.md](docs/SETUP.md)** — the install, start to finish. Budget 30 minutes.
-- **[docs/OPERATIONS.md](docs/OPERATIONS.md)** — logs, restarts, gotchas, known limits.
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the pieces fit and why they sit
-  where they do. Read this before changing anything.
-- **[docs/SECURITY.md](docs/SECURITY.md)** — the endpoint is on the public internet. Read
-  this before going live.
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — running it locally, tests, commit and PR conventions.
+- **A staging area, not a comment stream.** Tick and untick findings, edit inline with a preview, attach GitHub suggestion blocks, ask for a plain-words explanation with how to verify. Re-run at another effort or focus; every earlier run is kept.
+- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own token is read-only.
+- **Effort, focus and model per run.** Quick, Standard or Deep (auto-suggested from the diff), a free-text focus note, and your plan's default model or Opus, Sonnet or Haiku. Tokens and model are shown per run.
+- **It learns what your team drops.** Kept, reworded and dropped findings feed the next review of the repository. Skills are scored by keep rate; the team default is versioned with a revision history; add a rule in plain words.
+- **Independent reviews, weighted agreement.** Two reviewers on one PR get separate runs in separate worktrees; findings both raised with a different skill, model or effort are marked confirmed.
+- **From PR to QA guide.** A tester-ready P0/P1/P2 test plan built from the same diff and review threads.
+- **Safe by construction.** Diff-anchor validation so GitHub never rejects a whole review; every action HMAC-signed and short-lived; tokens encrypted at rest; `DRY_RUN` on by default.
 
-**One server serves the whole team.** Each person signs in once with their own GitHub account
-(+ Slack member ID), and from then on: review requested → Slack pings *them* → they open the
-dashboard → the agent's findings are already there → they tick, edit, post and approve —
-**as themselves**. The review is shared per PR (one agent run, however many reviewers);
-selection, posting and approval are per person. See [docs/SETUP.md](docs/SETUP.md#team-pilot).
+## Team mode
 
-## Layout
+```bash
+docker compose --profile team up -d
+```
 
-| Path                        | What                                                                |
-| --------------------------- | ------------------------------------------------------------------- |
-| `bin/bootstrap.sh`          | Installs everything. Idempotent — re-run it whenever                |
-| `bin/pr-watch.sh`           | cron, every 3 min: finds PRs awaiting your review, posts Slack cards |
-| `bin/prbot-server.py`       | The dashboard (queue, review, Learnings, Skills, Integrations). systemd, `127.0.0.1:8899` |
-| `bin/run-review.sh`         | One review: worktree → `claude -p` (chosen skill + output contract) → `review.json` |
-| `bin/prbot_diff.py`         | Diff-anchor validation, so GitHub can't 422 a whole review          |
-| `bin/prbot_md.py`           | Dependency-free markdown → HTML                                     |
-| `bin/prbot_learn.py`        | Learnings loop: records dropped/edited/kept, scores skills, feeds the review prompt |
-| `bin/prbot_assets.py`       | Inlined brand logo + favicon (base64)                              |
-| `bin/lib-common.sh`         | Config, HMAC link signing, Slack posting (webhook or bot-token threading) |
-| `dashboard-ui/`             | The React + TypeScript dashboard, bundled by esbuild into `bin/static/` |
-| `skills/global-review.md`   | The generic team-default review skill. Bootstrap seeds it as the editable `_global.md` |
-| `skills/pr-review/SKILL.md` | The interactive review procedure. Bootstrap installs it to `~/.claude/skills/` |
-| `skills/examples/`          | Domain-specific skill and depth-instruction examples, identifiers genericized |
-| `assets/logo.png`           | Source brand logo (a new ReviewStage mark is still needed — see the TODO in `bin/prbot_assets.py`) |
-| `config.example`            | Every `.env` knob, annotated. Reference only — bootstrap writes the real one |
+Adds the review-request poller and Slack cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team; each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Slack works via an incoming webhook or a bot token (threaded replies); Discord is planned. See [Team mode](https://wimukti.github.io/reviewstage/start/team-mode/).
 
-## Requirements
+## Documentation
 
-- **Any GitHub repository** you can read, and a **Linux server you control** (a small VM is
-  enough) with a reverse proxy terminating TLS on a public hostname.
-- **Claude Code signed in** on that server, as the user that runs the service.
-- A GitHub **classic PAT** with `repo` scope, belonging to you — or a GitHub OAuth App for
-  one-click sign-in.
-- A **Slack incoming webhook** pointed at a private channel. Optional, but the Slack card is
-  most of the value — without it you have to remember to open the dashboard.
+- [What ReviewStage is](https://wimukti.github.io/reviewstage/start/) — the one-minute model
+- [Install](https://wimukti.github.io/reviewstage/start/install/) — Docker Compose, or from source on a Linux server
+- [Reviewing a PR](https://wimukti.github.io/reviewstage/guides/reviewing/) · [Skills and learnings](https://wimukti.github.io/reviewstage/guides/skills-and-learnings/) · [QA guides](https://wimukti.github.io/reviewstage/guides/qa-guide/) · [Notifications](https://wimukti.github.io/reviewstage/guides/notifications/) · [Insights](https://wimukti.github.io/reviewstage/guides/insights/)
+- [Security model](https://wimukti.github.io/reviewstage/security/) — what is stored, token permissions, what is not defended against
+- [Configuration](https://wimukti.github.io/reviewstage/operations/configuration/) · [Troubleshooting](https://wimukti.github.io/reviewstage/operations/troubleshooting/)
+- [Architecture](https://wimukti.github.io/reviewstage/developers/architecture/) · [Contributing](https://wimukti.github.io/reviewstage/developers/contributing/) · [Roadmap](https://wimukti.github.io/reviewstage/developers/roadmap/)
 
-## A caveat worth knowing up front
+The four documents under [`docs/`](docs/) are the canonical prose the site is built from.
 
-Each review is a full agent run against a real diff, on your Claude subscription — roughly
-10–15 minutes for a 25-file PR, and it counts against your usage. That is exactly why the
-review is **click-to-run** rather than automatic on every review request.
+## Develop from source
 
-## License
+The backend is Python's standard library plus bash, `gh`, `jq`, `git`, `openssl` and the Claude Code CLI. No database; state is files.
 
-MIT — see [LICENSE](LICENSE).
+```bash
+# dashboard (React 18 + TypeScript, Vite)
+cd dashboard-ui && pnpm install && pnpm test && pnpm build
+
+# python helpers
+python3 -m unittest discover -s bin -p 'test_*.py'
+
+# website (Astro + Starlight)
+cd website && pnpm install && pnpm build && pnpm check
+```
+
+To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently; see [Install → From source](https://wimukti.github.io/reviewstage/start/install/#from-source-on-a-linux-server).
+
+## Contributing, security, and license
+
+Contributions are welcome; read [Contributing](https://wimukti.github.io/reviewstage/developers/contributing/) first. The one rule that is not negotiable: nothing may add a GitHub write path to the review step or post under an identity other than the signed-in user's.
+
+For a security problem, use GitHub's private vulnerability reporting on this repository rather than a public issue. The threat model, including what is deliberately not defended against, is in [Security](https://wimukti.github.io/reviewstage/security/).
+
+MIT licensed. See [LICENSE](LICENSE).
+
+## Acknowledgements
+
+Built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code) by Anthropic: the review runs the genuine CLI headless, and connecting your account uses its own `claude setup-token` flow. ReviewStage is not affiliated with Anthropic or GitHub.

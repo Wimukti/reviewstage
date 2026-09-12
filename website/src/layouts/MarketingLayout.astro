@@ -1,0 +1,58 @@
+---
+import SiteHeader from "../components/marketing/SiteHeader.astro";
+import SiteFooter from "../components/marketing/SiteFooter.astro";
+import "../styles/app.css";
+interface Props { title: string; description: string; noindex?: boolean; }
+const { title, description, noindex = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const ld = {
+  "@context": "https://schema.org", "@type": "SoftwareApplication", name: "ReviewStage", description,
+  applicationCategory: "DeveloperApplication", operatingSystem: "Linux, macOS (Docker)",
+  license: "https://opensource.org/license/mit", url: canonical, codeRepository: "https://github.com/Wimukti/reviewstage",
+};
+---
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#26231f" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf8f3" />
+    <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
+    <link rel="canonical" href={canonical} />
+    <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+    <title>{title}</title>
+    <script is:inline>
+      (() => {
+        let s = null; try { s = localStorage.getItem("starlight-theme"); } catch {}
+        const pref = s === "light" || s === "dark" ? s : "auto";
+        const resolved = pref === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : pref;
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.style.setProperty("--switch-index", String(["light", "dark", "auto"].indexOf(pref)));
+      })();
+    </script>
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(ld)} />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <SiteHeader />
+    <main id="main"><slot /></main>
+    <SiteFooter />
+    <script>
+      import { initTheme } from "../scripts/theme";
+      initTheme();
+    </script>
+    <style>
+      .skip-link { position: absolute; left: 50%; top: 0.5rem; z-index: 100; translate: -50% -200%; padding: 0.6rem 1rem; border: 1px solid var(--hairline); border-radius: 0.6rem; background: var(--card); color: var(--foreground); font-size: 0.9rem; font-weight: 600; text-decoration: none; }
+      .skip-link:focus-visible { translate: -50% 0; }
+    </style>
+  </body>
+</html>

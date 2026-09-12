@@ -1,0 +1,33 @@
+# ReviewStage behind Caddy with automatic HTTPS (Let's Encrypt).
+#
+# 1. Point a DNS A/AAAA record for reviewstage.example.com at this host; open 80 + 443.
+# 2. Replace the hostname below, then `caddy run --config deploy/caddy/Caddyfile`
+#    (or drop it in /etc/caddy/Caddyfile and `systemctl reload caddy`).
+# 3. Set PUBLIC_URL=https://reviewstage.example.com in .env and `docker compose up -d`.
+#
+# The compose file publishes the dashboard on 127.0.0.1:8899 only, so Caddy on the same host
+# is the only way in. If Caddy itself runs in Docker, proxy to host.docker.internal:8899
+# (or put both on one compose network and use http://app:8899).
+
+reviewstage.example.com {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:8899 {
+        # Sign-in and review pages are quick; a "Connect Claude" verification call can take
+        # up to ~75 s, so keep the upstream timeout comfortably above that.
+        transport http {
+            response_header_timeout 120s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+
+    log {
+        output file /var/log/caddy/reviewstage.log
+    }
+}

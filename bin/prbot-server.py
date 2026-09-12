@@ -1270,14 +1270,19 @@ def _cookie_domain(host):
     return ""
 
 
+# PRBOT_COOKIE_SECURE=0 drops the Secure flag, for a plain-http local install (Docker on
+# localhost). Anything reachable from outside must stay behind TLS with the default.
+COOKIE_SECURE = " Secure;" if os.environ.get("PRBOT_COOKIE_SECURE", "1") != "0" else ""
+
+
 def session_cookie(login, host=""):
     exp = int(time.time()) + SESSION_TTL
     return (f"prbot_s={login}:{exp}:{session_sig(login, exp)}; {_cookie_domain(host)}Path=/; "
-            f"Max-Age={SESSION_TTL}; HttpOnly; Secure; SameSite=Lax")
+            f"Max-Age={SESSION_TTL}; HttpOnly;{COOKIE_SECURE} SameSite=Lax")
 
 
 def clear_session_cookie(host=""):
-    return (f"prbot_s=; {_cookie_domain(host)}Path=/; Max-Age=0; HttpOnly; Secure; "
+    return (f"prbot_s=; {_cookie_domain(host)}Path=/; Max-Age=0; HttpOnly;{COOKIE_SECURE} "
             "SameSite=Lax")
 
 
@@ -2918,6 +2923,9 @@ if __name__ == "__main__":
     if not PUBLIC_URL:
         print("WARN: PUBLIC_URL is not set in .env — OAuth sign-in and Slack links will not "
               "work until it is", flush=True)
-    print(f"prbot listening on 127.0.0.1:{port} (repo={REPO}, dry_run={DRY_RUN}, "
+    # Loopback by default (a reverse proxy sits in front). PRBOT_BIND=0.0.0.0 for a container,
+    # where the published port is the only way in.
+    bind = os.environ.get("PRBOT_BIND", "127.0.0.1")
+    print(f"prbot listening on {bind}:{port} (repo={REPO}, dry_run={DRY_RUN}, "
           f"users={len(load_users())})", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    ThreadingHTTPServer((bind, port), Handler).serve_forever()

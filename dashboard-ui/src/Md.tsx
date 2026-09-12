@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// Markdown → HTML, matching Mynt's react-markdown + remark-gfm. Links open in a new tab.
+// Markdown → HTML via react-markdown + remark-gfm. Links open in a new tab.
 export function Md({ children, className }: { children: string; className?: string }) {
   return (
     <div className={className}>

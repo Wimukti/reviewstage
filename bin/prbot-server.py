@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""prbot-server.py — review dashboard, served on 127.0.0.1 behind Apache's /prbot proxy.
+"""prbot-server.py — the ReviewStage dashboard, served on 127.0.0.1 behind your reverse proxy.
 
-Reachable over the PUBLIC internet (the staging ALB answers *.staging.eng.cutanddry.com with
-no auth in front). Pages need a signed session cookie, obtained by signing in with your own
-GitHub PAT. The mutating actions embedded in a page — posting comments, approving — carry
+Assume it is reachable over the PUBLIC internet with nothing in front of it. Pages need a
+signed session cookie, obtained by signing in with your own GitHub PAT. The mutating actions embedded in a page — posting comments, approving — carry
 their own 30-minute HMAC tokens minted at render time, so a forwarded or bookmarked page
 cannot approve anything later, and a cross-site form post has no token to present.
 
@@ -52,7 +51,7 @@ import prbot_learn
 import prbot_md
 import prbot_rollup
 
-BRAND = "Robin"                    # product name shown beside the logo (see prbot_assets)
+BRAND = "ReviewStage"                    # product name shown beside the logo (see prbot_assets)
 CLAUDE_ICON = ("<svg viewBox='0 0 24 24' width=18 height=18 fill=currentColor aria-hidden=true>"
                "<path d='M12 2c.3 3.1 1 4.9 2.2 6 1.1 1.2 2.9 1.9 6 2.2-3.1.3-4.9 1-6 2.2"
                "-1.2 1.1-1.9 2.9-2.2 6-.3-3.1-1-4.9-2.2-6C8.6 11.2 6.8 10.5 3.7 10.2"
@@ -104,7 +103,9 @@ SECRET = ENV.get("PRBOT_SECRET", "")
 # The SERVICE token: reads (diffs, PR metadata, the poller's searches) and the base clone.
 # Never used to post or approve — those use the signed-in user's own PAT, see user_pat().
 PAT = ENV.get("GITHUB_PAT", "")
-REPO = ENV.get("REPO", "GetCodifyAI/cut-and-dry")
+# The GitHub repository this instance reviews, as owner/name. No default: every install names
+# its own repo in .env (bootstrap prompts for it).
+REPO = ENV.get("REPO", "")
 # The box owner. Their legacy per-PR markers (state/<pr>/posted.json etc., from before the
 # multi-user layout) are read as theirs, so history survives the upgrade.
 REVIEWER = ENV.get("REVIEWER", "")
@@ -217,8 +218,20 @@ def user_pat(login):
 GH_CLIENT_ID = ENV.get("GH_CLIENT_ID", "")
 GH_CLIENT_SECRET = ENV.get("GH_CLIENT_SECRET", "")
 GH_OAUTH_SCOPES = ENV.get("GH_OAUTH_SCOPES", "")
-PUBLIC_URL = ENV.get("PUBLIC_URL") or (
-    f"https://robin-{ENV.get('PRBOT_ENV', '')}.{ENV.get('PRBOT_DOMAIN', 'staging.eng.cutanddry.com')}")
+
+
+def public_url(env):
+    """Where browsers reach this dashboard, without a trailing slash. PUBLIC_URL is the knob;
+    the older PRBOT_ENV + PRBOT_DOMAIN pair (host prbot-<env>.<domain>) is still honoured so an
+    existing .env keeps working. Empty when neither is set — see the startup warning."""
+    u = env.get("PUBLIC_URL", "")
+    if not u and env.get("PRBOT_ENV") and env.get("PRBOT_DOMAIN"):
+        host = env.get("PRBOT_HOST") or f"prbot-{env['PRBOT_ENV']}.{env['PRBOT_DOMAIN']}"
+        u = f"https://{host}"
+    return u.rstrip("/")
+
+
+PUBLIC_URL = public_url(ENV)
 OAUTH_ENABLED = bool(GH_CLIENT_ID and GH_CLIENT_SECRET)
 
 
@@ -569,7 +582,7 @@ def restore_global_skill():
 # --- Phase 5: skill audit trail (GitOps-on-save) ---------------------------------------------
 # Dashboard edits to the review skills also commit to a local git repo in $ROOT/skills, so the
 # team's review standard has a real who/when/why history. Local history only (no remote push
-# needed); the human editor is the commit AUTHOR, Robin is the committer. Best-effort — a save
+# needed); the human editor is the commit AUTHOR, ReviewStage is the committer. Best-effort — a save
 # must never fail because git did.
 def _skills_git(*args):
     return subprocess.run(["git", "-C", str(SKILLS_DIR), *args],
@@ -580,8 +593,8 @@ def ensure_skills_repo():
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     if not (SKILLS_DIR / ".git").is_dir():
         _skills_git("init", "-q")
-        _skills_git("config", "user.email", "robin@robin.local")
-        _skills_git("config", "user.name", "Robin")
+        _skills_git("config", "user.email", "reviewstage@reviewstage.local")
+        _skills_git("config", "user.name", "ReviewStage")
 
 
 def commit_skill_change(editor, summary):
@@ -593,7 +606,7 @@ def commit_skill_change(editor, summary):
         if not _skills_git("status", "--porcelain").stdout.strip():
             return
         _skills_git("commit", "-q", "-m", summary,
-                    "--author", f"{editor} <{editor}@robin.local>")
+                    "--author", f"{editor} <{editor}@reviewstage.local>")
     except Exception:
         pass
 
@@ -620,7 +633,7 @@ def save_user_skill(login, text):
 
 # Quick-add house rules: a reviewer types a plain-English preference ("don't ask for a Jira link
 # in code comments") and it's tidied into a bullet under a managed "## Team rules" section, kept
-# last in the doc so appends are trivial. Robin reads the whole skill, so the rule just applies.
+# last in the doc so appends are trivial. ReviewStage reads the whole skill, so the rule just applies.
 RULES_MARKER = "## Team rules"
 RULES_INTRO = ("Rules added from the dashboard — apply these on every review "
                "(they override the general guidance above when they conflict):")
@@ -725,72 +738,54 @@ EFFORT_DEPTH = {
         "speculative concerns and minor edge cases. Keep findings very few — this is a fast pass."),
     "standard": (
         "Effort level: STANDARD. Review the changed files and their immediate callers and "
-        "context. Cover correctness, error handling, obvious edge cases and clear risks. If the PR "
-        "touches the pricing path (engine request/response, the engine-vs-DB flags, OG/catalog "
-        "price sync, or ordering-time price display), catalog/search, or per-DP branching, trace "
-        "whether it could make a wrong/stale/missing/zero price or wrong catalog data reach a "
-        "buyer. Keep findings focused and high-confidence; each names its user-facing impact and a "
-        "concrete failing scenario."),
+        "context. Cover correctness, error handling, obvious edge cases and clear risks. For any "
+        "value the change computes, stores or displays, ask whether a wrong, stale or missing "
+        "value could now reach an end user, and trace that path. Keep findings focused and "
+        "high-confidence; each names its user-facing impact and a concrete failing scenario."),
     "deep": (
-        "Effort level: DEEP — do a thorough, Devin-style deep analysis. Work through this method "
-        "before writing any finding, and report only what you can tie to concrete evidence (the "
-        "diff, the code, review threads, commit history):\n"
+        "Effort level: DEEP — do a thorough deep analysis. Work through this method before "
+        "writing any finding, and report only what you can tie to concrete evidence (the diff, "
+        "the code, review threads, commit history):\n"
         "1. Intent. Read the PR description and review threads; identify what the change is trying "
         "to do and which behaviours it touches (data flow/state, query/API logic, UI, business "
         "rules, error handling).\n"
         "2. Comprehensive impact search FIRST. Before judging any line, search the whole "
         "repository for every component the change affects — callers and dependents of changed "
-        "functions/fields, shared models, GraphQL queries/mutations/fragments, and any per-DP or "
-        "per-vendor branching. Build the full blast radius up front; never discover impacts "
-        "reactively.\n"
-        "3. Trace data flow end to end for each meaningful change (request → controller → library "
-        "→ model → response; on the frontend document → cache → component).\n"
-        "4. Cut+Dry domain gates. For any PR that could plausibly touch these flows, trace the "
-        "flow explicitly and judge by flow impact, not keywords:\n"
-        "   - Pricing → ordering price. Could this change what the pricing engine returns, whether "
-        "it is called at all, or the price the buyer finally sees — even incidentally (a refactor "
-        "that flips a flag, reorders a param into a pricing call, changes retry/error handling or "
-        "caching around a price fetch, or restructures a per-customer price loop)? Walk five "
-        "stages: (1) engine REQUEST — PricingServiceLib/V2, request mappers/validators, batch "
-        "jobs; (2) RESPONSE handling — response mappers, price caching, fallbacks from engine "
-        "prices to DB/price-level/estimate; (3) FLAGS & routing that decide engine-vs-DB — "
-        "pricingEngineEnabled, fetchOGPricesFromPricingServiceEnabled, "
-        "fetchSalesCostFromPricingServiceEnabled, dateBasedPricingEnabled, GateKeeper toggles, and "
-        "any VerifiedVendor / SupplierPortalVendorData / IntegrationData setting read on the price "
-        "path (a change that accidentally flips, defaults, bypasses or stops reading one of these "
-        "is the canonical bug); (4) PERSISTENCE into what buyers order from — DP OG sync libs, "
-        "UpdateOGPricesFromPricingService, LocationPriceSyncer, OrderGuideCreator/Updater, "
-        "PricingServiceCallbacks (watch chunking / early continue-break / swallowed exceptions / "
-        "transaction changes that update SOME customers' prices and not others); (5) DISPLAY & use "
-        "at ordering time — DraftPricingLib, unit-price libs, EditOrderMutation re-pricing, "
-        "ZeroPricedItemsRule, order-UI price fields. Flag anything that could cause a WRONG, STALE, "
-        "MISSING or ZERO price to reach a buyer, naming the stage and the concrete buyer-visible "
-        "failure. NOT in scope on their own: order minimums/soft-min fees, delivery/fuel/pickup "
-        "surcharges, taxes, transaction fees, rebates/promotions back-office — unless the change "
-        "also alters an engine-derived item price.\n"
-        "   - Catalog & search. Catalog data the engine prices against, ElasticSearch/OpenSearch "
-        "index changes, category/product-model changes, catalog-service integration paths.\n"
-        "   - DP-specific. Any branching on dpCode/vendorId/integrator type, SyncLibs, per-DP "
-        "config/cutoff/pricing rules. Most DPs are pricing-engine integrated — a change 'only' to "
-        "the non-integrated path still matters, and vice versa.\n"
-        "5. Then examine, reporting only genuine issues: correctness & logic (conditionals, "
+        "functions/fields, shared models and types, API contracts, configuration and feature flags, "
+        "and any per-tenant or per-integration branching. Build the full blast radius up front; "
+        "never discover impacts reactively.\n"
+        "3. Trace data flow end to end for each meaningful change: where a value enters (request, "
+        "job, webhook, file), every transformation, where it is persisted, and every place it is "
+        "displayed or acted on. At each hop ask whether a WRONG, STALE, MISSING or DEFAULTED value "
+        "could now reach an end user — a flipped flag, a reordered parameter, changed retry or "
+        "caching behaviour, a loop that updates some records and not others. Name the hop and the "
+        "concrete user-visible failure.\n"
+        "4. Auth boundaries. For every new or changed route, mutation, field, job or admin action: "
+        "who may call it, what identifies the caller, and whether the check happens before any "
+        "side effect. Trust placed in client-supplied ids, tenant/role scoping that a new path "
+        "skips, and secrets that could reach logs or responses.\n"
+        "5. Migrations & backward compatibility. Schema or persisted-shape changes without a "
+        "migration, migrations that are not idempotent or that run against live traffic, old data "
+        "under new code and new data under old code (rolling deploys, rollbacks), changed defaults, "
+        "renamed or removed fields still read by another consumer, API responses a client still "
+        "depends on.\n"
+        "6. Concurrency. Non-atomic read-modify-write, state shared across requests or workers, "
+        "jobs that can run twice or overlap, ordering assumptions between async steps, retries "
+        "that can storm or duplicate side effects.\n"
+        "7. Then examine, reporting only genuine issues: correctness & logic (conditionals, "
         "short-circuits, off-by-one/boundaries, skip-conditions that exclude valid states, "
         "null/undefined and defaults for new fields); error handling (failure modes covered, "
         "errors surfaced not swallowed, loading/empty states, missing try/catch on critical "
-        "paths); concurrency & races; edge cases ONLY where the PR changes their handling (empty "
-        "collections, single-vs-many, first-time/no-data, migration of old data under new code, "
-        "network failure); performance & scalability (N+1 queries, unbounded loops/allocations, "
-        "hot-path cost); security (input validation, authz gaps, injection, secrets); GraPhP model "
-        "property renames on persisted nodes; Apollo cache correctness.\n"
-        "6. Finding quality. Give each finding an honest confidence and keep only high-signal "
+        "paths); edge cases ONLY where the PR changes their handling (empty collections, "
+        "single-vs-many, first-time/no-data, network failure); performance (N+1 queries, unbounded "
+        "loops/allocations, hot-path cost).\n"
+        "8. Tests. Name the key functions, branches or hooks the PR adds or changes that have no "
+        "coverage, and any assertion that now holds only by coincidence or fallback.\n"
+        "9. Finding quality. Give each finding an honest confidence and keep only high-signal "
         "ones. Every finding must state the concrete user-facing impact and a specific failing "
         "scenario (the exact inputs/state that produce the wrong output or crash) — no vague or "
         "speculative findings. Cover the ground exhaustively in your analysis prose, but do not "
         "pad the findings list.\n"
-        "7. Quality gates (note, don't block): if the PR adds, removes, renames or changes the "
-        "default of a feature flag (GateKeeper etc.) without a matching update to "
-        "docs/features/README.md, call it out with the flag name and what to document; if it adds "
-        "meaningful new logic with no tests, name the key functions/hooks that lack coverage.\n"
         "Take the time the 40-minute budget allows. This is analysis depth only — you still write "
         "findings for a human to review and post, and you never post to GitHub yourself."),
 }
@@ -862,24 +857,23 @@ def review_usage(pr, login):
             "costUsd": float(u.get("cost_usd") or 0)}
 
 
+RISK_LABEL = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+
+
 def review_risk(pr, login):
-    """Domain-risk flags recorded by run-review.sh (pricing / catalog / dp), as a list."""
+    """Risk-area labels recorded by run-review.sh from the RISK_PATHS rules, as a list."""
     try:
-        return [f for f in upath(pr, login, "risk").read_text().split() if f in RISK_INFO]
+        return [f for f in upath(pr, login, "risk").read_text().split() if RISK_LABEL.match(f)]
     except OSError:
         return []
 
 
-RISK_INFO = {
-    "pricing": ("💲", "Touches pricing-related paths",
-                "double-check any price, cost, discount, rebate, margin or fee math, and "
-                "consider looping in the pricing owner."),
-    "catalog": ("📦", "Touches catalog / product paths",
-                "verify catalog and search behavior — product models, ElasticSearch indexing, "
-                "category assignment."),
-    "dp": ("🔌", "Touches DP / integration paths",
-           "check per-DP and per-vendor branching, sync libraries and cutoff/order logic."),
-}
+def risk_banner(label):
+    """The context banner for one risk label. Informational only — never a gate."""
+    return {"icon": "\u26a0\ufe0f", "title": f"Touches {label} paths",
+            "note": ("this area is listed in RISK_PATHS as one to look harder at — trace the "
+                     "change end to end and consider looping in its owner.")}
+
 
 # Files that describe one review run — copied into history/<ts>/ when a re-run replaces it.
 RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status")
@@ -1256,13 +1250,20 @@ def session_sig(login, exp):
     return hmac.new(SECRET.encode(), f"session:{login}:{exp}".encode(), sha256).hexdigest()
 
 
-PRBOT_DOMAIN = ENV.get("PRBOT_DOMAIN", "staging.eng.cutanddry.com")
+# Optional: a parent domain to scope the session cookie to, so one login works across several
+# hostnames that all point at this instance. Empty (the default) = host-only cookies.
+PRBOT_DOMAIN = ENV.get("PRBOT_DOMAIN", "")
+# Optional: the hostnames that are all THIS instance (comma-separated). When two or more are
+# listed, an unauthenticated visit on one bounces through another to pick up an existing
+# session (cross-host SSO). Empty (the default) = feature off.
+HOST_ALIASES = [h.strip().lower() for h in ENV.get("PRBOT_HOST_ALIASES", "").split(",")
+                if h.strip()]
 
 
 def _cookie_domain(host):
-    """Scope the session cookie to the shared parent domain when we're on a real staging host, so
-    one login works across robin-<env> and prbot-<env> (same box, same secret). Host-only on
-    localhost/127.0.0.1 (tests) — a Domain that doesn't match the host is dropped by the browser."""
+    """Scope the session cookie to PRBOT_DOMAIN when the request host sits under it. Host-only
+    otherwise (localhost, tests, a single hostname) — a Domain that doesn't match the host is
+    dropped by the browser."""
     h = (host or "").split(":")[0]
     if PRBOT_DOMAIN and (h == PRBOT_DOMAIN or h.endswith("." + PRBOT_DOMAIN)):
         return f"Domain=.{PRBOT_DOMAIN}; "
@@ -1281,17 +1282,17 @@ def clear_session_cookie(host=""):
 
 
 def _is_alias_host(host):
-    """A robin-<env> / prbot-<env> host on our staging domain — the two aliases of this one box."""
-    h = (host or "").split(":")[0]
-    return (h.startswith("robin-") or h.startswith("prbot-")) and h.endswith("." + PRBOT_DOMAIN)
+    """One of the PRBOT_HOST_ALIASES hostnames — only meaningful when at least two are listed."""
+    h = (host or "").split(":")[0].lower()
+    return len(HOST_ALIASES) >= 2 and h in HOST_ALIASES
 
 
 def _sibling_host(host):
-    """The other alias of this box (robin- <-> prbot-), or "" when not on an alias host."""
-    h = (host or "").split(":")[0]
+    """Another alias of this instance to ask for a session, or "" when not on an alias host."""
+    h = (host or "").split(":")[0].lower()
     if not _is_alias_host(h):
         return ""
-    return ("prbot-" + h[len("robin-"):]) if h.startswith("robin-") else ("robin-" + h[len("prbot-"):])
+    return next((a for a in HOST_ALIASES if a != h), "")
 
 
 def _accept_url_ok(url):
@@ -1886,9 +1887,9 @@ class Handler(BaseHTTPRequestHandler):
                                         q.get("error") or [""])[0])
         # Everything else is a client-routed SPA page \u2192 serve the shell. React calls
         # /api/me and shows the login screen when there is no session.
-        # --- cross-host SSO: carry an existing session between the robin-/prbot- aliases -------
+        # --- cross-host SSO: carry an existing session between PRBOT_HOST_ALIASES hosts --------
         if route == "/handoff":
-            # This host may already hold a session (e.g. prbot-). If authed, mint a short handoff
+            # This host may already hold a session. If authed, mint a short handoff
             # token and bounce to the sibling's accept endpoint; else bounce back so it shows login.
             nxt = (q.get("next") or [""])[0]
             if not _accept_url_ok(nxt):
@@ -2027,8 +2028,7 @@ class Handler(BaseHTTPRequestHandler):
             "usage": (review_usage(pr, user) if st not in ("reviewing", "queued") else None),
             "focus": foc,
             "stale": stale,
-            "risk": [{"icon": RISK_INFO[f][0], "title": RISK_INFO[f][1], "note": RISK_INFO[f][2]}
-                     for f in review_risk(pr, user)],
+            "risk": [risk_banner(f) for f in review_risk(pr, user)],
             "timeline": self._timeline_data(pr, user),
             "reviewers": (pr_reviewers(pr) if st not in ("reviewing", "queued") else None),
             "claudeConnected": claude_connected(user),
@@ -2601,7 +2601,7 @@ class Handler(BaseHTTPRequestHandler):
             save_skill(target, new_text)
             commit_skill_change(user, f"Added a rule to {who}: {tidy_rule(rule)}")
             print(f"skill rule added to {target}: {tidy_rule(rule)!r}", flush=True)
-            return ok(f"Added to {who} — Robin will apply it on every review: "
+            return ok(f"Added to {who} — ReviewStage will apply it on every review: "
                       f"<b>{html.escape(tidy_rule(rule))}</b>")
 
         # The team default is shared — restoring the built-in wipes everyone's edits, so it takes
@@ -2634,7 +2634,7 @@ class Handler(BaseHTTPRequestHandler):
         save_skill(target, text)
         commit_skill_change(user, f"Edited {who}")
         print(f"skill saved: {target} ({len(text)} chars)", flush=True)
-        return ok(f"Saved {who} — reviews now use it (with Robin's output format appended).")
+        return ok(f"Saved {who} — reviews now use it (with ReviewStage's output format appended).")
 
     def _settings_result(self, user, form):
         """Save the Slack ID and/or replace the GitHub PAT → banner HTML. Settings token assumed
@@ -2911,6 +2911,13 @@ if __name__ == "__main__":
     port = int(os.environ.get("PRBOT_PORT", "8899"))
     if USERS.exists():
         os.chmod(USERS, 0o600)
-    print(f"prbot listening on 127.0.0.1:{port} (dry_run={DRY_RUN}, "
+    if not REPO:
+        print("FATAL: REPO is not set in .env (the GitHub repository to review, as owner/name)",
+              flush=True)
+        raise SystemExit(1)
+    if not PUBLIC_URL:
+        print("WARN: PUBLIC_URL is not set in .env — OAuth sign-in and Slack links will not "
+              "work until it is", flush=True)
+    print(f"prbot listening on 127.0.0.1:{port} (repo={REPO}, dry_run={DRY_RUN}, "
           f"users={len(load_users())})", flush=True)
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

@@ -49,7 +49,7 @@ function RuleForm({
         </button>
       </form>
       <div className="hint">
-        Type a preference in plain words — Robin tidies it into the skill so you don't have to edit
+        Type a preference in plain words — ReviewStage tidies it into the skill so you don't have to edit
         the whole file.
       </div>
     </div>
@@ -94,8 +94,8 @@ function SkillEditor({
         />
         <div className="hint">
           {isGlobal
-            ? "Everyone without their own skill uses this. Robin always appends its output format."
-            : "Your skill's logic runs; Robin always appends its output format. Reviews others start are unaffected."}
+            ? "Everyone without their own skill uses this. ReviewStage always appends its output format."
+            : "Your skill's logic runs; ReviewStage always appends its output format. Reviews others start are unaffected."}
         </div>
         {COPY_HINT}
         <div className="inrow" style={{ marginTop: 10 }}>
@@ -171,7 +171,7 @@ function DepthEditor({ token, level, d, onDone }: {
       </summary>
       <div className="dbody">
         <p className="muted sm" style={{ marginTop: 0 }}>
-          What Robin does on a <b>{d.name}</b> review ({d.meta}). Appended to whichever skill runs.
+          What ReviewStage does on a <b>{d.name}</b> review ({d.meta}). Appended to whichever skill runs.
         </p>
         <form
           onSubmit={async (e) => {
@@ -254,7 +254,7 @@ export function Skills() {
     <>
       <h1>Review skills</h1>
       <p className="lead">
-        The skill is the reviewing approach Robin follows. Pick which one runs your reviews; edit it
+        The skill is the reviewing approach ReviewStage follows. Pick which one runs your reviews; edit it
         below. Quick / Standard / Deep all use the same skill — they differ only in the review-depth
         instructions, which you can edit too.
       </p>
@@ -318,7 +318,7 @@ export function Skills() {
 
       <h2>Review depth</h2>
       <p className="muted sm">
-        How deep each level goes. Deep is a thorough, Devin-style analysis. All three run the skill
+        How deep each level goes. Deep is a thorough, whole-repo analysis. All three run the skill
         above.
       </p>
       {["quick", "standard", "deep"].map((lv) => (

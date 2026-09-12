@@ -3,7 +3,7 @@ import { api, type Me } from "./api";
 
 const NEW_TOKEN =
   "https://github.com/settings/tokens/new?" +
-  new URLSearchParams({ scopes: "repo", description: "Robin — Cut+Dry PR reviews" }).toString();
+  new URLSearchParams({ scopes: "repo", description: "ReviewStage — PR reviews" }).toString();
 
 export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   const [pat, setPat] = useState("");
@@ -36,7 +36,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
       <div className="authcard">
         {me.logo && <img className="authlogo" src={me.logo} alt="" />}
         <h1>{me.brand}</h1>
-        <p className="authsub">Your PR reviewer for Cut&amp;Dry</p>
+        <p className="authsub">Stage your PR review. Post it as yourself.</p>
         <p className="authlead">
           Sign in with a GitHub token. Every comment and approval posts under your own name —
           nothing is ever posted for you.

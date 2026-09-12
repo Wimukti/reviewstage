@@ -4,8 +4,8 @@ import { prnum } from "./pr";
 import { navigate } from "./router";
 
 // The command palette is the one place to search + review any PR. Opened by the sidebar's
-// "Review a PR" button, by ⌘K / Ctrl-K anywhere, or by the robin:open-palette event.
-const EVT = "robin:open-palette";
+// "Review a PR" button, by ⌘K / Ctrl-K anywhere, or by the reviewstage:open-palette event.
+const EVT = "reviewstage:open-palette";
 export function openPalette() {
   window.dispatchEvent(new Event(EVT));
 }

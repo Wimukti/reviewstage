@@ -76,7 +76,7 @@ test.describe("signed in", () => {
 
   test("how-it-works page renders the flow", async ({ page }) => {
     await page.goto("/how");
-    await expect(page.getByRole("heading", { name: /how robin works/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /how reviewstage works/i })).toBeVisible();
     await expect(page.getByText(/a review is requested/i)).toBeVisible();
   });
 
@@ -117,6 +117,6 @@ test.describe("signed in", () => {
     await page.getByRole("button", { name: /help/i }).click();
     await page.getByRole("link", { name: /how it works/i }).click();
     await expect(page).toHaveURL(/\/how/);
-    await expect(page.getByRole("heading", { name: /how robin works/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /how reviewstage works/i })).toBeVisible();
   });
 });

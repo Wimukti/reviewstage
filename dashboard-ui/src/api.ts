@@ -1,4 +1,4 @@
-// Typed client for Robin's JSON API (/api/*). Same-origin, so the session cookie rides
+// Typed client for ReviewStage's JSON API (/api/*). Same-origin, so the session cookie rides
 // along automatically. Read endpoints hand back the signed exp/sig tokens for the actions
 // available on a resource; POST endpoints pass those back (mirrors the old HTML forms).
 

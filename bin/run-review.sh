@@ -71,18 +71,32 @@ echo "$meta" | jq --arg n "$PR" '{number:($n|tonumber), title, url,
 # Record the head SHA this review ran against, so the dashboard can flag the review as stale
 # once the author pushes new commits (a new head SHA) — without auto-spending tokens to re-run.
 echo "$meta" | jq -r .headRefOid > "$DIR/head"
-# Domain-risk flags for a context banner in the dashboard — a path-based heuristic that says
-# "this touches money / catalog / DP-integration code, look harder". Never a gate, never routing.
+# Risk-area labels for a context banner in the dashboard — a path-based heuristic that says
+# "this touches an area the team has flagged, look harder". Never a gate, never routing.
+# RISK_PATHS (in .env) is a comma-separated list of `label:pattern` rules; a rule matches when
+# any changed path equals the glob or contains the substring. Empty (the default) = feature off.
 paths=$(echo "$meta" | jq -r '.files[]?.path // empty' 2>/dev/null)
 risk=""
-printf '%s\n' "$paths" | grep -qiE 'pric|/cost|discount|promo|rebate|margin|/fees?/|Fee|PricingService|OGPrice|OrderGuide|DraftPricing|ZeroPriced|UnitPrice|LocationPriceSync|pricingEngine|dateBasedPricing|SupplierLitePricing' && risk+="pricing "
-printf '%s\n' "$paths" | grep -qiE 'catalog|[Pp]roduct|elasticsearch|opensearch|ProductSearch|categor' && risk+="catalog "
-printf '%s\n' "$paths" | grep -qiE 'integrators/|SyncLibs|dpCode|vendorId|VerifiedVendor|IntegrationData' && risk+="dp "
+IFS=',' read -ra RISK_RULES <<< "${RISK_PATHS:-}"
+for rule in "${RISK_RULES[@]+"${RISK_RULES[@]}"}"; do
+  rule="${rule#"${rule%%[![:space:]]*}"}"; rule="${rule%"${rule##*[![:space:]]}"}"
+  [ -n "$rule" ] || continue
+  if [[ "$rule" == *:* ]]; then label="${rule%%:*}"; pat="${rule#*:}"; else label="$rule"; pat="$rule"; fi
+  label=$(printf '%s' "$label" | tr -c 'A-Za-z0-9_-' '_')
+  [ -n "$label" ] && [ -n "$pat" ] || continue
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    # shellcheck disable=SC2053  # $pat is a glob on purpose
+    if [[ "$p" == $pat ]] || [[ "$p" == *"$pat"* ]]; then
+      case " $risk " in *" $label "*) ;; *) risk+="$label ";; esac
+      break
+    fi
+  done <<< "$paths"
+done
 echo "$risk" | xargs > "$DIR/risk" 2>/dev/null || true
 
-# Base clone lives under $ROOT, deliberately NOT the rsync target
-# (/var/local/cut-dry/current/) — `staging:dev`'s --delete would otherwise wipe a
-# worktree mid-review.
+# Base clone lives under $ROOT, in $HOME — deliberately outside any directory a deploy or
+# sync job of yours might rsync over, which would otherwise wipe a worktree mid-review.
 status "checking out the branch"
 git -C "$BASE" fetch -q origin "$branch" || fail "could not fetch $branch"
 slug="${ACTOR:-shared}"
@@ -149,7 +163,7 @@ it tight, no long prose\", \"comments\":[{
 \"path\":\"file\", \"line\":123, \"severity\":\"blocker|should-fix|nit|question\", \"title\":
 \"a short plain-language headline a JUNIOR engineer would understand at a glance — no jargon, no
 symbol names, say what is wrong in everyday words\", \"impact\":\"ONE plain sentence: who is
-affected and what actually breaks for them (a buyer, an ops user, a DP) — the real-world
+affected and what actually breaks for them (an end user, an operator, a partner) — the real-world
 consequence, not the code mechanism\", \"body\":
 \"the detailed technical explanation and the concrete failing scenario, in markdown — this is the
 comment posted to GitHub, so write it for the PR author\", \"reply_to\":null, \"suggestion\":null,

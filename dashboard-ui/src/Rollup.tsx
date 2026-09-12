@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type RollupData, type RollupSeriesPoint } from "./api";
 
-// Insights — Robin's activity, precision and agreement, aggregated from files it already writes.
-// All charts are hand-rolled SVG (no chart dependency), matching Robin's no-framework style.
+// Insights — ReviewStage's activity, precision and agreement, aggregated from files it already writes.
+// All charts are hand-rolled SVG (no chart dependency), matching ReviewStage's no-framework style.
 
 const C = {
   accent: "#7c83f0",
@@ -168,7 +168,7 @@ export function Rollup() {
         <div>
           <h1>Insights</h1>
           <p className="muted sm">
-            Robin's activity, precision and agreement — all-time, from day one. Read these as early
+            ReviewStage's activity, precision and agreement — all-time, from day one. Read these as early
             signal to build on, not proof.
           </p>
         </div>

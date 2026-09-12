@@ -1,0 +1,25 @@
+/* Docs shell restyle: shape and density only, palette arrives through the --sl-* bridge. */
+.header { backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%); }
+site-search button[data-open-modal] { border-radius: 999px; border-color: var(--hairline); background-color: color-mix(in oklab, var(--card) 70%, transparent); }
+.sidebar-pane { border-inline-end: 1px solid var(--hairline); background-color: color-mix(in oklab, var(--card) 32%, transparent); }
+@media (max-width: 49.999rem) { .sidebar-pane { background-color: var(--background); } }
+.sidebar-content .top-level > li > details > summary,
+.sidebar-content .top-level > li > .group-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-foreground); }
+.sidebar-content a { border-radius: 0.55rem; padding-block: 0.35rem; }
+.sidebar-content a[aria-current="page"], .sidebar-content a[aria-current="page"]:hover { background-color: color-mix(in oklab, var(--primary) 8%, transparent); color: var(--primary); font-weight: 600; }
+.content-panel + .content-panel { border-top: 0; padding-top: 0.75rem; }
+.sl-markdown-content { font-size: 1rem; line-height: 1.75; }
+.sl-markdown-content :is(h1, h2, h3, h4) { font-family: var(--font-display); letter-spacing: -0.025em; }
+.sl-markdown-content a:not(:where(.not-content *)) { text-decoration-color: color-mix(in oklab, var(--primary) 45%, transparent); text-underline-offset: 0.2em; }
+.sl-markdown-content :not(pre) > code:not(:where(.not-content *)) { border: 1px solid var(--hairline); border-radius: 0.4rem; padding: 0.1rem 0.35rem; }
+.sl-markdown-content :is(ul, ol):not(:where(.not-content *, .sl-steps)) { padding-inline-start: 1.5rem; }
+.sl-markdown-content ul:not(:where(.not-content *)) { list-style: disc; }
+.sl-markdown-content ol:not(:where(.not-content *, .sl-steps)) { list-style: decimal; }
+.sl-markdown-content li::marker { color: color-mix(in oklab, var(--primary) 70%, var(--muted-foreground)); }
+.sl-markdown-content table:not(:where(.not-content *)) { border: 1px solid var(--hairline); border-radius: var(--radius); }
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) { border-color: var(--hairline); }
+.sl-markdown-content th:not(:where(.not-content *)) { background-color: color-mix(in oklab, var(--foreground) 6%, transparent); }
+.expressive-code { --ec-brdCol: var(--hairline); --ec-brdRad: calc(var(--radius-device) - 1px); }
+.expressive-code .frame { border-radius: var(--radius-device); box-shadow: var(--shadow-soft); }
+.starlight-aside { border-radius: var(--radius); border-inline-start-width: 2px; padding: 1rem 1.15rem; }
+.pagination-links a { border-color: var(--hairline); border-radius: calc(var(--radius) * 1.6); box-shadow: var(--shadow-soft); }

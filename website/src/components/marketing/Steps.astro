@@ -1,0 +1,26 @@
+---
+import { withBase } from "../../content/site-links";
+const steps = [
+  { n: 1, t: "Bring it up", d: "docker compose up -d and open http://localhost:8899. bin/doctor.sh checks Docker, the .env, and that Claude Code can sign in." },
+  { n: 2, t: "Sign in as yourself", d: "A fine-grained GitHub token scoped to the repo, then Connect Claude in the browser. Both are stored encrypted and only used for actions you click." },
+  { n: 3, t: "Paste a PR URL", d: "Pick Quick, Standard or Deep, optionally a focus note and a model, and run. Read the findings, tick, edit, post. Approve is its own click." },
+];
+---
+<ol class="steps">
+  {steps.map((s) => (
+    <li class="surface-card step">
+      <span class="step-n">{s.n}</span>
+      <h3 class="card-title">{s.t}</h3>
+      <p class="body-text">{s.d}</p>
+    </li>
+  ))}
+</ol>
+<p class="body-text team-note">Add <code class="kbd">--profile team</code> for the review-request poller and Slack cards, so teammates are pinged when a PR is waiting on them. Add <code class="kbd">--profile demo</code> to see the dashboard with sample runs before wiring anything up. Details in <a href={withBase("/start/team-mode/")}>Team mode</a>.</p>
+<style>
+  .steps { display: grid; gap: 1rem; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  @media (min-width: 48rem) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .step { display: grid; gap: 0.7rem; padding: 1.5rem; }
+  .step-n { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; background: color-mix(in oklab, var(--primary) 18%, transparent); color: var(--primary); font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600; }
+  .team-note { max-width: 46rem; }
+  .team-note a { color: var(--primary); }
+</style>

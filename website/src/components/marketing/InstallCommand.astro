@@ -1,0 +1,25 @@
+---
+const cmd = "git clone https://github.com/Wimukti/reviewstage && cd reviewstage && cp .env.example .env && docker compose up -d";
+---
+<div class="install" data-install>
+  <span class="prompt" aria-hidden="true">$</span>
+  <code>{cmd}</code>
+  <button type="button" class="copy" data-copy={cmd} aria-label="Copy install command">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+  </button>
+</div>
+<script>
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy ?? ""); b.dataset.done = "1"; setTimeout(() => delete b.dataset.done, 1200); } catch {}
+    });
+  }
+</script>
+<style>
+  .install { display: flex; align-items: center; gap: 0.6rem; max-width: 100%; padding: 0.55rem 0.6rem 0.55rem 0.9rem; border: 1px solid var(--hairline); border-radius: var(--radius-device); background: var(--background); box-shadow: var(--shadow-soft); font-family: var(--font-mono); font-size: 0.82rem; }
+  .prompt { color: var(--primary); font-weight: 600; }
+  code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; color: var(--foreground); scrollbar-width: none; }
+  .copy { flex: none; display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--hairline); border-radius: 999px; background: color-mix(in oklab, var(--card) 88%, transparent); color: var(--muted-foreground); cursor: pointer; }
+  .copy:hover { color: var(--primary); }
+  .copy[data-done] { color: var(--success); border-color: var(--success); }
+</style>

@@ -1,0 +1,84 @@
+---
+title: Install
+description: Docker Compose quick start, and the from-source path for a Linux server.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Docker Compose (recommended)
+
+You need Docker with Compose v2, a GitHub account, and a Claude **Pro, Max, Team or Enterprise** plan for anyone who will run reviews.
+
+```bash
+git clone https://github.com/Wimukti/reviewstage && cd reviewstage
+cp .env.example .env
+docker compose up -d
+```
+
+Open **http://localhost:8899**. The first visit is the login page.
+
+Before you sign in, run the doctor. It checks Docker, the `.env`, that the `reviewstage` service is healthy, and that the container can reach GitHub:
+
+```bash
+bin/doctor.sh
+```
+
+### What to put in `.env`
+
+Only two values are required to start:
+
+| Key | What |
+| --- | --- |
+| `REPO` | `owner/name` of the repository to review. |
+| `GITHUB_PAT` | A **service token** used for reads only: listing review requests and cloning the base repo. A fine-grained PAT with *Contents: read*, *Pull requests: read*, *Metadata: read* on that repository is enough. It never posts or approves. |
+
+Everything else has a sensible default. `DRY_RUN=1` ships on by default: the dashboard works end to end but refuses to write to GitHub until you flip it. See [Configuration](/reviewstage/operations/configuration/) for every knob.
+
+### Profiles
+
+```bash
+docker compose --profile team up -d   # adds the review-request poller + Slack cards
+docker compose --profile demo up -d   # seeds sample runs so you can explore the UI
+```
+
+`team` is what you want for a shared server; see [Team mode](/reviewstage/start/team-mode/). `demo` is for looking around before wiring anything.
+
+### The first sign-in
+
+1. Open http://localhost:8899 and choose **Sign in with a GitHub token**. The page links to GitHub with the token name and permissions pre-filled: a **fine-grained** PAT scoped to the one repository, with *Pull requests: read and write* and *Contents: read*. Pick an expiry (90 days is a good default). This token acts as **you**; it is what makes every comment attributable to a person.
+2. Paste the token. It is verified against GitHub, stored encrypted, and used only for the posts and approvals you click.
+3. On the welcome checklist, **Connect Claude**: a link opens Claude in a new tab, you authorise with your own account and paste the code back. This runs the genuine `claude setup-token` flow inside the container, so your reviews bill to your plan.
+
+You are ready for your [first review](/reviewstage/start/first-review/).
+
+## From source on a Linux server
+
+Use this when you cannot run Docker, or want the dashboard behind your own web server. The pieces are a Python 3 server, a few bash scripts, the Claude Code CLI and the GitHub CLI. There is no build step for the backend; the dashboard UI is a prebuilt bundle.
+
+Summary of what `bin/bootstrap.sh` does, so you know what to expect:
+
+1. Installs `gh` and `claude` if missing.
+2. Copies the scripts to `~/.reviewstage/bin/` and creates `~/.reviewstage/.env` (chmod 600), **adding only missing keys** so re-running never overwrites your values.
+3. Makes a blobless base clone of `REPO` for worktrees.
+4. Installs the built-in review skill and seeds the editable team default.
+5. Writes and starts a systemd unit that binds the dashboard to `127.0.0.1:8899`.
+6. Installs the cron entry for the poller (every 3 minutes).
+
+Then:
+
+```bash
+sudo -iu <service-user>          # the user the unit runs as
+claude                           # sign Claude Code in as that user, interactively
+~/reviewstage/bin/bootstrap.sh   # prompts for REPO and your GitHub login
+# paste GITHUB_PAT (and SLACK_WEBHOOK if wanted) into ~/.reviewstage/.env
+~/reviewstage/bin/bootstrap.sh   # re-run to finish; safe at any point
+curl -s localhost:8899/health    # -> ok
+```
+
+Put a TLS-terminating reverse proxy in front (Caddy is two lines) and read [Security](/reviewstage/security/) before turning `DRY_RUN` off. The server reads `.env` **once at startup**: restart it after any edit.
+
+<Aside type="caution" title="Sign Claude in as the service user">
+The most common install failure is signing Claude Code in as a different user than the one the service runs as. The credentials land in the wrong home directory and every review finishes instantly with an empty result.
+</Aside>

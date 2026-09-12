@@ -1,0 +1,24 @@
+---
+/* One landing section body: copy column + screenshot, alternating sides. */
+import Shot from "./Shot.astro";
+interface Props { shot: string; alt: string; label?: string; flip?: boolean; points?: string[]; }
+const { shot, alt, label, flip = false, points = [] } = Astro.props;
+---
+<div class:list={["feature", flip && "feature-flip"]}>
+  <div class="feature-copy">
+    <slot />
+    {points.length > 0 && <ul class="points">{points.map((p) => <li>{p}</li>)}</ul>}
+  </div>
+  <div class="feature-shot"><Shot name={shot} alt={alt} label={label} /></div>
+</div>
+<style>
+  .feature { display: grid; gap: 2.5rem; align-items: center; }
+  @media (min-width: 64rem) {
+    .feature { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+    .feature-flip .feature-copy { order: 2; }
+  }
+  .feature-copy { display: grid; gap: 1rem; }
+  .points { display: grid; gap: 0.6rem; margin: 0.25rem 0 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: 0.95rem; line-height: 1.55; }
+  .points li { position: relative; padding-left: 1.4rem; }
+  .points li::before { content: ""; position: absolute; left: 0; top: 0.55em; width: 0.7rem; height: 0.7rem; border-radius: 999px; background: color-mix(in oklab, var(--primary) 25%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 60%, transparent); }
+</style>

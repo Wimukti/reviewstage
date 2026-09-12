@@ -1,0 +1,22 @@
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: calc(var(--nav-height) + 1.5rem);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, kbd, samp, pre { font-family: var(--font-mono); }
+  ::selection { background-color: color-mix(in oklab, var(--primary) 30%, transparent); }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 0.35rem; }
+  * { scrollbar-color: var(--border) transparent; }
+}
+@keyframes rise-in { from { opacity: 0; translate: 0 0.5rem; } to { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

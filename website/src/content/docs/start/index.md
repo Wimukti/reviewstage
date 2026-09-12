@@ -26,7 +26,7 @@ Three properties hold at every step:
 
 1. **The review step cannot write to GitHub.** The script that runs the agent has no write path at all; it produces a file the dashboard renders.
 2. **Every write is a signed-in human's click, with that human's own token.** There is no bot account. If a comment carries your name, you chose it.
-3. **Posting is always a `COMMENT` review.** ReviewStage never requests changes and never blocks a merge. Approval is a second, deliberate click.
+3. **Posting defaults to a `COMMENT` review.** The agent never requests changes; a reviewer can tick *Request changes* on the post form. Approval is a second, deliberate click.
 
 ## What you get
 

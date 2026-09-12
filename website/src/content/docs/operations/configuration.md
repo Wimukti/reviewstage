@@ -1,81 +1,44 @@
 ---
 title: Configuration
-description: Every knob in .env, with its reasoning.
+description: Every setting the code actually reads, one line each.
 sidebar:
   order: 1
 ---
 
-Everything lives in `.env` (Docker) or `~/.reviewstage/.env` (from source), chmod 600. `.env.example` documents each key. The dashboard reads the file **once at startup**; restart after any change. The poller and the review runner re-read it on every run.
+Settings live in `.env` (Docker; mirrored into the data volume on every start) or `~/.claude-pr-bot/.env` (from source; chmod 600). `config.example` lists the file's full shape, `.env.example` the Docker subset. The dashboard reads the file **once at startup**; restart after any change. The poller and the review runner re-read it on every run. The last five rows are read from the process environment only, not from `.env`.
 
-## Required
-
-| Key | What |
-| --- | --- |
-| `REPO` | `owner/name` of the repository to review. One repository per server. |
-| `GITHUB_PAT` | Service token, **read-only** (Contents: read, Pull requests: read, Metadata: read). Used to poll review requests and clone the base repo. Never posts. |
-
-## Safety
-
-| Key | Default | What |
+| Setting | Default | What it does |
 | --- | --- | --- |
-| `DRY_RUN` | `1` | `1`: the dashboard works fully but refuses to write to GitHub, and saves the payload it would have sent. Flip to `0` only after a dry run you have compared by hand. |
-| `SECRET` | generated | Signs sessions, action links and derives the key that encrypts stored tokens. Rotating it invalidates all three. |
-| `MIN_FREE_MB` | `800` | Refuse to start a review below this much free memory. A run already in flight can still be killed by the OS. |
+| `REPO` | required | The GitHub repository this instance reviews, as `owner/name`. One repository per server. |
+| `GITHUB_PAT` | required | The service token: reads PR metadata and diffs, clones the repo, runs the poller's searches. Never posts; comments and approvals use each signed-in reviewer's own token. Fine-grained PAT scoped to the repo: Pull requests read/write, Contents read, Metadata read. |
+| `PUBLIC_URL` | required (Docker: `http://localhost:8899`) | Where browsers reach the dashboard. Every Slack button and the OAuth callback are built from it. No trailing slash. |
+| `REVIEWER` | Docker: derived from `GITHUB_PAT` | The GitHub login the service token belongs to. From source, set it yourself; the Docker entrypoint fills it in by asking GitHub who the token is. |
+| `PRBOT_SECRET` | generated on first start | Signs every dashboard link and session, and derives the key that encrypts stored tokens. Rotating it signs everyone out and invalidates outstanding Slack links and stored tokens. |
+| `DRY_RUN` | `1` | `1`: the dashboard renders and the buttons work, but nothing is ever written to GitHub. Flip to `0` only after a dry run you have compared by hand, then restart. |
+| `SKIP_BOT_PRS` | `0` | `1` skips PRs opened by bots. Default off: AI-written PRs are where a skeptical review pays off most. |
+| `PRBOT_MAX_PR_AGE_DAYS` | `45` | The poller ignores review requests on PRs older than this many days. `0` disables the cutoff. |
+| `MIN_FREE_MB` | `800` | Refuse to start a review below this much available RAM, in MB. |
+| `PRBOT_PORT` | `8899` | The port the server listens on. Docker maps `127.0.0.1:${PRBOT_PORT}` to the container. |
+| `SLACK_WEBHOOK` | empty | A Slack incoming webhook for review-request cards and "review ready" pings. Send-only: a fresh message each time. Point it at a private channel; cards name PR titles and authors. |
+| `SLACK_BOT_TOKEN` | empty | With `SLACK_CHANNEL`, posts via `chat.postMessage` so the review-ready message threads under the review-request card. Takes precedence over the webhook. |
+| `SLACK_CHANNEL` | empty | Channel ID for the bot-token path. |
+| `GH_CLIENT_ID` | empty | Client ID of an OAuth App or GitHub App whose callback URL is `<PUBLIC_URL>/prbot/oauth/callback`. Leave empty and the login page offers token sign-in only. Restart after changing. |
+| `GH_CLIENT_SECRET` | empty | The matching client secret. |
+| `GH_OAUTH_SCOPES` | empty | OAuth App: set to `repo` (tick *Expire user access tokens* when creating the app and tokens last 8 hours, refreshed here automatically). GitHub App: leave empty; permissions come from the app. |
+| `RISK_PATHS` | empty | Comma-separated `label:pattern` rules; a rule matches when a changed file path equals the glob or contains the substring, and the review then shows a "Touches *label* paths" banner. Context only, never a gate. Example: `billing:src/billing/,auth:*/auth/*`. |
+| `PRBOT_HOST_ALIASES` | empty | Comma-separated extra hostnames that point at this instance. A visit on one hostname without a session bounces through another to pick up an existing login. |
+| `PRBOT_DOMAIN` | empty | A parent domain to scope the session cookie to, so one login covers every alias. Empty = host-only cookies. |
+| `PRBOT_ENV` | empty | Legacy. With `PRBOT_DOMAIN`, an `.env` without `PUBLIC_URL` derives it as `https://prbot-<PRBOT_ENV>.<PRBOT_DOMAIN>`. New installs set `PUBLIC_URL` and leave this empty. |
+| `PRBOT_HOST` | empty | Legacy. Overrides the hostname derived from `PRBOT_ENV` + `PRBOT_DOMAIN`. |
+| `POLL_INTERVAL` | `180` | Process environment only. Seconds between poller passes. In Docker, put it in `.env` and compose passes it through; from source, export it before starting the poller. |
+| `PRBOT_BIND` | `127.0.0.1` | Process environment only. Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
+| `PRBOT_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` when `PUBLIC_URL` starts with `http://`. |
+| `ROOT` | `~/.claude-pr-bot` | Process environment only. Base directory for `.env`, the base clone, worktrees, per-PR state, `users.json`, learnings and skills. Docker mounts the data volume here. |
 
-## Notifications
+## Things that are not settings
 
-| Key | Default | What |
-| --- | --- | --- |
-| `SLACK_WEBHOOK` | empty | Incoming webhook URL. Send-only; replies are not threaded. |
-| `SLACK_BOT_TOKEN` | empty | With `SLACK_CHANNEL`, posts via `chat.postMessage` and threads the review-ready reply. Takes precedence over the webhook. |
-| `SLACK_CHANNEL` | empty | Channel ID for the bot token path. |
-
-## Poller (team profile)
-
-| Key | Default | What |
-| --- | --- | --- |
-| `SKIP_BOT_PRS` | `0` | `1` ignores PRs authored by bots. Default off: AI-written PRs are where a skeptical review pays off most. |
-| `POLL_MINUTES` | `3` | How often to ask GitHub for review requests. One search per signed-in user per poll. |
-
-## GitHub sign-in
-
-Optional. Without it, the login page offers token sign-in only.
-
-| Key | What |
-| --- | --- |
-| `GH_CLIENT_ID` / `GH_CLIENT_SECRET` | From an OAuth App (or GitHub App) whose callback URL is `<your-url>/oauth/callback`. |
-| `GH_OAUTH_SCOPES` | OAuth App: the scope tokens should carry (`repo` for classic-style access; tick *Expire user access tokens* for 8-hour tokens refreshed server-side). GitHub App: leave **empty**; permissions come from the app. |
-
-## Paths and hosting
-
-| Key | Default | What |
-| --- | --- | --- |
-| `PUBLIC_URL` | `http://localhost:8899` | The URL users open. Used in Slack links and OAuth callbacks. |
-| `PORT` | `8899` | Bind port. |
-| `STATE_DIR` | `/data` (Docker) · `~/.reviewstage` (source) | Base clone, worktrees, per-PR state, users file, learnings, skills. Mount it as a volume. |
-| `RISK_PATHS` | empty | Comma-separated path prefixes that raise the informational **risk** banner (for example `billing/,pricing/`). Never gates. |
-
-## Runs
-
-| Key | Default | What |
-| --- | --- | --- |
-| `ANTHROPIC_API_KEY` | empty | If set in the server's environment, `claude -p` uses it for anyone who has **not** connected their own Claude account. Otherwise such users cannot run reviews. |
-| `REVIEW_TIMEOUTS` | `12,25,40` | Minutes for Quick, Standard, Deep. |
-
-## Per-user data
-
-Not in `.env`. The users file under `STATE_DIR` holds, per login: the encrypted GitHub token, the encrypted Claude token, the Slack member ID, display name and join date. It is written by the dashboard on sign-in. To remove a user, delete their key.
-
-## Per-PR state
-
-Under `STATE_DIR/state/<pr>/`:
-
-| File | What |
-| --- | --- |
-| `review.json` | The agent's output: the artefact the dashboard renders. |
-| `meta.json` | PR identity, cached so titles survive after the PR leaves the queue. |
-| `status`, `effort`, `focus`, `skill`, `head`, `risk`, `pid` | Run metadata. |
-| `agent.log`, `run.log` | What the agent did; the wrapper's log. |
-| `history/<ts>/` | Earlier runs, complete. |
-| `users/<login>/` | That person's `opened`, `posted.json`, `payload.json`, `approved`, `archived`. |
-| `qa.md`, `qa.status`, `qa_meta.json` | The QA guide, if generated. |
+- **Poll frequency** is `POLL_INTERVAL` above; there is no minutes-based key.
+- **Review timeouts** come from the effort level chosen when starting a run: Quick 12 minutes, Standard 25, Deep 40. They are fixed in `bin/run-review.sh`.
+- **Request changes** is a checkbox on the post form, per review. The default review event is `COMMENT`; the agent never sets it.
+- **Claude credentials** are per user: each reviewer connects their own Claude account in *Integrations*, and their runs use that token. There is no server-wide API key setting; a user who has not connected Claude cannot run reviews.
+- **Per-user data** (encrypted GitHub and Claude tokens, Slack member ID) lives in `ROOT/users.json`, written by the dashboard on sign-in. To remove a user, delete their key.

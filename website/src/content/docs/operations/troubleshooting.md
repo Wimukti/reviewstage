@@ -27,7 +27,7 @@ The dashboard reads `.env` **once, at startup**. `docker compose up -d` (or `sys
 
 Check `state/<pr>/agent.log`. Common causes:
 
-- **Claude is not connected** for the user who clicked, and no `ANTHROPIC_API_KEY` is set. The run ends instantly with an empty result. Connect Claude in *Integrations*.
+- **Claude is not connected** for the user who clicked. The run ends instantly with an empty result. Connect Claude in *Integrations*.
 - **From source: Claude Code signed in as the wrong user.** It must be the user the service runs as.
 - **The timeout hit.** Very large PRs do this at *Quick*. Re-run at *Deep*, or split the review with a focus note.
 - **Out of memory.** Runs refuse to start below `MIN_FREE_MB`, but a run in flight can still be killed. Give the container more memory or lower the concurrency of whatever else is on the host.
@@ -52,7 +52,7 @@ To re-announce everything that has *not* been reviewed yet, keep the lines for P
 
 ## Card arrives, button 403s
 
-The link expired (7 days) or `SECRET` was rotated. Open the dashboard directly.
+The link expired (7 days) or `PRBOT_SECRET` was rotated. Open the dashboard directly.
 
 ## Sign-in says the token cannot see the repository
 

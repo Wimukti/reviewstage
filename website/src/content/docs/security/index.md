@@ -14,13 +14,13 @@ The dashboard is a process holding GitHub tokens that can comment on, review and
 | Data | Where | Protection |
 | --- | --- | --- |
 | Service GitHub token (`GITHUB_PAT`) | `.env` (chmod 600) | Read-only permissions; never posts. |
-| Each user's GitHub token | users file | **AES-256-CBC, PBKDF2**, key *derived* from `SECRET`, not stored beside it. Decrypted in the server only, at post time. |
+| Each user's GitHub token | users file | **AES-256-CBC, PBKDF2**, key *derived* from `PRBOT_SECRET`, not stored beside it. Decrypted in the server only, at post time. |
 | Each user's Claude token | users file | Same encryption. Used only by `claude -p` for that user's runs. |
 | Slack webhook / bot token | `.env` | Treat as a secret; anyone holding it can post in the channel. |
 | Reviews, payloads, logs | per-PR state directory | Plain files. Contain diff excerpts and the agent's prose. |
-| Sessions | HttpOnly, Secure, SameSite cookie | HMAC-signed with `SECRET`, 30-day expiry. |
+| Sessions | HttpOnly, Secure, SameSite cookie | HMAC-signed with `PRBOT_SECRET`, 30-day expiry. |
 
-Rotating `SECRET` invalidates every session, every signed link and every stored token at once. That is the right outcome if it was rotated because it leaked.
+Rotating `PRBOT_SECRET` invalidates every session, every signed link and every stored token at once. That is the right outcome if it was rotated because it leaked.
 
 ## Controls
 
@@ -28,7 +28,7 @@ Rotating `SECRET` invalidates every session, every signed link and every stored 
 - **Every action is HMAC-signed** over `action:pr:expiry`: post, approve, mark done, archive, start review, stop, explain. Tokens are minted at render time and last **30 minutes**, so a bookmarked or forwarded page cannot act later and a cross-site form has nothing valid to present.
 - **Writes use the acting user's own token.** The service token does reads and the base clone only. Nothing can post or approve under another name, and GitHub's self-approval check runs against the real user.
 - **The review step has no GitHub write path.** The script that runs the agent produces a file; every write is a separate human click.
-- **Posting is always `COMMENT`.** Never `REQUEST_CHANGES`, never `APPROVE` from the agent.
+- **The agent never chooses the review event.** Posting defaults to `COMMENT`; a reviewer can tick *Request changes* on the post form for that one review. `APPROVE` is a separate click, never from the agent.
 - **Approve is gated** on the PR being open, not a draft, not authored by you, and having a review on this server.
 - **Diff-anchor validation** checks every `path:line` against the real diff before posting.
 - **A failed GitHub call never degrades into a bad post.** Response shape is validated, retried once, refused on anything odd.
@@ -78,7 +78,7 @@ Stated plainly so nobody assumes otherwise.
 
 ```bash
 # .env
-SECRET=<openssl rand -hex 32>
+PRBOT_SECRET=<openssl rand -hex 32>
 ```
 
 Restart. Every session, link and stored token is now invalid; users sign in and reconnect Claude again.

@@ -57,13 +57,13 @@ A run keyed on (login, head, effort, focus, model, skill) is cached; an identica
 
 ## Per-PR state
 
-`STATE_DIR/state/<pr>/` holds the shared run (`review.json`, `meta.json`, `status`, `effort`, `focus`, `skill`, `head`, `risk`, `pid`, logs, `history/`). Per-user markers live one level down in `users/<login>/` (`opened`, `posted.json`, `payload.json`, `approved`, `archived`). `queue.json` rows carry `requested: [logins]`, the union of everyone awaiting the PR, and the dashboard filters on it so one poller output serves every user.
+`ROOT/state/<pr>/` (`ROOT` defaults to `~/.claude-pr-bot`) holds the shared run (`review.json`, `meta.json`, `status`, `effort`, `focus`, `skill`, `head`, `risk`, `pid`, logs, `history/`). Per-user markers live one level down in `users/<login>/` (`opened`, `posted.json`, `payload.json`, `approved`, `archived`). `queue.json` rows carry `requested: [logins]`, the union of everyone awaiting the PR, and the dashboard filters on it so one poller output serves every user.
 
 `meta.json` exists because `queue.json` only holds PRs *currently* awaiting review; the moment you post, the PR leaves it, and without the cache the dashboard would lose the title of the review you just ran.
 
 ## Design decisions worth defending
 
-- **Posting is always a plain `COMMENT` review.** Never `REQUEST_CHANGES`: these are review notes, not a merge block, and the human approves separately.
+- **Posting defaults to a plain `COMMENT` review.** `REQUEST_CHANGES` only when the reviewer ticks it on the post form: the agent produces notes, not a merge block, and the human approves separately.
 - **Approve posts a comment and then approves.** Pre-filled `LGTM` plus a checklist of blocker/should-fix findings, editable first.
 - **`run-review.sh` never touches GitHub.** This is the property that makes the whole thing safe to run against a real review queue.
 - **Slack dedup is per PR + login, not per head SHA.** Each reviewer is pinged once per PR; pushing new commits must not re-ping anyone. The dashboard reflects the live queue regardless.

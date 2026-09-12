@@ -1,7 +1,7 @@
 # ReviewStage — Multi-Reviewer Redundancy & Trust Build Plan (v2)
 
 Purpose: a spec you can hand directly to Claude to implement in ReviewStage. Goal: let several
-reviewers be assigned to the same PR (required by how Cut+Dry works today) without wasteful
+reviewers be assigned to the same PR (as many teams require) without wasteful
 duplicate analysis, while turning "several independent reviews" into an *actual, measurable*
 confidence signal instead of an assumed one — and producing credible data to pitch wider
 adoption after the one-week pilot.
@@ -115,7 +115,7 @@ most distinctive feature for the company pitch.
 
 Two references map to two *different* jobs; keep them separate:
 - *Self-consistency* (independent samples + diminishing returns, most gain by 3-5 genuinely
-  independent samples) → justifies **why independence matters and why small N suffices**. Cut+Dry's
+  independent samples) → justifies **why independence matters and why small N suffices**. A team's
   typical 2-3 assigned reviewers sit right in that sweet spot.
 - *Cohen's kappa / set-agreement* → the **aggregation mechanism**. A review is a *set of findings*,
   not one answer, so this is inter-rater agreement on sets, **not** self-consistency's

@@ -95,9 +95,8 @@ for rule in "${RISK_RULES[@]+"${RISK_RULES[@]}"}"; do
 done
 echo "$risk" | xargs > "$DIR/risk" 2>/dev/null || true
 
-# Base clone lives under $ROOT, deliberately NOT the rsync target
-# (/var/local/cut-dry/current/) — `staging:dev`'s --delete would otherwise wipe a
-# worktree mid-review.
+# Base clone lives under $ROOT, in $HOME — deliberately outside any directory a deploy or
+# sync job of yours might rsync over, which would otherwise wipe a worktree mid-review.
 status "checking out the branch"
 git -C "$BASE" fetch -q origin "$branch" || fail "could not fetch $branch"
 slug="${ACTOR:-shared}"

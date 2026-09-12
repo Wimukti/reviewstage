@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/Wimukti/reviewstage/actions/workflows/website.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Wimukti/reviewstage/website.yml?branch=main&label=CI"></a>
+  <a href="https://github.com/Wimukti/reviewstage/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Wimukti/reviewstage/ci.yml?branch=main&label=CI"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://wimukti.github.io/reviewstage/"><img alt="GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f"></a>
 </p>

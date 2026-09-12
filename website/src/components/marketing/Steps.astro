@@ -15,7 +15,7 @@ const steps = [
     </li>
   ))}
 </ol>
-<p class="body-text team-note">Add <code class="kbd">--profile team</code> for the review-request poller and Slack cards, so teammates are pinged when a PR is waiting on them. Add <code class="kbd">--profile demo</code> to see the dashboard with sample runs before wiring anything up. Details in <a href={withBase("/start/team-mode/")}>Team mode</a>.</p>
+<p class="body-text team-note">Add <code class="kbd">--profile team</code> for the review-request poller and Slack cards, so teammates are pinged when a PR is waiting on them. Run <code class="kbd">docker compose up -d demo</code> to see the dashboard with sample runs before wiring anything up. Details in <a href={withBase("/start/team-mode/")}>Team mode</a>.</p>
 <style>
   .steps { display: grid; gap: 1rem; margin: 0; padding: 0; list-style: none; counter-reset: step; }
   @media (min-width: 48rem) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

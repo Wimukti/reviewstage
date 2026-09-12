@@ -40,7 +40,7 @@ Everything else has a sensible default. `DRY_RUN=1` ships on by default: the das
 
 ```bash
 docker compose --profile team up -d   # adds the review-request poller + Slack cards
-docker compose --profile demo up -d   # seeds sample runs so you can explore the UI
+docker compose up -d demo   # seeds sample runs so you can explore the UI
 ```
 
 `team` is what you want for a shared server; see [Team mode](/reviewstage/start/team-mode/). `demo` is for looking around before wiring anything.

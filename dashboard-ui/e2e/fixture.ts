@@ -12,7 +12,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const FIXTURE = join(HERE, ".fixture");
 export const AUTH_STATE = join(HERE, ".auth.json");
 export const SECRET = "e2e-fixed-test-secret-not-for-production";
-export const USER = "wimukthi-sl";
+export const USER = "acme-dev";
 export const PR = "38849";
 export const PR2 = "38850"; // dedicated archive-test target — no other test touches it
 export const PORT = 8988;
@@ -31,17 +31,16 @@ export function buildFixture() {
     [
       `PRBOT_SECRET=${SECRET}`,
       `REVIEWER=${USER}`,
-      "REPO=GetCodifyAI/cut-and-dry",
+      "REPO=acme/widgets",
       "DRY_RUN=1",
-      "PRBOT_ENV=e2e",
-      "PUBLIC_URL=https://prbot-e2e.example.com",
+      "PUBLIC_URL=https://reviewstage.example.com",
       "GITHUB_PAT=ghp_e2e_dummy_never_used",
     ].join("\n") + "\n",
   );
 
   write(
     join(FIXTURE, "users.json"),
-    JSON.stringify({ [USER]: { name: "Wimukthi", slack_id: "U0TEST", added: 1, updated: 1 } }),
+    JSON.stringify({ [USER]: { name: "Acme Dev", slack_id: "U0TEST", added: 1, updated: 1 } }),
   );
 
   write(
@@ -50,7 +49,7 @@ export function buildFixture() {
       {
         number: Number(PR),
         title: "Add lead-time badge to product cards",
-        url: `https://github.com/GetCodifyAI/cut-and-dry/pull/${PR}`,
+        url: `https://github.com/acme/widgets/pull/${PR}`,
         additions: 42,
         deletions: 8,
         changedFiles: 5,
@@ -65,7 +64,7 @@ export function buildFixture() {
       {
         number: Number(PR2),
         title: "Cache vendor lead times",
-        url: `https://github.com/GetCodifyAI/cut-and-dry/pull/${PR2}`,
+        url: `https://github.com/acme/widgets/pull/${PR2}`,
         additions: 12,
         deletions: 3,
         changedFiles: 2,

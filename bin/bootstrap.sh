@@ -15,7 +15,6 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$HOME/.claude-pr-bot"
 BIN="$ROOT/bin"
-REPO="${REPO:-GetCodifyAI/cut-and-dry}"
 PORT="${PRBOT_PORT:-8899}"
 
 # The box user that owns the bot. It must be the same account Claude Code is signed in as,
@@ -55,14 +54,21 @@ ensure_key SLACK_WEBHOOK ""
 # review-request card). Without them, Slack falls back to the webhook (a fresh message each time).
 ensure_key SLACK_BOT_TOKEN ""
 ensure_key SLACK_CHANNEL ""
-ensure_key REPO "$REPO"
+# The repository to review. No default — every install names its own.
+ask REPO "GitHub repository to review (owner/name)"
+grep -q '^REPO=.\+' "$ROOT/.env" \
+  || { echo "   !! REPO is empty in $ROOT/.env — set it to owner/name, then re-run"; exit 1; }
 # Your GitHub login. The PAT must belong to this account — everything the dashboard posts is
 # attributed to it, which is the whole point of the design.
 ask REVIEWER "Your GitHub login"
-# Your staging env slug: the branch name minus `-staging`. PUBLIC_URL and the Apache vhost
-# hostname both derive from it, so there is one value to get right instead of two.
-ask PRBOT_ENV "Your staging env slug (branch minus -staging, e.g. asela)"
-ensure_key PRBOT_DOMAIN "staging.eng.cutanddry.com"
+# Where browsers reach the dashboard: the hostname your reverse proxy forwards to the server.
+# Older installs may have PRBOT_ENV + PRBOT_DOMAIN instead; lib-common.sh still derives the
+# URL from that pair, so only prompt when neither form is present.
+if ! grep -q '^PRBOT_ENV=.\+' "$ROOT/.env" || ! grep -q '^PRBOT_DOMAIN=.\+' "$ROOT/.env"; then
+  ask PUBLIC_URL "Public URL of this dashboard (e.g. https://reviews.example.com)"
+  grep -q '^PUBLIC_URL=.\+' "$ROOT/.env" \
+    || { echo "   !! PUBLIC_URL is empty in $ROOT/.env — set it, then re-run"; exit 1; }
+fi
 # GitHub login. Empty = token sign-in only. See docs/SETUP.md "GitHub login".
 ensure_key GH_CLIENT_ID ""
 ensure_key GH_CLIENT_SECRET ""

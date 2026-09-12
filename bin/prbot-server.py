@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""prbot-server.py — review dashboard, served on 127.0.0.1 behind Apache's /prbot proxy.
+"""prbot-server.py — the ReviewStage dashboard, served on 127.0.0.1 behind your reverse proxy.
 
-Reachable over the PUBLIC internet (the staging ALB answers *.staging.eng.cutanddry.com with
-no auth in front). Pages need a signed session cookie, obtained by signing in with your own
-GitHub PAT. The mutating actions embedded in a page — posting comments, approving — carry
+Assume it is reachable over the PUBLIC internet with nothing in front of it. Pages need a
+signed session cookie, obtained by signing in with your own GitHub PAT. The mutating actions embedded in a page — posting comments, approving — carry
 their own 30-minute HMAC tokens minted at render time, so a forwarded or bookmarked page
 cannot approve anything later, and a cross-site form post has no token to present.
 
@@ -104,7 +103,9 @@ SECRET = ENV.get("PRBOT_SECRET", "")
 # The SERVICE token: reads (diffs, PR metadata, the poller's searches) and the base clone.
 # Never used to post or approve — those use the signed-in user's own PAT, see user_pat().
 PAT = ENV.get("GITHUB_PAT", "")
-REPO = ENV.get("REPO", "GetCodifyAI/cut-and-dry")
+# The GitHub repository this instance reviews, as owner/name. No default: every install names
+# its own repo in .env (bootstrap prompts for it).
+REPO = ENV.get("REPO", "")
 # The box owner. Their legacy per-PR markers (state/<pr>/posted.json etc., from before the
 # multi-user layout) are read as theirs, so history survives the upgrade.
 REVIEWER = ENV.get("REVIEWER", "")
@@ -217,8 +218,20 @@ def user_pat(login):
 GH_CLIENT_ID = ENV.get("GH_CLIENT_ID", "")
 GH_CLIENT_SECRET = ENV.get("GH_CLIENT_SECRET", "")
 GH_OAUTH_SCOPES = ENV.get("GH_OAUTH_SCOPES", "")
-PUBLIC_URL = ENV.get("PUBLIC_URL") or (
-    f"https://robin-{ENV.get('PRBOT_ENV', '')}.{ENV.get('PRBOT_DOMAIN', 'staging.eng.cutanddry.com')}")
+
+
+def public_url(env):
+    """Where browsers reach this dashboard, without a trailing slash. PUBLIC_URL is the knob;
+    the older PRBOT_ENV + PRBOT_DOMAIN pair (host prbot-<env>.<domain>) is still honoured so an
+    existing .env keeps working. Empty when neither is set — see the startup warning."""
+    u = env.get("PUBLIC_URL", "")
+    if not u and env.get("PRBOT_ENV") and env.get("PRBOT_DOMAIN"):
+        host = env.get("PRBOT_HOST") or f"prbot-{env['PRBOT_ENV']}.{env['PRBOT_DOMAIN']}"
+        u = f"https://{host}"
+    return u.rstrip("/")
+
+
+PUBLIC_URL = public_url(ENV)
 OAUTH_ENABLED = bool(GH_CLIENT_ID and GH_CLIENT_SECRET)
 
 
@@ -1256,13 +1269,20 @@ def session_sig(login, exp):
     return hmac.new(SECRET.encode(), f"session:{login}:{exp}".encode(), sha256).hexdigest()
 
 
-PRBOT_DOMAIN = ENV.get("PRBOT_DOMAIN", "staging.eng.cutanddry.com")
+# Optional: a parent domain to scope the session cookie to, so one login works across several
+# hostnames that all point at this instance. Empty (the default) = host-only cookies.
+PRBOT_DOMAIN = ENV.get("PRBOT_DOMAIN", "")
+# Optional: the hostnames that are all THIS instance (comma-separated). When two or more are
+# listed, an unauthenticated visit on one bounces through another to pick up an existing
+# session (cross-host SSO). Empty (the default) = feature off.
+HOST_ALIASES = [h.strip().lower() for h in ENV.get("PRBOT_HOST_ALIASES", "").split(",")
+                if h.strip()]
 
 
 def _cookie_domain(host):
-    """Scope the session cookie to the shared parent domain when we're on a real staging host, so
-    one login works across robin-<env> and prbot-<env> (same box, same secret). Host-only on
-    localhost/127.0.0.1 (tests) — a Domain that doesn't match the host is dropped by the browser."""
+    """Scope the session cookie to PRBOT_DOMAIN when the request host sits under it. Host-only
+    otherwise (localhost, tests, a single hostname) — a Domain that doesn't match the host is
+    dropped by the browser."""
     h = (host or "").split(":")[0]
     if PRBOT_DOMAIN and (h == PRBOT_DOMAIN or h.endswith("." + PRBOT_DOMAIN)):
         return f"Domain=.{PRBOT_DOMAIN}; "
@@ -1281,17 +1301,17 @@ def clear_session_cookie(host=""):
 
 
 def _is_alias_host(host):
-    """A robin-<env> / prbot-<env> host on our staging domain — the two aliases of this one box."""
-    h = (host or "").split(":")[0]
-    return (h.startswith("robin-") or h.startswith("prbot-")) and h.endswith("." + PRBOT_DOMAIN)
+    """One of the PRBOT_HOST_ALIASES hostnames — only meaningful when at least two are listed."""
+    h = (host or "").split(":")[0].lower()
+    return len(HOST_ALIASES) >= 2 and h in HOST_ALIASES
 
 
 def _sibling_host(host):
-    """The other alias of this box (robin- <-> prbot-), or "" when not on an alias host."""
-    h = (host or "").split(":")[0]
+    """Another alias of this instance to ask for a session, or "" when not on an alias host."""
+    h = (host or "").split(":")[0].lower()
     if not _is_alias_host(h):
         return ""
-    return ("prbot-" + h[len("robin-"):]) if h.startswith("robin-") else ("robin-" + h[len("prbot-"):])
+    return next((a for a in HOST_ALIASES if a != h), "")
 
 
 def _accept_url_ok(url):
@@ -1886,9 +1906,9 @@ class Handler(BaseHTTPRequestHandler):
                                         q.get("error") or [""])[0])
         # Everything else is a client-routed SPA page \u2192 serve the shell. React calls
         # /api/me and shows the login screen when there is no session.
-        # --- cross-host SSO: carry an existing session between the robin-/prbot- aliases -------
+        # --- cross-host SSO: carry an existing session between PRBOT_HOST_ALIASES hosts --------
         if route == "/handoff":
-            # This host may already hold a session (e.g. prbot-). If authed, mint a short handoff
+            # This host may already hold a session. If authed, mint a short handoff
             # token and bounce to the sibling's accept endpoint; else bounce back so it shows login.
             nxt = (q.get("next") or [""])[0]
             if not _accept_url_ok(nxt):
@@ -2911,6 +2931,13 @@ if __name__ == "__main__":
     port = int(os.environ.get("PRBOT_PORT", "8899"))
     if USERS.exists():
         os.chmod(USERS, 0o600)
-    print(f"prbot listening on 127.0.0.1:{port} (dry_run={DRY_RUN}, "
+    if not REPO:
+        print("FATAL: REPO is not set in .env (the GitHub repository to review, as owner/name)",
+              flush=True)
+        raise SystemExit(1)
+    if not PUBLIC_URL:
+        print("WARN: PUBLIC_URL is not set in .env — OAuth sign-in and Slack links will not "
+              "work until it is", flush=True)
+    print(f"prbot listening on 127.0.0.1:{port} (repo={REPO}, dry_run={DRY_RUN}, "
           f"users={len(load_users())})", flush=True)
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

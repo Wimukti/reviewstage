@@ -171,5 +171,5 @@ Usability — read the guide once more as if you were the tester:
 
 If evidence is missing (no ticket access, no PR threads), say so in the chat summary and scope
 the guide to what the diff alone supports — never fill gaps with plausible-sounding detail.
-Likewise, name in chat any setup QA still has to supply (which tenant/DP, which account), rather
+Likewise, name in chat any setup QA still has to supply (which tenant, which account), rather
 than inventing a plausible one.

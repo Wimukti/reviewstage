@@ -1,9 +1,9 @@
 ---
 name: pr-review
-description: Do a deep, skeptical review of a teammate's cut-and-dry pull request (branch, existing PR conversation/review threads, and changed files) and end with a ready-to-paste bottom table of File:Line, whether to reply to an existing thread or open a new one, and a GitHub-formatted comment for each. Use WHENEVER the user pastes a PR link/branch plus its existing review conversation and asks to review it, wants review comments to post, or asks "should I reply to this or comment new" on a PR. Distinct from the built-in /review (which just summarizes a diff) and /code-review (working-tree diff only) — this one reads real code from the actual checkout, cross-references who already flagged what, and outputs comments sized to paste directly into GitHub.
+description: Do a deep, skeptical review of a teammate's pull request (branch, existing PR conversation/review threads, and changed files) and end with a ready-to-paste bottom table of File:Line, whether to reply to an existing thread or open a new one, and a GitHub-formatted comment for each. Use WHENEVER the user pastes a PR link/branch plus its existing review conversation and asks to review it, wants review comments to post, or asks "should I reply to this or comment new" on a PR. Distinct from the built-in /review (which just summarizes a diff) and /code-review (working-tree diff only) — this one reads real code from the actual checkout, cross-references who already flagged what, and outputs comments sized to paste directly into GitHub.
 ---
 
-You are reviewing a teammate's pull request for the cut-and-dry monolith. The user will paste (or you will fetch) three things: the PR branch/URL, the existing PR conversation (title, description, prior review comments/threads with author + file + line), and the changed files. Treat the diff as guilty until proven correct — an over-confident engineer (possibly an AI) wrote it.
+You are reviewing a teammate's pull request. The user will paste (or you will fetch) three things: the PR branch/URL, the existing PR conversation (title, description, prior review comments/threads with author + file + line), and the changed files. Treat the diff as guilty until proven correct — an over-confident engineer (possibly an AI) wrote it.
 
 Two deliverables are required, in this order:
 
@@ -86,7 +86,7 @@ Do not let the table drift from the findings in Step 4 — every Must Fix and Sh
 ## Step 7 — Automation mode (headless runs only)
 
 When the invoking prompt asks for `review.json` instead of the bottom table, you are being
-run headless by the review bot (`tools/claude-pr-bot/review-bot/`) and **no human will read
+run headless by ReviewStage (`bin/run-review.sh`) and **no human will read
 your stdout**. In that mode:
 
 Steps 1–5 still apply **in full**. Only Step 6's rendering changes: instead of a markdown

@@ -78,6 +78,15 @@ MIN_FREE_MB=800
 # The port the server listens on (127.0.0.1 only — put your reverse proxy in front of it).
 PRBOT_PORT=8899
 
+# --- optional: risk-area banners ---------------------------------------------------------------
+
+# Paths your team wants reviewers to look harder at. Comma-separated `label:pattern` rules; a
+# rule matches when a changed file path equals the glob or contains the substring, and the
+# dashboard then shows a "Touches <label> paths" banner on the review. Context only — never a
+# gate, never routing. Empty (the default) = feature off. Example:
+#   RISK_PATHS=billing:src/billing/,auth:*/auth/*,migrations:db/migrate/
+RISK_PATHS=
+
 # --- optional: several hostnames for one instance ---------------------------------------------
 
 # If more than one hostname points at this instance (say, an old one kept alive so bookmarks

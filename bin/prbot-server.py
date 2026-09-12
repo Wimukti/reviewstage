@@ -738,72 +738,54 @@ EFFORT_DEPTH = {
         "speculative concerns and minor edge cases. Keep findings very few — this is a fast pass."),
     "standard": (
         "Effort level: STANDARD. Review the changed files and their immediate callers and "
-        "context. Cover correctness, error handling, obvious edge cases and clear risks. If the PR "
-        "touches the pricing path (engine request/response, the engine-vs-DB flags, OG/catalog "
-        "price sync, or ordering-time price display), catalog/search, or per-DP branching, trace "
-        "whether it could make a wrong/stale/missing/zero price or wrong catalog data reach a "
-        "buyer. Keep findings focused and high-confidence; each names its user-facing impact and a "
-        "concrete failing scenario."),
+        "context. Cover correctness, error handling, obvious edge cases and clear risks. For any "
+        "value the change computes, stores or displays, ask whether a wrong, stale or missing "
+        "value could now reach an end user, and trace that path. Keep findings focused and "
+        "high-confidence; each names its user-facing impact and a concrete failing scenario."),
     "deep": (
-        "Effort level: DEEP — do a thorough, Devin-style deep analysis. Work through this method "
-        "before writing any finding, and report only what you can tie to concrete evidence (the "
-        "diff, the code, review threads, commit history):\n"
+        "Effort level: DEEP — do a thorough deep analysis. Work through this method before "
+        "writing any finding, and report only what you can tie to concrete evidence (the diff, "
+        "the code, review threads, commit history):\n"
         "1. Intent. Read the PR description and review threads; identify what the change is trying "
         "to do and which behaviours it touches (data flow/state, query/API logic, UI, business "
         "rules, error handling).\n"
         "2. Comprehensive impact search FIRST. Before judging any line, search the whole "
         "repository for every component the change affects — callers and dependents of changed "
-        "functions/fields, shared models, GraphQL queries/mutations/fragments, and any per-DP or "
-        "per-vendor branching. Build the full blast radius up front; never discover impacts "
-        "reactively.\n"
-        "3. Trace data flow end to end for each meaningful change (request → controller → library "
-        "→ model → response; on the frontend document → cache → component).\n"
-        "4. Cut+Dry domain gates. For any PR that could plausibly touch these flows, trace the "
-        "flow explicitly and judge by flow impact, not keywords:\n"
-        "   - Pricing → ordering price. Could this change what the pricing engine returns, whether "
-        "it is called at all, or the price the buyer finally sees — even incidentally (a refactor "
-        "that flips a flag, reorders a param into a pricing call, changes retry/error handling or "
-        "caching around a price fetch, or restructures a per-customer price loop)? Walk five "
-        "stages: (1) engine REQUEST — PricingServiceLib/V2, request mappers/validators, batch "
-        "jobs; (2) RESPONSE handling — response mappers, price caching, fallbacks from engine "
-        "prices to DB/price-level/estimate; (3) FLAGS & routing that decide engine-vs-DB — "
-        "pricingEngineEnabled, fetchOGPricesFromPricingServiceEnabled, "
-        "fetchSalesCostFromPricingServiceEnabled, dateBasedPricingEnabled, GateKeeper toggles, and "
-        "any VerifiedVendor / SupplierPortalVendorData / IntegrationData setting read on the price "
-        "path (a change that accidentally flips, defaults, bypasses or stops reading one of these "
-        "is the canonical bug); (4) PERSISTENCE into what buyers order from — DP OG sync libs, "
-        "UpdateOGPricesFromPricingService, LocationPriceSyncer, OrderGuideCreator/Updater, "
-        "PricingServiceCallbacks (watch chunking / early continue-break / swallowed exceptions / "
-        "transaction changes that update SOME customers' prices and not others); (5) DISPLAY & use "
-        "at ordering time — DraftPricingLib, unit-price libs, EditOrderMutation re-pricing, "
-        "ZeroPricedItemsRule, order-UI price fields. Flag anything that could cause a WRONG, STALE, "
-        "MISSING or ZERO price to reach a buyer, naming the stage and the concrete buyer-visible "
-        "failure. NOT in scope on their own: order minimums/soft-min fees, delivery/fuel/pickup "
-        "surcharges, taxes, transaction fees, rebates/promotions back-office — unless the change "
-        "also alters an engine-derived item price.\n"
-        "   - Catalog & search. Catalog data the engine prices against, ElasticSearch/OpenSearch "
-        "index changes, category/product-model changes, catalog-service integration paths.\n"
-        "   - DP-specific. Any branching on dpCode/vendorId/integrator type, SyncLibs, per-DP "
-        "config/cutoff/pricing rules. Most DPs are pricing-engine integrated — a change 'only' to "
-        "the non-integrated path still matters, and vice versa.\n"
-        "5. Then examine, reporting only genuine issues: correctness & logic (conditionals, "
+        "functions/fields, shared models and types, API contracts, configuration and feature flags, "
+        "and any per-tenant or per-integration branching. Build the full blast radius up front; "
+        "never discover impacts reactively.\n"
+        "3. Trace data flow end to end for each meaningful change: where a value enters (request, "
+        "job, webhook, file), every transformation, where it is persisted, and every place it is "
+        "displayed or acted on. At each hop ask whether a WRONG, STALE, MISSING or DEFAULTED value "
+        "could now reach an end user — a flipped flag, a reordered parameter, changed retry or "
+        "caching behaviour, a loop that updates some records and not others. Name the hop and the "
+        "concrete user-visible failure.\n"
+        "4. Auth boundaries. For every new or changed route, mutation, field, job or admin action: "
+        "who may call it, what identifies the caller, and whether the check happens before any "
+        "side effect. Trust placed in client-supplied ids, tenant/role scoping that a new path "
+        "skips, and secrets that could reach logs or responses.\n"
+        "5. Migrations & backward compatibility. Schema or persisted-shape changes without a "
+        "migration, migrations that are not idempotent or that run against live traffic, old data "
+        "under new code and new data under old code (rolling deploys, rollbacks), changed defaults, "
+        "renamed or removed fields still read by another consumer, API responses a client still "
+        "depends on.\n"
+        "6. Concurrency. Non-atomic read-modify-write, state shared across requests or workers, "
+        "jobs that can run twice or overlap, ordering assumptions between async steps, retries "
+        "that can storm or duplicate side effects.\n"
+        "7. Then examine, reporting only genuine issues: correctness & logic (conditionals, "
         "short-circuits, off-by-one/boundaries, skip-conditions that exclude valid states, "
         "null/undefined and defaults for new fields); error handling (failure modes covered, "
         "errors surfaced not swallowed, loading/empty states, missing try/catch on critical "
-        "paths); concurrency & races; edge cases ONLY where the PR changes their handling (empty "
-        "collections, single-vs-many, first-time/no-data, migration of old data under new code, "
-        "network failure); performance & scalability (N+1 queries, unbounded loops/allocations, "
-        "hot-path cost); security (input validation, authz gaps, injection, secrets); GraPhP model "
-        "property renames on persisted nodes; Apollo cache correctness.\n"
-        "6. Finding quality. Give each finding an honest confidence and keep only high-signal "
+        "paths); edge cases ONLY where the PR changes their handling (empty collections, "
+        "single-vs-many, first-time/no-data, network failure); performance (N+1 queries, unbounded "
+        "loops/allocations, hot-path cost).\n"
+        "8. Tests. Name the key functions, branches or hooks the PR adds or changes that have no "
+        "coverage, and any assertion that now holds only by coincidence or fallback.\n"
+        "9. Finding quality. Give each finding an honest confidence and keep only high-signal "
         "ones. Every finding must state the concrete user-facing impact and a specific failing "
         "scenario (the exact inputs/state that produce the wrong output or crash) — no vague or "
         "speculative findings. Cover the ground exhaustively in your analysis prose, but do not "
         "pad the findings list.\n"
-        "7. Quality gates (note, don't block): if the PR adds, removes, renames or changes the "
-        "default of a feature flag (GateKeeper etc.) without a matching update to "
-        "docs/features/README.md, call it out with the flag name and what to document; if it adds "
-        "meaningful new logic with no tests, name the key functions/hooks that lack coverage.\n"
         "Take the time the 40-minute budget allows. This is analysis depth only — you still write "
         "findings for a human to review and post, and you never post to GitHub yourself."),
 }
@@ -875,24 +857,23 @@ def review_usage(pr, login):
             "costUsd": float(u.get("cost_usd") or 0)}
 
 
+RISK_LABEL = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+
+
 def review_risk(pr, login):
-    """Domain-risk flags recorded by run-review.sh (pricing / catalog / dp), as a list."""
+    """Risk-area labels recorded by run-review.sh from the RISK_PATHS rules, as a list."""
     try:
-        return [f for f in upath(pr, login, "risk").read_text().split() if f in RISK_INFO]
+        return [f for f in upath(pr, login, "risk").read_text().split() if RISK_LABEL.match(f)]
     except OSError:
         return []
 
 
-RISK_INFO = {
-    "pricing": ("💲", "Touches pricing-related paths",
-                "double-check any price, cost, discount, rebate, margin or fee math, and "
-                "consider looping in the pricing owner."),
-    "catalog": ("📦", "Touches catalog / product paths",
-                "verify catalog and search behavior — product models, ElasticSearch indexing, "
-                "category assignment."),
-    "dp": ("🔌", "Touches DP / integration paths",
-           "check per-DP and per-vendor branching, sync libraries and cutoff/order logic."),
-}
+def risk_banner(label):
+    """The context banner for one risk label. Informational only — never a gate."""
+    return {"icon": "\u26a0\ufe0f", "title": f"Touches {label} paths",
+            "note": ("this area is listed in RISK_PATHS as one to look harder at — trace the "
+                     "change end to end and consider looping in its owner.")}
+
 
 # Files that describe one review run — copied into history/<ts>/ when a re-run replaces it.
 RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status")
@@ -2047,8 +2028,7 @@ class Handler(BaseHTTPRequestHandler):
             "usage": (review_usage(pr, user) if st not in ("reviewing", "queued") else None),
             "focus": foc,
             "stale": stale,
-            "risk": [{"icon": RISK_INFO[f][0], "title": RISK_INFO[f][1], "note": RISK_INFO[f][2]}
-                     for f in review_risk(pr, user)],
+            "risk": [risk_banner(f) for f in review_risk(pr, user)],
             "timeline": self._timeline_data(pr, user),
             "reviewers": (pr_reviewers(pr) if st not in ("reviewing", "queued") else None),
             "claudeConnected": claude_connected(user),

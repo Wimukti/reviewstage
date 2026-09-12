@@ -318,7 +318,7 @@ export function Skills() {
 
       <h2>Review depth</h2>
       <p className="muted sm">
-        How deep each level goes. Deep is a thorough, Devin-style analysis. All three run the skill
+        How deep each level goes. Deep is a thorough, whole-repo analysis. All three run the skill
         above.
       </p>
       {["quick", "standard", "deep"].map((lv) => (

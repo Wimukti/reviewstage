@@ -21,7 +21,7 @@ Read this before changing anything. Most of the layout decisions look arbitrary 
 | `bin/prbot_rollup.py` | imported | Insights aggregation. |
 | `bin/prbot_md.py` | imported | Dependency-free markdown → HTML. |
 | `bin/lib-common.sh` | sourced | Config, HMAC link signing, Slack posting (webhook or bot token). |
-| `dashboard-ui/` | built once | React 18 + TypeScript SPA: queue, PR page, stack page, QA, skills, learnings, insights, integrations, tour, command palette. |
+| `dashboard-ui/` | built once | React 19 + TypeScript SPA: queue, PR page, stack page, QA, skills, learnings, insights, integrations, tour, command palette. |
 | `skills/pr-review/` · `skills/pr-qa-guide/` | installed | The built-in review and QA-guide procedures, as Claude Code skills. |
 
 The backend is Python's standard library plus bash, `gh`, `jq`, `git`, `openssl` and `claude`. There is no database; state is files.
@@ -87,7 +87,7 @@ A run keyed on (login, head, effort, focus, model, skill) is cached; an identica
 
 ```
 bin/            server, scripts, Python helpers
-dashboard-ui/   React SPA (Vite, Vitest, Playwright)
+dashboard-ui/   React SPA (esbuild, node --test, Playwright)
 skills/         built-in Claude Code skills (pr-review, pr-qa-guide) and the seeded team default
 docs/           SETUP, ARCHITECTURE, SECURITY, OPERATIONS (source for this site)
 website/        this site (Astro + Starlight)

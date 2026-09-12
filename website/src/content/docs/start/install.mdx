@@ -60,11 +60,13 @@ Use this when you cannot run Docker, or want the dashboard behind your own web s
 Summary of what `bin/bootstrap.sh` does, so you know what to expect:
 
 1. Installs `gh` and `claude` if missing.
-2. Copies the scripts to `~/.reviewstage/bin/` and creates `~/.reviewstage/.env` (chmod 600), **adding only missing keys** so re-running never overwrites your values.
+2. Copies the scripts to `~/.claude-pr-bot/bin/` and creates `~/.claude-pr-bot/.env` (chmod 600), **adding only missing keys** so re-running never overwrites your values.
 3. Makes a blobless base clone of `REPO` for worktrees.
 4. Installs the built-in review skill and seeds the editable team default.
-5. Writes and starts a systemd unit that binds the dashboard to `127.0.0.1:8899`.
+5. Writes and starts a systemd unit, `prbot.service`, that binds the dashboard to `127.0.0.1:8899`.
 6. Installs the cron entry for the poller (every 3 minutes).
+
+The `~/.claude-pr-bot/` directory and the `prbot` unit name predate the rename to ReviewStage and will change in a later release.
 
 Then:
 
@@ -72,7 +74,7 @@ Then:
 sudo -iu <service-user>          # the user the unit runs as
 claude                           # sign Claude Code in as that user, interactively
 ~/reviewstage/bin/bootstrap.sh   # prompts for REPO and your GitHub login
-# paste GITHUB_PAT (and SLACK_WEBHOOK if wanted) into ~/.reviewstage/.env
+# paste GITHUB_PAT (and SLACK_WEBHOOK if wanted) into ~/.claude-pr-bot/.env
 ~/reviewstage/bin/bootstrap.sh   # re-run to finish; safe at any point
 curl -s localhost:8899/health    # -> ok
 ```

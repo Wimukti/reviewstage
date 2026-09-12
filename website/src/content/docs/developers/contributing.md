@@ -31,11 +31,12 @@ Types in use: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`. Scope is
 
 ```bash
 # dashboard
-cd dashboard-ui && pnpm install && pnpm test          # Vitest unit tests (api.ts, pr.ts)
-pnpm exec playwright test                              # e2e against a running server
+cd dashboard-ui && pnpm install && pnpm test   # Node's built-in test runner over src/*.test.ts
+pnpm exec playwright install chromium          # once
+pnpm test:browser                              # Playwright against the offline fixture server
 
-# python helpers
-python3 -m unittest discover -s bin -p 'test_*.py'
+# shell and python have no unit suite; keep them compiling (CI runs these)
+bash -n bin/*.sh && python3 -m py_compile bin/*.py
 
 # website
 cd website && pnpm install && pnpm build && pnpm check

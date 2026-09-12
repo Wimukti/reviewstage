@@ -79,17 +79,19 @@ The four documents under [`docs/`](docs/) are the canonical prose the site is bu
 The backend is Python's standard library plus bash, `gh`, `jq`, `git`, `openssl` and the Claude Code CLI. No database; state is files.
 
 ```bash
-# dashboard (React 18 + TypeScript, Vite)
+# dashboard (React 19 + TypeScript, esbuild)
 cd dashboard-ui && pnpm install && pnpm test && pnpm build
+pnpm exec playwright install chromium   # once, then:
+pnpm test:browser                       # Playwright against the offline fixture
 
-# python helpers
-python3 -m unittest discover -s bin -p 'test_*.py'
+# shell and python have no unit suite; keep them compiling
+bash -n bin/*.sh && python3 -m py_compile bin/*.py
 
 # website (Astro + Starlight)
 cd website && pnpm install && pnpm build && pnpm check
 ```
 
-To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently; see [Install → From source](https://wimukti.github.io/reviewstage/start/install/#from-source-on-a-linux-server).
+To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently into `~/.claude-pr-bot/` as the `prbot.service` systemd unit (internal names that predate the rename; they will change in a later release); see [Install → From source](https://wimukti.github.io/reviewstage/start/install/#from-source-on-a-linux-server).
 
 ## Contributing, security, and license
 

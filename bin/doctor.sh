@@ -26,8 +26,10 @@ echo "ReviewStage doctor  ${D}(ROOT=$ROOT)${N}"
 # --- config --------------------------------------------------------------------------------
 if [ -r "$ENV_FILE" ]; then
   pass ".env present and readable ($ENV_FILE)"
+  set -a
   # shellcheck disable=SC1090
-  set -a; . "$ENV_FILE"; set +a
+  . "$ENV_FILE"
+  set +a
   mode=$(stat -c %a "$ENV_FILE" 2>/dev/null || stat -f %Lp "$ENV_FILE" 2>/dev/null)
   [ "${mode:-600}" = 600 ] || warn ".env mode is $mode (expected 600)"
 else

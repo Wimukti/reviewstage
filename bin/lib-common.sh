@@ -28,6 +28,7 @@ if [ -z "${PUBLIC_URL:-}" ] && [ -n "$PRBOT_ENV" ] && [ -n "$PRBOT_DOMAIN" ]; th
   PUBLIC_URL="https://$PRBOT_HOST"
 fi
 PUBLIC_URL="${PUBLIC_URL%/}"
+# shellcheck disable=SC2034  # consumed by scripts that source this file
 BASE="$ROOT/repo"                 # base clone; review worktrees branch off it
 WT="$ROOT/wt"
 STATE="$ROOT/state"               # per-PR job state, one dir per PR

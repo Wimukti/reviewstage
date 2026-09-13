@@ -5,6 +5,7 @@ import TrustBar from "../components/marketing/TrustBar.astro";
 import Section from "../components/marketing/Section.astro";
 import Feature from "../components/marketing/Feature.astro";
 import Steps from "../components/marketing/Steps.astro";
+import Tiers from "../components/marketing/Tiers.astro";
 import ClosingCta from "../components/marketing/ClosingCta.astro";
 
 const title = "ReviewStage — stage your PR review, post it as yourself";
@@ -109,6 +110,11 @@ const description =
       <h3 class="card-title">Hand testers something grounded.</h3>
       <p class="body-text">The guide is markdown you can paste anywhere. It is generated on demand, one job at a time, and can be stopped like a review.</p>
     </Feature>
+  </Section>
+
+  <Section id="who" eyebrow="Who it's for" title="One developer, one team, or the whole company"
+    lede="The same container at every size. Start on a laptop, move it to a server when a second reviewer wants in, and add repositories when the organisation does.">
+    <Tiers />
   </Section>
 
   <Section id="start" eyebrow="Ready when you are" title="Three steps to a staged review" align="center">

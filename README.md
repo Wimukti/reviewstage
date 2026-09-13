@@ -55,6 +55,19 @@ Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped 
 - **From PR to QA guide.** A tester-ready P0/P1/P2 test plan built from the same diff and review threads.
 - **Safe by construction.** Diff-anchor validation so GitHub never rejects a whole review; every action HMAC-signed and short-lived; tokens encrypted at rest; `DRY_RUN` on by default.
 
+## Solo · Team · Company
+
+| | Solo | Team | Company |
+| --- | --- | --- | --- |
+| Runs on | Docker on your laptop | One server for the team | One install for the organisation |
+| Sign-in | You, with a fine-grained token | Everyone, as themselves | Org allowlist; GitHub App sign-in is on the roadmap |
+| Repositories | One | One | Many, with per-repo skills and risk paths |
+| Notifications | None; paste a PR URL | Review-request alerts to Slack, Discord or any webhook | Same, per repository |
+| Insights | Your own runs | The team's keep rate, agreement, cycle time | Across repositories |
+| Billing | Your Claude plan | Each reviewer's own plan | Each reviewer's own plan |
+
+Same gate at every size: nothing reaches GitHub without a signed-in person clicking, under their own name. Team and Company are configuration, not a different edition. On a phone, **Add to Home Screen** installs the dashboard as an app; the native wrapper and push notifications are described in [docs/MOBILE.md](docs/MOBILE.md).
+
 ## Team mode
 
 ```bash

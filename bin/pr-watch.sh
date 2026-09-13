@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # pr-watch.sh — poll for PRs awaiting review from every signed-in user, keep queue.json
-#               fresh for the dashboard, and post a Slack card for anything newly requested.
+#               fresh for the dashboard, and post a card (Slack / Discord / webhook, see
+#               notify.sh) for anything newly requested.
 #
 # cron (every 3 min, flock'd):
 #   */3 * * * * flock -n /tmp/pr-watch.lock $HOME/.claude-pr-bot/bin/pr-watch.sh
@@ -19,6 +20,10 @@ cd "$(dirname "$0")" || exit 1
 # shellcheck source=lib-common.sh
 . "$(dirname "$0")/lib-common.sh"
 require_env
+# The Settings page can pause polling without touching cron or the container.
+if [ "$(setting poller_enabled true)" = false ]; then
+  echo "==> poller disabled in Settings (poller_enabled=false) — nothing to do"; exit 0
+fi
 
 # Don't Slack-nudge for PRs created long ago: a fresh review request on a years-old open PR is
 # almost always noise (see the pilot feedback). Such PRs are still marked seen (so they never
@@ -87,12 +92,10 @@ for login in $logins; do
   echo "==> new user $login: seeded $n backlog PR(s) as seen + archived (clean slate)"
 done
 
-# <@U…> pings the person; a bare @login is a visible label that pings nobody, which is what
-# you get until you add your Slack member ID in the dashboard's settings.
-mention() {
-  local sid
-  sid=$(jq -r --arg l "$1" '.[$l].slack_id // ""' "$USERS_FILE" 2>/dev/null)
-  [ -n "$sid" ] && echo "<@$sid>" || echo "@$1"
+# Slack member ID / Discord user ID from users.json: with one the card pings the person, without
+# it a bare @login is a visible label that pings nobody (add yours in Integrations).
+user_field() {   # <login> <field>
+  jq -r --arg l "$1" --arg f "$2" '.[$l][$f] // ""' "$USERS_FILE" 2>/dev/null
 }
 seen_for() {   # <pr> <login>: legacy bare "<pr>" lines were the owner's
   grep -qxF "$1:$2" "$SEEN" || { [ "$2" = "$REVIEWER" ] && grep -qxF "$1" "$SEEN"; }
@@ -144,20 +147,14 @@ jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
   # One card per requested reviewer — each mentions only that person and threads their own
   # review-ready reply, so two reviewers on the same PR never share a ping or a thread.
   for login in $new; do
-    who="$(mention "$login") "
     echo "==> notifying #$num ($author) $title → $login"
-    jq -n --arg t "$title" --arg u "$url" --arg a "$author" --arg l "$detail" --arg w "$who" \
-          --arg n "$num" --arg s "$adds" --arg d "$dels" --arg f "$files" --arg b "$board" '
-    {blocks: [
-      {type:"section", text:{type:"mrkdwn",
-        text:($w + "review requested\n*<" + $u + "|#" + $n + " — " + $t + ">*\n`@" + $a
-              + "`  ·  +" + $s + " −" + $d + "  ·  " + $f + " files")}},
-      {type:"actions", elements:[
-        {type:"button", text:{type:"plain_text", text:"🔍 Open review"},
-         style:"primary", url:$l},
-        {type:"button", text:{type:"plain_text", text:"Dashboard"}, url:$b},
-        {type:"button", text:{type:"plain_text", text:"Open PR"}, url:$u}]}]}' \
-    | slack_post "$num" root "$login"
+    notify_card review_requested "$(jq -n --arg t "$title" --arg u "$url" --arg a "$author" \
+          --arg l "$detail" --arg n "$num" --arg s "$adds" --arg d "$dels" --arg f "$files" \
+          --arg b "$board" --arg login "$login" --arg sid "$(user_field "$login" slack_id)" \
+          --arg did "$(user_field "$login" discord_id)" '
+      {pr:$n, title:$t, author:$a, url:$u, login:$login, slack_id:$sid, discord_id:$did,
+       extra:{additions:($s|tonumber? // 0), deletions:($d|tonumber? // 0),
+              files:($f|tonumber? // 0), detail:$l, board:$b}}')"
     echo "$num:$login" >> "$SEEN"
     # Phase 4 cycle-time source: stamp when this reviewer was first asked (once).
     ud="$STATE/$num/users/$login"; mkdir -p "$ud"

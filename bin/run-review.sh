@@ -26,9 +26,12 @@ status() { echo "$1" > "$DIR/status"; echo "[#$PR] $1"; }
 fail() { status "failed: $1"; notify_fail "$1"; exit 1; }
 
 notify_fail() {
-  jq -n --arg p "$PR" --arg m "$1" --arg u "https://github.com/$REPO/pull/$PR" '
-    {blocks:[{type:"section",text:{type:"mrkdwn",
-      text:("⚠️ Review of *<" + $u + "|#" + $p + ">* failed: " + $m)}}]}' | slack_post "$PR" reply "$ACTOR"
+  notify_card review_stopped "$(jq -n --arg p "$PR" --arg m "$1" --arg a "$ACTOR" \
+      --arg u "https://github.com/$REPO/pull/$PR" \
+      --arg sid "$(jq -r --arg l "$ACTOR" '.[$l].slack_id // ""' "$ROOT/users.json" 2>/dev/null)" \
+      --arg did "$(jq -r --arg l "$ACTOR" '.[$l].discord_id // ""' "$ROOT/users.json" 2>/dev/null)" '
+    {pr:$p, url:$u, login:$a, slack_id:$sid, discord_id:$did,
+     extra:{status:"failed", message:$m}}')"
 }
 
 have_free_mem || fail "not enough free memory to start a review"
@@ -250,11 +253,11 @@ git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
 
 # Ping ONLY the person who triggered this run — your run, your ping. The drafted review is
 # shared (any requested reviewer can open it), but starting a run must not ping other reviewers
-# as if their own review were done. Slack member ID comes from users.json; no id => no ping.
-who=""
+# as if their own review were done. Slack / Discord IDs come from users.json; no id => no ping.
+sid=""; did=""
 if [ -n "$ACTOR" ]; then
   sid=$(jq -r --arg l "$ACTOR" '.[$l].slack_id // ""' "$ROOT/users.json" 2>/dev/null)
-  who="${sid:+<@$sid> }"
+  did=$(jq -r --arg l "$ACTOR" '.[$l].discord_id // ""' "$ROOT/users.json" 2>/dev/null)
 fi
 
 event=$(jq -r '.event // "COMMENT"' "$DIR/review.json")
@@ -262,19 +265,11 @@ n=$(jq '.comments | length' "$DIR/review.json")
 blockers=$(jq '[.comments[]? | select(.severity == "blocker")] | length' "$DIR/review.json")
 summary=$(jq -r '.summary // ""' "$DIR/review.json" | head -c 2500)
 detail=$(signed_link pr "$PR" 604800)
-icon=$([ "$event" = "REQUEST_CHANGES" ] && echo "🔴" || echo "🟢")
+author=$(echo "$meta" | jq -r '.author.login // ""')
 status "done ($n findings)"
 
-jq -n --arg t "$title" --arg u "$url" --arg p "$PR" --arg s "$summary" --arg e "$event" \
-      --arg i "$icon" --arg n "$n" --arg b "$blockers" --arg l "$detail" --arg w "$who" '
-{blocks:[
-  {type:"section", text:{type:"mrkdwn",
-    text:($w + $i + " Review ready — *<" + $u + "|#" + $p + " — " + $t + ">*\n*" + $e
-          + "* · " + $n + " finding(s), " + $b + " blocker(s)")}},
-  {type:"section", text:{type:"mrkdwn", text:$s}},
-  {type:"actions", elements:[
-    {type:"button", text:{type:"plain_text", text:"📋 Open dashboard"},
-     style:"primary", url:$l},
-    {type:"button", text:{type:"plain_text", text:"Open PR"}, url:$u}]},
-  {type:"context", elements:[{type:"mrkdwn",
-    text:"Nothing posted yet — select, edit and post from the dashboard."}]}]}' | slack_post "$PR" reply "$ACTOR"
+notify_card review_ready "$(jq -n --arg t "$title" --arg u "$url" --arg p "$PR" --arg s "$summary" \
+      --arg e "$event" --argjson n "$n" --argjson b "$blockers" --arg l "$detail" \
+      --arg a "$author" --arg login "$ACTOR" --arg sid "$sid" --arg did "$did" '
+  {pr:$p, title:$t, author:$a, url:$u, login:$login, slack_id:$sid, discord_id:$did,
+   extra:{event:$e, findings:$n, blockers:$b, summary:$s, detail:$l}}')"

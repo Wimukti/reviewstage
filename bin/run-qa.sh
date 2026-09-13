@@ -4,7 +4,7 @@
 # Spawned detached by prbot-server.py from the QA guide page. Writes progress to
 # $STATE/<pr>/qa.status and the finished guide (GitHub-flavored markdown) to $STATE/<pr>/qa.md.
 # Never writes to GitHub — it only reads the PR (diff, review threads, history) and produces a
-# guide the human hands to QA.
+# guide the human hands to QA, then pings the requester (notify_card qa_ready).
 set -uo pipefail
 . "$(dirname "$0")/lib-common.sh"
 require_env
@@ -69,3 +69,12 @@ cp "$wt/qa.md" "$DIR/qa.md"
 git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
 status "done"
 echo "[QA #$PR] done ($(wc -l < "$DIR/qa.md") lines)"
+
+# Tell whoever asked for it (PRBOT_ACTOR, set by the dashboard) that the guide is ready.
+ACTOR="${PRBOT_ACTOR:-}"
+notify_card qa_ready "$(jq -n --arg p "$PR" --arg a "$ACTOR" --arg l "$(signed_link qa "$PR" 604800)" \
+    --argjson m "$(cat "$DIR/qa_meta.json")" \
+    --arg sid "$(jq -r --arg l "$ACTOR" '.[$l].slack_id // ""' "$ROOT/users.json" 2>/dev/null)" \
+    --arg did "$(jq -r --arg l "$ACTOR" '.[$l].discord_id // ""' "$ROOT/users.json" 2>/dev/null)" '
+  {pr:$p, title:$m.title, author:$m.author, url:$m.url, login:$a, slack_id:$sid, discord_id:$did,
+   extra:{detail:$l}}')"

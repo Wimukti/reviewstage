@@ -1,0 +1,46 @@
+---
+/* Billing: the run form, and the last run's token count on the reviewer's own plan. */
+import MockFrame from "./MockFrame.astro";
+---
+<MockFrame label="run · #482 · you" right="claude · connected">
+  <div class="mk-card">
+    <div class="field">
+      <span class="mk-label">Effort</span>
+      <div class="mk-seg">
+        <span class="mk-seg-opt">Quick</span>
+        <span class="mk-seg-opt mk-seg-on">Standard <span class="mk-tag">auto-suggested</span></span>
+        <span class="mk-seg-opt">Deep</span>
+      </div>
+      <span class="mk-dim hint">Suggested from the diff: 9 files, +412 −38.</span>
+    </div>
+    <div class="field">
+      <span class="mk-label">Model</span>
+      <div class="mk-chips">
+        <span class="mk-chip-opt">Plan default</span>
+        <span class="mk-chip-opt">Opus</span>
+        <span class="mk-chip-opt mk-chip-on">Sonnet</span>
+        <span class="mk-chip-opt">Haiku</span>
+      </div>
+    </div>
+    <div class="field">
+      <span class="mk-label">Focus <span class="mk-dim">optional</span></span>
+      <div class="mk-input">pay attention to the cut-off maths</div>
+    </div>
+    <div class="mk-foot">
+      <span class="mk-dim">Billed to <b>your</b> plan. Nothing runs on push.</span>
+      <span class="mk-btn mk-btn-primary">Start review</span>
+    </div>
+  </div>
+  <div class="mk-h last">
+    <span class="mk-dim">Last run</span>
+    <span class="mk-chip">sonnet · 118,240 tokens</span>
+    <span class="mk-chip">standard · 11 min</span>
+    <span class="mk-chip mk-cache">re-run of same commit · cached · 0 tokens</span>
+  </div>
+</MockFrame>
+<style>
+  .field { display: grid; gap: 0.35rem; }
+  .hint { font-size: 0.72rem; }
+  .last { flex-wrap: wrap; justify-content: flex-start; }
+  .mk-cache { color: var(--success); }
+</style>

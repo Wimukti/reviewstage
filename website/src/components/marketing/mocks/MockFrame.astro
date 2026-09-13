@@ -1,0 +1,17 @@
+---
+/* Device frame for a static DOM mock: mono label chip, green dot, then the slot. */
+interface Props { label: string; right?: string; }
+const { label, right } = Astro.props;
+---
+<figure class="mk">
+  <div class="mk-frame">
+    <div class="mk-bar">
+      <span class="mk-chip">{label}<span class="mk-dot" aria-hidden="true"></span></span>
+      {right && <span class="mk-chip mk-right">{right}</span>}
+    </div>
+    <div class="mk-screen"><slot /></div>
+  </div>
+</figure>
+<style>
+  .mk-right { flex: none; border: 0; padding-inline: 0; }
+</style>

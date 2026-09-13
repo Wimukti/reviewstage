@@ -1,0 +1,41 @@
+---
+/* The gate: post bar with 4 of 6 selected, Approve disabled until comments are posted. */
+import MockFrame from "./MockFrame.astro";
+const rows = [
+  { sev: "blocker", on: true, t: "Refund can be issued twice on a timed-out capture", at: "payments/refunds/retry.ts:88" },
+  { sev: "should-fix", on: true, t: "Idempotency key is regenerated on every retry", at: "payments/refunds/client.ts:41" },
+  { sev: "should-fix", on: false, t: "Backoff has no jitter", at: "payments/refunds/retry.ts:112" },
+  { sev: "should-fix", on: true, t: "Timeout error is swallowed into a generic 500", at: "payments/api/refund.ts:57" },
+  { sev: "nit", on: false, t: "Test covers the happy path only", at: "payments/refunds/retry.test.ts:19" },
+  { sev: "nit", on: true, t: "RETRY_LIMIT is a magic number", at: "payments/refunds/retry.ts:9" },
+];
+---
+<MockFrame label="reviewstage · #482 · post" right="6 findings">
+  <ul class="mk-list">
+    {rows.map((r) => (
+      <li class:list={["mk-row", !r.on && "off"]}>
+        <span class:list={["mk-check", !r.on && "off"]} aria-hidden="true"></span>
+        <div>
+          <div class="mk-line"><span class={`mk-sev mk-sev-${r.sev}`}>{r.sev}</span><span class="mk-title">{r.t}</span></div>
+          <div class="mk-meta"><span class="mk-mono">{r.at}</span></div>
+        </div>
+      </li>
+    ))}
+  </ul>
+  <div class="mk-foot">
+    <span class="mk-dim"><b>4</b> of 6 selected · <span class="mk-pill mk-pill-muted">comment</span> review · anchors validated against the diff</span>
+    <span class="mk-btn mk-btn-primary">Post 4 as you</span>
+  </div>
+  <div class="mk-card approve">
+    <div class="mk-h"><b>Approve</b><span class="mk-pill mk-pill-muted">separate click</span></div>
+    <p class="mk-dim approve-body">LGTM — checked the blocker and should-fix items below before approving.<br />☐ Refund can be issued twice on a timed-out capture<br />☐ Idempotency key is regenerated on every retry</p>
+    <div class="mk-foot">
+      <span class="mk-dim">Available once your comments are posted.</span>
+      <span class="mk-btn mk-btn-ghost mk-btn-disabled">Approve</span>
+    </div>
+  </div>
+</MockFrame>
+<style>
+  .approve { opacity: 0.72; }
+  .approve-body { margin: 0; font-size: 0.76rem; line-height: 1.55; }
+</style>

@@ -1,0 +1,36 @@
+---
+/* Beyond the review: a QA guide with risk-tiered cases and the must-not-appear rows. */
+import MockFrame from "./MockFrame.astro";
+const cases = [
+  { p: "p0", n: 1, t: "Refund after a gateway timeout is issued exactly once", pass: "one refund row, one gateway call" },
+  { p: "p0", n: 2, t: "Retry reuses the original idempotency key", pass: "same key on every attempt in the gateway log" },
+  { p: "p0", n: 3, t: "Timed out, then succeeded: no duplicate", pass: "second attempt returns the first result" },
+  { p: "p1", n: 4, t: "Backoff spreads retries after an outage", pass: "attempts do not land in the same second" },
+  { p: "p1", n: 5, t: "Slow gateway is reported as a timeout, not a 500", pass: "error code GATEWAY_TIMEOUT in the response" },
+  { p: "p2", n: 9, t: "Refund UI unchanged for card payments", pass: "no new controls or copy" },
+];
+---
+<MockFrame label="qa guide · #482 · 11 cases" right="P0 3 · P1 5 · P2 3">
+  <ul class="mk-list">
+    {cases.map((c) => (
+      <li class="mk-row qa">
+        <span class={`mk-sev mk-sev-${c.p}`}>{c.p}</span>
+        <div>
+          <div class="mk-line"><span class="mk-mono mk-dim">{String(c.n).padStart(2, "0")}</span><span class="mk-title">{c.t}</span></div>
+          <div class="mk-meta"><span><b>Pass:</b> {c.pass}</span></div>
+        </div>
+      </li>
+    ))}
+    <li class="mk-dim more">+ 3 P1 and 2 P2 cases</li>
+  </ul>
+  <div class="mk-card">
+    <div class="mk-h"><b>Must not appear</b><span class="mk-pill mk-pill-muted">surface matrix</span></div>
+    <div class="mk-meta"><span>Card refunds</span><span class="mk-mono">no retry banner</span><span>·</span><span>Admin export</span><span class="mk-mono">no new column</span></div>
+    <div class="mk-h"><b>Known non-defects</b><span class="mk-dim">1 · the retry counter resets per deploy</span></div>
+  </div>
+</MockFrame>
+<style>
+  .qa { align-items: start; }
+  .qa .mk-sev { margin-top: 0.15rem; }
+  .more { padding-inline: 0.65rem; font-size: 0.74rem; }
+</style>

@@ -1,6 +1,10 @@
 ---
+/* useScreenshot swaps the live simulated run for the static screenshot pair. */
+interface Props { useScreenshot?: boolean; }
+const { useScreenshot = false } = Astro.props;
 import InstallCommand from "./InstallCommand.astro";
 import Shot from "./Shot.astro";
+import LiveRun from "./LiveRun.astro";
 import { repo, withBase } from "../../content/site-links";
 ---
 <section class="hero">
@@ -23,7 +27,7 @@ import { repo, withBase } from "../../content/site-links";
       </div>
     </div>
     <div class="hero-stage">
-      <Shot name="hero" alt="ReviewStage PR page: the agent's assessment above a list of findings, each with a checkbox, severity, file and line, and an editable body. A sticky bar shows the selected count and a single Post to GitHub button." label="reviewstage · pr #482 · 6 findings staged" loading="eager" />
+      {useScreenshot ? <Shot name="hero" alt="ReviewStage PR page: the agent's assessment above a list of findings, each with a checkbox, severity, file and line, and an editable body. A sticky bar shows the selected count and a single Post to GitHub button." label="reviewstage · pr #482 · 6 findings staged" loading="eager" /> : <LiveRun />}
     </div>
   </div>
 </section>

@@ -26,7 +26,7 @@ PRBOT_USER="${PRBOT_USER:-$(id -un)}"
   || { echo "Run as $PRBOT_USER (sudo su - $PRBOT_USER), not $(id -un)."; exit 1; }
 
 echo "==> directories"
-mkdir -p "$BIN" "$ROOT/wt" "$ROOT/state"
+mkdir -p "$BIN" "$ROOT/wt" "$ROOT/state" "$ROOT/repos"
 chmod 700 "$ROOT"
 touch "$ROOT/seen" "$ROOT/used-nonces"
 # Teammates' encrypted tokens + Slack IDs, written by the dashboard on sign-in.
@@ -55,10 +55,14 @@ ensure_key SLACK_WEBHOOK ""
 # review-request card). Without them, Slack falls back to the webhook (a fresh message each time).
 ensure_key SLACK_BOT_TOKEN ""
 ensure_key SLACK_CHANNEL ""
-# The repository to review. No default — every install names its own.
-ask REPO "GitHub repository to review (owner/name)"
-grep -q '^REPO=.\+' "$ROOT/.env" \
-  || { echo "   !! REPO is empty in $ROOT/.env — set it to owner/name, then re-run"; exit 1; }
+# The repositories to review. No default — every install names its own. REPO (single) is still
+# honoured as an alias, so an existing .env is not re-prompted.
+grep -q '^REPO=.\+' "$ROOT/.env" || ask REPOS "GitHub repositories to review (owner/name, comma-separated)"
+grep -Eq '^REPOS?=.+' "$ROOT/.env" \
+  || { echo "   !! REPOS is empty in $ROOT/.env — set it to owner/name[,owner/name…], then re-run"; exit 1; }
+# Optional: accept any repo under this org where a signed-in user gets a review request.
+ensure_key REPO_ALLOW_ORG ""
+ensure_key PRBOT_SIGNATURE_GRACE_DAYS 7
 # Your GitHub login. The PAT must belong to this account — everything the dashboard posts is
 # attributed to it, which is the whole point of the design.
 ask REVIEWER "Your GitHub login"
@@ -154,17 +158,22 @@ else
   echo "      back to the legacy HTML UI); build it and re-run bootstrap"
 fi
 
-echo "==> base clone"
+echo "==> base clones (one per repo, under $ROOT/repos)"
 if [ -z "${GITHUB_PAT:-}" ]; then
   # The documented flow is: bootstrap (writes .env) -> you paste the secrets -> re-run.
   # Aborting here on the first run would strand that flow before systemd/proxy/cron ever
   # got configured, so skip the clone and let the re-run pick it up.
   echo "   skipped — GITHUB_PAT is empty; re-run bootstrap once it is set"
-elif [ ! -d "$ROOT/repo/.git" ]; then
-  GH_TOKEN="$GITHUB_PAT" gh repo clone "$REPO" "$ROOT/repo" -- --filter=blob:none
+elif [ -d "$ROOT/repo/.git" ] && [ ! -f "$ROOT/MIGRATED" ]; then
+  echo "   legacy clone at $ROOT/repo — the server moves it into $ROOT/repos on its next start"
+else
+  for repo in $(printf '%s %s' "${REPOS:-}" "${REPO:-}" | tr ',' ' ' | tr -s '[:space:]' '\n' | awk 'NF && !s[tolower($0)]++'); do
+    base="$ROOT/repos/${repo/\//__}"
+    [ -d "$base/.git" ] || GH_TOKEN="$GITHUB_PAT" gh repo clone "$repo" "$base" -- --filter=blob:none
+    [ -d "$base/.git" ] && git -C "$base" config credential.helper \
+      '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
+  done
 fi
-[ -d "$ROOT/repo/.git" ] && git -C "$ROOT/repo" config credential.helper \
-  '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
 
 echo "==> pr-review skill"
 mkdir -p "$HOME/.claude/skills"

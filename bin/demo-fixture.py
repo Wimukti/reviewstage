@@ -2,10 +2,11 @@
 """demo-fixture.py ROOT [PORT] — build the offline demo data set and print a sign-in link.
 
 A Python port of dashboard-ui/e2e/fixture.ts (the Playwright fixture): a .env with a dummy
-service token, one demo user, a two-PR queue with finished reviews on disk, and a fake `gh`
-that fails every call so the server renders from the on-disk state and nothing ever reaches
-GitHub. Playwright signs in by injecting a cookie; here the server's own /handoff/accept route
-mints the session instead, from a link signed with the fixture's PRBOT_SECRET.
+service token and TWO demo repositories, one demo user, a queue spanning both repos with
+finished reviews on disk, and a fake `gh` that fails every call so the server renders from the
+on-disk state and nothing ever reaches GitHub. Playwright signs in by injecting a cookie; here
+the server's own /handoff/accept route mints the session instead, from a link signed with the
+fixture's PRBOT_SECRET.
 """
 import hmac
 import json
@@ -18,13 +19,27 @@ from hashlib import sha256
 from pathlib import Path
 
 USER = "demo-reviewer"
-REPO = "reviewstage/demo-repo"
-PR, PR2 = 101, 102
+REPO = "reviewstage/demo-repo"          # the web app
+REPO2 = "reviewstage/demo-api"          # a second repo, so the UI shows the repo dimension
+PR, PR2 = 101, 102                      # in REPO
+PR3 = 7                                 # in REPO2
+
+
+def slug(repo):
+    return repo.replace("/", "__", 1)
 
 
 def write(path: Path, body: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body)
+
+
+def row(repo, num, title, adds, dels, files, head, created, updated):
+    return {"repo": repo, "number": num, "title": title,
+            "url": f"https://github.com/{repo}/pull/{num}", "additions": adds,
+            "deletions": dels, "changedFiles": files, "requested": [USER],
+            "author": "teammate", "isBot": False, "isDraft": False, "head": head,
+            "createdAt": created, "updatedAt": updated}
 
 
 def main():
@@ -45,7 +60,7 @@ def main():
     write(env_f, "\n".join([
         f"PRBOT_SECRET={secret}",
         f"REVIEWER={USER}",
-        f"REPO={REPO}",
+        f"REPOS={REPO},{REPO2}",
         "DRY_RUN=1",
         f"PUBLIC_URL=http://localhost:{port}",
         "GITHUB_PAT=ghp_demo_dummy_never_used",
@@ -58,29 +73,27 @@ def main():
     for name in ("seen", "used-nonces"):
         (root / name).touch()
     (root / "state").mkdir(exist_ok=True)
+    # A fresh fixture is already in the per-repo layout — nothing to migrate.
+    (root / "MIGRATED").write_text(json.dumps({"at": int(time.time()), "note": "demo"}) + "\n")
 
     write(root / "queue.json", json.dumps([
-        {"number": PR, "title": "Add lead-time badge to product cards",
-         "url": f"https://github.com/{REPO}/pull/{PR}", "additions": 42, "deletions": 8,
-         "changedFiles": 5, "requested": [USER], "author": "teammate", "isBot": False,
-         "isDraft": False, "head": "deadbeefcafe", "createdAt": "2026-05-01T10:00:00Z",
-         "updatedAt": "2026-05-02T10:00:00Z"},
-        {"number": PR2, "title": "Cache vendor lead times",
-         "url": f"https://github.com/{REPO}/pull/{PR2}", "additions": 12, "deletions": 3,
-         "changedFiles": 2, "requested": [USER], "author": "teammate", "isBot": False,
-         "isDraft": False, "head": "feedfacecafe", "createdAt": "2026-05-03T10:00:00Z",
-         "updatedAt": "2026-05-04T10:00:00Z"},
+        row(REPO, PR, "Add lead-time badge to product cards", 42, 8, 5, "deadbeefcafe",
+            "2026-05-01T10:00:00Z", "2026-05-02T10:00:00Z"),
+        row(REPO, PR2, "Cache vendor lead times", 12, 3, 2, "feedfacecafe",
+            "2026-05-03T10:00:00Z", "2026-05-04T10:00:00Z"),
+        row(REPO2, PR3, "Rate-limit the lead-time endpoint", 30, 4, 3, "0badf00dcafe",
+            "2026-05-05T10:00:00Z", "2026-05-06T10:00:00Z"),
     ]))
 
     st = root / "state"
-    write(st / str(PR2) / "status", "done")
-    write(st / str(PR2) / "review.json", json.dumps({
+    write(st / slug(REPO) / str(PR2) / "status", "done")
+    write(st / slug(REPO) / str(PR2) / "review.json", json.dumps({
         "event": "COMMENT", "summary": "Caches vendor lead times. Looks fine.",
         "keyPoints": ["A small, well-scoped cache.", "No blockers."],
         "explainer": "- Adds a per-vendor cache for lead times.",
         "analysis": "- Checked cache invalidation on vendor update.", "comments": []}))
-    write(st / str(PR) / "status", "done")
-    write(st / str(PR) / "review.json", json.dumps({
+    write(st / slug(REPO) / str(PR) / "status", "done")
+    write(st / slug(REPO) / str(PR) / "review.json", json.dumps({
         "event": "COMMENT",
         "summary": "Adds a lead-time badge to product cards. Logic is sound; two small things.",
         "keyPoints": [
@@ -102,6 +115,20 @@ def main():
              "title": "Use const instead of let", "impact": "Style only — no effect on behavior.",
              "body": "Prefer `const` over `let` here.", "reply_to": None, "suggestion": "",
              "confidence": "medium"}]}))
+    write(st / slug(REPO2) / str(PR3) / "status", "done")
+    write(st / slug(REPO2) / str(PR3) / "review.json", json.dumps({
+        "event": "COMMENT",
+        "summary": "Adds a token bucket in front of the lead-time endpoint. One blocker.",
+        "keyPoints": ["The limiter key ignores the tenant, so one tenant can starve another."],
+        "explainer": "- Rate-limits GET /lead-times per API key.",
+        "analysis": "- Traced the limiter key from the request to the store.",
+        "comments": [
+            {"path": "api/limits.py", "line": 18, "severity": "blocker",
+             "title": "Two tenants share one rate-limit bucket",
+             "impact": "A busy tenant can lock a quiet tenant out of lead times entirely.",
+             "body": "Key the bucket on (tenant, api_key), not api_key alone.",
+             "reply_to": None, "suggestion": "key = f\"{tenant}:{api_key}\"",
+             "confidence": "high"}]}))
 
     # Fake gh: every call fails, so the server falls back to the on-disk fixture.
     gh = root / "fakebin" / "gh"
@@ -111,6 +138,7 @@ def main():
     exp = int(time.time()) + 7 * 24 * 3600
     sig = hmac.new(secret.encode(), f"handoff:{USER}:{exp}".encode(), sha256).hexdigest()
     print("==> ReviewStage DEMO — offline fixture, nothing reaches GitHub or Claude")
+    print(f"    repos: {REPO}, {REPO2}")
     print(f"    sign in here: http://localhost:{port}/handoff/accept?login={USER}&exp={exp}&sig={sig}")
     print("    (the login form is disabled in demo mode — use the link above)", flush=True)
 

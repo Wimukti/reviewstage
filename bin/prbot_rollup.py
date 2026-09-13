@@ -3,11 +3,14 @@
 No new instrumentation: walks per-PR/per-user state (run history), learnings.jsonl (keep-rate),
 usage.json (tokens + model), and the agreement indices. Returns headline totals, a per-day series
 (for charts + a client-side range filter), and structural breakdowns (by reviewer, severity,
-model). Some metrics only have data from when their feature shipped; the UI labels those. Pure fn.
+model, repository). `repo` narrows everything to one repository. Some metrics only have data
+from when their feature shipped; the UI labels those. Pure fn.
 """
 import json
 import time
 from pathlib import Path
+
+from prbot_paths import is_slug, slug_repo
 
 WEEK = 7 * 24 * 3600
 DAY = 24 * 3600
@@ -47,10 +50,26 @@ def _daystart(ts):
     return int(time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)))
 
 
-def compute(state, root, now=None):
+def _prdirs(state, repo=None):
+    """(repo, prdir) for every per-PR dir under state/<owner>__<name>/<pr>, optionally one repo."""
+    if not state.is_dir():
+        return
+    for rd in sorted(state.iterdir()):
+        if not (rd.is_dir() and is_slug(rd.name)):
+            continue
+        r = slug_repo(rd.name)
+        if repo and r.lower() != repo.lower():
+            continue
+        for pd in sorted(rd.iterdir()):
+            if pd.is_dir() and pd.name.isdigit():
+                yield r, pd
+
+
+def compute(state, root, now=None, repo=None):
     state, root = Path(state), Path(root)
     now = now or int(time.time())
     since = now - WEEK
+    repos = {}                                   # repo -> {runs, prs, tokens, week}
 
     reviewers = {}
     prs = set()
@@ -66,12 +85,12 @@ def compute(state, root, now=None):
         d["tokens"] += tokens
 
     if state.is_dir():
-        for prd in state.iterdir():
-            if not (prd.is_dir() and prd.name.isdigit()):
-                continue
+        for r_name, prd in _prdirs(state, repo):
             ud = prd / "users"
             if not ud.is_dir():
                 continue
+            rr = repos.setdefault(r_name, {"runs": 0, "week": 0, "prs": 0, "tokens": 0})
+            pr_counted = False
             for d in ud.iterdir():
                 if not d.is_dir():
                     continue
@@ -83,18 +102,24 @@ def compute(state, root, now=None):
                              if h.is_dir() and h.name.isdigit()]
                 if not runs:
                     continue
-                prs.add(prd.name)
+                prs.add((r_name, prd.name))
+                if not pr_counted:
+                    rr["prs"] += 1
+                    pr_counted = True
                 r = reviewers.setdefault(d.name, {"runs": 0, "week": 0, "tokens": 0})
                 for t in runs:
                     total_runs += 1
                     r["runs"] += 1
+                    rr["runs"] += 1
                     bump_day(t, reviews=1)
                     if t >= since:
                         week_runs += 1
                         r["week"] += 1
+                        rr["week"] += 1
                 tok = _tokens(_load(d / "usage.json"))
                 total_tokens += tok
                 r["tokens"] += tok
+                rr["tokens"] += tok
                 bump_day(_mtime(rv), tokens=tok)
                 if _mtime(rv) >= since:
                     week_tokens += tok
@@ -131,6 +156,8 @@ def compute(state, root, now=None):
             except ValueError:
                 continue
             o = row.get("outcome")
+            if repo and (row.get("repo") or "").lower() != repo.lower():
+                continue
             if o in keep:
                 keep[o] += 1
                 kd = keep_day.setdefault(_daystart(row.get("at", now)),
@@ -140,9 +167,9 @@ def compute(state, root, now=None):
     # agreement (forward-looking)
     multi, confirmed, rates = 0, 0, []
     if state.is_dir():
-        for prd in state.iterdir():
+        for _, prd in _prdirs(state, repo):
             ad = prd / "agreement"
-            if not (prd.is_dir() and ad.is_dir()):
+            if not ad.is_dir():
                 continue
             files = sorted(ad.glob("*.json"), key=_mtime)
             a = _load(files[-1]) if files else None
@@ -170,6 +197,9 @@ def compute(state, root, now=None):
 
     return {
         "generatedAt": now,
+        "repo": repo or "",
+        "repos": sorted(([{"repo": k, **v} for k, v in repos.items()]),
+                        key=lambda r: (-r["runs"], r["repo"])),
         "reviews": {"total": total_runs, "week": week_runs},
         "prs": len(prs),
         "reviewers": sorted(([{"login": k, **v} for k, v in reviewers.items()]),

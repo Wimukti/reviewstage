@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# run-review.sh <pr-number> — review one PR and park the result for the dashboard.
+# run-review.sh <owner/name> <pr-number> — review one PR and park the result for the dashboard.
 #
 # Spawned detached by prbot-server.py when "Open review" / "Re-run" is clicked. Writes
-# progress to $STATE/<pr>/status so the detail page can report it.
+# progress to $(udir <repo> <pr> <actor>)/status so the detail page can report it.
 #
 # This script NEVER writes to GitHub. It produces review.json; the human then selects and
 # edits findings in the dashboard and posts from there. Approval is a separate click again.
@@ -10,25 +10,30 @@ set -uo pipefail
 . "$(dirname "$0")/lib-common.sh"
 require_env
 
-PR="${1:?usage: run-review.sh <pr-number>}"
+# Backward compatibility: a single argument is a PR number in the one configured repo.
+if [ $# -eq 1 ] && [ -n "$(single_repo)" ]; then set -- "$(single_repo)" "$1"; fi
+REPO="${1:?usage: run-review.sh <owner/name> <pr-number>}"
+PR="${2:?usage: run-review.sh <owner/name> <pr-number>}"
+repo_allowed "$REPO" || die "$REPO is not a repository this install reviews (REPOS / REPO_ALLOW_ORG)"
+BASE=$(base_dir "$REPO")
 # Reviews are per reviewer: each person's run + review.json live under users/<actor>, so one
 # reviewer running never touches (or blocks) another's. Only meta.json (PR title/author/size,
 # identical for everyone) stays shared in PRDIR.
-PRDIR="$STATE/$PR"
+PRDIR=$(prdir "$REPO" "$PR")
 ACTOR="${PRBOT_ACTOR:-}"
 DIR="$PRDIR"
 [ -n "$ACTOR" ] && DIR="$PRDIR/users/$ACTOR"
 mkdir -p "$DIR"
 exec 9>"$DIR/.lock"
-flock -n 9 || { echo "review for #$PR already running"; exit 0; }
+flock -n 9 || { echo "review for $REPO#$PR already running"; exit 0; }
 
-status() { echo "$1" > "$DIR/status"; echo "[#$PR] $1"; }
+status() { echo "$1" > "$DIR/status"; echo "[$REPO#$PR] $1"; }
 fail() { status "failed: $1"; notify_fail "$1"; exit 1; }
 
 notify_fail() {
-  jq -n --arg p "$PR" --arg m "$1" --arg u "https://github.com/$REPO/pull/$PR" '
+  jq -n --arg p "$REPO#$PR" --arg m "$1" --arg u "https://github.com/$REPO/pull/$PR" '
     {blocks:[{type:"section",text:{type:"mrkdwn",
-      text:("⚠️ Review of *<" + $u + "|#" + $p + ">* failed: " + $m)}}]}' | slack_post "$PR" reply "$ACTOR"
+      text:("⚠️ Review of *<" + $u + "|" + $p + ">* failed: " + $m)}}]}' | slack_post "$REPO" "$PR" reply "$ACTOR"
 }
 
 have_free_mem || fail "not enough free memory to start a review"
@@ -65,7 +70,7 @@ url=$(echo "$meta"    | jq -r .url)
 # Cache the PR's identity next to the review. queue.json only holds PRs currently awaiting
 # review, so once you submit (or the request moves to someone else) the PR drops out of it —
 # without this the dashboard would lose the title of a review you just ran.
-echo "$meta" | jq --arg n "$PR" '{number:($n|tonumber), title, url,
+echo "$meta" | jq --arg n "$PR" --arg r "$REPO" '{repo:$r, number:($n|tonumber), title, url,
      author:.author.login, createdAt, updatedAt, additions, deletions, changedFiles}' \
   > "$PRDIR/meta.json"
 # Record the head SHA this review ran against, so the dashboard can flag the review as stale
@@ -75,9 +80,10 @@ echo "$meta" | jq -r .headRefOid > "$DIR/head"
 # "this touches an area the team has flagged, look harder". Never a gate, never routing.
 # RISK_PATHS (in .env) is a comma-separated list of `label:pattern` rules; a rule matches when
 # any changed path equals the glob or contains the substring. Empty (the default) = feature off.
+# A per-repo RISK_PATHS__<OWNER>__<NAME> replaces the global list for that repo (risk_paths_for).
 paths=$(echo "$meta" | jq -r '.files[]?.path // empty' 2>/dev/null)
 risk=""
-IFS=',' read -ra RISK_RULES <<< "${RISK_PATHS:-}"
+IFS=',' read -ra RISK_RULES <<< "$(risk_paths_for "$REPO")"
 for rule in "${RISK_RULES[@]+"${RISK_RULES[@]}"}"; do
   rule="${rule#"${rule%%[![:space:]]*}"}"; rule="${rule%"${rule##*[![:space:]]}"}"
   [ -n "$rule" ] || continue
@@ -95,12 +101,15 @@ for rule in "${RISK_RULES[@]+"${RISK_RULES[@]}"}"; do
 done
 echo "$risk" | xargs > "$DIR/risk" 2>/dev/null || true
 
-# Base clone lives under $ROOT, in $HOME — deliberately outside any directory a deploy or
-# sync job of yours might rsync over, which would otherwise wipe a worktree mid-review.
+# Base clones live under $ROOT/repos, in $HOME — deliberately outside any directory a deploy or
+# sync job of yours might rsync over, which would otherwise wipe a worktree mid-review. A repo
+# accepted via REPO_ALLOW_ORG (or added after bootstrap) is cloned here on first use.
 status "checking out the branch"
+[ -d "$BASE/.git" ] || ensure_base_clone "$REPO" >>"$ROOT/clone.log" 2>&1 \
+  || fail "could not clone $REPO (see $ROOT/clone.log)"
 git -C "$BASE" fetch -q origin "$branch" || fail "could not fetch $branch"
 slug="${ACTOR:-shared}"
-wt="$WT/$PR-$slug"   # per reviewer, not per PR — avoid cross-reviewer worktree collisions
+wt="$WT/$(repo_slug "$REPO")-$PR-$slug"   # per repo + reviewer — no cross-reviewer collisions
 git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
 git -C "$BASE" worktree add -q --force -B "review-$PR-$slug" "$wt" "origin/$branch" \
   || fail "could not create worktree"
@@ -116,19 +125,22 @@ status "reviewing the diff"
 # Whose Claude account this runs on: the dashboard sets PRBOT_RUN_AS (and, for a connected
 # user, CLAUDE_CODE_OAUTH_TOKEN) when it spawns us. Recorded so the page can say so.
 echo "${PRBOT_RUN_AS:-shared}" > "$DIR/runner"
-echo "[#$PR] running on: ${PRBOT_RUN_AS:-shared}"
+echo "[$REPO#$PR] running on: ${PRBOT_RUN_AS:-shared}"
 rm -f "$DIR/cached"          # a fresh run replaces any reused (cached) result
 rm -f "$wt/review.json"
-# Learnings: findings reviewers have dropped as noise or reworded on this repo, so the agent
-# stops re-raising rejected ones. Empty on a fresh box. Rendered by prbot_learn.py (beside us).
+# Learnings: findings reviewers have dropped as noise or reworded — same-repo rows first, then
+# the team's general preferences — so the agent stops re-raising rejected ones. Empty on a fresh
+# box. Rendered by prbot_learn.py (beside us).
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LEARN=$(PYTHONPATH="$HERE" ROOT="$ROOT" python3 -c \
-  'import prbot_learn,sys;sys.stdout.write(prbot_learn.render())' 2>/dev/null)
+  'import prbot_learn,sys;sys.stdout.write(prbot_learn.render(sys.argv[1]))' "$REPO" 2>/dev/null)
 
-# Which review skill: the clicker's own if they brought one, else the editable team default
-# ($ROOT/skills/_global.md, maintained from the dashboard), else the installed pr-review skill.
-# Record the id next to the review so learnings can score each skill by how many findings get kept.
-# ACTOR is set at the top (it selects the per-user DIR).
+# Which review skill, in order: a per-repo override of the team default
+# ($ROOT/skills/repos/<owner>__<name>/SKILL.md), else the clicker's own if they brought one, else
+# the editable team default ($ROOT/skills/_global.md, maintained from the dashboard), else the
+# installed pr-review skill. Record the id next to the review so learnings can score each skill by
+# how many findings get kept. ACTOR is set at the top (it selects the per-user DIR).
+REPO_SKILL="$ROOT/skills/repos/$(repo_slug "$REPO")/SKILL.md"
 USER_SKILL="$ROOT/skills/$ACTOR.md"
 GLOBAL_SKILL="$ROOT/skills/_global.md"
 # The dashboard's active-skill choice: "own" uses the clicker's skill if present, "team" forces
@@ -179,12 +191,18 @@ suggestion. Only when confident and single-line; otherwise leave \"suggestion\" 
 scannable (point form, plain language), not long prose — then selects, edits and posts individual
 comments. Keep findings few and high-confidence.${LEARN}"
 
-if [ "$CHOICE" != team ] && [ -n "$ACTOR" ] && [ -f "$USER_SKILL" ]; then
+if [ -s "$REPO_SKILL" ]; then
+  echo "repo:$(repo_slug "$REPO")" > "$DIR/skill"; APPROACH="$(cat "$REPO_SKILL")"
+  echo "[$REPO#$PR] skill: team default for $REPO (repo override)"
+elif [ "$CHOICE" != team ] && [ -n "$ACTOR" ] && [ -f "$USER_SKILL" ]; then
   echo "$ACTOR" > "$DIR/skill"; APPROACH="$(cat "$USER_SKILL")"
+  echo "[$REPO#$PR] skill: $ACTOR's own"
 elif [ -f "$GLOBAL_SKILL" ]; then
   echo "global" > "$DIR/skill"; APPROACH="$(cat "$GLOBAL_SKILL")"
+  echo "[$REPO#$PR] skill: team default"
 else
   echo "global" > "$DIR/skill"; APPROACH=""
+  echo "[$REPO#$PR] skill: installed pr-review skill"
 fi
 
 if [ -n "$APPROACH" ]; then
@@ -261,15 +279,15 @@ event=$(jq -r '.event // "COMMENT"' "$DIR/review.json")
 n=$(jq '.comments | length' "$DIR/review.json")
 blockers=$(jq '[.comments[]? | select(.severity == "blocker")] | length' "$DIR/review.json")
 summary=$(jq -r '.summary // ""' "$DIR/review.json" | head -c 2500)
-detail=$(signed_link pr "$PR" 604800)
+detail=$(signed_link pr "$REPO" "$PR" 604800)
 icon=$([ "$event" = "REQUEST_CHANGES" ] && echo "🔴" || echo "🟢")
 status "done ($n findings)"
 
-jq -n --arg t "$title" --arg u "$url" --arg p "$PR" --arg s "$summary" --arg e "$event" \
+jq -n --arg t "$title" --arg u "$url" --arg p "$REPO#$PR" --arg s "$summary" --arg e "$event" \
       --arg i "$icon" --arg n "$n" --arg b "$blockers" --arg l "$detail" --arg w "$who" '
 {blocks:[
   {type:"section", text:{type:"mrkdwn",
-    text:($w + $i + " Review ready — *<" + $u + "|#" + $p + " — " + $t + ">*\n*" + $e
+    text:($w + $i + " Review ready — *<" + $u + "|" + $p + " — " + $t + ">*\n*" + $e
           + "* · " + $n + " finding(s), " + $b + " blocker(s)")}},
   {type:"section", text:{type:"mrkdwn", text:$s}},
   {type:"actions", elements:[
@@ -277,4 +295,4 @@ jq -n --arg t "$title" --arg u "$url" --arg p "$PR" --arg s "$summary" --arg e "
      style:"primary", url:$l},
     {type:"button", text:{type:"plain_text", text:"Open PR"}, url:$u}]},
   {type:"context", elements:[{type:"mrkdwn",
-    text:"Nothing posted yet — select, edit and post from the dashboard."}]}]}' | slack_post "$PR" reply "$ACTOR"
+    text:"Nothing posted yet — select, edit and post from the dashboard."}]}]}' | slack_post "$REPO" "$PR" reply "$ACTOR"

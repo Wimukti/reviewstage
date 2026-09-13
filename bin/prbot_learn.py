@@ -6,8 +6,9 @@ render() turns recent rejections into a compact block appended to the review pro
 stops re-raising the same noise; recent() backs the read-only /learnings page.
 
 Storage: $ROOT/learnings.jsonl (ROOT defaults to ~/.claude-pr-bot, same as the server + shell).
-Only short gists are stored — high signal, low bloat. Imported by prbot-server.py; run-review.sh
-calls render() via `python3 -c`.
+Only short gists are stored — high signal, low bloat. Rows carry the repo they came from;
+render(repo) prefers same-repo rows and pads with the rest. Imported by prbot-server.py;
+run-review.sh calls render() via `python3 -c`.
 """
 import json
 import os
@@ -44,7 +45,7 @@ def _read():
     return rows
 
 
-def record(pr, user, originals_sorted, form, skill="global"):
+def record(repo, pr, user, originals_sorted, form, skill="global"):
     """Log the outcome of each original finding for one posted review.
 
     `originals_sorted` is review.json's comments sorted exactly as the dashboard renders them
@@ -66,7 +67,7 @@ def record(pr, user, originals_sorted, form, skill="global"):
             outcome = "edited"
         else:
             outcome = "kept"
-        row = {"at": now, "pr": str(pr), "user": user, "skill": skill,
+        row = {"at": now, "repo": repo, "pr": str(pr), "user": user, "skill": skill,
                "path": orig.get("path", ""), "line": orig.get("line"),
                "severity": orig.get("severity", "nit"),
                "gist": _gist(ob), "outcome": outcome}
@@ -87,17 +88,26 @@ def record(pr, user, originals_sorted, form, skill="global"):
         pass                       # a learning we fail to store must never break a post
 
 
-def render(max_items=40):
+def render(repo="", max_items=40):
     """A compact prompt block of recent dropped/edited findings, or "" if nothing learned.
 
-    Appended to the review prompt so the agent weighs the reviewer's past decisions."""
+    Appended to the review prompt so the agent weighs the reviewer's past decisions. Rows from
+    the same repo come first (they are about this codebase); rows from other repos — or legacy
+    rows with no repo — fill whatever room is left, so a new repo still benefits from the team's
+    general preferences."""
     rows = [r for r in _read() if r.get("outcome") in ("dropped", "edited")]
     if not rows:
         return ""
-    rows = rows[-max_items:]
+    if repo:
+        same = [r for r in rows if (r.get("repo") or "").lower() == repo.lower()][-max_items:]
+        other = [r for r in rows if (r.get("repo") or "").lower() != repo.lower()]
+        rows = other[-(max_items - len(same)):] + same if len(same) < max_items else same
+    else:
+        rows = rows[-max_items:]
     dropped = [r for r in rows if r["outcome"] == "dropped"]
     edited = [r for r in rows if r["outcome"] == "edited"]
-    lines = ["\n\nReviewer preferences learned from past reviews on this repo — weigh these:"]
+    lines = ["\n\nReviewer preferences learned from past reviews"
+             + (f" (mostly on {repo})" if repo else "") + " — weigh these:"]
     if dropped:
         lines.append("\nFindings the reviewer chose NOT to post (treat near-duplicates as noise "
                      "and omit them unless clearly higher-stakes here):")
@@ -147,5 +157,6 @@ def skill_stats():
     return sorted(by.values(), key=lambda d: -d["total"])
 
 
-if __name__ == "__main__":       # `python3 -c` path used by run-review.sh prints the block
-    print(render())
+if __name__ == "__main__":       # `python3 prbot_learn.py [repo]` prints the block
+    import sys
+    print(render(sys.argv[1] if len(sys.argv) > 1 else ""))

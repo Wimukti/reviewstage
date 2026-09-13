@@ -30,8 +30,19 @@ SLACK_CHANNEL=
 
 # --- per-install values (bootstrap prompts for these on first run) ----------------------------
 
-# The GitHub repository this instance reviews, as owner/name. REQUIRED, no default.
+# The GitHub repositories this instance reviews, as owner/name — comma-separated (quote the
+# value if you separate with spaces or newlines: the file is sourced by bash). REQUIRED: at
+# least one. `REPO=owner/name` is still accepted as a single-entry alias; if both are set the
+# lists are unioned. Each entry is validated (owner/name shape) at startup.
+REPOS=
 REPO=
+
+# Optional: an org (or user) whose repositories are accepted on demand, in addition to the
+# explicit list above. The poller discovers them by searching for open review requests to each
+# signed-in user under that owner (`gh search prs --owner <org> --review-requested=<login>`) and
+# the base clone is made lazily on the first review. The SERVICE token (GITHUB_PAT) must be
+# able to see the org for discovery to find anything. Empty = explicit list only.
+REPO_ALLOW_ORG=
 
 # Your GitHub login. Must match the account the PAT belongs to.
 REVIEWER=
@@ -78,6 +89,12 @@ MIN_FREE_MB=800
 # The port the server listens on (127.0.0.1 only — put your reverse proxy in front of it).
 PRBOT_PORT=8899
 
+# Signed links now carry the repository (HMAC over action:owner/name#pr:expiry). Links minted
+# before the repo dimension existed (action:pr:expiry) keep verifying for this many days after
+# the first start of the repo-aware server, so Slack cards already sent keep working during the
+# transition. 0 = reject them at once.
+PRBOT_SIGNATURE_GRACE_DAYS=7
+
 # --- optional: risk-area banners ---------------------------------------------------------------
 
 # Paths your team wants reviewers to look harder at. Comma-separated `label:pattern` rules; a
@@ -86,6 +103,10 @@ PRBOT_PORT=8899
 # gate, never routing. Empty (the default) = feature off. Example:
 #   RISK_PATHS=billing:src/billing/,auth:*/auth/*,migrations:db/migrate/
 RISK_PATHS=
+# Per-repository override: RISK_PATHS__<OWNER>__<NAME> replaces RISK_PATHS for that repo. The
+# key is the repo upper-cased with `/` → `__` and every other non [A-Z0-9_] character → `_`,
+# e.g. acme/widgets-web → RISK_PATHS__ACME__WIDGETS_WEB. Unset = the global RISK_PATHS applies.
+#   RISK_PATHS__ACME__WIDGETS_WEB=checkout:src/checkout/
 
 # --- optional: several hostnames for one instance ---------------------------------------------
 

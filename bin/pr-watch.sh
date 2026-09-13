@@ -5,9 +5,9 @@
 # cron (every 3 min, flock'd):
 #   */3 * * * * flock -n /tmp/pr-watch.lock $HOME/.claude-pr-bot/bin/pr-watch.sh
 #
-# Notify only; no review runs from here. Dedup is per PR + LOGIN (`<pr>:<login>` in `seen`),
-# so each reviewer is pinged once per PR and never again — pushing new commits changes the
-# head SHA but must not re-ping anyone. The dashboard always reflects the live queue
+# Notify only; no review runs from here. Dedup is per REPO + PR + LOGIN (`<repo>:<pr>:<login>`
+# in `seen`), so each reviewer is pinged once per PR and never again — pushing new commits
+# changes the head SHA but must not re-ping anyone. The dashboard always reflects the live queue
 # regardless of what has been announced, so Slack is a one-time nudge rather than the source
 # of truth. To re-announce one, drop its line from `seen`.
 #
@@ -30,22 +30,42 @@ USERS_FILE="$ROOT/users.json"
 logins=$(jq -r 'keys[]' "$USERS_FILE" 2>/dev/null)
 [ -n "$logins" ] || logins="$REVIEWER"
 
-# One search per user beats paging every open PR: the repo sees 200+ PR updates a week, and
-# `review-requested:` resolves to direct individual requests server-side. Each row is tagged
-# with the login it was found for; rows for the same PR are merged below.
+# Which repositories to poll: every configured one, plus — with REPO_ALLOW_ORG — any repo under
+# that org where a signed-in user has an open review request. Discovery is one search per user
+# (`gh search prs --review-requested=<login> --owner <org>`); it needs the service token to see
+# the org. The discovered repos then go through the same per-repo listing as the configured ones,
+# so every queue row has the same fields. Cloned lazily by run-review.sh on first review.
+repos=$(repos_list)
+if [ -n "$REPO_ALLOW_ORG" ]; then
+  for login in $logins; do
+    found=$(gh search prs --owner "$REPO_ALLOW_ORG" --review-requested="$login" --state open \
+              --limit 100 --json repository -q '.[].repository.nameWithOwner' 2>/dev/null) \
+      || { echo "gh search (org $REPO_ALLOW_ORG) failed for $login"; continue; }
+    [ -n "$found" ] && repos+=$'\n'"$found"
+  done
+fi
+repos=$(printf '%s\n' "$repos" | awk 'NF && !seen[tolower($0)]++')
+
+# One search per user per repo beats paging every open PR: a busy repo sees 200+ PR updates a
+# week, and `review-requested:` resolves to direct individual requests server-side. Each row is
+# tagged with the repo and the login it was found for; rows for the same repo+PR are merged below.
 fields=number,title,author,headRefOid,url,additions,deletions,changedFiles,isDraft,createdAt,updatedAt
 tagged=""
-for login in $logins; do
-  rows=$(gh pr list --repo "$REPO" --state open --search "review-requested:$login" \
-          --limit 50 --json "$fields" 2>/dev/null) || { echo "gh search failed for $login"; continue; }
-  tagged+=$(echo "$rows" | jq -c --arg u "$login" '.[] | . + {requested:[$u]}')$'\n'
+for repo in $repos; do
+  repo_allowed "$repo" || { echo "skipping $repo (not in REPOS / REPO_ALLOW_ORG)"; continue; }
+  for login in $logins; do
+    rows=$(gh pr list -R "$repo" --state open --search "review-requested:$login" \
+            --limit 50 --json "$fields" 2>/dev/null) \
+      || { echo "gh search failed for $login in $repo"; continue; }
+    tagged+=$(echo "$rows" | jq -c --arg u "$login" --arg r "$repo" '.[] | . + {requested:[$u], repo:$r}')$'\n'
+  done
 done
 
 # queue.json backs the dashboard index. Rewritten every run so the dashboard never has to
 # call gh itself. `requested` is the union of logins awaiting each PR — the dashboard filters
-# on it, so one file serves every user.
-echo "$tagged" | jq -s 'group_by(.number) | map(.[0] + {requested: (map(.requested[]) | unique)})
-  | map({number, title, url, additions, deletions, changedFiles, requested,
+# on it, so one file serves every user. Rows carry `repo` (owner/name).
+echo "$tagged" | jq -s 'group_by([.repo, .number]) | map(.[0] + {requested: (map(.requested[]) | unique)})
+  | map({repo, number, title, url, additions, deletions, changedFiles, requested,
          author: .author.login, isBot: (.author.is_bot // false),
          isDraft, head: .headRefOid, createdAt, updatedAt})' \
   > "$ROOT/queue.json.tmp" \
@@ -65,9 +85,9 @@ if [ ! -f "$KNOWN" ]; then
   # archive it, so their live "To review" queue stays intact (unlike a brand-new sign-in).
   # Without this seeding, every existing user's entire backlog re-pings on the next poll.
   for login in $logins; do
-    for num in $(jq -r --arg u "$login" \
-                   '.[] | select(.requested | index($u)) | .number' "$ROOT/queue.json"); do
-      grep -qxF "$num:$login" "$SEEN" || echo "$num:$login" >> "$SEEN"
+    for key in $(jq -r --arg u "$login" \
+                   '.[] | select(.requested | index($u)) | "\(.repo):\(.number)"' "$ROOT/queue.json"); do
+      grep -qxF "$key:$login" "$SEEN" || echo "$key:$login" >> "$SEEN"
     done
     echo "$login" >> "$KNOWN"
   done
@@ -76,11 +96,11 @@ fi
 for login in $logins; do
   grep -qxF "$login" "$KNOWN" && continue
   n=0
-  for num in $(jq -r --arg u "$login" \
-                 '.[] | select(.requested | index($u)) | .number' "$ROOT/queue.json"); do
-    grep -qxF "$num:$login" "$SEEN" || echo "$num:$login" >> "$SEEN"
-    mkdir -p "$STATE/$num/users/$login"
-    [ -f "$STATE/$num/users/$login/archived" ] || date +%s > "$STATE/$num/users/$login/archived"
+  for key in $(jq -r --arg u "$login" \
+                 '.[] | select(.requested | index($u)) | "\(.repo):\(.number)"' "$ROOT/queue.json"); do
+    grep -qxF "$key:$login" "$SEEN" || echo "$key:$login" >> "$SEEN"
+    ud=$(udir "${key%:*}" "${key##*:}" "$login"); mkdir -p "$ud"
+    [ -f "$ud/archived" ] || date +%s > "$ud/archived"
     n=$((n + 1))
   done
   echo "$login" >> "$KNOWN"
@@ -94,17 +114,23 @@ mention() {
   sid=$(jq -r --arg l "$1" '.[$l].slack_id // ""' "$USERS_FILE" 2>/dev/null)
   [ -n "$sid" ] && echo "<@$sid>" || echo "@$1"
 }
-seen_for() {   # <pr> <login>: legacy bare "<pr>" lines were the owner's
-  grep -qxF "$1:$2" "$SEEN" || { [ "$2" = "$REVIEWER" ] && grep -qxF "$1" "$SEEN"; }
+# seen_for <repo> <pr> <login>. Lines written before the repo dimension were `<pr>:<login>`
+# (and, before multi-user, a bare `<pr>` meaning the owner) — both still count when this is the
+# only configured repo, so an upgrade never re-pings anyone.
+seen_for() {
+  grep -qxF "$1:$2:$3" "$SEEN" && return 0
+  [ "$(single_repo)" = "$1" ] || return 1
+  grep -qxF "$2:$3" "$SEEN" || { [ "$3" = "$REVIEWER" ] && grep -qxF "$2" "$SEEN"; }
 }
 
 jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
   num=$(echo "$pr" | jq -r .number)
+  repo=$(echo "$pr" | jq -r .repo)
 
   # Who on this PR has not been told yet?
   new=""
   for login in $(echo "$pr" | jq -r '.requested[]'); do
-    seen_for "$num" "$login" || new+="$login "
+    seen_for "$repo" "$num" "$login" || new+="$login "
   done
   [ -n "$new" ] || continue
 
@@ -117,8 +143,8 @@ jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
       if [ "$created_s" -gt 0 ]; then
         age_days=$(( ( $(date +%s) - created_s ) / 86400 ))
         if [ "$age_days" -gt "$MAX_AGE_DAYS" ]; then
-          echo "==> #$num created ${age_days}d ago (> ${MAX_AGE_DAYS}d) — marking seen, no ping"
-          for login in $new; do echo "$num:$login" >> "$SEEN"; done
+          echo "==> $repo#$num created ${age_days}d ago (> ${MAX_AGE_DAYS}d) — marking seen, no ping"
+          for login in $new; do echo "$repo:$num:$login" >> "$SEEN"; done
           continue
         fi
       fi
@@ -128,7 +154,7 @@ jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
   draft=$(echo "$pr"  | jq -r .isDraft)
   is_bot=$(echo "$pr" | jq -r '.isBot')
   if [ "$draft" = "true" ] || { [ "$SKIP_BOT_PRS" = "1" ] && [ "$is_bot" = "true" ]; }; then
-    for login in $new; do echo "$num:$login" >> "$SEEN"; done
+    for login in $new; do echo "$repo:$num:$login" >> "$SEEN"; done
     continue
   fi
 
@@ -138,29 +164,29 @@ jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
   adds=$(echo "$pr"   | jq -r .additions)
   dels=$(echo "$pr"   | jq -r .deletions)
   files=$(echo "$pr"  | jq -r .changedFiles)
-  detail=$(signed_link pr "$num" 604800)   # 7 days — opening the dashboard costs nothing
+  detail=$(signed_link pr "$repo" "$num" 604800)   # 7 days — opening the dashboard costs nothing
   board=$(dashboard_link 604800)
 
   # One card per requested reviewer — each mentions only that person and threads their own
   # review-ready reply, so two reviewers on the same PR never share a ping or a thread.
   for login in $new; do
     who="$(mention "$login") "
-    echo "==> notifying #$num ($author) $title → $login"
+    echo "==> notifying $repo#$num ($author) $title → $login"
     jq -n --arg t "$title" --arg u "$url" --arg a "$author" --arg l "$detail" --arg w "$who" \
-          --arg n "$num" --arg s "$adds" --arg d "$dels" --arg f "$files" --arg b "$board" '
+          --arg n "$repo#$num" --arg s "$adds" --arg d "$dels" --arg f "$files" --arg b "$board" '
     {blocks: [
       {type:"section", text:{type:"mrkdwn",
-        text:($w + "review requested\n*<" + $u + "|#" + $n + " — " + $t + ">*\n`@" + $a
+        text:($w + "review requested\n*<" + $u + "|" + $n + " — " + $t + ">*\n`@" + $a
               + "`  ·  +" + $s + " −" + $d + "  ·  " + $f + " files")}},
       {type:"actions", elements:[
         {type:"button", text:{type:"plain_text", text:"🔍 Open review"},
          style:"primary", url:$l},
         {type:"button", text:{type:"plain_text", text:"Dashboard"}, url:$b},
         {type:"button", text:{type:"plain_text", text:"Open PR"}, url:$u}]}]}' \
-    | slack_post "$num" root "$login"
-    echo "$num:$login" >> "$SEEN"
+    | slack_post "$repo" "$num" root "$login"
+    echo "$repo:$num:$login" >> "$SEEN"
     # Phase 4 cycle-time source: stamp when this reviewer was first asked (once).
-    ud="$STATE/$num/users/$login"; mkdir -p "$ud"
+    ud=$(udir "$repo" "$num" "$login"); mkdir -p "$ud"
     [ -f "$ud/requested_at" ] || date +%s > "$ud/requested_at"
   done
 done

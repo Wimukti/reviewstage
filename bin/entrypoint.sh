@@ -48,7 +48,9 @@ write_env() {
     if grep -q "^$key=" "$f"; then sed -i "s|^$key=.*|$key=$esc|" "$f"
     else printf '%s=%s\n' "$key" "$val" >> "$f"; fi
   }
+  set_key REPOS ""
   set_key REPO ""
+  set_key REPO_ALLOW_ORG ""
   set_key GITHUB_PAT ""
   set_key DRY_RUN 1
   set_key PUBLIC_URL "http://localhost:${PRBOT_PORT:-8899}"
@@ -61,6 +63,7 @@ write_env() {
   set_key SKIP_BOT_PRS 0
   set_key PRBOT_MAX_PR_AGE_DAYS 45
   set_key MIN_FREE_MB 800
+  set_key PRBOT_SIGNATURE_GRACE_DAYS 7
   set_key REVIEWER ""
   # Signs every dashboard link and encrypts stored tokens. Generated once, kept on the volume.
   if [ -n "${PRBOT_SECRET:-}" ]; then
@@ -88,7 +91,7 @@ write_env() {
 
 # --- data dir --------------------------------------------------------------------------------
 seed_root() {
-  mkdir -p "$ROOT/wt" "$ROOT/state" "$ROOT/skills"
+  mkdir -p "$ROOT/wt" "$ROOT/state" "$ROOT/repos" "$ROOT/skills"
   touch "$ROOT/seen" "$ROOT/used-nonces"
   [ -f "$ROOT/users.json" ] || echo '{}' > "$ROOT/users.json"
   chmod 600 "$ROOT/users.json"
@@ -112,20 +115,31 @@ install_skills() {
   done
 }
 
-# The base clone reviews branch worktrees off. Blobless, cloned once, in the background so
-# the dashboard is up immediately; run-review.sh reports "could not fetch" until it exists.
-ensure_base_clone() {
-  local repo pat
-  repo=$(sed -n 's/^REPO=//p' "$ROOT/.env"); pat=$(sed -n 's/^GITHUB_PAT=//p' "$ROOT/.env")
-  [ -n "$repo" ] && [ -n "$pat" ] || { log "no REPO/GITHUB_PAT — skipping base clone"; return 0; }
-  if [ ! -d "$ROOT/repo/.git" ]; then
-    log "cloning $repo (blobless) in the background -> $ROOT/clone.log"
-    ( GH_TOKEN="$pat" gh repo clone "$repo" "$ROOT/repo" -- --filter=blob:none \
-        && git -C "$ROOT/repo" config credential.helper \
-             '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' \
-        && echo "clone ok" || echo "clone FAILED (check REPO and GITHUB_PAT)" ) \
-      > "$ROOT/clone.log" 2>&1 &
+# The base clones review worktrees branch off: one blobless clone per configured repo under
+# $ROOT/repos/<owner>__<name>, cloned once, in the background so the dashboard is up immediately;
+# run-review.sh clones lazily itself if one is still missing (and for REPO_ALLOW_ORG repos).
+# Note: the server migrates a legacy $ROOT/repo clone into the new layout on start, so this
+# waits for the marker when legacy state is present to avoid cloning what is about to be moved.
+ensure_base_clones() {
+  local repos pat repo slug base
+  repos=$(sed -n 's/^REPOS=//p; s/^REPO=//p' "$ROOT/.env" | tr ',' ' ' | tr -s '[:space:]' '\n' | tr -d '"' | awk 'NF && !s[tolower($0)]++')
+  pat=$(sed -n 's/^GITHUB_PAT=//p' "$ROOT/.env")
+  [ -n "$repos" ] && [ -n "$pat" ] || { log "no REPOS/GITHUB_PAT — skipping base clones"; return 0; }
+  if [ -d "$ROOT/repo/.git" ] && [ ! -f "$ROOT/MIGRATED" ]; then
+    log "legacy base clone at $ROOT/repo — the server migrates it on start; skipping clones this run"
+    return 0
   fi
+  mkdir -p "$ROOT/repos"
+  for repo in $repos; do
+    slug="${repo/\//__}"; base="$ROOT/repos/$slug"
+    [ -d "$base/.git" ] && continue
+    log "cloning $repo (blobless) in the background -> $ROOT/clone.log"
+    ( GH_TOKEN="$pat" gh repo clone "$repo" "$base" -- --filter=blob:none \
+        && git -C "$base" config credential.helper \
+             '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' \
+        && echo "clone ok: $repo" || echo "clone FAILED: $repo (check REPOS and GITHUB_PAT)" ) \
+      >> "$ROOT/clone.log" 2>&1 &
+  done
 }
 
 # Plain http (the localhost quick start) cannot carry a Secure cookie; drop the flag there.
@@ -139,7 +153,7 @@ case "$MODE" in
   server)
     ( flock 9; write_env; seed_root ) 9>"$ROOT/.env.lock" 2>/dev/null || { write_env; seed_root; }
     install_skills
-    ensure_base_clone
+    ensure_base_clones
     cookie_flag
     log "ReviewStage dashboard on ${PRBOT_BIND:-127.0.0.1}:${PRBOT_PORT:-8899}  (ROOT=$ROOT)"
     exec python3 "$BIN/prbot-server.py"

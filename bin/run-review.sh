@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-review.sh <owner/name> <pr-number> — review one PR and park the result for the dashboard.
 #
-# Spawned detached by prbot-server.py when "Open review" / "Re-run" is clicked. Writes
+# Spawned detached by server.py when "Open review" / "Re-run" is clicked. Writes
 # progress to $(udir <repo> <pr> <actor>)/status so the detail page can report it.
 #
 # This script NEVER writes to GitHub. It produces review.json; the human then selects and
@@ -94,10 +94,10 @@ PROFILE_JSON="$ROOT/profiles/$(repo_slug "$REPO")/profile.json"
 PROFILE_BLOCK=""
 RULES="$(risk_paths_for "$REPO")"
 if [ -s "$PROFILE_JSON" ]; then
-  RULES=$(PYTHONPATH="$HERE" ROOT="$ROOT" python3 "$HERE/prbot_profile.py" risk "$REPO" "$RULES" \
+  RULES=$(PYTHONPATH="$HERE" ROOT="$ROOT" python3 "$HERE/rs_profile.py" risk "$REPO" "$RULES" \
             2>/dev/null || printf '%s' "$RULES")
   PROFILE_BLOCK=$(printf '%s\n' "$paths" | PYTHONPATH="$HERE" ROOT="$ROOT" \
-            python3 "$HERE/prbot_profile.py" block "$REPO" "$EFFORT" 2>/dev/null || true)
+            python3 "$HERE/rs_profile.py" block "$REPO" "$EFFORT" 2>/dev/null || true)
   [ -n "$PROFILE_BLOCK" ] && echo "[$REPO#$PR] profile: critical-path section added ($EFFORT)"
 fi
 IFS=',' read -ra RISK_RULES <<< "$RULES"
@@ -147,9 +147,9 @@ rm -f "$DIR/cached"          # a fresh run replaces any reused (cached) result
 rm -f "$wt/review.json"
 # Learnings: findings reviewers have dropped as noise or reworded — same-repo rows first, then
 # the team's general preferences — so the agent stops re-raising rejected ones. Empty on a fresh
-# box. Rendered by prbot_learn.py (beside us).
+# box. Rendered by rs_learn.py (beside us).
 LEARN=$(PYTHONPATH="$HERE" ROOT="$ROOT" python3 -c \
-  'import prbot_learn,sys;sys.stdout.write(prbot_learn.render(sys.argv[1]))' "$REPO" 2>/dev/null)
+  'import rs_learn,sys;sys.stdout.write(rs_learn.render(sys.argv[1]))' "$REPO" 2>/dev/null)
 
 # Which review skill, in order: a per-repo override of the team default
 # ($ROOT/skills/repos/<owner>__<name>/SKILL.md), else the clicker's own if they brought one, else

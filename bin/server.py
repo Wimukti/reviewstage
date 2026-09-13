@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""prbot-server.py — the ReviewStage dashboard, served on 127.0.0.1 behind your reverse proxy.
+"""server.py — the ReviewStage dashboard, served on 127.0.0.1 behind your reverse proxy.
 
 Assume it is reachable over the PUBLIC internet with nothing in front of it. Pages need a
 signed session cookie, obtained by signing in with your own GitHub PAT. The mutating actions embedded in a page — posting comments, approving — carry
@@ -43,20 +43,20 @@ from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-import prbot_agree
-import prbot_assets
-import prbot_devices as prbot_dev
-import prbot_diff
-import prbot_howimg
-import prbot_learn
-import prbot_md
-import prbot_paths as P
-import prbot_profile
-import prbot_rollup
-import prbot_settings
-import prbot_webhook
+import rs_agree
+import rs_assets
+import rs_devices as rs_dev
+import rs_diff
+import rs_howimg
+import rs_learn
+import rs_md
+import rs_paths as P
+import rs_profile
+import rs_rollup
+import rs_settings
+import rs_webhook
 
-BRAND = "ReviewStage"                    # product name shown beside the logo (see prbot_assets)
+BRAND = "ReviewStage"                    # product name shown beside the logo (see rs_assets)
 CLAUDE_ICON = ("<svg viewBox='0 0 24 24' width=18 height=18 fill=currentColor aria-hidden=true>"
                "<path d='M12 2c.3 3.1 1 4.9 2.2 6 1.1 1.2 2.9 1.9 6 2.2-3.1.3-4.9 1-6 2.2"
                "-1.2 1.1-1.9 2.9-2.2 6-.3-3.1-1-4.9-2.2-6C8.6 11.2 6.8 10.5 3.7 10.2"
@@ -159,7 +159,7 @@ SLACK_CHANNEL = ENV.get("SLACK_CHANNEL", "")
 USERS = ROOT / "users.json"
 SESSION_TTL = 30 * 24 * 3600
 
-# --- runtime settings + notifier bridge (prbot_settings.py) ---------------------------------
+# --- runtime settings + notifier bridge (rs_settings.py) ---------------------------------
 # $ROOT/settings.json is written from the Settings page and read live by the poller and the
 # scripts; settings.json > .env > default. Admin-only to change; everyone may read.
 SETTINGS = ROOT / "settings.json"
@@ -167,7 +167,7 @@ SETTINGS = ROOT / "settings.json"
 
 def runtime_settings():
     """(values, sources) for every runtime setting, layered settings.json > .env > default."""
-    return prbot_settings.effective(SETTINGS, ENV)
+    return rs_settings.effective(SETTINGS, ENV)
 
 
 def is_admin(login):
@@ -177,13 +177,13 @@ def is_admin(login):
         return False
     if REVIEWER and login == REVIEWER:
         return True
-    return prbot_settings.resolve_admin(load_users(), REVIEWER, modify_users) == login
+    return rs_settings.resolve_admin(load_users(), REVIEWER, modify_users) == login
 
 
 def notify_card(kind, payload):
     """Post a card through bin/notify.sh — the same notifier the shell scripts use, so Slack,
     Discord and generic webhooks all fire per the operator's settings. Best-effort, detached."""
-    prbot_settings.notify_card(BIN, ROOT, kind, payload)
+    rs_settings.notify_card(BIN, ROOT, kind, payload)
 
 
 def notify_env_status():
@@ -195,11 +195,11 @@ def notify_env_status():
             "webhook_secret": bool(ENV.get("WEBHOOK_SECRET"))}
 
 
-# --- GitHub webhooks (prbot_webhook.py) ------------------------------------------------------
+# --- GitHub webhooks (rs_webhook.py) ------------------------------------------------------
 # POST /webhooks/github turns a review request into a queue row + card within a second; the
 # poller stays on as the safety net. GITHUB_WEBHOOK_SECRET gates the endpoint (503 unset, 401
 # on a bad X-Hub-Signature-256). Never runs a review — same notify-only rule as pr-watch.sh.
-GITHUB_WEBHOOK_SECRET = prbot_webhook.secret_from(ENV)
+GITHUB_WEBHOOK_SECRET = rs_webhook.secret_from(ENV)
 
 
 def webhook_team_members(org, slug):
@@ -215,7 +215,7 @@ def webhook_team_members(org, slug):
 
 def webhook_ctx():
     vals, _ = runtime_settings()
-    return prbot_webhook.Context(
+    return rs_webhook.Context(
         ROOT, BIN, repo_ok, load_users(), PUBLIC_URL, SECRET, settings=vals, env=ENV,
         single_repo=SINGLE_REPO, reviewer=REVIEWER, team_members=webhook_team_members,
         log=lambda m, **kw: print(m, flush=True))
@@ -224,9 +224,9 @@ def webhook_ctx():
 def webhooks_status():
     """webhooks.json plus derived fields for the Settings card (never the secret itself)."""
     vals, _ = runtime_settings()
-    d = prbot_webhook.status(ROOT)
+    d = rs_webhook.status(ROOT)
     d["configured"] = bool(GITHUB_WEBHOOK_SECRET)
-    d["active"] = prbot_webhook.active(ROOT, vals.get("poll_interval_seconds", 180))
+    d["active"] = rs_webhook.active(ROOT, vals.get("poll_interval_seconds", 180))
     d["url"] = f"{PUBLIC_URL}/webhooks/github" if PUBLIC_URL else "/webhooks/github"
     return d
 
@@ -831,7 +831,7 @@ def review_cache_key(login, repo, head, effort, focus, model):
                          effort or "", (focus or "").strip(), model or "",
                          sha256(skill_text.encode()).hexdigest(),
                          sha256(effort_depth(effort).encode()).hexdigest(),
-                         sha256(json.dumps(prbot_profile.load_profile(repo) or {},
+                         sha256(json.dumps(rs_profile.load_profile(repo) or {},
                                            sort_keys=True).encode()).hexdigest()])
     return sha256(blob.encode()).hexdigest()
 
@@ -1101,8 +1101,8 @@ def convergence(repo, pr, head, viewer):
     if n < 2:
         return {}, None, n
     idx = next((i for i, r in enumerate(runs) if r["login"] == viewer), None)
-    clusters = prbot_agree.cluster(runs)
-    ar = prbot_agree.rate(clusters)
+    clusters = rs_agree.cluster(runs)
+    ar = rs_agree.rate(clusters)
     try:                                            # persist an index for the rollup dashboard
         ad = P.prdir(repo, pr) / "agreement"
         ad.mkdir(parents=True, exist_ok=True)
@@ -1112,7 +1112,7 @@ def convergence(repo, pr, head, viewer):
                       "effort": r["effort"]} for r in runs]}))
     except OSError:
         pass
-    tags = prbot_agree.tags_for(idx, runs, clusters) if idx is not None else {}
+    tags = rs_agree.tags_for(idx, runs, clusters) if idx is not None else {}
     return tags, ar, n
 
 
@@ -1356,7 +1356,7 @@ def stop_qa(repo, pr, user=""):
 
 def render_qa(md):
     """Render the QA guide markdown, turning '- [ ]' / '- [x]' items into real checkboxes."""
-    h = prbot_md.render(md)
+    h = rs_md.render(md)
     h = re.sub(r"<li>\s*\[[ ]\]\s*", "<li class=task>", h)
     h = re.sub(r"<li>\s*\[[xX]\]\s*", "<li class='task done'>", h)
     return h
@@ -1365,7 +1365,7 @@ def render_qa(md):
 # One profile per repository (bin/profile-repo.sh → $ROOT/profiles/<owner>__<name>/): the critical
 # paths every Standard/Deep review of that repo is told to walk, plus its risk paths and rules.
 # The job's state keys mirror the QA job (.lock, status, pid, usage.json); the artefacts are
-# profile.json + the editable profile.md (prbot_profile.py owns the schema and the files).
+# profile.json + the editable profile.md (rs_profile.py owns the schema and the files).
 PROFILE_PHASES = ["Fetching the repository", "Gathering signals", "Asking the model",
                   "Validating paths"]
 
@@ -1389,12 +1389,12 @@ def _flock_held(f):
 
 
 def profile_running(repo):
-    return _flock_held(prbot_profile.profile_dir(repo) / ".lock")
+    return _flock_held(rs_profile.profile_dir(repo) / ".lock")
 
 
 def profile_status_text(repo):
     try:
-        return (prbot_profile.profile_dir(repo) / "status").read_text().strip()
+        return (rs_profile.profile_dir(repo) / "status").read_text().strip()
     except OSError:
         return ""
 
@@ -1404,7 +1404,7 @@ def profile_state(repo):
     if profile_running(repo):
         return "running"
     s = profile_status_text(repo)
-    has = prbot_profile.load_profile(repo) is not None
+    has = rs_profile.load_profile(repo) is not None
     if s.startswith("failed") and not has:
         return "failed"
     if s == "stopped" and not has:
@@ -1413,7 +1413,7 @@ def profile_state(repo):
 
 
 def stop_profile(repo):
-    d = prbot_profile.profile_dir(repo)
+    d = rs_profile.profile_dir(repo)
     dead = _kill_group(d / "pid")
     time.sleep(0.2)
     d.mkdir(parents=True, exist_ok=True)
@@ -1424,7 +1424,7 @@ def stop_profile(repo):
 def profile_usage(repo):
     """Model + token totals of the last profile run, or None (usage.json is best-effort)."""
     try:
-        u = json.loads((prbot_profile.profile_dir(repo) / "usage.json").read_text())
+        u = json.loads((rs_profile.profile_dir(repo) / "usage.json").read_text())
     except (OSError, json.JSONDecodeError):
         return None
     return {"model": u.get("model") or "unknown",
@@ -1436,14 +1436,14 @@ def profile_usage(repo):
 
 def auto_profile_map():
     """settings.json `auto_profile`: {slug: bool} — re-profile when the file tree changes."""
-    v = prbot_settings.read_file(SETTINGS).get("auto_profile")
+    v = rs_settings.read_file(SETTINGS).get("auto_profile")
     return {k: bool(x) for k, x in v.items()} if isinstance(v, dict) else {}
 
 
 def set_auto_profile(repo, on):
     cur = auto_profile_map()
     cur[P.repo_slug(repo)] = bool(on)
-    prbot_settings.save(SETTINGS, {"auto_profile": cur})
+    rs_settings.save(SETTINGS, {"auto_profile": cur})
 
 
 def profile_tree_files(repo):
@@ -1462,19 +1462,19 @@ def profile_tree_files(repo):
 def profile_view(repo, user):
     """Everything the Skills page shows for one repository's profile."""
     exp, sig = mint("profile", user, ACTION_TTL)
-    d = prbot_profile.profile_dir(repo)
-    prof = prbot_profile.load_profile(repo)
+    d = rs_profile.profile_dir(repo)
+    prof = rs_profile.load_profile(repo)
     st = profile_state(repo)
     out = {"repo": repo, "state": st, "token": {"exp": exp, "sig": sig},
            "connected": claude_connected(user), "isAdmin": is_admin(user),
            "autoProfile": auto_profile_map().get(P.repo_slug(repo), False),
-           "counts": prbot_profile.counts(prof) if prof else None,
-           "versions": prbot_profile.versions(repo), "md": "", "json": prof, "last": None}
+           "counts": rs_profile.counts(prof) if prof else None,
+           "versions": rs_profile.versions(repo), "md": "", "json": prof, "last": None}
     if prof:
         try:
             out["md"] = (d / "profile.md").read_text()
         except OSError:
-            out["md"] = prbot_profile.to_markdown(prof)
+            out["md"] = rs_profile.to_markdown(prof)
         m = prof.get("meta") or {}
         at = int(m.get("generated_at") or 0)
         runner = ""
@@ -1507,18 +1507,18 @@ def save_profile_edit(repo, user, body):
     if isinstance(body.get("json"), dict):
         raw = body["json"]
     elif isinstance(body.get("md"), str):
-        raw = prbot_profile.from_markdown(body["md"])
+        raw = rs_profile.from_markdown(body["md"])
     else:
         return "Send `md` or `json`."
-    prev = prbot_profile.load_profile(repo) or {}
-    clean, dropped, err = prbot_profile.validate_profile(raw, profile_tree_files(repo))
+    prev = rs_profile.load_profile(repo) or {}
+    clean, dropped, err = rs_profile.validate_profile(raw, profile_tree_files(repo))
     if err:
         return f"Not saved: {err}."
     meta = dict(prev.get("meta") or {})
     meta.update({"edited_at": int(time.time()), "edited_by": user,
                  "dropped_globs": dropped})
-    prbot_profile.save_profile(repo, clean, meta)
-    print(f"profile edited by {user} for {repo}: {prbot_profile.counts(clean)}"
+    rs_profile.save_profile(repo, clean, meta)
+    print(f"profile edited by {user} for {repo}: {rs_profile.counts(clean)}"
           + (f", dropped {dropped}" if dropped else ""), flush=True)
     return ""
 
@@ -1630,19 +1630,19 @@ def session_user(headers):
 
 # --- device tokens (bearer) -----------------------------------------------------------------
 # A mobile app, a CLI or a second browser holds an opaque token instead of the cookie; only its
-# hash is stored (prbot_devices). Same powers as the cookie — post and approve as the user —
+# hash is stored (rs_devices). Same powers as the cookie — post and approve as the user —
 # and no more: it can never read the GitHub or Claude token. Revocable per device.
 def bearer_lookup(headers):
     """(login, device_hash) for a live device token in `Authorization: Bearer`, else
     (None, None). A user removed from users.json, or a token idle for 180 days, is refused.
     Bumps last_seen at most once a minute so users.json writes stay rare."""
-    tok = prbot_dev.parse_bearer(headers)
+    tok = rs_dev.parse_bearer(headers)
     if not tok:
         return None, None
-    login, h, rec = prbot_dev.lookup(load_users(), tok)
+    login, h, rec = rs_dev.lookup(load_users(), tok)
     if not login:
         return None, None
-    if prbot_dev.needs_bump(rec):
+    if rs_dev.needs_bump(rec):
         def bump(users):
             r = ((users.get(login) or {}).get("devices") or {}).get(h)
             if isinstance(r, dict):
@@ -1688,7 +1688,7 @@ def device_page(login, headers, name):
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{e(BRAND)} — connect this device</title>"
-        f"<link rel=icon href='{prbot_assets.FAVICON}'>"
+        f"<link rel=icon href='{rs_assets.FAVICON}'>"
         "<link rel=stylesheet href='/static/app.css'></head><body>"
         "<div class=auth><div class=authcard>"
         f"<h1>{e(BRAND)}</h1>"
@@ -1903,7 +1903,7 @@ def index_html():
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{html.escape(BRAND)}</title>"
-        f"<link rel=icon href='{prbot_assets.FAVICON}'>"
+        f"<link rel=icon href='{rs_assets.FAVICON}'>"
         "<link rel=manifest href='/manifest.webmanifest'>"
         "<meta name=theme-color content='#0a0b12'>"
         "<meta name=color-scheme content='dark'>"
@@ -2462,9 +2462,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(self.api_learnings(user))
         if route == "/api/rollup":
             rf = (q.get("repo") or [""])[0].strip()
-            return self.api_json(prbot_rollup.compute(STATE, ROOT, repo=rf or None))
+            return self.api_json(rs_rollup.compute(STATE, ROOT, repo=rf or None))
         if route == "/api/how":
-            return self.api_json({"images": prbot_howimg.IMG, "brand": BRAND,
+            return self.api_json({"images": rs_howimg.IMG, "brand": BRAND,
                                   "reviewer": REVIEWER, "tabs": [{"key": k, "label": lbl,
                                                                   "desc": TAB_DESC.get(k, "")}
                                                                  for k, lbl in TABS if k != "all"]})
@@ -2629,7 +2629,7 @@ class Handler(BaseHTTPRequestHandler):
                              "criticalPath": (c.get("critical_path") or "").strip(),
                              "structured": bool((c.get("title") or "").strip()
                                                 and (c.get("impact") or "").strip()),
-                             "agreement": conv_tags.get(prbot_agree._cid(c))})
+                             "agreement": conv_tags.get(rs_agree._cid(c))})
         data = {
             "event": ev, "summary": self._as_markdown(rev.get("summary")),
             "keyPoints": [str(x).strip() for x in (rev.get("keyPoints") or []) if str(x).strip()][:6],
@@ -2695,7 +2695,7 @@ class Handler(BaseHTTPRequestHandler):
             "repoSkills": [{"repo": r, "content": read_skill(REPO_SKILL_PREFIX + r),
                             "has": bool(read_skill(REPO_SKILL_PREFIX + r))} for r in all_repos()],
             "stats": [{**st, "label": skill_label(st["skill"], user)}
-                      for st in prbot_learn.skill_stats()],
+                      for st in rs_learn.skill_stats()],
             "teamHistory": skill_history(5),
         }
 
@@ -2706,14 +2706,14 @@ class Handler(BaseHTTPRequestHandler):
         vals, src = runtime_settings()
         exp, sig = mint("runtime-settings", user, ACTION_TTL)
         return {"token": {"exp": exp, "sig": sig}, "settings": vals, "sources": src,
-                "saved": prbot_settings.read_file(SETTINGS),
+                "saved": rs_settings.read_file(SETTINGS),
                 "env": notify_env_status(), "is_admin": is_admin(user),
-                "admin": prbot_settings.resolve_admin(load_users(), REVIEWER, modify_users),
-                "poller": {"lastPoll": prbot_settings.last_poll(ROOT),
+                "admin": rs_settings.resolve_admin(load_users(), REVIEWER, modify_users),
+                "poller": {"lastPoll": rs_settings.last_poll(ROOT),
                            "envInterval": ENV.get("POLL_INTERVAL", "")},
-                "limits": {"intervalMin": prbot_settings.INTERVAL_MIN,
-                           "intervalMax": prbot_settings.INTERVAL_MAX},
-                "backends": list(prbot_settings.BACKENDS), "dry_run": DRY_RUN,
+                "limits": {"intervalMin": rs_settings.INTERVAL_MIN,
+                           "intervalMax": rs_settings.INTERVAL_MAX},
+                "backends": list(rs_settings.BACKENDS), "dry_run": DRY_RUN,
                 "webhooks": webhooks_status()}
 
     def do_PUT(self):
@@ -2741,10 +2741,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"error": err}, 403)
         if not is_admin(user):
             return self.api_json({"error": "Only the admin can change these settings."}, 403)
-        clean, err = prbot_settings.validate(body.get("settings") or {})
+        clean, err = rs_settings.validate(body.get("settings") or {})
         if err:
             return self.api_json({"error": err}, 400)
-        prbot_settings.save(SETTINGS, clean)
+        rs_settings.save(SETTINGS, clean)
         print(f"settings saved by {user}: {json.dumps(clean)}", flush=True)
         out = self.api_settings(user)
         out["bannerHtml"] = ("<div class='banner ok'><span>✓</span><div>Saved — the poller and "
@@ -2766,7 +2766,7 @@ class Handler(BaseHTTPRequestHandler):
                 "discord": {"id": u.get("discord_id", "")},
                 "claude": {"connected": connected, "authUrl": claude_url or ""},
                 "notify": {"env": notify_env_status(), "backends": vals["notify_backends"],
-                           "payloadSchema": prbot_settings.PAYLOAD_SCHEMA},
+                           "payloadSchema": rs_settings.PAYLOAD_SCHEMA},
                 "oauth": OAUTH_ENABLED, "brand": BRAND}
 
     def api_learnings(self, user):
@@ -2780,8 +2780,8 @@ class Handler(BaseHTTPRequestHandler):
                     "severity": r.get("severity", "nit"), "gist": r.get("gist", ""),
                     "repo": r.get("repo", ""),
                     "editedGist": r.get("edited_gist", "") if o == "edited" else ""}
-        return {"counts": prbot_learn.counts(), "repos": all_repos(),
-                "rows": [item(r) for r in prbot_learn.recent(80)]}
+        return {"counts": rs_learn.counts(), "repos": all_repos(),
+                "rows": [item(r) for r in rs_learn.recent(80)]}
 
     def api_stack(self, repo, pr, user):
         stack = pr_stack(repo, pr)
@@ -2800,7 +2800,7 @@ class Handler(BaseHTTPRequestHandler):
             return {"authed": False, "brand": BRAND, "repo": SINGLE_REPO, "repos": REPOS,
                     "allowOrg": ALLOW_ORG, "dry_run": DRY_RUN,
                     "oauth": OAUTH_ENABLED, "oauth_blocked": oauth_blocked(),
-                    "public_url": PUBLIC_URL, "logo": prbot_assets.LOGO}
+                    "public_url": PUBLIC_URL, "logo": rs_assets.LOGO}
         u = load_users().get(user) or {}
         choice, skill_label = effective_skill(user)
         return {"authed": True, "login": user, "name": u.get("name") or user,
@@ -2812,30 +2812,30 @@ class Handler(BaseHTTPRequestHandler):
                 "login_via": "oauth" if u.get("gh_token_enc") else "pat",
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
                 "brand": BRAND, "oauth": OAUTH_ENABLED, "public_url": PUBLIC_URL,
-                "logo": prbot_assets.LOGO,
+                "logo": rs_assets.LOGO,
                 "webhooks_configured": bool(GITHUB_WEBHOOK_SECRET)}
 
     # -- devices (docs/MOBILE.md) -----------------------------------------------------------
     def api_devices(self, user):
         _, cur = bearer_lookup(self.headers)
         u = load_users().get(user) or {}
-        return {"devices": prbot_dev.list_devices(u, cur), "max": prbot_dev.MAX_DEVICES,
-                "ttl_days": prbot_dev.TTL_SECONDS // 86400}
+        return {"devices": rs_dev.list_devices(u, cur), "max": rs_dev.MAX_DEVICES,
+                "ttl_days": rs_dev.TTL_SECONDS // 86400}
 
     def api_device_token(self, user, body):
         """Mint a device token. Cookie session only — a bearer may not mint another bearer."""
-        name = prbot_dev.clean_name(body.get("name"))
+        name = rs_dev.clean_name(body.get("name"))
         out = {}
 
         def apply(users):
             u = users.get(user)
             if u is None:
                 return
-            tok, rec, evicted = prbot_dev.add_device(u, name)
+            tok, rec, evicted = rs_dev.add_device(u, name)
             out.update({"token": tok, "id": rec["id"], "created": rec["created"],
                         "name": rec["name"]})
             if evicted:
-                out["warning"] = (f"You had {prbot_dev.MAX_DEVICES} devices; the least recently "
+                out["warning"] = (f"You had {rs_dev.MAX_DEVICES} devices; the least recently "
                                   f"used ({', '.join(evicted)}) was signed out.")
         modify_users(apply)
         if not out:
@@ -2853,7 +2853,7 @@ class Handler(BaseHTTPRequestHandler):
         def apply(users):
             u = users.get(user)
             if u is not None:
-                n["n"] = prbot_dev.revoke(u, device_id=did, all_devices=everything)
+                n["n"] = rs_dev.revoke(u, device_id=did, all_devices=everything)
         modify_users(apply)
         print(f"device token(s) revoked: {user} ({n['n']})", flush=True)
         return {"ok": True, "revoked": n["n"]}, 200
@@ -3124,13 +3124,13 @@ class Handler(BaseHTTPRequestHandler):
         if not GITHUB_WEBHOOK_SECRET:
             return self.api_json({"error": "GITHUB_WEBHOOK_SECRET is not configured"}, 503)
         sig = self.headers.get("X-Hub-Signature-256", "")
-        if not prbot_webhook.verify_signature(GITHUB_WEBHOOK_SECRET, raw, sig):
+        if not rs_webhook.verify_signature(GITHUB_WEBHOOK_SECRET, raw, sig):
             print("[webhook] 401: bad or missing X-Hub-Signature-256", flush=True)
             return self.api_json({"error": "signature mismatch"}, 401)
         event = self.headers.get("X-GitHub-Event", "")
         delivery = self.headers.get("X-GitHub-Delivery", "")
         if event == "ping":
-            prbot_webhook.record(ROOT, ping=True)
+            rs_webhook.record(ROOT, ping=True)
             print(f"[webhook {delivery[:8]}] ping from GitHub", flush=True)
             return self.api_json({"ok": True, "pong": True}, 200)
         try:
@@ -3139,7 +3139,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"error": "body is not JSON"}, 400)
         if not isinstance(payload, dict):
             return self.api_json({"error": "body is not a JSON object"}, 400)
-        threading.Thread(target=prbot_webhook.process,
+        threading.Thread(target=rs_webhook.process,
                          args=(event, payload, webhook_ctx(), delivery), daemon=True).start()
         return self.api_json({"accepted": True, "event": event, "delivery": delivery}, 202)
 
@@ -3412,7 +3412,7 @@ class Handler(BaseHTTPRequestHandler):
         no connected account or a build is already running."""
         if not claude_connected(user):
             return False
-        d = prbot_profile.profile_dir(repo)
+        d = rs_profile.profile_dir(repo)
         d.mkdir(parents=True, exist_ok=True)
         if profile_running(repo):
             return False
@@ -3441,7 +3441,7 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/profile/auto":
             if err := verify("profile-auto", repo, exp, sig):
                 return self.api_json({"error": err}, 403)
-            admin = prbot_settings.resolve_admin(load_users(), REVIEWER, modify_users)
+            admin = rs_settings.resolve_admin(load_users(), REVIEWER, modify_users)
             if not (admin and claude_connected(admin)):
                 print(f"auto-profile skipped for {repo}: admin has no connected Claude account",
                       flush=True)
@@ -3556,7 +3556,7 @@ class Handler(BaseHTTPRequestHandler):
                            key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
         skill_f = upath(repo, pr, user, "skill")
         skill = skill_f.read_text().strip() if skill_f.exists() else "global"
-        prbot_learn.record(repo, pr, user, originals, form, skill=skill)
+        rs_learn.record(repo, pr, user, originals, form, skill=skill)
         if not chosen:
             return ("<div class='banner warn'><span>⚠️</span><div>"
                     "Nothing selected — nothing sent.</div></div>")
@@ -3573,10 +3573,10 @@ class Handler(BaseHTTPRequestHandler):
                 f"<a href='https://www.githubstatus.com' target=_blank rel=noopener>"
                 f"githubstatus.com</a> and retry.<br>"
                 f"<code>{html.escape(err)}</code></div></div>")
-        inline, orphans = prbot_diff.split_anchorable(chosen, prbot_diff.anchor_map(files))
+        inline, orphans = rs_diff.split_anchorable(chosen, rs_diff.anchor_map(files))
         # No bot signature: this posts under the reviewer's own account, so GitHub already
         # attributes it. A trailing "Reviewed by @x" only restates the byline.
-        body = (rev.get("summary") or "").strip() + prbot_diff.orphan_block(orphans)
+        body = (rev.get("summary") or "").strip() + rs_diff.orphan_block(orphans)
         # A COMMENT review with an empty body and no inline comments is a half-built post — refuse
         # it. (Can happen if the review has no summary and every selected finding failed to anchor.)
         if not body.strip() and not inline:

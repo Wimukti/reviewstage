@@ -26,7 +26,7 @@ export default defineConfig({
     command:
       "node --import tsx e2e/fixture.ts && pnpm build && " +
       `PATH="${FIXTURE}/fakebin:$PATH" ROOT="${FIXTURE}" PRBOT_SECRET="${SECRET}" ` +
-      `PRBOT_SPA=1 PRBOT_PORT=${PORT} python3 ../bin/prbot-server.py`,
+      `PRBOT_SPA=1 PRBOT_PORT=${PORT} python3 ../bin/server.py`,
     url: `${BASE}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

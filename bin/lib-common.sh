@@ -43,7 +43,7 @@ SEEN="$ROOT/seen"                 # notified review requests, keyed <repo>:<pr>:
 USED="$ROOT/used-nonces"          # burned approve links (single-use enforcement)
 
 # --- repo dimension --------------------------------------------------------------------------
-# Mirrors prbot_paths.py exactly — the two must agree on every path.
+# Mirrors rs_paths.py exactly — the two must agree on every path.
 # repos_list: one configured owner/name per line (REPOS ∪ REPO), de-duplicated, order kept.
 repos_list() {
   printf '%s %s' "$REPOS" "$REPO" | tr ',' ' ' | tr -s '[:space:]' '\n' | sed 's#^https://github.com/##; s#^/##; s#/$##' \

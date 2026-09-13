@@ -16,7 +16,7 @@ pnpm install --frozen-lockfile
 npx tsx e2e/fixture.ts                       # builds e2e/.fixture + a session cookie
 PATH="$PWD/e2e/.fixture/fakebin:$PATH" ROOT="$PWD/e2e/.fixture" \
   PRBOT_SECRET=e2e-fixed-test-secret-not-for-production PRBOT_SPA=1 PRBOT_PORT=8988 \
-  python3 ../bin/prbot-server.py &           # http://127.0.0.1:8988
+  python3 ../bin/server.py &           # http://127.0.0.1:8988
 pnpm dev                                     # esbuild --watch into ../bin/static
 ```
 
@@ -37,10 +37,10 @@ cd dashboard-ui && pnpm test && pnpm test:browser
 - `pnpm test:browser` — Playwright against the fixture server. Needs browsers once:
   `npx playwright install chromium`.
 - `python3 -m unittest discover -s bin -p 'test_*.py'` — every Python suite under `bin/`:
-  `test_prbot_webhook.py` (the GitHub webhook receiver and the shared queue module
-  `prbot_queue.py`, including a parity check against `pr-watch.sh`'s jq program so the poller
-  and the webhook keep writing identical `queue.json` rows), `test_prbot_auth.py` (device
-  tokens: hashing, sliding expiry, the per-user cap) and `test_prbot_profile.py` (repository
+  `test_rs_webhook.py` (the GitHub webhook receiver and the shared queue module
+  `rs_queue.py`, including a parity check against `pr-watch.sh`'s jq program so the poller
+  and the webhook keep writing identical `queue.json` rows), `test_rs_auth.py` (device
+  tokens: hashing, sliding expiry, the per-user cap) and `test_rs_profile.py` (repository
   profiles: glob validation, risk merging, prompt assembly, markdown round-trip).
 - `bash bin/test-webhook-e2e.sh` — boots the real server on a scratch `ROOT` and drives
   `POST /webhooks/github` with curl + openssl: 401 on a bad signature, 202 + queue row + `seen`

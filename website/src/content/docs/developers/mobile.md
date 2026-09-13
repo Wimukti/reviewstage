@@ -135,8 +135,8 @@ keep in the keychain behind biometrics. Hence **device tokens**.
    Revoking deletes the hash; the next call from that device gets `401` and the app returns to
    step 1.
 
-**Server changes** (implemented — `bin/prbot_devices.py`, `bearer_user()` and the `/api/devices*`
-handlers in `bin/prbot-server.py`; deviations from the original spec are listed after the list):
+**Server changes** (implemented — `bin/rs_devices.py`, `bearer_user()` and the `/api/devices*`
+handlers in `bin/server.py`; deviations from the original spec are listed after the list):
 
 - `bearer_user(headers) -> login | None` in the auth layer next to `session_user()`: read
   `Authorization: Bearer <tok>`, hash it, look up `users[login]["devices"][hash]`, refuse if
@@ -184,7 +184,7 @@ handlers in `bin/prbot-server.py`; deviations from the original spec are listed 
   {"authed": false}` there; every other `/api/*` route returns `401` as specified.
 - **`/api/me` reports `auth` (`cookie` | `bearer`) and `login_via` (`oauth` | `pat`)** so the
   Settings card can disable minting when the current session is itself a bearer.
-- **The nightly prune is one poller step** (`pr-watch.sh` → `python3 prbot_devices.py prune`),
+- **The nightly prune is one poller step** (`pr-watch.sh` → `python3 rs_devices.py prune`),
   guarded by a per-day stamp, and it rewrites `users.json` only when something actually expired,
   so the poller almost never writes the file the server owns.
 

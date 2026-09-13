@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Unit tests for the device-token layer (bin/prbot_devices.py): bearer parsing, hashing and
+"""Unit tests for the device-token layer (bin/rs_devices.py): bearer parsing, hashing and
 lookup, sliding expiry, the per-user cap with oldest-first eviction, revoke and prune.
-Run: python3 -m unittest bin/test_prbot_auth.py"""
+Run: python3 -m unittest bin/test_rs_auth.py"""
 import json
 import os
 import sys
@@ -10,7 +10,7 @@ import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import prbot_devices as dev  # noqa: E402
+import rs_devices as dev  # noqa: E402
 
 NOW = 1_800_000_000
 

@@ -1,4 +1,4 @@
-"""prbot_profile.py — the repository profile: what a repo's critical paths are, and how a review
+"""rs_profile.py — the repository profile: what a repo's critical paths are, and how a review
 should walk them.
 
 A profile is built once per repository by bin/profile-repo.sh (deterministic signals gathered
@@ -21,8 +21,8 @@ Schema (profile.json):
      "do_not_flag":    [str],
      "meta": {"generated_at", "model", "usage", "dropped_globs", "edited_at", "edited_by"}}
 
-Imported by prbot-server.py, prbot_rollup.py; profile-repo.sh and run-review.sh call it as
-`python3 prbot_profile.py <command>` (see main at the bottom). No third-party imports.
+Imported by server.py, rs_rollup.py; profile-repo.sh and run-review.sh call it as
+`python3 rs_profile.py <command>` (see main at the bottom). No third-party imports.
 """
 import fnmatch
 import json
@@ -34,7 +34,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
-import prbot_paths as P
+import rs_paths as P
 
 ROOT = Path(os.environ.get("ROOT", Path.home() / ".claude-pr-bot"))
 PROFILES = ROOT / "profiles"
@@ -657,7 +657,7 @@ def _main(argv):
         sys.stdout.write(render_block(load_profile(argv[2]), paths,
                                       argv[3] if len(argv) > 3 else "standard"))
         return 0
-    print("usage: prbot_profile.py signals|prompt|finish|risk|block ...", file=sys.stderr)
+    print("usage: rs_profile.py signals|prompt|finish|risk|block ...", file=sys.stderr)
     return 64
 
 

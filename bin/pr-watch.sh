@@ -27,7 +27,7 @@ if [ "$(setting poller_enabled true)" = false ]; then
   echo "==> poller disabled in Settings (poller_enabled=false) — nothing to do"; exit 0
 fi
 
-# GitHub webhooks (POST /webhooks/github, see prbot_webhook.py) deliver the same facts within a
+# GitHub webhooks (POST /webhooks/github, see rs_webhook.py) deliver the same facts within a
 # second and stamp $ROOT/webhooks.json. When one arrived within 2 × the poll interval this run
 # is only the safety net for missed deliveries — say so, then carry on exactly as before.
 WEBHOOKS_FILE="$ROOT/webhooks.json"
@@ -53,7 +53,7 @@ USERS_FILE="$ROOT/users.json"
 # Nightly: drop device tokens idle for 180 days (docs/MOBILE.md). Once per calendar day; the
 # prune rewrites users.json only when something actually expired.
 if [ -f "$USERS_FILE" ] && [ "$(cat "$ROOT/devices-pruned" 2>/dev/null)" != "$(date +%F)" ]; then
-  python3 "$HERE/prbot_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
+  python3 "$HERE/rs_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
 fi
 
 logins=$(jq -r 'keys[]' "$USERS_FILE" 2>/dev/null)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-webhook-e2e.sh — end-to-end check of POST /webhooks/github against a real server.
 #
-# Boots prbot-server.py on a scratch ROOT with a webhook secret and one signed-in user, then
+# Boots server.py on a scratch ROOT with a webhook secret and one signed-in user, then
 # uses curl + openssl (exactly what GitHub does, minus GitHub) to assert:
 #   1. a bad signature → 401, a missing secret header → 401
 #   2. ping → 200 and webhooks.json.last_ping is stamped
@@ -57,7 +57,7 @@ echo '{"at": 1, "note": "e2e"}' > "$ROOT/MIGRATED"
 echo '[]' > "$ROOT/queue.json"
 
 env PATH="$ROOT/fakebin:$PATH" ROOT="$ROOT" PRBOT_PORT="$PORT" PRBOT_SPA=1 PRBOT_COOKIE_SECURE=0 \
-  python3 "$HERE/prbot-server.py" > "$ROOT/server.log" 2>&1 &
+  python3 "$HERE/server.py" > "$ROOT/server.log" 2>&1 &
 SERVER_PID=$!
 for _ in $(seq 1 50); do curl -fs "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -fs "$BASE/health" >/dev/null || { echo "server did not start:"; cat "$ROOT/server.log"; exit 1; }

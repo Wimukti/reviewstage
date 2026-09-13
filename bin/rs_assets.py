@@ -1,4 +1,4 @@
-"""prbot_assets.py — inlined brand assets (base64 PNG data URIs), imported by the server.
+"""rs_assets.py — inlined brand assets (base64 PNG data URIs), imported by the server.
 
 The robot + code-bubble mark, black background keyed to transparent so it sits on the dark
 UI. LOGO is the header/sidebar mark (96px for retina); FAVICON is the browser-tab icon.

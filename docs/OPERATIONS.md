@@ -16,7 +16,7 @@ curl -s localhost:8899/health                 # -> ok
 
 ## The endpoint caches `.env`
 
-`prbot-server.py` reads `~/.claude-pr-bot/.env` **once, at startup**. After editing any
+`server.py` reads `~/.claude-pr-bot/.env` **once, at startup**. After editing any
 secret — or flipping `DRY_RUN` — restart it or the change silently does nothing:
 
 ```bash

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-qa.sh <owner/name> <pr-number> — build a QA test guide for one PR with the pr-qa-guide skill.
 #
-# Spawned detached by prbot-server.py from the QA guide page. Writes progress to
+# Spawned detached by server.py from the QA guide page. Writes progress to
 # $(prdir <repo> <pr>)/qa.status and the finished guide (GitHub-flavored markdown) to qa.md there.
 # Never writes to GitHub — it only reads the PR (diff, review threads, history) and produces a
 # guide the human hands to QA, then pings the requester (notify_card qa_ready).

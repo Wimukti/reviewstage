@@ -60,7 +60,7 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
   and get dumped into the summary body. The fetch validates the response shape, retries once,
   and refuses on anything odd.
 
-- **Diff-anchor validation** (`prbot_diff.py`) checks every comment's `path:line` against the
+- **Diff-anchor validation** (`rs_diff.py`) checks every comment's `path:line` against the
   actual diff before posting, so GitHub cannot 422 the entire review because one finding
   pointed at a line that isn't in the diff.
 

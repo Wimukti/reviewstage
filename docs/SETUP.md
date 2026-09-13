@@ -297,7 +297,7 @@ Per-person data is not in `.env`. It lives in `~/.claude-pr-bot/users.json` (chm
 AES-256 encrypted with a key derived from `PRBOT_SECRET`. To remove someone, delete their
 key from that file — their session dies on the next request.
 
-> **Gotcha:** `prbot-server.py` reads `.env` **once, at startup**. After editing any value —
+> **Gotcha:** `server.py` reads `.env` **once, at startup**. After editing any value —
 > especially `DRY_RUN` — run `sudo systemctl restart prbot` or the change silently does
 > nothing. `pr-watch.sh` and `run-review.sh` re-source it every run, so only the dashboard
 > needs this. Re-running `bootstrap.sh` restarts it for you.

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # profile-repo.sh <owner/name> [--signals-only] — build the repository profile one review reads.
 #
-# Spawned detached by prbot-server.py from the Skills page ("Profile this repo"), or by
+# Spawned detached by server.py from the Skills page ("Profile this repo"), or by
 # pr-watch.sh when auto-profiling notices the file tree changed. Writes progress to
 # $ROOT/profiles/<owner>__<name>/status; the finished profile lands next to it as profile.json +
-# profile.md (see prbot_profile.py for the schema and the on-disk layout).
+# profile.md (see rs_profile.py for the schema and the on-disk layout).
 #
 # Two stages. First, DETERMINISTIC signals with no model call: tree, languages, manifests,
 # CODEOWNERS, CI config names, top files by churn and by in-degree, critical-looking directories.
@@ -37,7 +37,7 @@ status() {
   if [ "$SIGNALS_ONLY" = 1 ]; then echo "[profile $REPO] $1" >&2; else echo "[profile $REPO] $1"; fi
 }
 fail() { status "failed: $1"; exit 1; }
-py() { PYTHONPATH="$HERE" ROOT="$ROOT" python3 "$HERE/prbot_profile.py" "$@"; }
+py() { PYTHONPATH="$HERE" ROOT="$ROOT" python3 "$HERE/rs_profile.py" "$@"; }
 
 if [ "$SIGNALS_ONLY" = 0 ]; then
   have_free_mem || fail "not enough free memory to start"

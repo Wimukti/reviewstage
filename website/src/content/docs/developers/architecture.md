@@ -12,19 +12,19 @@ Read this before changing anything. Most of the layout decisions look arbitrary 
 | Piece | Runs as | Does |
 | --- | --- | --- |
 | `bin/pr-watch.sh` | poller, every 3 min | Finds PRs awaiting any signed-in user's review → `queue.json` + a notification card. Never runs a review. |
-| `bin/prbot-server.py` | the dashboard service, `127.0.0.1:8899` | Serves the React SPA shell and a JSON API: sessions, queue, PR pages, runs, posting, approving, skills, learnings, insights, QA. |
+| `bin/server.py` | the dashboard service, `127.0.0.1:8899` | Serves the React SPA shell and a JSON API: sessions, queue, PR pages, runs, posting, approving, skills, learnings, insights, QA. |
 | `bin/run-review.sh` | spawned per click, detached | Worktree → `claude -p` with the chosen skill + output contract → `review.json`. **Never writes to GitHub.** |
 | `bin/run-qa.sh` | spawned per click | Same shape, runs the QA-guide skill → `qa.md`. |
 | `bin/profile-repo.sh` | spawned per click, or by the poller | Deterministic signals → one Sonnet call with `skills/repo-profile` → validated `profiles/<slug>/profile.json` + `profile.md`. |
-| `bin/prbot_profile.py` | imported + CLI | The profile: signals gathering, prompt, validation against the tree, risk-rule merge, the critical-path prompt block, markdown round-trip, versioning. |
-| `bin/prbot_diff.py` | imported | Diff-anchor validation so GitHub cannot 422 a whole review. |
-| `bin/prbot_learn.py` | imported | Learnings loop: scores kept/edited/dropped, renders recent decisions into the next prompt, scores skills. |
-| `bin/prbot_agree.py` | imported | Matches findings across independent runs; independence-weighted agreement. |
-| `bin/prbot_rollup.py` | imported | Insights aggregation. |
-| `bin/prbot_md.py` | imported | Dependency-free markdown → HTML. |
-| `bin/prbot_queue.py` | imported | The queue + dedup logic the poller and the webhook share: `queue.json` upsert / stale / done, `seen` keys, the `review_requested` payload and signed links (byte-identical to `lib-common.sh`). |
-| `bin/prbot_webhook.py` | imported | `POST /webhooks/github`: `X-Hub-Signature-256` verification, the event → queue mapping, `webhooks.json`. Notify-only, like the poller. |
-| `bin/prbot_paths.py` | imported | The repository dimension: slugs, `base_dir` / `prdir` / `udir`, `iter_prdirs`, and the one-time legacy migration. |
+| `bin/rs_profile.py` | imported + CLI | The profile: signals gathering, prompt, validation against the tree, risk-rule merge, the critical-path prompt block, markdown round-trip, versioning. |
+| `bin/rs_diff.py` | imported | Diff-anchor validation so GitHub cannot 422 a whole review. |
+| `bin/rs_learn.py` | imported | Learnings loop: scores kept/edited/dropped, renders recent decisions into the next prompt, scores skills. |
+| `bin/rs_agree.py` | imported | Matches findings across independent runs; independence-weighted agreement. |
+| `bin/rs_rollup.py` | imported | Insights aggregation. |
+| `bin/rs_md.py` | imported | Dependency-free markdown → HTML. |
+| `bin/rs_queue.py` | imported | The queue + dedup logic the poller and the webhook share: `queue.json` upsert / stale / done, `seen` keys, the `review_requested` payload and signed links (byte-identical to `lib-common.sh`). |
+| `bin/rs_webhook.py` | imported | `POST /webhooks/github`: `X-Hub-Signature-256` verification, the event → queue mapping, `webhooks.json`. Notify-only, like the poller. |
+| `bin/rs_paths.py` | imported | The repository dimension: slugs, `base_dir` / `prdir` / `udir`, `iter_prdirs`, and the one-time legacy migration. |
 | `bin/lib-common.sh` | sourced | Config (`REPOS`, `REPO_ALLOW_ORG`), the bash twins of the path helpers, HMAC link signing, Slack posting (webhook or bot token). |
 | `dashboard-ui/` | built once | React 19 + TypeScript SPA: queue, PR page, stack page, QA, skills, learnings, insights, integrations, tour, command palette. |
 | `skills/pr-review/` · `skills/pr-qa-guide/` | installed | The built-in review and QA-guide procedures, as Claude Code skills. |
@@ -34,7 +34,7 @@ The backend is Python's standard library plus bash, `gh`, `jq`, `git`, `openssl`
 ## Request flow
 
 ```
-browser ──HTTPS──▶ reverse proxy ──▶ prbot-server.py (127.0.0.1:8899)
+browser ──HTTPS──▶ reverse proxy ──▶ server.py (127.0.0.1:8899)
                                         ├─ GET  /            SPA shell (React Router handles the rest)
                                         ├─ GET  /api/*       me · queue · pr?repo=&pr= · qa · skills · learnings · rollup?repo= · stack
                                         ├─ POST /api/review  start_review → spawn run-review.sh (session leader)
@@ -42,7 +42,7 @@ browser ──HTTPS──▶ reverse proxy ──▶ prbot-server.py (127.0.0.1:
                                         ├─ POST /api/approve LGTM comment → APPROVE, as the clicker
                                         ├─ POST /api/stop · /api/explain · /api/markdone · /api/archive · /api/skill/* · /api/claude/*
                                         ├─ GET  /oauth/start · /oauth/callback · /health
-                                        └─ POST /webhooks/github   GitHub → HMAC check → 202 → thread: prbot_webhook.handle
+                                        └─ POST /webhooks/github   GitHub → HMAC check → 202 → thread: rs_webhook.handle
 GitHub ──HTTPS──▶ (same proxy; this path must be reachable by GitHub) ──▶ /webhooks/github
 ```
 
@@ -73,7 +73,7 @@ ROOT/state/<owner>__<name>/<pr>/users/<login>/   one reviewer's run and markers
 ROOT/skills/repos/<owner>__<name>/SKILL.md  optional per-repo team default
 ```
 
-`prbot_paths.py` (`repo_slug`, `slug_repo`, `base_dir`, `prdir`, `udir`, `iter_prdirs`, `repos_with_pr`) and the same-named bash functions in `lib-common.sh` are the only code that builds these paths.
+`rs_paths.py` (`repo_slug`, `slug_repo`, `base_dir`, `prdir`, `udir`, `iter_prdirs`, `repos_with_pr`) and the same-named bash functions in `lib-common.sh` are the only code that builds these paths.
 
 **Migration.** Installs from before this layout kept the clone at `ROOT/repo` and state at `ROOT/state/<pr>`. On start, `migrate_legacy()` moves both into the new layout once — when exactly one repository is configured — stamps `repo` onto `queue.json` rows, `seen` lines and `learnings.jsonl` rows, logs each step and writes `ROOT/MIGRATED`. Nothing is ever deleted; if a destination already exists the contents are merged file by file without overwriting. With several repositories configured and legacy state present the server refuses to start and prints the env to set, because the state cannot be attributed safely.
 
@@ -95,17 +95,17 @@ ROOT/skills/repos/<owner>__<name>/SKILL.md  optional per-repo team default
 
 ## Subsystems
 
-- **Learnings** (`prbot_learn.py`): on post, each original finding is scored dropped/edited/kept and appended to `learnings.jsonl` as a short gist tagged with its repository. `render(repo)` folds recent dropped/edited rows into the next prompt, same-repository rows first and the team's general preferences after. Attributed per user.
+- **Learnings** (`rs_learn.py`): on post, each original finding is scored dropped/edited/kept and appended to `learnings.jsonl` as a short gist tagged with its repository. `render(repo)` folds recent dropped/edited rows into the next prompt, same-repository rows first and the team's general preferences after. Attributed per user.
 - **Skills**: the team default is a file in a small git repo on the server; every save is a commit with the editor's login, and the page shows the log. `save_skill` refuses a blank; `restore_global_skill` needs a typed confirm. Quick-add tidies a plain-English rule into a managed `## Team rules` section kept last so appends are trivial. Each run records its skill id; learnings rows carry it; keep rate is per skill.
-- **Agreement** (`prbot_agree.py`): findings from independent runs on the same head are matched; a finding is confirmed when raised by runs that differ in skill, model or effort.
+- **Agreement** (`rs_agree.py`): findings from independent runs on the same head are matched; a finding is confirmed when raised by runs that differ in skill, model or effort.
 - **Explain simply**: a one-turn Haiku call on the clicker's account, cached per finding content.
 - **Stacked PRs**: walks the chain of open PRs whose base is the previous head, on demand.
 - **Staleness**: the reviewed head SHA is recorded; the page flags a mismatch without re-running. A `synchronize` webhook refreshes the queue row's head immediately; the poller does the same on its next pass.
-- **Webhooks vs polling** (`prbot_webhook.py`, `prbot_queue.py`): both feed `queue.json` and `seen` through one module and dedup on `<repo>:<pr>:<login>`, so a request that arrives twice (webhook, then poll) yields one card. The receiver replies `202` and works on a thread; `webhooks.json` records the last event, and `pr-watch.sh` logs that it is only the safety net when an event landed within two intervals. A unit test feeds `pr-watch.sh`'s own jq program a `gh`-shaped row and asserts the two writers produce identical rows.
+- **Webhooks vs polling** (`rs_webhook.py`, `rs_queue.py`): both feed `queue.json` and `seen` through one module and dedup on `<repo>:<pr>:<login>`, so a request that arrives twice (webhook, then poll) yields one card. The receiver replies `202` and works on a thread; `webhooks.json` records the last event, and `pr-watch.sh` logs that it is only the safety net when an event landed within two intervals. A unit test feeds `pr-watch.sh`'s own jq program a `gh`-shaped row and asserts the two writers produce identical rows.
 - **Suggestion blocks**: a finding's `suggestion` is appended to the body as a ```` ```suggestion ```` block on post.
 - **Stop**: the run's pid is recorded; `POST /api/stop` kills the process group and writes `stopped`.
 - **Handoff**: a short signed token lets a session move between alias hostnames of the same server without re-login. Only the server's own hosts are accepted.
-- **Repository profile** (`prbot_profile.py`, `profile-repo.sh`): one profile per repository under `$ROOT/profiles/<slug>/`. `run-review.sh` merges its `risk_paths` into the banner rules and, for Standard and Deep runs, appends a "Critical paths for this repository" section listing only the paths the PR touches (cap 12, `why` cut to 200 chars) with their checks, the repo's rules and do-not-flag list; findings may carry `critical_path`, which the card badges and learnings keep so Insights can report the kept rate on critical paths. The profile hash is part of the re-run cache key. `GET/PUT /api/profile`, `POST /api/profile/run|stop` (signed `profile` token, connected Claude required); `POST /api/profile/auto` is called by `pr-watch.sh` with a server-secret HMAC when `auto_profile` is on and the tree changed materially, and runs as the admin on the admin's account. See [Repository profile](/reviewstage/guides/repo-profile/).
+- **Repository profile** (`rs_profile.py`, `profile-repo.sh`): one profile per repository under `$ROOT/profiles/<slug>/`. `run-review.sh` merges its `risk_paths` into the banner rules and, for Standard and Deep runs, appends a "Critical paths for this repository" section listing only the paths the PR touches (cap 12, `why` cut to 200 chars) with their checks, the repo's rules and do-not-flag list; findings may carry `critical_path`, which the card badges and learnings keep so Insights can report the kept rate on critical paths. The profile hash is part of the re-run cache key. `GET/PUT /api/profile`, `POST /api/profile/run|stop` (signed `profile` token, connected Claude required); `POST /api/profile/auto` is called by `pr-watch.sh` with a server-secret HMAC when `auto_profile` is on and the tree changed materially, and runs as the admin on the admin's account. See [Repository profile](/reviewstage/guides/repo-profile/).
 
 ## Repository layout
 

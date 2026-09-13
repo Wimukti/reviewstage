@@ -159,7 +159,7 @@ real agent run (10–15 minutes on a 25-file PR) against that person's usage lim
 | In the container                         | What                                               |
 | ---------------------------------------- | -------------------------------------------------- |
 | `/home/reviewstage/.claude-pr-bot`       | **The data volume** (`reviewstage-data`): `.env`, `users.json`, `state/<owner>__<name>/<pr>/…`, `queue.json`, `skills/` (with `skills/repos/<owner>__<name>/SKILL.md` per-repo overrides), the base clones `repos/<owner>__<name>/`, worktrees `wt/`, and a `MIGRATED` marker once a legacy single-repo layout has been moved |
-| `/app/bin`                               | the server and scripts (`prbot-server.py`, `run-review.sh`, `pr-watch.sh`, `doctor.sh`) |
+| `/app/bin`                               | the server and scripts (`server.py`, `run-review.sh`, `pr-watch.sh`, `doctor.sh`) |
 | `/app/bin/static`                        | the dashboard bundle built in the image's first stage |
 | `/app/skills`                            | the review skills shipped with the repo            |
 

@@ -117,14 +117,14 @@ echo "==> scripts"
 # and proxy steps ever executed — silently skipping the parts you were re-running it for.
 if [ "$SRC" != "$BIN" ]; then
   install -m 0755 "$SRC"/{pr-watch.sh,run-review.sh,run-qa.sh,bootstrap.sh} "$BIN/"
-  install -m 0755 "$SRC/prbot-server.py" "$BIN/"
-  install -m 0644 "$SRC"/prbot_diff.py "$BIN/"   # imported by the server, must sit beside it
-  install -m 0644 "$SRC"/prbot_md.py "$BIN/"
-  install -m 0644 "$SRC"/prbot_assets.py "$BIN/"   # inlined brand logo + favicon
-  install -m 0644 "$SRC"/prbot_learn.py "$BIN/"    # learnings loop (imported + run by shell)
-  install -m 0644 "$SRC"/prbot_agree.py "$BIN/"    # convergence scoring, imported by the server
-  install -m 0644 "$SRC"/prbot_rollup.py "$BIN/"   # insights rollup, imported by the server
-  install -m 0644 "$SRC"/prbot_howimg.py "$BIN/"   # how-it-works step mockups
+  install -m 0755 "$SRC/server.py" "$BIN/"
+  install -m 0644 "$SRC"/rs_diff.py "$BIN/"   # imported by the server, must sit beside it
+  install -m 0644 "$SRC"/rs_md.py "$BIN/"
+  install -m 0644 "$SRC"/rs_assets.py "$BIN/"   # inlined brand logo + favicon
+  install -m 0644 "$SRC"/rs_learn.py "$BIN/"    # learnings loop (imported + run by shell)
+  install -m 0644 "$SRC"/rs_agree.py "$BIN/"    # convergence scoring, imported by the server
+  install -m 0644 "$SRC"/rs_rollup.py "$BIN/"   # insights rollup, imported by the server
+  install -m 0644 "$SRC"/rs_howimg.py "$BIN/"   # how-it-works step mockups
   install -m 0644 "$SRC/lib-common.sh" "$BIN/"
 else
   echo "   (running from $BIN — nothing to copy)"
@@ -205,7 +205,7 @@ Environment=PRBOT_PORT=$PORT
 # installer puts in ~/.local/bin — not on systemd's default PATH. Without this the agent
 # step fails as "command not found" and surfaces only as an empty review.json.
 Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/python3 $BIN/prbot-server.py
+ExecStart=/usr/bin/python3 $BIN/server.py
 # Only kill the server itself on stop. The default (control-group) reaps every process in
 # the cgroup — including the detached run-review.sh a click spawned — so redeploying while a
 # review was running silently killed it and left the PR stuck reading "reviewing".

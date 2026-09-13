@@ -9,14 +9,14 @@ review queue on a small server.
 | File              | Runs as                   | Does                                                            |
 | ----------------- | ------------------------- | --------------------------------------------------------------- |
 | `pr-watch.sh`     | cron, every 3 min         | Finds PRs awaiting your review → `queue.json` + Slack card      |
-| `prbot-server.py` | systemd, `127.0.0.1:8899` | The dashboard: renders reviews, posts, approves                 |
+| `server.py` | systemd, `127.0.0.1:8899` | The dashboard: renders reviews, posts, approves                 |
 | `run-review.sh`   | spawned per click         | Worktree → `claude -p` → `review.json`. Never writes to GitHub  |
-| `prbot_diff.py`   | imported                  | Diff-anchor validation, so GitHub can't 422 the whole review    |
-| `prbot_md.py`     | imported                  | Dependency-free markdown → HTML (headings, tables, code, lists) |
+| `rs_diff.py`   | imported                  | Diff-anchor validation, so GitHub can't 422 the whole review    |
+| `rs_md.py`     | imported                  | Dependency-free markdown → HTML (headings, tables, code, lists) |
 | `lib-common.sh`   | sourced                   | Config, repo helpers, HMAC signing, Slack posting               |
-| `prbot_paths.py`  | imported                  | The one place that knows the on-disk layout + the legacy migration |
-| `prbot_queue.py`  | imported                  | queue.json / seen writers shared by pr-watch.sh and the webhook |
-| `prbot_webhook.py`| imported                  | `POST /webhooks/github`: HMAC check, event → queue, webhooks.json |
+| `rs_paths.py`  | imported                  | The one place that knows the on-disk layout + the legacy migration |
+| `rs_queue.py`  | imported                  | queue.json / seen writers shared by pr-watch.sh and the webhook |
+| `rs_webhook.py`| imported                  | `POST /webhooks/github`: HMAC check, event → queue, webhooks.json |
 | `dashboard-ui/`   | built by bootstrap        | React + TypeScript SPA, bundled by esbuild into `bin/static/`   |
 | `bootstrap.sh`    | you, once                 | Installs all of the above                                       |
 
@@ -99,7 +99,7 @@ the slug `<owner>__<name>` (owners cannot contain `_`, so the first `__` is the 
 | `state/<owner>__<name>/<pr>/`          | per-PR state (below)                            |
 | `skills/repos/<owner>__<name>/SKILL.md`| optional per-repo override of the team default  |
 
-`prbot_paths.py` (`repo_slug`, `base_dir`, `prdir`, `udir`, `iter_prdirs`) and the matching bash
+`rs_paths.py` (`repo_slug`, `base_dir`, `prdir`, `udir`, `iter_prdirs`) and the matching bash
 helpers in `lib-common.sh` are the only places that build these paths. Legacy installs kept the
 clone at `repo/` and state at `state/<pr>`; `migrate_legacy()` moves both into the new layout the
 first time the server starts with exactly one repo configured, stamps `repo` onto `queue.json`,
@@ -153,7 +153,7 @@ The worktree is removed as soon as `review.json` is copied out.
 
 ## Subsystems added since the first cut
 
-- **Learnings** (`prbot_learn.py`): on post, each original finding is scored dropped / edited /
+- **Learnings** (`rs_learn.py`): on post, each original finding is scored dropped / edited /
   kept and appended to `learnings.jsonl` (short gists, capped, tagged with the repo).
   `render(repo)` folds recent dropped/edited rows — same-repo first, then the rest — into the
   next review prompt so the agent stops re-raising rejected noise; the `/learnings` page shows
@@ -200,12 +200,12 @@ The worktree is removed as soon as `review.json` is copied out.
 - **Slack threading**: with `SLACK_BOT_TOKEN` + `SLACK_CHANNEL`, `slack_post` (in `bin/notify.sh`, behind `notify_card`) uses
   `chat.postMessage`, stores the request card's ts, and threads the review-ready reply under it;
   otherwise it falls back to the send-only webhook.
-- **Per-run cache, agreement and insights** (`prbot_agree.py`, `prbot_rollup.py`): a reviewer's
+- **Per-run cache, agreement and insights** (`rs_agree.py`, `rs_rollup.py`): a reviewer's
   identical re-run on the same commit is served from a content-addressed cache; independent
   runs on the same SHA are clustered so the dashboard can show where reviewers agree; the
   Insights page aggregates activity, keep-rate and agreement from the files already on disk.
   See `docs/specs/multi-reviewer-trust-plan-v2.md`.
-- **Repository profile** (`prbot_profile.py`, `profile-repo.sh`): a per-repo
+- **Repository profile** (`rs_profile.py`, `profile-repo.sh`): a per-repo
   `profiles/<slug>/profile.json` naming the critical paths, risk paths, review rules and
   do-not-flag list, built from deterministic git signals plus one Sonnet call and validated
   against the tree (hallucinated globs dropped and logged). `run-review.sh` merges the risk paths

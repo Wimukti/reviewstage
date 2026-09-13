@@ -1,4 +1,4 @@
-"""prbot_howimg.py — inlined how-it-works step images (base64 JPEG), imported by the
+"""rs_howimg.py — inlined how-it-works step images (base64 JPEG), imported by the
 server for the /how page. Real screenshots of the dashboard + the Slack card. Regenerate
 from the running dashboard when the UI changes."""
 

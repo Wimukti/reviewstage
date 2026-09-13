@@ -18,7 +18,7 @@ import time
 from hashlib import sha256
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))   # prbot_profile lives beside us
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # rs_profile lives beside us
 
 USER = "demo-reviewer"
 REPO = "reviewstage/demo-repo"          # the web app
@@ -134,7 +134,7 @@ def main():
 
     # A repository profile for REPO, so the Skills page shows the "Repository profile" section
     # as profiled (REPO2 stays "never run"). Mirrors dashboard-ui/e2e/fixture.ts.
-    import prbot_profile
+    import rs_profile
     prof = {
         "summary": "A storefront: product cards read vendor lead times; payments and auth are "
                    "the sharp edges.",
@@ -156,7 +156,7 @@ def main():
                  "edited_at": None, "edited_by": ""}}
     pdir = root / "profiles" / slug(REPO)
     write(pdir / "profile.json", json.dumps(prof, indent=1) + "\n")
-    write(pdir / "profile.md", prbot_profile.to_markdown(prof))
+    write(pdir / "profile.md", rs_profile.to_markdown(prof))
     write(pdir / "status", "done")
     write(pdir / "runner", USER)
     write(pdir / "usage.json", json.dumps({

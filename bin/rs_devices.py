@@ -7,7 +7,7 @@ Only the SHA-256 of a token is ever stored:
     users[login]["devices"] = {sha256_hex: {"id", "name", "created", "last_seen"}}
 
 This module is pure (dict in, dict out) so the server, the poller's nightly prune and the unit
-tests share one implementation. `python3 prbot_devices.py prune <users.json>` is the CLI the
+tests share one implementation. `python3 rs_devices.py prune <users.json>` is the CLI the
 poller calls.
 """
 import base64
@@ -172,5 +172,5 @@ def _cli_prune(path):
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "prune":
         raise SystemExit(_cli_prune(sys.argv[2]))
-    print("usage: prbot_devices.py prune <users.json>", file=sys.stderr)
+    print("usage: rs_devices.py prune <users.json>", file=sys.stderr)
     raise SystemExit(2)

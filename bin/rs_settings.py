@@ -1,4 +1,4 @@
-"""Runtime settings ($ROOT/settings.json) and the notifier bridge for prbot-server.py.
+"""Runtime settings ($ROOT/settings.json) and the notifier bridge for server.py.
 
 Operators change these from the dashboard's Settings page, without editing .env or restarting
 anything. Precedence everywhere (server, poller, pr-watch): settings.json > .env > default. Only

@@ -160,7 +160,7 @@ case "$MODE" in
     ensure_base_clones
     cookie_flag
     log "ReviewStage dashboard on ${PRBOT_BIND:-127.0.0.1}:${PRBOT_PORT:-8899}  (ROOT=$ROOT)"
-    exec python3 "$BIN/prbot-server.py"
+    exec python3 "$BIN/server.py"
     ;;
   poller)
     ( flock 9; write_env; seed_root ) 9>"$ROOT/.env.lock" 2>/dev/null || { write_env; seed_root; }
@@ -174,7 +174,7 @@ case "$MODE" in
     python3 "$BIN/demo-fixture.py" "$ROOT" "${PRBOT_PORT:-8899}"
     install_skills
     export PATH="$ROOT/fakebin:$PATH" PRBOT_COOKIE_SECURE=0
-    exec python3 "$BIN/prbot-server.py"
+    exec python3 "$BIN/server.py"
     ;;
   *)
     exec "$MODE" "$@"

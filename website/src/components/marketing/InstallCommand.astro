@@ -18,7 +18,7 @@ const cmd = "git clone https://github.com/Wimukti/reviewstage && cd reviewstage 
 <style>
   .install { display: flex; align-items: center; gap: 0.6rem; max-width: 100%; padding: 0.55rem 0.6rem 0.55rem 0.9rem; border: 1px solid var(--hairline); border-radius: var(--radius-device); background: var(--background); box-shadow: var(--shadow-soft); font-family: var(--font-mono); font-size: 0.82rem; }
   .prompt { color: var(--primary); font-weight: 600; }
-  code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; color: var(--foreground); scrollbar-width: none; }
+  code { flex: 1; min-width: 0; contain: inline-size; overflow-x: auto; white-space: nowrap; color: var(--foreground); scrollbar-width: none; }
   .copy { flex: none; display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--hairline); border-radius: 999px; background: color-mix(in oklab, var(--card) 88%, transparent); color: var(--muted-foreground); cursor: pointer; }
   .copy:hover { color: var(--primary); }
   .copy[data-done] { color: var(--success); border-color: var(--success); }

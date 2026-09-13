@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type StackData } from "./api";
+import { prLabel, prUrl } from "./pr";
 import { Link, useLocation } from "./router";
 
 function Pill({ kind }: { kind: string }) {
@@ -9,11 +10,14 @@ function Pill({ kind }: { kind: string }) {
 export function StackPage() {
   const { search } = useLocation();
   const pr = search.get("pr") || "";
+  const repo = search.get("repo") || "";
+  const ref = { repo, num: pr };
   const [d, setD] = useState<StackData | null>(null);
   const [effort, setEffort] = useState("standard");
   const [started, setStarted] = useState<number | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const load = useCallback(() => (pr ? api.stack(pr).then(setD) : Promise.resolve()), [pr]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(() => (pr ? api.stack(ref).then(setD) : Promise.resolve()), [pr, repo]);
   useEffect(() => {
     load();
   }, [load]);
@@ -33,11 +37,17 @@ export function StackPage() {
       <nav className="bc">
         <Link to="/">Queue</Link>
         <span className="sep">/</span>
-        <Link to={`/pr?pr=${pr}`}>#{pr}</Link>
+        {(d?.repo || repo) && (
+          <>
+            <Link to="/">{d?.repo || repo}</Link>
+            <span className="sep">/</span>
+          </>
+        )}
+        <Link to={prUrl({ repo: d?.repo || repo, num: pr })}>#{pr}</Link>
         <span className="sep">/</span>
         <span className="cur">stack</span>
       </nav>
-      <h1 className="prtitle">Stacked review</h1>
+      <h1 className="prtitle">Stacked review · {prLabel({ repo: d?.repo || repo, num: pr })}</h1>
     </>
   );
 
@@ -51,7 +61,7 @@ export function StackPage() {
           <h4 style={{ marginTop: 0 }}>Not a stack</h4>
           <p className="muted sm">
             This PR isn't stacked on another open PR — its base branch isn't another open PR's
-            branch. <Link to={`/pr?pr=${pr}`}>Back to the review</Link>.
+            branch. <Link to={prUrl({ repo: d.repo, num: pr })}>Back to the review</Link>.
           </p>
         </div>
       </>
@@ -72,7 +82,7 @@ export function StackPage() {
 
   async function runSelected() {
     if (!d || sel.size === 0) return;
-    const r = await api.stackRun(pr, d.runToken, effort, [...sel]);
+    const r = await api.stackRun({ repo: d.repo, num: pr }, d.runToken, effort, [...sel]);
     setStarted(r.started);
     load();
   }
@@ -96,7 +106,7 @@ export function StackPage() {
                 onChange={() => toggle(it.num)}
                 aria-label={`Select #${it.num}`}
               />
-              <Link className="rowlink" to={`/pr?pr=${it.num}`}>
+              <Link className="rowlink" to={prUrl({ repo: d.repo, num: it.num })}>
                 <div className="rowtop">
                   <span className="num">#{it.num}</span>
                   <span className="ttl">{it.title}</span>
@@ -110,7 +120,7 @@ export function StackPage() {
               </Link>
               <div className="rowmeta">
                 <Pill kind={it.state} />
-                <Link className="chev" to={`/pr?pr=${it.num}`} aria-hidden="true">
+                <Link className="chev" to={prUrl({ repo: d.repo, num: it.num })} aria-hidden="true">
                   ›
                 </Link>
               </div>

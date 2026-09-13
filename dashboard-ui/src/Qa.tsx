@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type QaDetail } from "./api";
+import { api, type Me, type PrRef, type QaDetail, type QaGuide } from "./api";
 import { Md } from "./Md";
+import { parsePrRef, prLabel, prUrl } from "./pr";
 import { Link, navigate, useLocation } from "./router";
 
-function QaIndex() {
-  const [guides, setGuides] = useState<{ num: string; title: string; when: string }[]>([]);
+function QaIndex({ me }: { me: Me }) {
+  const [guides, setGuides] = useState<QaGuide[]>([]);
+  const [repos, setRepos] = useState<string[]>(me.repos || []);
   const [pr, setPr] = useState("");
+  const [pickRepo, setPickRepo] = useState("");
   useEffect(() => {
-    api.qaIndex().then((d) => setGuides(d.guides));
+    api.qaIndex().then((d) => {
+      setGuides(d.guides);
+      if (d.repos?.length) setRepos(d.repos);
+    });
   }, []);
+  const multi = repos.length > 1;
+  const parsed = parsePrRef(pr, repos);
+  const needsPick = !!parsed && !parsed.repo && multi;
   return (
     <>
       <h1>QA guides</h1>
@@ -23,18 +32,27 @@ function QaIndex() {
           className="qagen"
           onSubmit={(e) => {
             e.preventDefault();
-            if (/^\d+$/.test(pr.trim())) navigate(`/qa?pr=${pr.trim()}`);
+            if (!parsed) return;
+            const repo = parsed.repo || pickRepo || repos[0] || "";
+            navigate(prUrl({ repo, num: parsed.number }, "/qa"));
           }}
         >
           <input
             className="in"
-            inputMode="numeric"
-            pattern="[0-9]+"
             autoComplete="off"
-            placeholder="PR number — e.g. 38849"
+            placeholder={multi ? "PR URL, owner/name#123, or a number" : "PR number — e.g. 38849"}
             value={pr}
             onChange={(e) => setPr(e.target.value)}
           />
+          {needsPick && (
+            <select aria-label="Repository" value={pickRepo || repos[0]} onChange={(e) => setPickRepo(e.target.value)}>
+              {repos.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          )}
           <button className="btn primary" type="submit">
             Open
           </button>
@@ -47,7 +65,7 @@ function QaIndex() {
           <div className="list">
             {guides.map((g) => (
               <div className="row" key={g.num}>
-                <Link className="rowlink" to={`/qa?pr=${g.num}`}>
+                <Link className="rowlink" to={prUrl({ repo: g.repo, num: g.num }, "/qa")}>
                   <div className="rowtop">
                     <span className="num">#{g.num}</span>
                     <span className="ttl">{g.title}</span>
@@ -57,7 +75,7 @@ function QaIndex() {
                   </div>
                 </Link>
                 <div className="rowmeta">
-                  <Link className="chev" to={`/qa?pr=${g.num}`} aria-hidden="true">
+                  <Link className="chev" to={prUrl({ repo: g.repo, num: g.num }, "/qa")} aria-hidden="true">
                     ›
                   </Link>
                 </div>
@@ -76,11 +94,12 @@ function QaIndex() {
   );
 }
 
-function QaDetailView({ pr }: { pr: string }) {
+function QaDetailView({ pr }: { pr: PrRef }) {
   const [d, setD] = useState<QaDetail | null>(null);
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
-  const load = useCallback(() => api.qaDetail(pr).then(setD), [pr]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api.qaDetail(pr).then(setD), [pr.repo, pr.num]);
 
   useEffect(() => {
     setD(null);
@@ -98,11 +117,17 @@ function QaDetailView({ pr }: { pr: string }) {
     <>
       <nav className="bc">
         <Link to="/qa">QA guides</Link>
+        {d.repo && (
+          <>
+            <span className="sep">/</span>
+            <span className="muted">{d.repo}</span>
+          </>
+        )}
         <span className="sep">/</span>
-        <span className="cur">#{pr}</span>
+        <span className="cur">#{pr.num}</span>
       </nav>
       <h1 className="prtitle">
-        #{pr} — {d.title}
+        {d.repo && <span className="repo">{d.repo}</span>}#{pr.num} — {d.title}
       </h1>
       <div className="meta">
         <a href={d.ghUrl} target="_blank" rel="noopener">
@@ -127,12 +152,12 @@ function QaDetailView({ pr }: { pr: string }) {
 
   async function gen() {
     if (!d) return;
-    await api.qaGen(pr, d.genToken);
+    await api.qaGen({ repo: d.repo, num: pr.num }, d.genToken);
     load();
   }
   async function stop() {
     if (!d?.stopToken) return;
-    await api.qaStop(pr, d.stopToken);
+    await api.qaStop({ repo: d.repo, num: pr.num }, d.stopToken);
     load();
   }
   async function copy() {
@@ -149,7 +174,7 @@ function QaDetailView({ pr }: { pr: string }) {
         {header}
         <div className="card top">
           <div className="prog-hd">
-            Building QA guide for <b>#{pr}</b>
+            Building QA guide for <b>{prLabel({ repo: d.repo, num: pr.num })}</b>
           </div>
           <ul className="prog">
             {r.phases.map((ph, j) => (
@@ -240,8 +265,9 @@ function QaDetailView({ pr }: { pr: string }) {
   );
 }
 
-export function Qa() {
+export function Qa({ me }: { me: Me }) {
   const { search } = useLocation();
   const pr = search.get("pr") || "";
-  return pr ? <QaDetailView pr={pr} /> : <QaIndex />;
+  const repo = search.get("repo") || "";
+  return pr ? <QaDetailView pr={{ repo, num: pr }} /> : <QaIndex me={me} />;
 }

@@ -141,10 +141,19 @@ export function Rollup() {
   const [d, setD] = useState<RollupData | null>(null);
   const [err, setErr] = useState(false);
   const [range, setRange] = useState(30);
+  const [repo, setRepo] = useState(""); // "" = every repository
+  const [allRepos, setAllRepos] = useState<string[]>([]);
 
   useEffect(() => {
-    api.rollup().then(setD).catch(() => setErr(true));
-  }, []);
+    api
+      .rollup(repo)
+      .then((r) => {
+        setD(r);
+        // The unfiltered call knows every repo; keep that list for the pills while filtering.
+        if (!repo) setAllRepos(r.repos.map((x) => x.repo));
+      })
+      .catch(() => setErr(true));
+  }, [repo]);
 
   const period = useMemo(() => {
     if (!d) return null;
@@ -182,6 +191,18 @@ export function Rollup() {
           ))}
         </div>
       </div>
+      {allRepos.length > 1 && (
+        <div className="rangepills" style={{ marginBottom: 14 }} data-testid="repo-pills" aria-label="Filter by repository">
+          <button type="button" className={"rangepill" + (repo === "" ? " on" : "")} onClick={() => setRepo("")}>
+            All repositories
+          </button>
+          {allRepos.map((r) => (
+            <button key={r} type="button" className={"rangepill" + (repo === r ? " on" : "")} onClick={() => setRepo(r)}>
+              {r}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="kpirow">
         <Kpi label={`Reviews · last ${range}d`} value={num(period.reviews)}
@@ -225,6 +246,15 @@ export function Rollup() {
           />
         </div>
       </div>
+
+      {!repo && d.repos.length > 0 && (
+        <div className="panel">
+          <div className="panel-h">By repository (all-time runs)</div>
+          <HBars color={C.amber}
+                 rows={d.repos.map((r) => ({ label: r.repo, value: r.runs,
+                                             note: `${num(r.runs)} runs · ${num(r.prs)} PRs · ${num(r.tokens)} tok` }))} />
+        </div>
+      )}
 
       <div className="grid2">
         <div className="panel">

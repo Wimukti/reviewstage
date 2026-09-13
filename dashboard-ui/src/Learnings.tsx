@@ -17,8 +17,8 @@ export function Learnings({ me }: { me: Me }) {
       <h1>What {me.brand} has learned</h1>
       <p className="lead">
         Every time you drop a finding as noise or reword one before posting, {me.brand} remembers it
-        and weighs it on the next review of this repo — so it stops repeating what you reject. This
-        is that memory.
+        and weighs it on the next review — same-repository decisions first, then the team's general
+        preferences — so it stops repeating what you reject. This is that memory.
       </p>
       <div className="stats">
         <a className="stat hot">
@@ -49,6 +49,7 @@ export function Learnings({ me }: { me: Me }) {
                 <div className="rowlink">
                   <div className="rowtop">
                     <Pill kind={r.kind} label={r.label} />
+                    {r.repo && d.repos.length > 1 && <span className="repochip">{r.repo}</span>}
                     <span className="loc">{r.loc}</span>
                     <Pill kind={r.severity} />
                   </div>

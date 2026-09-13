@@ -20,7 +20,7 @@ function RuleForm({
   onDone,
 }: {
   token: Token;
-  target: "global" | "me";
+  target: string; // "global" | "me" | "repo:<owner/name>"
   onDone: (b: string) => void;
 }) {
   const [rule, setRule] = useState("");
@@ -63,7 +63,7 @@ function SkillEditor({
   onDone,
 }: {
   token: Token;
-  target: "global" | "me";
+  target: string; // "global" | "me" | "repo:<owner/name>"
   value: string;
   onDone: (b: string) => void;
 }) {
@@ -71,6 +71,8 @@ function SkillEditor({
   const [confirm, setConfirm] = useState("");
   useEffect(() => setText(value), [value]);
   const isGlobal = target === "global";
+  const isRepo = target.startsWith("repo:");
+  const repoName = isRepo ? target.slice(5) : "";
   return (
     <>
       <form
@@ -89,12 +91,16 @@ function SkillEditor({
           placeholder={
             isGlobal
               ? "The shared reviewing approach — edit it right here."
+              : isRepo
+              ? `A reviewing approach just for ${repoName} — leave blank to use the team default.`
               : "Paste your pr-review SKILL.md here — or leave blank to use the team default."
           }
         />
         <div className="hint">
           {isGlobal
             ? "Everyone without their own skill uses this. ReviewStage always appends its output format."
+            : isRepo
+            ? `Every review of ${repoName} runs with this — it takes precedence over personal skills and the team default for that repository. Clear it to fall back.`
             : "Your skill's logic runs; ReviewStage always appends its output format. Reviews others start are unaffected."}
         </div>
         {COPY_HINT}
@@ -111,7 +117,7 @@ function SkillEditor({
                 onDone(r.bannerHtml);
               }}
             >
-              Clear (use team default)
+              {isRepo ? "Clear override (use team default)" : "Clear (use team default)"}
             </button>
           )}
         </div>
@@ -274,6 +280,17 @@ export function Skills() {
         <div className="hint">
           Reviews run with <b>{d.effLabel}</b>. Learnings sharpen whichever skill runs — every
           finding you keep or drop feeds the next review.
+          {d.repoSkills.some((r) => r.has) && (
+            <>
+              {" "}
+              Repositories with a <b>team default for that repo</b> below use it instead:{" "}
+              {d.repoSkills.filter((r) => r.has).map((r) => (
+                <span key={r.repo} className="repochip" style={{ marginRight: 4 }}>
+                  {r.repo}
+                </span>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -316,6 +333,27 @@ export function Skills() {
         </div>
       </details>
 
+      {d.repoSkills.length > 0 && (
+        <>
+          <h2>Team default per repository</h2>
+          <p className="muted sm">
+            Optional. A repository with its own team default is reviewed with it — ahead of personal
+            skills and the shared default. Leave it empty to use the shared default.
+          </p>
+          {d.repoSkills.map((r) => (
+            <details className="skilled" key={r.repo} data-testid="repo-skill">
+              <summary>
+                Team default for <code>{r.repo}</code>{" "}
+                <span className={r.has ? "tag-on" : "tag-off"}>{r.has ? "Override" : "Shared default"}</span>
+              </summary>
+              <div className="dbody">
+                <SkillEditor token={d.token} target={`repo:${r.repo}`} value={r.content} onDone={onDone} />
+              </div>
+            </details>
+          ))}
+        </>
+      )}
+
       <h2>Review depth</h2>
       <p className="muted sm">
         How deep each level goes. Deep is a thorough, whole-repo analysis. All three run the skill
@@ -339,7 +377,7 @@ export function Skills() {
               <div className="rowlink">
                 <div className="rowtop">
                   <span className="ttl">
-                    {s.skill === "global" ? "Team default" : `${s.skill}'s skill`}
+                    {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
                     {s.skill === d.user && <span className="tag-on" style={{ marginLeft: 6 }}>you</span>}
                   </span>
                   <span className="num" style={{ WebkitTextFillColor: "var(--fg)" }}>

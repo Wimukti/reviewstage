@@ -1,5 +1,6 @@
 // Builds a self-contained, offline fixture for the Playwright e2e run and mints a matching
-// session cookie. Run standalone (`node e2e/fixture.mjs`) — the Playwright webServer runs it
+// session cookie. Two repositories are configured so the repo dimension (chips, filter, picker)
+// is exercised; state lives in the per-repo layout (state/<owner>__<name>/<pr>). Run standalone (`node e2e/fixture.mjs`) — the Playwright webServer runs it
 // before booting the Python server, and global-setup runs it before the workers start, so the
 // server always boots against a ready fixture regardless of Playwright's setup/webServer order.
 // A FIXED (non-secret) test secret keeps the server's .env and the minted cookie in agreement.
@@ -13,9 +14,14 @@ export const FIXTURE = join(HERE, ".fixture");
 export const AUTH_STATE = join(HERE, ".auth.json");
 export const SECRET = "e2e-fixed-test-secret-not-for-production";
 export const USER = "acme-dev";
-export const PR = "38849";
-export const PR2 = "38850"; // dedicated archive-test target — no other test touches it
+export const REPO = "acme/widgets";
+export const REPO2 = "acme/api";
+export const PR = "38849"; // in REPO
+export const PR2 = "38850"; // in REPO — dedicated archive-test target — no other test touches it
+export const PR3 = "7"; // in REPO2
 export const PORT = 8988;
+
+const slug = (repo: string) => repo.replace("/", "__");
 
 function write(path: string, body: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -31,7 +37,7 @@ export function buildFixture() {
     [
       `PRBOT_SECRET=${SECRET}`,
       `REVIEWER=${USER}`,
-      "REPO=acme/widgets",
+      `REPOS=${REPO},${REPO2}`,
       "DRY_RUN=1",
       "PUBLIC_URL=https://reviewstage.example.com",
       "GITHUB_PAT=ghp_e2e_dummy_never_used",
@@ -43,13 +49,17 @@ export function buildFixture() {
     JSON.stringify({ [USER]: { name: "Acme Dev", slack_id: "U0TEST", added: 1, updated: 1 } }),
   );
 
+  // Already in the per-repo layout: nothing for the server to migrate.
+  write(join(FIXTURE, "MIGRATED"), JSON.stringify({ at: 1, note: "e2e fixture" }) + "\n");
+
   write(
     join(FIXTURE, "queue.json"),
     JSON.stringify([
       {
+        repo: REPO,
         number: Number(PR),
         title: "Add lead-time badge to product cards",
-        url: `https://github.com/acme/widgets/pull/${PR}`,
+        url: `https://github.com/${REPO}/pull/${PR}`,
         additions: 42,
         deletions: 8,
         changedFiles: 5,
@@ -62,9 +72,10 @@ export function buildFixture() {
         updatedAt: "2026-05-02T10:00:00Z",
       },
       {
+        repo: REPO,
         number: Number(PR2),
         title: "Cache vendor lead times",
-        url: `https://github.com/acme/widgets/pull/${PR2}`,
+        url: `https://github.com/${REPO}/pull/${PR2}`,
         additions: 12,
         deletions: 3,
         changedFiles: 2,
@@ -76,12 +87,52 @@ export function buildFixture() {
         createdAt: "2026-05-03T10:00:00Z",
         updatedAt: "2026-05-04T10:00:00Z",
       },
+      {
+        repo: REPO2,
+        number: Number(PR3),
+        title: "Rate-limit the lead-time endpoint",
+        url: `https://github.com/${REPO2}/pull/${PR3}`,
+        additions: 30,
+        deletions: 4,
+        changedFiles: 3,
+        requested: [USER],
+        author: "teammate",
+        isBot: false,
+        isDraft: false,
+        head: "0badf00dcafe",
+        createdAt: "2026-05-05T10:00:00Z",
+        updatedAt: "2026-05-06T10:00:00Z",
+      },
     ]),
   );
 
-  write(join(FIXTURE, "state", PR2, "status"), "done");
+  write(join(FIXTURE, "state", slug(REPO2), PR3, "status"), "done");
   write(
-    join(FIXTURE, "state", PR2, "review.json"),
+    join(FIXTURE, "state", slug(REPO2), PR3, "review.json"),
+    JSON.stringify({
+      event: "COMMENT",
+      summary: "Adds a token bucket in front of the lead-time endpoint. One blocker.",
+      keyPoints: ["The limiter key ignores the tenant, so one tenant can starve another."],
+      explainer: "",
+      analysis: "",
+      comments: [
+        {
+          path: "api/limits.py",
+          line: 18,
+          severity: "blocker",
+          title: "Two tenants share one rate-limit bucket",
+          impact: "A busy tenant can lock a quiet tenant out of lead times entirely.",
+          body: "Key the bucket on (tenant, api_key), not api_key alone.",
+          reply_to: null,
+          suggestion: "",
+        },
+      ],
+    }),
+  );
+
+  write(join(FIXTURE, "state", slug(REPO), PR2, "status"), "done");
+  write(
+    join(FIXTURE, "state", slug(REPO), PR2, "review.json"),
     JSON.stringify({
       event: "COMMENT",
       summary: "Caches vendor lead times. Looks fine.",
@@ -91,9 +142,9 @@ export function buildFixture() {
     }),
   );
 
-  write(join(FIXTURE, "state", PR, "status"), "done");
+  write(join(FIXTURE, "state", slug(REPO), PR, "status"), "done");
   write(
-    join(FIXTURE, "state", PR, "review.json"),
+    join(FIXTURE, "state", slug(REPO), PR, "review.json"),
     JSON.stringify({
       event: "COMMENT",
       summary: "Adds a lead-time badge to product cards. Logic is sound; two small things.",

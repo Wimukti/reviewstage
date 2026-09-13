@@ -30,7 +30,7 @@ function Routed({ me }: { me: Me }) {
   const { path } = useLocation();
   if (path === "/") return <Queue me={me} />;
   if (path.startsWith("/pr")) return <PrPage me={me} />;
-  if (path.startsWith("/qa")) return <Qa />;
+  if (path.startsWith("/qa")) return <Qa me={me} />;
   if (path.startsWith("/skills")) return <Skills />;
   if (path.startsWith("/stack")) return <StackPage />;
   if (path.startsWith("/integrations") || path.startsWith("/settings"))
@@ -65,7 +65,7 @@ export function App() {
           <Routed me={me} />
         </div>
       </main>
-      <CommandPalette />
+      <CommandPalette me={me} />
       <Tour />
     </div>
   );

@@ -6,13 +6,33 @@ const BASE = "/api";
 
 export class Unauthorized extends Error {}
 
+// A non-2xx reply. `data` is the server's JSON body — e.g. an "ambiguous repo" error carries the
+// candidate `repos` so the UI can offer a picker.
+export class ApiError extends Error {
+  data: Record<string, unknown>;
+  constructor(msg: string, data: Record<string, unknown>) {
+    super(msg);
+    this.data = data;
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${BASE}${path}`, { credentials: "same-origin", ...init });
   if (r.status === 401) throw new Unauthorized();
   const data = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(data?.error || `${path} → ${r.status}`);
+  if (!r.ok) throw new ApiError(data?.error || `${path} → ${r.status}`, data as Record<string, unknown>);
   return data as T;
 }
+
+// A PR is (repo, number). `repo` may be "" for legacy links; the server resolves it when
+// exactly one repository is configured.
+export interface PrRef {
+  repo: string;
+  num: string;
+}
+const prq = (ref: PrRef) =>
+  `${ref.repo ? `repo=${encodeURIComponent(ref.repo)}&` : ""}pr=${encodeURIComponent(ref.num)}`;
+const prBody = (ref: PrRef) => ({ repo: ref.repo, pr: ref.num });
 
 export function get<T>(path: string): Promise<T> {
   return req<T>(path);
@@ -37,7 +57,9 @@ export interface Me {
   active_skill?: "own" | "team";
   skill_label?: string;
   dry_run: boolean;
-  repo: string;
+  repo: string; // the one configured repo, or "" when several are
+  repos: string[]; // every repo this install reviews (configured + org-discovered)
+  allowOrg: string;
   brand: string;
   oauth: boolean;
   logo?: string;
@@ -55,6 +77,7 @@ export interface SevChip {
 }
 
 export interface QueueRow {
+  repo: string;
   num: string;
   title: string;
   author: string;
@@ -79,6 +102,7 @@ export interface QueueData {
   stats: Record<string, number>;
   tabDesc: string;
   rows: QueueRow[];
+  repos: string[];
   slackOk: boolean;
 }
 
@@ -167,6 +191,7 @@ export interface PrData {
   historyView?: boolean;
   ts?: number;
   when?: string;
+  repo: string;
   pr: string;
   title: string;
   state: string;
@@ -211,9 +236,10 @@ export interface BannerResult {
   bannerHtml: string;
 }
 
-export interface QaGuide { num: string; title: string; when: string }
-export interface QaIndex { guides: QaGuide[] }
+export interface QaGuide { repo: string; num: string; title: string; when: string }
+export interface QaIndex { repos: string[]; guides: QaGuide[] }
 export interface QaDetail {
+  repo: string;
   pr: string;
   title: string;
   ghUrl: string;
@@ -234,7 +260,9 @@ export interface SkillStat {
   dropped: number;
   total: number;
   rate: number;
+  label: string;
 }
+export interface RepoSkill { repo: string; content: string; has: boolean }
 export interface DepthInfo { name: string; meta: string; content: string; edited: boolean }
 export interface SkillsData {
   token: Token;
@@ -246,6 +274,7 @@ export interface SkillsData {
   teamSkill: string;
   mySkill: string;
   depths: Record<string, DepthInfo>;
+  repoSkills: RepoSkill[];
   stats: SkillStat[];
   teamHistory: { hash: string; author: string; at: number; msg: string }[];
 }
@@ -266,10 +295,12 @@ export interface LearningRow {
   loc: string;
   severity: string;
   gist: string;
+  repo: string;
   editedGist: string;
 }
 export interface LearningsData {
   counts: { dropped: number; edited: number; kept: number };
+  repos: string[];
   rows: LearningRow[];
 }
 
@@ -281,6 +312,7 @@ export interface StackItem {
   state: string;
 }
 export interface StackData {
+  repo: string;
   pr: string;
   isStack: boolean;
   connected: boolean;
@@ -305,8 +337,11 @@ export interface RollupSeriesPoint {
   edited: number;
   dropped: number;
 }
+export interface RepoRollup { repo: string; runs: number; week: number; prs: number; tokens: number }
 export interface RollupData {
   generatedAt: number;
+  repo: string; // the filter applied, or ""
+  repos: RepoRollup[];
   reviews: { total: number; week: number };
   prs: number;
   reviewers: { login: string; runs: number; week: number; tokens: number }[];
@@ -320,32 +355,33 @@ export interface RollupData {
 }
 
 export const api = {
-  rollup: () => get<RollupData>("/rollup"),
+  rollup: (repo = "") => get<RollupData>(`/rollup${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`),
   me: () => get<Me>("/me"),
   queue: (tab: string, sort: string) =>
     get<QueueData>(`/queue?tab=${encodeURIComponent(tab)}&sort=${encodeURIComponent(sort)}`),
   login: (pat: string) => post<{ ok: boolean; login: string }>("/login", { pat }),
   logout: () => post<{ ok: boolean }>("/logout"),
-  pr: (pr: string, v?: string) => get<PrData>(`/pr?pr=${pr}${v ? `&v=${v}` : ""}`),
-  explain: (pr: string, t: Token, idx: number) =>
-    post<{ md: string }>("/explain", { pr, ...t, idx }),
-  review: (pr: string, t: Token, effort: string, focus: string, model: string) =>
-    post<{ ok: boolean; started?: boolean }>("/review", { pr, ...t, effort, focus, model }),
-  stop: (pr: string, t: Token) => post<{ ok: boolean; confirmed: boolean }>("/stop", { pr, ...t }),
-  markdone: (pr: string, t: Token) => post<{ ok: boolean }>("/markdone", { pr, ...t }),
-  archive: (pr: string, t: Token, action: "archive" | "unarchive") =>
-    post<{ ok: boolean }>("/archive", { pr, ...t, action }),
+  pr: (ref: PrRef, v?: string) => get<PrData>(`/pr?${prq(ref)}${v ? `&v=${v}` : ""}`),
+  explain: (ref: PrRef, t: Token, idx: number) =>
+    post<{ md: string }>("/explain", { ...prBody(ref), ...t, idx }),
+  review: (ref: PrRef, t: Token, effort: string, focus: string, model: string) =>
+    post<{ ok: boolean; started?: boolean }>("/review", { ...prBody(ref), ...t, effort, focus, model }),
+  stop: (ref: PrRef, t: Token) =>
+    post<{ ok: boolean; confirmed: boolean }>("/stop", { ...prBody(ref), ...t }),
+  markdone: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/markdone", { ...prBody(ref), ...t }),
+  archive: (ref: PrRef, t: Token, action: "archive" | "unarchive") =>
+    post<{ ok: boolean }>("/archive", { ...prBody(ref), ...t, action }),
   post: (
-    pr: string,
+    ref: PrRef,
     t: Token,
     payload: { selected: number[]; bodies: Record<number, string>; suggs: Record<number, string>; request_changes: boolean }
-  ) => post<BannerResult>("/post", { pr, ...t, ...payload }),
-  approve: (pr: string, t: Token, body: string, ack: boolean) =>
-    post<BannerResult>("/approve", { pr, ...t, body, ack }),
+  ) => post<BannerResult>("/post", { ...prBody(ref), ...t, ...payload }),
+  approve: (ref: PrRef, t: Token, body: string, ack: boolean) =>
+    post<BannerResult>("/approve", { ...prBody(ref), ...t, body, ack }),
   qaIndex: () => get<QaIndex>("/qa"),
-  qaDetail: (pr: string) => get<QaDetail>(`/qa?pr=${pr}`),
-  qaGen: (pr: string, t: Token) => post<{ ok: boolean }>("/qa/gen", { pr, ...t }),
-  qaStop: (pr: string, t: Token) => post<{ ok: boolean }>("/qa/stop", { pr, ...t }),
+  qaDetail: (ref: PrRef) => get<QaDetail>(`/qa?${prq(ref)}`),
+  qaGen: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/qa/gen", { ...prBody(ref), ...t }),
+  qaStop: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/qa/stop", { ...prBody(ref), ...t }),
   skills: () => get<SkillsData>("/skills"),
   skillAction: (step: string, payload: Record<string, unknown>) =>
     post<BannerResult>(`/skill/${step}`, payload),
@@ -359,8 +395,8 @@ export const api = {
   claudeCancel: (t: Token) =>
     post<BannerResult & { connected: boolean }>("/claude/cancel", { ...t }),
   learnings: () => get<LearningsData>("/learnings"),
-  stack: (pr: string) => get<StackData>(`/stack?pr=${pr}`),
-  stackRun: (pr: string, t: Token, effort: string, nums: string[]) =>
-    post<{ ok: boolean; started: number }>("/stack/run", { pr, ...t, effort, nums }),
+  stack: (ref: PrRef) => get<StackData>(`/stack?${prq(ref)}`),
+  stackRun: (ref: PrRef, t: Token, effort: string, nums: string[]) =>
+    post<{ ok: boolean; started: number }>("/stack/run", { ...prBody(ref), ...t, effort, nums }),
   how: () => get<HowData>("/how"),
 };

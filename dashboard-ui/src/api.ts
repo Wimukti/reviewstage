@@ -128,6 +128,7 @@ export interface Finding {
   title: string;
   impact: string;
   structured: boolean;
+  criticalPath?: string; // the profile glob this finding concerns, "" when none
   agreement?: { confirmed: boolean; n: number; by: string[]; differ: string } | null;
 }
 
@@ -348,6 +349,55 @@ export interface LearningsData {
   rows: LearningRow[];
 }
 
+// Repository profile ($ROOT/profiles/<slug>/): the critical paths every review of the repo walks.
+export interface ProfileCounts { critical: number; risk: number; rules: number; doNotFlag: number }
+export interface ProfileUsage {
+  model: string;
+  tokens: number;
+  cacheReadTokens: number;
+  costUsd: number;
+  durationMs: number;
+}
+export interface ProfileLast {
+  at: number;
+  when: string;
+  model: string;
+  usage: ProfileUsage | null;
+  dropped: string[];
+  runner: string;
+  editedAt: number | null;
+  editedBy: string;
+  head: string;
+}
+export interface ProfileCriticalPath { path_glob: string; why: string; checks: string[] }
+export interface ProfileJson {
+  summary: string;
+  critical_paths: ProfileCriticalPath[];
+  risk_paths: { label: string; pattern: string }[];
+  review_rules: string[];
+  do_not_flag: string[];
+  meta?: Record<string, unknown>;
+}
+export interface ProfileData {
+  repo: string;
+  state: "none" | "running" | "failed" | "stopped" | "done";
+  token: Token;
+  connected: boolean;
+  isAdmin: boolean;
+  autoProfile: boolean;
+  counts: ProfileCounts | null;
+  versions: number[];
+  md: string;
+  json: ProfileJson | null;
+  last: ProfileLast | null;
+  running?: { phases: string[]; cur: number; queued: boolean; text: string };
+  failed?: string;
+  stopped?: boolean;
+  bannerHtml?: string;
+  started?: boolean;
+  confirmed?: boolean;
+}
+
 export interface StackItem {
   num: string;
   title: string;
@@ -390,7 +440,10 @@ export interface RollupData {
   prs: number;
   reviewers: { login: string; runs: number; week: number; tokens: number }[];
   tokens: { total: number; week: number };
-  keep: { allTime: { kept: number; edited: number; dropped: number; rate: number | null } };
+  keep: {
+    allTime: { kept: number; edited: number; dropped: number; rate: number | null };
+    criticalPath?: { kept: number; edited: number; dropped: number; rate: number | null };
+  };
   severity: { blocker: number; "should-fix": number; nit: number; question: number };
   models: { model: string; runs: number; tokens: number }[];
   agreement: { multiReviewerPRs: number; confirmedFindings: number; avgRate: number | null };
@@ -446,4 +499,10 @@ export const api = {
   stackRun: (ref: PrRef, t: Token, effort: string, nums: string[]) =>
     post<{ ok: boolean; started: number }>("/stack/run", { ...prBody(ref), ...t, effort, nums }),
   how: () => get<HowData>("/how"),
+  profile: (repo: string) => get<ProfileData>(`/profile?repo=${encodeURIComponent(repo)}`),
+  profileRun: (repo: string, t: Token) => post<ProfileData>("/profile/run", { repo, ...t }),
+  profileStop: (repo: string, t: Token) => post<ProfileData>("/profile/stop", { repo, ...t }),
+  saveProfile: (repo: string, t: Token, md: string) => put<ProfileData>("/profile", { repo, ...t, md }),
+  setAutoProfile: (repo: string, t: Token, on: boolean) =>
+    put<ProfileData>("/profile", { repo, ...t, auto_profile: on }),
 };

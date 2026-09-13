@@ -147,6 +147,7 @@ def compute(state, root, now=None, repo=None):
 
     # keep-rate (all-time) + per-day keep buckets, from learnings.jsonl
     keep = {"kept": 0, "edited": 0, "dropped": 0}
+    keep_cp = {"kept": 0, "edited": 0, "dropped": 0}      # findings on a profiled critical path
     keep_day = {}
     lf = root / "learnings.jsonl"
     if lf.exists():
@@ -160,6 +161,8 @@ def compute(state, root, now=None, repo=None):
                 continue
             if o in keep:
                 keep[o] += 1
+                if row.get("critical_path"):
+                    keep_cp[o] += 1
                 kd = keep_day.setdefault(_daystart(row.get("at", now)),
                                          {"kept": 0, "edited": 0, "dropped": 0})
                 kd[o] += 1
@@ -205,7 +208,8 @@ def compute(state, root, now=None, repo=None):
         "reviewers": sorted(([{"login": k, **v} for k, v in reviewers.items()]),
                             key=lambda r: -r["runs"]),
         "tokens": {"total": total_tokens, "week": week_tokens},
-        "keep": {"allTime": {**keep, "rate": krate(keep)}},
+        "keep": {"allTime": {**keep, "rate": krate(keep)},
+                 "criticalPath": {**keep_cp, "rate": krate(keep_cp)}},
         "severity": severity,
         "models": sorted(([{"model": k, **v} for k, v in models.items()]),
                          key=lambda m: -m["runs"]),

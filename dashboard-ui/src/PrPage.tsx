@@ -316,6 +316,11 @@ function FindingCard({
       <div className="fhead">
         <input type="checkbox" className="fsel" checked={checked} onChange={onToggle} />
         <span className={"pill " + f.severity}>{f.sevLabel}</span>
+        {f.criticalPath && (
+          <span className="cpbadge" title={`Concerns a profiled critical path: ${f.criticalPath}`}>
+            critical path
+          </span>
+        )}
         {f.agreement?.confirmed ? (
           <span className="agree ok" title={`Also raised by ${f.agreement.by.join(", ")} (${f.agreement.differ})`}>
             ✓ {f.agreement.n} independent

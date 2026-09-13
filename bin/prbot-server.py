@@ -50,6 +50,7 @@ import prbot_howimg
 import prbot_learn
 import prbot_md
 import prbot_paths as P
+import prbot_profile
 import prbot_rollup
 import prbot_settings
 
@@ -789,7 +790,9 @@ def review_cache_key(login, repo, head, effort, focus, model):
     blob = "\x00".join([REVIEW_SCHEMA_VERSION, login or "", repo or "", (head or "").strip(),
                          effort or "", (focus or "").strip(), model or "",
                          sha256(skill_text.encode()).hexdigest(),
-                         sha256(effort_depth(effort).encode()).hexdigest()])
+                         sha256(effort_depth(effort).encode()).hexdigest(),
+                         sha256(json.dumps(prbot_profile.load_profile(repo) or {},
+                                           sort_keys=True).encode()).hexdigest()])
     return sha256(blob.encode()).hexdigest()
 
 
@@ -1317,6 +1320,167 @@ def render_qa(md):
     h = re.sub(r"<li>\s*\[[ ]\]\s*", "<li class=task>", h)
     h = re.sub(r"<li>\s*\[[xX]\]\s*", "<li class='task done'>", h)
     return h
+
+# --- repository profile ----------------------------------------------------------------------
+# One profile per repository (bin/profile-repo.sh → $ROOT/profiles/<owner>__<name>/): the critical
+# paths every Standard/Deep review of that repo is told to walk, plus its risk paths and rules.
+# The job's state keys mirror the QA job (.lock, status, pid, usage.json); the artefacts are
+# profile.json + the editable profile.md (prbot_profile.py owns the schema and the files).
+PROFILE_PHASES = ["Fetching the repository", "Gathering signals", "Asking the model",
+                  "Validating paths"]
+
+
+def _flock_held(f):
+    """True while some process holds an exclusive flock on `f` (the job is running)."""
+    if not f.exists():
+        return False
+    try:
+        fd = os.open(f, os.O_RDWR)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    except OSError:
+        return True
+    finally:
+        os.close(fd)
+
+
+def profile_running(repo):
+    return _flock_held(prbot_profile.profile_dir(repo) / ".lock")
+
+
+def profile_status_text(repo):
+    try:
+        return (prbot_profile.profile_dir(repo) / "status").read_text().strip()
+    except OSError:
+        return ""
+
+
+def profile_state(repo):
+    """'running' | 'failed' | 'stopped' | 'done' | 'none'."""
+    if profile_running(repo):
+        return "running"
+    s = profile_status_text(repo)
+    has = prbot_profile.load_profile(repo) is not None
+    if s.startswith("failed") and not has:
+        return "failed"
+    if s == "stopped" and not has:
+        return "stopped"
+    return "done" if has else "none"
+
+
+def stop_profile(repo):
+    d = prbot_profile.profile_dir(repo)
+    dead = _kill_group(d / "pid")
+    time.sleep(0.2)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "status").write_text("stopped")
+    return (dead is not False) and not profile_running(repo)
+
+
+def profile_usage(repo):
+    """Model + token totals of the last profile run, or None (usage.json is best-effort)."""
+    try:
+        u = json.loads((prbot_profile.profile_dir(repo) / "usage.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return {"model": u.get("model") or "unknown",
+            "tokens": int(u.get("input_tokens") or 0) + int(u.get("output_tokens") or 0),
+            "cacheReadTokens": int(u.get("cache_read_input_tokens") or 0),
+            "costUsd": float(u.get("cost_usd") or 0),
+            "durationMs": int(u.get("duration_ms") or 0)}
+
+
+def auto_profile_map():
+    """settings.json `auto_profile`: {slug: bool} — re-profile when the file tree changes."""
+    v = prbot_settings.read_file(SETTINGS).get("auto_profile")
+    return {k: bool(x) for k, x in v.items()} if isinstance(v, dict) else {}
+
+
+def set_auto_profile(repo, on):
+    cur = auto_profile_map()
+    cur[P.repo_slug(repo)] = bool(on)
+    prbot_settings.save(SETTINGS, {"auto_profile": cur})
+
+
+def profile_tree_files(repo):
+    """Tracked files of the base clone (for validating an edited profile), or None without one."""
+    base = P.base_dir(repo)
+    if not (base / ".git").exists():
+        return None
+    try:
+        r = subprocess.run(["git", "-C", str(base), "ls-files"], capture_output=True,
+                           text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return [f for f in r.stdout.splitlines() if f] if r.returncode == 0 else None
+
+
+def profile_view(repo, user):
+    """Everything the Skills page shows for one repository's profile."""
+    exp, sig = mint("profile", user, ACTION_TTL)
+    d = prbot_profile.profile_dir(repo)
+    prof = prbot_profile.load_profile(repo)
+    st = profile_state(repo)
+    out = {"repo": repo, "state": st, "token": {"exp": exp, "sig": sig},
+           "connected": claude_connected(user), "isAdmin": is_admin(user),
+           "autoProfile": auto_profile_map().get(P.repo_slug(repo), False),
+           "counts": prbot_profile.counts(prof) if prof else None,
+           "versions": prbot_profile.versions(repo), "md": "", "json": prof, "last": None}
+    if prof:
+        try:
+            out["md"] = (d / "profile.md").read_text()
+        except OSError:
+            out["md"] = prbot_profile.to_markdown(prof)
+        m = prof.get("meta") or {}
+        at = int(m.get("generated_at") or 0)
+        runner = ""
+        try:
+            runner = (d / "runner").read_text().strip()
+        except OSError:
+            pass
+        out["last"] = {"at": at, "when": f"{fmt_date(at)} ({ago(at)})" if at else "",
+                       "model": m.get("model") or "", "usage": profile_usage(repo),
+                       "dropped": list(m.get("dropped_globs") or []), "runner": runner,
+                       "editedAt": m.get("edited_at") or None, "editedBy": m.get("edited_by") or "",
+                       "head": (m.get("head") or "")[:12]}
+    if st == "running":
+        s = profile_status_text(repo).lower()
+        cur = (0 if "fetch" in s else 1 if "signal" in s else
+               2 if ("model" in s or "queued" in s) else 3)
+        out["running"] = {"phases": PROFILE_PHASES, "cur": cur, "queued": "queued" in s,
+                          "text": profile_status_text(repo)}
+    elif st == "failed":
+        out["failed"] = profile_status_text(repo)
+    elif st == "stopped":
+        out["stopped"] = True
+    return out
+
+
+def save_profile_edit(repo, user, body):
+    """Apply a dashboard edit: markdown (parsed back) or a JSON profile. Validates every path
+    against the base clone's tree when one is on disk, versions the previous file. Returns an
+    error string or ""."""
+    if isinstance(body.get("json"), dict):
+        raw = body["json"]
+    elif isinstance(body.get("md"), str):
+        raw = prbot_profile.from_markdown(body["md"])
+    else:
+        return "Send `md` or `json`."
+    prev = prbot_profile.load_profile(repo) or {}
+    clean, dropped, err = prbot_profile.validate_profile(raw, profile_tree_files(repo))
+    if err:
+        return f"Not saved: {err}."
+    meta = dict(prev.get("meta") or {})
+    meta.update({"edited_at": int(time.time()), "edited_by": user,
+                 "dropped_globs": dropped})
+    prbot_profile.save_profile(repo, clean, meta)
+    print(f"profile edited by {user} for {repo}: {prbot_profile.counts(clean)}"
+          + (f", dropped {dropped}" if dropped else ""), flush=True)
+    return ""
 
 
 def verify_pat(pat):
@@ -2125,6 +2289,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(self.api_stack(repo, pr, user))
         if route == "/api/skills":
             return self.api_json(self.api_skills(user))
+        if route == "/api/profile":
+            return self.api_profile_get(q, user)
         if route == "/api/integrations":
             return self.api_json(self.api_integrations(user))
         if route == "/api/settings":
@@ -2297,6 +2463,7 @@ class Handler(BaseHTTPRequestHandler):
                              "low": c.get("confidence") == "low",
                              "title": c.get("title") or self._fallback_title(c),
                              "impact": (c.get("impact") or "").strip(),
+                             "criticalPath": (c.get("critical_path") or "").strip(),
                              "structured": bool((c.get("title") or "").strip()
                                                 and (c.get("impact") or "").strip()),
                              "agreement": conv_tags.get(prbot_agree._cid(c))})
@@ -2392,7 +2559,7 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n)
         route = urlparse(self.path).path.rstrip("/").removeprefix("/prbot")
-        if route != "/api/settings":
+        if route not in ("/api/settings", "/api/profile"):
             return self.reply(404, "not found", "text/plain; charset=utf-8")
         user = session_user(self.headers)
         if not user:
@@ -2403,6 +2570,8 @@ class Handler(BaseHTTPRequestHandler):
             body = None
         if not isinstance(body, dict):
             return self.api_json({"error": "Send a JSON object."}, 400)
+        if route == "/api/profile":
+            return self.api_profile_put(body, user)
         if err := verify("runtime-settings", user, str(body.get("exp") or ""),
                          str(body.get("sig") or "")):
             return self.api_json({"error": err}, 403)
@@ -2568,6 +2737,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"ok": True, "login": login},
                                  cookie=session_cookie(login, self.headers.get("Host", "")))
         user = session_user(self.headers)
+        if route.startswith("/api/profile/"):
+            return self.api_profile_post(route, body, user)
         if not user:
             return self.api_json({"error": "unauthorized"}, 401)
         if route == "/api/logout":
@@ -2983,6 +3154,89 @@ class Handler(BaseHTTPRequestHandler):
                                     stderr=subprocess.STDOUT, start_new_session=True, env=env)
         (d / "pid").write_text(str(proc.pid))
         return True
+
+    # --- repository profile ------------------------------------------------------------------
+    def _spawn_profile(self, repo, user):
+        """Start bin/profile-repo.sh for `repo` on `user`'s Claude account. False when they have
+        no connected account or a build is already running."""
+        if not claude_connected(user):
+            return False
+        d = prbot_profile.profile_dir(repo)
+        d.mkdir(parents=True, exist_ok=True)
+        if profile_running(repo):
+            return False
+        (d / "status").write_text("queued")
+        env = review_env(user)
+        with open(d / "run.log", "ab") as log:
+            proc = subprocess.Popen([str(BIN / "profile-repo.sh"), repo], stdout=log,
+                                    stderr=subprocess.STDOUT, start_new_session=True, env=env)
+        (d / "pid").write_text(str(proc.pid))
+        print(f"profile started for {repo} by {user}", flush=True)
+        return True
+
+    def api_profile_get(self, q, user):
+        repo, err = resolve_repo((q.get("repo") or [""])[0])
+        if err:
+            return self.api_json({"error": err, "repos": all_repos()}, 400)
+        return self.api_json(profile_view(repo, user))
+
+    def api_profile_post(self, route, body, user):
+        """POST /api/profile/run|stop (signed profile token, session) and /api/profile/auto
+        (no session — signed with the server secret by pr-watch.sh, runs as the admin)."""
+        repo, rerr = resolve_repo(str(body.get("repo") or ""))
+        if rerr:
+            return self.api_json({"error": rerr, "repos": all_repos()}, 400)
+        exp, sig = str(body.get("exp") or ""), str(body.get("sig") or "")
+        if route == "/api/profile/auto":
+            if err := verify("profile-auto", repo, exp, sig):
+                return self.api_json({"error": err}, 403)
+            admin = prbot_settings.resolve_admin(load_users(), REVIEWER, modify_users)
+            if not (admin and claude_connected(admin)):
+                print(f"auto-profile skipped for {repo}: admin has no connected Claude account",
+                      flush=True)
+                return self.api_json({"ok": False, "skipped": "admin has no connected Claude "
+                                                              "account"})
+            return self.api_json({"ok": True, "started": self._spawn_profile(repo, admin)})
+        if not user:
+            return self.api_json({"error": "unauthorized"}, 401)
+        if err := verify("profile", user, exp, sig):
+            return self.api_json({"error": err}, 403)
+        if route == "/api/profile/run":
+            if not claude_connected(user):
+                return self.api_json({"error": "Connect your Claude account in Integrations "
+                                               "to profile a repository."}, 400)
+            return self.api_json({"ok": True, "started": self._spawn_profile(repo, user),
+                                  **profile_view(repo, user)})
+        if route == "/api/profile/stop":
+            return self.api_json({"ok": True, "confirmed": stop_profile(repo),
+                                  **profile_view(repo, user)})
+        return self.api_json({"error": "not found"}, 404)
+
+    def api_profile_put(self, body, user):
+        """PUT /api/profile — save an edited profile (md or json), or flip auto_profile (admin)."""
+        if err := verify("profile", user, str(body.get("exp") or ""),
+                         str(body.get("sig") or "")):
+            return self.api_json({"error": err}, 403)
+        repo, rerr = resolve_repo(str(body.get("repo") or ""))
+        if rerr:
+            return self.api_json({"error": rerr, "repos": all_repos()}, 400)
+        ok = lambda m: f"<div class='banner ok'><span>✓</span><div>{m}</div></div>"  # noqa
+        if "auto_profile" in body:
+            if not is_admin(user):
+                return self.api_json({"error": "Only the admin can change auto-profiling."}, 403)
+            set_auto_profile(repo, bool(body["auto_profile"]))
+            out = profile_view(repo, user)
+            out["bannerHtml"] = ok("Auto re-profiling " + ("on" if body["auto_profile"] else "off")
+                                   + f" for <code>{html.escape(repo)}</code>.")
+            return self.api_json(out)
+        if err := save_profile_edit(repo, user, body):
+            return self.api_json({"error": err}, 400)
+        out = profile_view(repo, user)
+        c = out.get("counts") or {}
+        out["bannerHtml"] = ok(f"Saved the profile for <code>{html.escape(repo)}</code> — "
+                               f"{c.get('critical', 0)} critical paths. Reviews pick it up on "
+                               "their next run.")
+        return self.api_json(out)
 
     # --- QA guides ---------------------------------------------------------------------------
     def _spawn_qa(self, repo, pr, user):

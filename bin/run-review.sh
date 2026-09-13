@@ -86,7 +86,21 @@ echo "$meta" | jq -r .headRefOid > "$DIR/head"
 # A per-repo RISK_PATHS__<OWNER>__<NAME> replaces the global list for that repo (risk_paths_for).
 paths=$(echo "$meta" | jq -r '.files[]?.path // empty' 2>/dev/null)
 risk=""
-IFS=',' read -ra RISK_RULES <<< "$(risk_paths_for "$REPO")"
+# Repository profile (bin/profile-repo.sh → $ROOT/profiles/<slug>/profile.json): its risk_paths
+# merge into the banner rules (the operator's rule wins on a shared label), and for Standard and
+# Deep runs the critical paths the PR touches become a prompt section below (PROFILE_BLOCK).
+HERE="$(cd "$(dirname "$0")" && pwd)"
+PROFILE_JSON="$ROOT/profiles/$(repo_slug "$REPO")/profile.json"
+PROFILE_BLOCK=""
+RULES="$(risk_paths_for "$REPO")"
+if [ -s "$PROFILE_JSON" ]; then
+  RULES=$(PYTHONPATH="$HERE" ROOT="$ROOT" python3 "$HERE/prbot_profile.py" risk "$REPO" "$RULES" \
+            2>/dev/null || printf '%s' "$RULES")
+  PROFILE_BLOCK=$(printf '%s\n' "$paths" | PYTHONPATH="$HERE" ROOT="$ROOT" \
+            python3 "$HERE/prbot_profile.py" block "$REPO" "$EFFORT" 2>/dev/null || true)
+  [ -n "$PROFILE_BLOCK" ] && echo "[$REPO#$PR] profile: critical-path section added ($EFFORT)"
+fi
+IFS=',' read -ra RISK_RULES <<< "$RULES"
 for rule in "${RISK_RULES[@]+"${RISK_RULES[@]}"}"; do
   rule="${rule#"${rule%%[![:space:]]*}"}"; rule="${rule%"${rule##*[![:space:]]}"}"
   [ -n "$rule" ] || continue
@@ -134,7 +148,6 @@ rm -f "$wt/review.json"
 # Learnings: findings reviewers have dropped as noise or reworded — same-repo rows first, then
 # the team's general preferences — so the agent stops re-raising rejected ones. Empty on a fresh
 # box. Rendered by prbot_learn.py (beside us).
-HERE="$(cd "$(dirname "$0")" && pwd)"
 LEARN=$(PYTHONPATH="$HERE" ROOT="$ROOT" python3 -c \
   'import prbot_learn,sys;sys.stdout.write(prbot_learn.render(sys.argv[1]))' "$REPO" 2>/dev/null)
 
@@ -182,12 +195,14 @@ affected and what actually breaks for them (an end user, an operator, a partner)
 consequence, not the code mechanism\", \"body\":
 \"the detailed technical explanation and the concrete failing scenario, in markdown — this is the
 comment posted to GitHub, so write it for the PR author\", \"reply_to\":null, \"suggestion\":null,
-\"confidence\":\"high|medium|low\"}]}. The title and impact are shown to a reviewer skimming the
+\"confidence\":\"high|medium|low\", \"critical_path\":null}]}. The title and impact are shown to a reviewer skimming the
 dashboard so they can understand and sign off on each finding WITHOUT reading the whole PR — keep
 them jargon-free and self-contained; the body stays the full technical comment.
 Set \"confidence\" to how sure you are the finding is real and worth raising — low-confidence
 findings are shown to the reviewer in a separate collapsed \"maybe\" tray, so use it honestly
-rather than dropping a borderline point. When a finding has a concrete,
+rather than dropping a borderline point. \"critical_path\" is optional: set it to the exact glob
+from the 'Critical paths for this repository' section when the finding concerns one of those
+paths, else leave it null. When a finding has a concrete,
 correct fix that replaces the SINGLE line you set in \"line\", put the exact replacement line
 (matching its indentation) in \"suggestion\" — the reviewer can post it as a one-click GitHub
 suggestion. Only when confident and single-line; otherwise leave \"suggestion\" null. A human skims summary/keyPoints/explainer/analysis in a dashboard — write them SHORT and
@@ -213,13 +228,13 @@ if [ -n "$APPROACH" ]; then
 
 $APPROACH
 $DEPTH
-$FOCUSBLOCK$STACKBLOCK
+$FOCUSBLOCK$STACKBLOCK$PROFILE_BLOCK
 
 $CONTRACT"
 else
   PROMPT="Use the pr-review skill to review PR #$PR of $REPO. Follow its Step 7 automation mode.
 $DEPTH
-$FOCUSBLOCK$STACKBLOCK
+$FOCUSBLOCK$STACKBLOCK$PROFILE_BLOCK
 ${CONTRACT}"
 fi
 

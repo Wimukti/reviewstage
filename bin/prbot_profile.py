@@ -600,12 +600,6 @@ def counts(profile):
             "doNotFlag": len(p.get("do_not_flag", []))}
 
 
-def tree_hash(base):
-    """sha256 over `git ls-files` — pr-watch.sh compares it day to day for auto re-profiling."""
-    import hashlib
-    return hashlib.sha256(_git(base, "ls-files").encode()).hexdigest()
-
-
 # --- CLI (used by profile-repo.sh and run-review.sh) --------------------------------------------
 def _main(argv):
     cmd = argv[1] if len(argv) > 1 else ""
@@ -652,10 +646,7 @@ def _main(argv):
         sys.stdout.write(render_block(load_profile(argv[2]), paths,
                                       argv[3] if len(argv) > 3 else "standard"))
         return 0
-    if cmd == "tree-hash":                     # tree-hash <base>
-        print(tree_hash(argv[2]))
-        return 0
-    print("usage: prbot_profile.py signals|prompt|finish|risk|block|tree-hash ...", file=sys.stderr)
+    print("usage: prbot_profile.py signals|prompt|finish|risk|block ...", file=sys.stderr)
     return 64
 
 

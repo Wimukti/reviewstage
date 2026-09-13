@@ -106,6 +106,7 @@ printf '%s' "$result_line" | jq -c --arg model "${model:-$MODEL}" '{
 status "validating paths against the tree"
 py finish "$REPO" "$BASE" "$PDIR/reply.txt" "$PDIR/usage.json" 2>>"$PDIR/agent.log" \
   || fail "the model's reply was not a usable profile (see $PDIR/agent.log)"
-# The tree fingerprint auto-profiling compares against, so a fresh profile resets the clock.
-py tree-hash "$BASE" > "$PDIR/tree.hash" 2>/dev/null || true
+# The tree fingerprint pr-watch.sh compares against for auto re-profiling — a fresh profile
+# resets the baseline.
+git -C "$BASE" ls-files | sort > "$PDIR/tree.paths" 2>/dev/null || true
 status "done"

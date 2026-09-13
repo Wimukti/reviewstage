@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type SkillsData, type Token } from "./api";
+import { api, type ProfileData, type SkillsData, type Token } from "./api";
+import { MdEditor } from "./MdEditor";
 
 function Banner({ html }: { html: string }) {
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
@@ -225,6 +226,200 @@ function DepthEditor({ token, level, d, onDone }: {
   );
 }
 
+
+// One repository's profile: the critical paths, risk paths and rules every Standard/Deep review
+// of it is told to walk. Built by bin/profile-repo.sh (one Sonnet call), editable here as
+// markdown, re-buildable by hand or automatically when the file tree changes materially.
+function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) => void }) {
+  const [d, setD] = useState<ProfileData | null>(null);
+  const [md, setMd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(
+    () =>
+      api.profile(repo).then((p) => {
+        setD(p);
+        setMd(p.md);
+      }),
+    [repo]
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+  // Poll while a build runs so the phase list advances without a reload.
+  useEffect(() => {
+    if (d?.state !== "running") return;
+    const t = setInterval(load, 3000);
+    return () => clearInterval(t);
+  }, [d?.state, load]);
+
+  if (!d) {
+    return (
+      <details className="skilled" data-testid="repo-profile">
+        <summary>
+          Profile for <code>{repo}</code> <span className="tag-off">Loading</span>
+        </summary>
+      </details>
+    );
+  }
+
+  const act = async (fn: () => Promise<ProfileData>) => {
+    setBusy(true);
+    try {
+      const r = await fn();
+      setD(r);
+      setMd(r.md);
+      if (r.bannerHtml) onBanner(r.bannerHtml);
+    } catch (e) {
+      onBanner(
+        `<div class='banner err'><span>🚫</span><div>${(e as Error).message || "That didn't work."}</div></div>`
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const tag =
+    d.state === "running" ? (
+      <span className="tag-req">Profiling</span>
+    ) : d.state === "done" ? (
+      <span className="tag-on">Profiled</span>
+    ) : d.state === "failed" ? (
+      <span className="tag-req">Failed</span>
+    ) : (
+      <span className="tag-off">Never run</span>
+    );
+  const usage = d.last?.usage;
+  const c = d.counts;
+
+  return (
+    <details className="skilled" data-testid="repo-profile">
+      <summary>
+        Profile for <code>{repo}</code> {tag}
+      </summary>
+      <div className="dbody">
+        {d.state === "running" && d.running ? (
+          <div className="profstat" data-testid="profile-status">
+            <span className="dot run" />
+            <span>
+              {d.running.queued
+                ? "Queued — waiting for another job to finish"
+                : `${d.running.phases[d.running.cur]} (${d.running.cur + 1}/${d.running.phases.length})`}
+            </span>
+            <button
+              className="btn soft"
+              type="button"
+              disabled={busy}
+              onClick={() => act(() => api.profileStop(repo, d.token))}
+            >
+              Stop
+            </button>
+          </div>
+        ) : d.state === "done" && d.last ? (
+          <div className="profstat" data-testid="profile-status">
+            <span className="dot ok" />
+            <span>
+              Last run {d.last.when}
+              {d.last.model ? ` · ${d.last.model}` : ""}
+              {usage ? ` · ${usage.tokens.toLocaleString("en-US")} tokens` : ""}
+              {d.last.runner && d.last.runner !== "shared" ? ` · on ${d.last.runner}'s account` : ""}
+              {d.last.editedBy ? ` · edited by ${d.last.editedBy}` : ""}
+            </span>
+          </div>
+        ) : d.state === "failed" ? (
+          <div className="profstat" data-testid="profile-status">
+            <span className="dot bad" />
+            <span>{d.failed || "The last run failed."}</span>
+          </div>
+        ) : (
+          <div className="profstat" data-testid="profile-status">
+            <span className="dot" />
+            <span>{d.stopped ? "Stopped before it finished." : "Never run."}</span>
+          </div>
+        )}
+
+        {c && (
+          <div className="profcounts" data-testid="profile-counts">
+            {c.critical} critical paths · {c.risk} risk paths · {c.rules} review rules · {c.doNotFlag} do-not-flag
+            {d.versions.length > 0 ? ` · ${d.versions.length} earlier version${d.versions.length === 1 ? "" : "s"}` : ""}
+          </div>
+        )}
+
+        {d.state !== "running" && (
+          <div className="inrow">
+            <button
+              className="btn primary"
+              type="button"
+              disabled={busy || !d.connected}
+              title={d.connected ? "" : "Connect your Claude account in Integrations first"}
+              onClick={() => act(() => api.profileRun(repo, d.token))}
+            >
+              {d.state === "done" ? "Re-profile this repo" : "Profile this repo"}
+            </button>
+            {!d.connected && (
+              <span className="hint" style={{ margin: 0 }}>
+                Runs on your Claude account — connect it in Integrations first.
+              </span>
+            )}
+          </div>
+        )}
+        <div className="hint">
+          Gathers the tree, churn, in-degree, CODEOWNERS and CI names with no model call, then makes one
+          Sonnet call to name the critical paths. Every path is checked against the tree; anything that
+          matches nothing is dropped.
+        </div>
+        {d.last && d.last.dropped.length > 0 && (
+          <div className="profdrop">
+            Dropped as not in the tree:{" "}
+            {d.last.dropped.map((g) => (
+              <code key={g} style={{ marginRight: 6 }}>
+                {g}
+              </code>
+            ))}
+          </div>
+        )}
+
+        {d.state === "done" && (
+          <form
+            style={{ marginTop: 14 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              act(() => api.saveProfile(repo, d.token, md));
+            }}
+          >
+            <MdEditor value={md} onChange={setMd} />
+            <div className="hint">
+              Edit the markdown and save — it is parsed back into the profile reviews read. Paths that
+              match nothing in the tree are dropped; the previous version is kept.
+            </div>
+            <div className="inrow" style={{ marginTop: 10 }}>
+              <button className="btn primary" type="submit" disabled={busy || md === d.md}>
+                Save profile
+              </button>
+            </div>
+          </form>
+        )}
+
+        <label className="profauto">
+          <input
+            type="checkbox"
+            checked={d.autoProfile}
+            disabled={busy || !d.isAdmin}
+            onChange={(e) => act(() => api.setAutoProfile(repo, d.token, e.target.checked))}
+          />
+          <span>
+            Re-profile automatically when the file tree changes materially
+            {!d.isAdmin && <span className="muted"> (admin only)</span>}
+            <br />
+            <span className="muted sm">
+              Checked at most once a day by the poller; runs on the admin's Claude account and skips when
+              it isn't connected.
+            </span>
+          </span>
+        </label>
+      </div>
+    </details>
+  );
+}
+
 export function Skills() {
   const [d, setD] = useState<SkillsData | null>(null);
   const [banner, setBanner] = useState("");
@@ -350,6 +545,21 @@ export function Skills() {
                 <SkillEditor token={d.token} target={`repo:${r.repo}`} value={r.content} onDone={onDone} />
               </div>
             </details>
+          ))}
+        </>
+      )}
+
+      {d.repoSkills.length > 0 && (
+        <>
+          <h2>Repository profile</h2>
+          <p className="muted sm">
+            A profile names the paths where a mistake hurts most in each repository. When a PR touches one,
+            Standard and Deep reviews are told to verify it explicitly — callers, contracts, migrations,
+            tests — and findings on it carry a <span className="cpbadge">critical path</span> badge. Its
+            risk paths join the context banners.
+          </p>
+          {d.repoSkills.map((r) => (
+            <RepoProfile key={r.repo} repo={r.repo} onBanner={setBanner} />
           ))}
         </>
       )}

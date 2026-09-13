@@ -751,3 +751,33 @@ color:var(--dim)}
 .clamp{display:-webkit-box;-webkit-line-clamp:4;line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .morebtn{margin-top:8px;background:none;border:0;color:var(--blue);font:inherit;font-size:.82rem;
 cursor:pointer;padding:0;text-decoration:underline}
+
+/* --- Settings page + Discord / webhook integration cards ------------------------------------ */
+.iico.discord{background:#5865F2;color:#fff}
+.iico.hook{background:#1f2637;color:#9fb0ff;border:1px solid #2b3140}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;
+  border-bottom:1px solid var(--line2)}
+.setrow:last-child{border-bottom:0}
+.setrow .setlbl{flex:1;min-width:0}
+.setrow .setlbl b{display:block;font-weight:600}
+.setrow .setlbl .hint{margin:3px 0 0}
+.setrow .setctl{display:flex;align-items:center;gap:10px;flex:none}
+.setrow .in{width:110px}
+.setsrc{font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;
+  border-radius:999px;background:var(--panel2);color:var(--dim);border:1px solid var(--line2)}
+.setsrc.settings{color:#9fb0ff;border-color:rgba(91,86,224,.4)}
+.switch{position:relative;width:42px;height:24px;flex:none}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;border-radius:999px;background:#2a3145;transition:background .15s;cursor:pointer}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
+  background:#fff;transition:transform .15s}
+.switch input:checked+span{background:#5b56e0}
+.switch input:checked+span::after{transform:translateX(18px)}
+.switch input:disabled+span{opacity:.5;cursor:not-allowed}
+input[type=range]{accent-color:var(--purple);width:180px}
+.chk{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:.95rem}
+.chk .envnote{color:var(--dim);font-size:.82rem;margin-left:auto}
+.chk .envnote.on{color:#6fe6b2}
+.setfoot{display:flex;align-items:center;gap:12px;margin-top:18px}
+.setfoot .muted{font-size:.85rem}
+.schema{font-size:.78rem;line-height:1.45;max-height:340px;overflow:auto;margin:10px 0 0}

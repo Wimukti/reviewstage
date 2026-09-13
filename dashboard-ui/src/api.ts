@@ -26,6 +26,14 @@ export function post<T>(path: string, body: unknown = {}): Promise<T> {
   });
 }
 
+export function put<T>(path: string, body: unknown = {}): Promise<T> {
+  return req<T>(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 // ---- shapes -------------------------------------------------------------------------------
 
 export interface Me {
@@ -36,6 +44,7 @@ export interface Me {
   claude_connected?: boolean;
   active_skill?: "own" | "team";
   skill_label?: string;
+  is_admin?: boolean;
   dry_run: boolean;
   repo: string;
   brand: string;
@@ -251,13 +260,48 @@ export interface SkillsData {
 }
 
 
+export interface NotifyEnv {
+  slack_webhook: boolean;
+  slack_bot: boolean;
+  discord_webhook: boolean;
+  webhook_url: boolean;
+  webhook_secret: boolean;
+}
+
 export interface IntegrationsData {
   token: Token;
   github: { login: string };
   slack: { id: string };
+  discord: { id: string };
   claude: { connected: boolean; authUrl: string };
+  notify: { env: NotifyEnv; backends: string[]; payloadSchema: Record<string, unknown> };
   oauth: boolean;
   brand: string;
+}
+
+// Runtime settings ($ROOT/settings.json): settings.json > .env > default.
+export type NotifyBackend = "slack" | "discord" | "generic" | "none";
+export interface RuntimeSettings {
+  poller_enabled: boolean;
+  poll_interval_seconds: number;
+  notify_backends: NotifyBackend[];
+  max_pr_age_days: number;
+  skip_bot_prs: boolean;
+}
+export type SettingSource = "settings" | "env" | "default";
+export interface SettingsData {
+  token: Token;
+  settings: RuntimeSettings;
+  sources: Record<keyof RuntimeSettings, SettingSource>;
+  saved: Partial<RuntimeSettings>;
+  env: NotifyEnv;
+  is_admin: boolean;
+  admin: string;
+  poller: { lastPoll: number | null; envInterval: string };
+  limits: { intervalMin: number; intervalMax: number };
+  backends: NotifyBackend[];
+  dry_run: boolean;
+  bannerHtml?: string;
 }
 
 export interface LearningRow {
@@ -350,8 +394,11 @@ export const api = {
   skillAction: (step: string, payload: Record<string, unknown>) =>
     post<BannerResult>(`/skill/${step}`, payload),
   integrations: () => get<IntegrationsData>("/integrations"),
-  saveSettings: (t: Token, fields: { slack_id?: string; pat?: string }) =>
+  saveSettings: (t: Token, fields: { slack_id?: string; discord_id?: string; pat?: string }) =>
     post<BannerResult>("/settings", { ...t, ...fields }),
+  settings: () => get<SettingsData>("/settings"),
+  saveRuntimeSettings: (t: Token, settings: Partial<RuntimeSettings>) =>
+    put<SettingsData>("/settings", { ...t, settings }),
   claudeCode: (t: Token, code: string) =>
     post<BannerResult & { connected: boolean }>("/claude/code", { ...t, code }),
   claudeDisconnect: (t: Token) =>

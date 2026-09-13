@@ -40,7 +40,9 @@ export function buildFixture() {
 
   write(
     join(FIXTURE, "users.json"),
-    JSON.stringify({ [USER]: { name: "Acme Dev", slack_id: "U0TEST", added: 1, updated: 1 } }),
+    JSON.stringify({
+      [USER]: { name: "Acme Dev", slack_id: "U0TEST", discord_id: "4242", added: 1, updated: 1 },
+    }),
   );
 
   write(

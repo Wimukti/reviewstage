@@ -69,6 +69,43 @@ test.describe("signed in", () => {
     await expect(page.getByText(/required to review/i)).toBeVisible(); // Claude
   });
 
+  test("integrations page shows the Discord and generic webhook cards", async ({ page }) => {
+    await page.goto("/integrations");
+    await expect(page.getByText(/mentions you in the discord card/i)).toBeVisible();
+    await expect(page.getByPlaceholder("123456789012345678")).toHaveValue("4242");
+    await page.getByRole("button", { name: /show payload schema/i }).click();
+    await expect(page.getByText(/X-ReviewStage-Signature/)).toBeVisible();
+    await expect(page.locator("pre.schema")).toContainText("review_requested");
+  });
+
+  test("settings page renders for the fixture admin and the interval round-trips", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(page.getByRole("heading", { name: /^settings$/i })).toBeVisible();
+    await expect(page.getByText(/^poller$/i)).toBeVisible();
+    await expect(page.getByText(/^notifications$/i)).toBeVisible();
+    await expect(page.getByText(/^pr filters$/i)).toBeVisible();
+    // The fixture user is REVIEWER, hence admin: the save button exists (non-admins get read-only).
+    const save = page.getByRole("button", { name: /save settings/i });
+    await expect(save).toBeVisible();
+    await expect(save).toBeDisabled(); // nothing dirty yet
+
+    const minutes = page.getByLabel("Poll interval (minutes)");
+    await minutes.fill("7");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.locator(".banner.ok")).toContainText(/saved/i);
+
+    // Round-trip: a fresh load shows 7 minutes and marks the value as coming from Settings.
+    await page.reload();
+    await expect(page.getByLabel("Poll interval (minutes)")).toHaveValue("7");
+    await expect(page.getByText(/every 7 minutes/i)).toBeVisible();
+
+    // Put it back so the fixture stays deterministic for the other tests.
+    await page.getByLabel("Poll interval (minutes)").fill("3");
+    await page.getByRole("button", { name: /save settings/i }).click();
+    await expect(page.locator(".banner.ok")).toBeVisible();
+  });
+
   test("learnings page renders", async ({ page }) => {
     await page.goto("/learnings");
     await expect(page.getByRole("heading", { name: /has learned/i })).toBeVisible();

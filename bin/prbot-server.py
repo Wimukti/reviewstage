@@ -52,6 +52,7 @@ import prbot_md
 import prbot_paths as P
 import prbot_rollup
 import prbot_settings
+import prbot_webhook
 
 BRAND = "ReviewStage"                    # product name shown beside the logo (see prbot_assets)
 CLAUDE_ICON = ("<svg viewBox='0 0 24 24' width=18 height=18 fill=currentColor aria-hidden=true>"
@@ -190,6 +191,42 @@ def notify_env_status():
             "discord_webhook": bool(ENV.get("DISCORD_WEBHOOK")),
             "webhook_url": bool(ENV.get("WEBHOOK_URL")),
             "webhook_secret": bool(ENV.get("WEBHOOK_SECRET"))}
+
+
+# --- GitHub webhooks (prbot_webhook.py) ------------------------------------------------------
+# POST /webhooks/github turns a review request into a queue row + card within a second; the
+# poller stays on as the safety net. GITHUB_WEBHOOK_SECRET gates the endpoint (503 unset, 401
+# on a bad X-Hub-Signature-256). Never runs a review — same notify-only rule as pr-watch.sh.
+GITHUB_WEBHOOK_SECRET = prbot_webhook.secret_from(ENV)
+
+
+def webhook_team_members(org, slug):
+    """Logins of a requested team, via the service token. Only signed-in members are then
+    queued/pinged (Context intersects with users.json)."""
+    if not (org and slug and PAT):
+        return []
+    rows = gh_json(["api", f"orgs/{org}/teams/{slug}/members?per_page=100"], default=[])
+    if not isinstance(rows, list):
+        return []
+    return [m.get("login") for m in rows if isinstance(m, dict) and m.get("login")]
+
+
+def webhook_ctx():
+    vals, _ = runtime_settings()
+    return prbot_webhook.Context(
+        ROOT, BIN, repo_ok, load_users(), PUBLIC_URL, SECRET, settings=vals, env=ENV,
+        single_repo=SINGLE_REPO, reviewer=REVIEWER, team_members=webhook_team_members,
+        log=lambda m, **kw: print(m, flush=True))
+
+
+def webhooks_status():
+    """webhooks.json plus derived fields for the Settings card (never the secret itself)."""
+    vals, _ = runtime_settings()
+    d = prbot_webhook.status(ROOT)
+    d["configured"] = bool(GITHUB_WEBHOOK_SECRET)
+    d["active"] = prbot_webhook.active(ROOT, vals.get("poll_interval_seconds", 180))
+    d["url"] = f"{PUBLIC_URL}/webhooks/github" if PUBLIC_URL else "/webhooks/github"
+    return d
 
 
 # --- users ---------------------------------------------------------------------------------
@@ -2383,7 +2420,8 @@ class Handler(BaseHTTPRequestHandler):
                            "envInterval": ENV.get("POLL_INTERVAL", "")},
                 "limits": {"intervalMin": prbot_settings.INTERVAL_MIN,
                            "intervalMax": prbot_settings.INTERVAL_MAX},
-                "backends": list(prbot_settings.BACKENDS), "dry_run": DRY_RUN}
+                "backends": list(prbot_settings.BACKENDS), "dry_run": DRY_RUN,
+                "webhooks": webhooks_status()}
 
     def do_PUT(self):
         """PUT /api/settings — the admin saves runtime settings. Session cookie + the signed
@@ -2473,7 +2511,8 @@ class Handler(BaseHTTPRequestHandler):
                 "active_skill": choice, "skill_label": skill_label, "dry_run": DRY_RUN,
                 "is_admin": is_admin(user),
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
-                "brand": BRAND, "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO}
+                "brand": BRAND, "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO,
+                "webhooks_configured": bool(GITHUB_WEBHOOK_SECRET)}
 
     def api_queue(self, user, tab, sort):
         if tab not in dict(TABS):
@@ -2713,6 +2752,8 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n)
         route = urlparse(self.path).path.rstrip("/").removeprefix("/prbot")
+        if route == "/webhooks/github":
+            return self.webhook_github(raw)
         if route.startswith("/api/"):
             try:
                 body = json.loads(raw or b"{}")
@@ -2720,6 +2761,32 @@ class Handler(BaseHTTPRequestHandler):
                 body = {}
             return self.api_post(route, body if isinstance(body, dict) else {})
         return self.reply(404, "not found", "text/plain; charset=utf-8")
+
+    # -- GitHub webhook --------------------------------------------------------------------------
+    def webhook_github(self, raw):
+        """POST /webhooks/github. Verify, acknowledge fast, do the work on a thread. No session:
+        GitHub is the caller, and the HMAC over the body is the whole authentication."""
+        if not GITHUB_WEBHOOK_SECRET:
+            return self.api_json({"error": "GITHUB_WEBHOOK_SECRET is not configured"}, 503)
+        sig = self.headers.get("X-Hub-Signature-256", "")
+        if not prbot_webhook.verify_signature(GITHUB_WEBHOOK_SECRET, raw, sig):
+            print("[webhook] 401: bad or missing X-Hub-Signature-256", flush=True)
+            return self.api_json({"error": "signature mismatch"}, 401)
+        event = self.headers.get("X-GitHub-Event", "")
+        delivery = self.headers.get("X-GitHub-Delivery", "")
+        if event == "ping":
+            prbot_webhook.record(ROOT, ping=True)
+            print(f"[webhook {delivery[:8]}] ping from GitHub", flush=True)
+            return self.api_json({"ok": True, "pong": True}, 200)
+        try:
+            payload = json.loads(raw or b"{}")
+        except json.JSONDecodeError:
+            return self.api_json({"error": "body is not JSON"}, 400)
+        if not isinstance(payload, dict):
+            return self.api_json({"error": "body is not a JSON object"}, 400)
+        threading.Thread(target=prbot_webhook.process,
+                         args=(event, payload, webhook_ctx(), delivery), daemon=True).start()
+        return self.api_json({"accepted": True, "event": event, "delivery": delivery}, 202)
 
     # -- auth pages ----------------------------------------------------------------------------
     def oauth_callback(self, code, state, error):

@@ -52,9 +52,23 @@ Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped 
 - **Effort, focus and model per run.** Quick, Standard or Deep (auto-suggested from the diff), a free-text focus note, and your plan's default model or Opus, Sonnet or Haiku. Tokens and model are shown per run.
 - **It learns what your team drops.** Kept, reworded and dropped findings feed the next review of the repository. Skills are scored by keep rate; the team default is versioned with a revision history; add a rule in plain words.
 - **Independent reviews, weighted agreement.** Two reviewers on one PR get separate runs in separate worktrees; findings both raised with a different skill, model or effort are marked confirmed.
+- **One install, many repositories.** List them in `REPOS` or accept a whole org with `REPO_ALLOW_ORG`; per-repo skills and risk paths, a repo chip and filter on every queue row, Insights across repositories.
 - **From PR to QA guide.** A tester-ready P0/P1/P2 test plan built from the same diff and review threads.
 - **Slack, Discord or any webhook.** Cards for review requested, review ready, stopped and QA ready — Slack (webhook or threaded bot token), Discord embeds, or a signed JSON POST to Teams, Zapier, n8n or your own endpoint. Or none: the dashboard is the inbox. Switched live from the Settings page.
 - **Safe by construction.** Diff-anchor validation so GitHub never rejects a whole review; every action HMAC-signed and short-lived; tokens encrypted at rest; `DRY_RUN` on by default.
+
+## Solo · Team · Company
+
+| | Solo | Team | Company |
+| --- | --- | --- | --- |
+| Runs on | Docker on your laptop | One server for the team | One install for the organisation |
+| Sign-in | You, with a fine-grained token | Everyone, as themselves | Org allowlist; GitHub App sign-in is on the roadmap |
+| Repositories | One | One | Many, with per-repo skills and risk paths |
+| Notifications | None; paste a PR URL | Review-request alerts to Slack, Discord or any webhook | Same, per repository |
+| Insights | Your own runs | The team's keep rate, agreement, cycle time | Across repositories |
+| Billing | Your Claude plan | Each reviewer's own plan | Each reviewer's own plan |
+
+Same gate at every size: nothing reaches GitHub without a signed-in person clicking, under their own name. Team and Company are configuration, not a different edition. On a phone, **Add to Home Screen** installs the dashboard as an app; the native wrapper and push notifications are described in [docs/MOBILE.md](docs/MOBILE.md).
 
 ## Team mode
 

@@ -53,6 +53,16 @@ docker compose up -d demo   # seeds sample runs so you can explore the UI
 
 You are ready for your [first review](/reviewstage/start/first-review/).
 
+### Install as an app
+
+The dashboard is a progressive web app. Once it is reachable over HTTPS (or on `localhost`), install it from the browser and it opens standalone, in the app's own colours, from your home screen or dock:
+
+- **iPhone / iPad (Safari):** Share → **Add to Home Screen**.
+- **Android (Chrome):** the **Install app** prompt, or ⋮ → **Add to Home screen**.
+- **Desktop (Chrome / Edge):** the install icon in the address bar.
+
+It is the same app as the tab; the sign-in and Claude connection carry over. Offline, it shows a "needs a connection to your server" page rather than stale data, because everything lives on your server. Native store apps and push notifications are the next phase; see [Mobile](/reviewstage/developers/mobile/).
+
 ## From source on a Linux server
 
 Use this when you cannot run Docker, or want the dashboard behind your own web server. The pieces are a Python 3 server, a few bash scripts, the Claude Code CLI and the GitHub CLI. There is no build step for the backend; the dashboard UI is a prebuilt bundle.

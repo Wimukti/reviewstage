@@ -15,7 +15,7 @@ cd dashboard-ui
 pnpm install --frozen-lockfile
 npx tsx e2e/fixture.ts                       # builds e2e/.fixture + a session cookie
 PATH="$PWD/e2e/.fixture/fakebin:$PATH" ROOT="$PWD/e2e/.fixture" \
-  PRBOT_SECRET=e2e-fixed-test-secret-not-for-production PRBOT_SPA=1 PRBOT_PORT=8988 \
+  RS_SECRET=e2e-fixed-test-secret-not-for-production RS_SPA=1 RS_PORT=8988 \
   python3 ../bin/server.py &           # http://127.0.0.1:8988
 pnpm dev                                     # esbuild --watch into ../bin/static
 ```

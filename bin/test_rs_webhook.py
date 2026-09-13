@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-_TMP = tempfile.mkdtemp(prefix="prbot-webhook-test-")
+_TMP = tempfile.mkdtemp(prefix="rs-webhook-test-")
 os.environ["ROOT"] = _TMP                       # before rs_paths reads it
 sys.path.insert(0, str(HERE))
 

@@ -2,7 +2,7 @@
 #
 # Stage 1 builds the React dashboard bundle; stage 2 is the runtime: Python for the server,
 # bash + git + gh + jq for the review scripts, Node for the Claude Code CLI. The whole
-# persistent footprint lives under /home/reviewstage/.claude-pr-bot (ROOT), which compose
+# persistent footprint lives under /home/reviewstage/.reviewstage (ROOT), which compose
 # mounts as a named volume. Everything else is disposable.
 
 # ---- stage 1: dashboard bundle ---------------------------------------------------------------
@@ -46,9 +46,9 @@ RUN set -eux; \
 # entrypoint installs the review skills into ~/.claude/skills on every start.
 RUN useradd --create-home --uid 1000 --shell /bin/bash reviewstage
 ENV HOME=/home/reviewstage \
-    ROOT=/home/reviewstage/.claude-pr-bot \
-    PRBOT_PORT=8899 \
-    PRBOT_BIND=0.0.0.0 \
+    ROOT=/home/reviewstage/.reviewstage \
+    RS_PORT=8899 \
+    RS_BIND=0.0.0.0 \
     PATH=/app/bin:/usr/local/bin:/usr/bin:/bin
 
 WORKDIR /app
@@ -57,14 +57,14 @@ COPY --chown=reviewstage:reviewstage skills/ /app/skills/
 COPY --from=ui --chown=reviewstage:reviewstage /build/bin/static/ /app/bin/static/
 RUN chmod 0755 /app/bin/*.sh /app/bin/*.py \
     && ln -s /app/bin/entrypoint.sh /usr/local/bin/doctor \
-    && mkdir -p /home/reviewstage/.claude-pr-bot /home/reviewstage/.claude \
+    && mkdir -p /home/reviewstage/.reviewstage /home/reviewstage/.claude \
     && chown -R reviewstage:reviewstage /home/reviewstage
 
 USER reviewstage
-VOLUME ["/home/reviewstage/.claude-pr-bot"]
+VOLUME ["/home/reviewstage/.reviewstage"]
 EXPOSE 8899
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${PRBOT_PORT}/health" || exit 1
+    CMD curl -fsS "http://127.0.0.1:${RS_PORT}/health" || exit 1
 
 ENTRYPOINT ["/app/bin/entrypoint.sh"]
 CMD ["server"]

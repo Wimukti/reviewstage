@@ -4,7 +4,7 @@
 #               notify.sh) for anything newly requested.
 #
 # cron (every 3 min, flock'd):
-#   */3 * * * * flock -n /tmp/pr-watch.lock $HOME/.claude-pr-bot/bin/pr-watch.sh
+#   */3 * * * * flock -n /tmp/pr-watch.lock $HOME/.reviewstage/bin/pr-watch.sh
 #
 # Notify only; no review runs from here. Dedup is per REPO + PR + LOGIN (`<repo>:<pr>:<login>`
 # in `seen`), so each reviewer is pinged once per PR and never again — pushing new commits
@@ -45,8 +45,8 @@ fi
 # Don't Slack-nudge for PRs created long ago: a fresh review request on a years-old open PR is
 # almost always noise (see the pilot feedback). Such PRs are still marked seen (so they never
 # spam) and stay fully visible + reviewable in the dashboard queue — only the Slack ping is
-# suppressed. 0 disables the cutoff. Tunable in .env as PRBOT_MAX_PR_AGE_DAYS.
-MAX_AGE_DAYS="${PRBOT_MAX_PR_AGE_DAYS:-45}"
+# suppressed. 0 disables the cutoff. Tunable in .env as RS_MAX_PR_AGE_DAYS.
+MAX_AGE_DAYS="${RS_MAX_PR_AGE_DAYS:-45}"
 
 USERS_FILE="$ROOT/users.json"
 
@@ -247,7 +247,7 @@ if [ "$AUTO" != "{}" ] && [ -n "$AUTO" ]; then
     fi
     mv "$pd/tree.now" "$pd/tree.paths"
     exp=$(( now + 300 )); sig=$(sign "profile-auto:$repo:$exp")
-    resp=$(curl -fsS -m 20 -X POST "http://127.0.0.1:${PRBOT_PORT:-8899}/api/profile/auto" \
+    resp=$(curl -fsS -m 20 -X POST "http://127.0.0.1:${RS_PORT:-8899}/api/profile/auto" \
              -H 'Content-Type: application/json' \
              -d "$(jq -n --arg r "$repo" --arg e "$exp" --arg s "$sig" '{repo:$r, exp:$e, sig:$s}')" \
              2>&1) || { echo "==> auto-profile $repo: server did not accept the request: $resp"; continue; }

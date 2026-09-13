@@ -11,17 +11,17 @@ sidebar:
 docker compose ps                              # service health
 docker compose logs -f app                     # dashboard log
 docker compose logs -f poller                  # poller log (team profile)
-docker compose exec app cat /home/reviewstage/.claude-pr-bot/state/<pr>/agent.log   # what the agent did
-docker compose exec app cat /home/reviewstage/.claude-pr-bot/state/<pr>/status      # fetching / reviewing / done / failed
+docker compose exec app cat /home/reviewstage/.reviewstage/state/<pr>/agent.log   # what the agent did
+docker compose exec app cat /home/reviewstage/.reviewstage/state/<pr>/status      # fetching / reviewing / done / failed
 curl -s localhost:8899/health                  # -> ok
 bin/doctor.sh                                  # environment check
 ```
 
-From source: `systemctl status prbot`, `journalctl -u prbot -f`, and the same files under `~/.claude-pr-bot/`. (The unit name and state directory predate the rename and will change in a later release.)
+From source: `systemctl status reviewstage`, `journalctl -u reviewstage -f`, and the same files under `~/.reviewstage/`.
 
 ## "I changed .env and nothing happened"
 
-The dashboard reads `.env` **once, at startup**. `docker compose up -d` (or `sudo systemctl restart prbot`) after every edit, especially `DRY_RUN`. This is the single most common cause of "why isn't it working".
+The dashboard reads `.env` **once, at startup**. `docker compose up -d` (or `sudo systemctl restart reviewstage`) after every edit, especially `DRY_RUN`. This is the single most common cause of "why isn't it working".
 
 ## A review is stuck on "reviewing"
 
@@ -45,14 +45,14 @@ Check `state/<pr>/agent.log`. Common causes:
 Dedup is per PR and login in the poller's `seen` file. To re-announce a PR, drop its line:
 
 ```bash
-docker compose exec poller sed -i '/^1234:/d' /home/reviewstage/.claude-pr-bot/seen
+docker compose exec poller sed -i '/^1234:/d' /home/reviewstage/.reviewstage/seen
 ```
 
 To re-announce everything that has *not* been reviewed yet, keep the lines for PRs that already have a `review.json` and delete the rest.
 
 ## Card arrives, button 403s
 
-The link expired (7 days) or `PRBOT_SECRET` was rotated. Open the dashboard directly.
+The link expired (7 days) or `RS_SECRET` was rotated. Open the dashboard directly.
 
 ## Sign-in says the token cannot see the repository
 

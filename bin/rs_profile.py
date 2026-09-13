@@ -36,7 +36,7 @@ from pathlib import Path
 
 import rs_paths as P
 
-ROOT = Path(os.environ.get("ROOT", Path.home() / ".claude-pr-bot"))
+ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 PROFILES = ROOT / "profiles"
 
 MAX_MATCHED = 12          # critical paths listed per review, at most

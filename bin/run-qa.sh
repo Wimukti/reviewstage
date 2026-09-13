@@ -76,8 +76,8 @@ git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
 status "done"
 echo "[QA $REPO#$PR] done ($(wc -l < "$DIR/qa.md") lines)"
 
-# Tell whoever asked for it (PRBOT_ACTOR, set by the dashboard) that the guide is ready.
-ACTOR="${PRBOT_ACTOR:-}"
+# Tell whoever asked for it (RS_ACTOR, set by the dashboard) that the guide is ready.
+ACTOR="${RS_ACTOR:-}"
 notify_card qa_ready "$(jq -n --arg repo "$REPO" --arg p "$PR" --arg a "$ACTOR" \
     --arg l "$(signed_link qa "$REPO" "$PR" 604800)" \
     --argjson m "$(cat "$DIR/qa_meta.json")" \

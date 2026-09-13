@@ -20,7 +20,7 @@ review queue on a small server.
 | `dashboard-ui/`   | built by bootstrap        | React + TypeScript SPA, bundled by esbuild into `bin/static/`   |
 | `bootstrap.sh`    | you, once                 | Installs all of the above                                       |
 
-## Why everything lives in `~/.claude-pr-bot/`
+## Why everything lives in `~/.reviewstage/`
 
 Because a deploy tool or sync job that runs `rsync --delete` into some directory can delete
 files out from under a running review. So the base clone, the worktrees, the per-PR state and
@@ -33,7 +33,7 @@ The server binds `127.0.0.1` only and expects a reverse proxy in front of it. Ev
 mints — Slack buttons, the OAuth callback — is built from a single `PUBLIC_URL`, so the
 hostname your proxy answers on and the hostname in Slack cannot drift apart. If more than one
 hostname points at the instance (an old name kept alive so already-sent links keep working),
-`PRBOT_HOST_ALIASES` lists them and an unauthenticated visit on one bounces through another to
+`RS_HOST_ALIASES` lists them and an unauthenticated visit on one bounces through another to
 pick up an existing session.
 
 The app is served at the site root and still answers under the legacy `/prbot` prefix (the
@@ -107,11 +107,11 @@ first time the server starts with exactly one repo configured, stamps `repo` ont
 and legacy state present it refuses to start and says which env to set — it never guesses.
 
 Signed links cover `action:owner/name#pr:expiry`; signatures of the old `action:pr:expiry` form
-verify for `PRBOT_SIGNATURE_GRACE_DAYS` (default 7) after the first repo-aware start.
+verify for `RS_SIGNATURE_GRACE_DAYS` (default 7) after the first repo-aware start.
 
 ## Per-PR state
 
-`~/.claude-pr-bot/state/<owner>__<name>/<pr>/`:
+`~/.reviewstage/state/<owner>__<name>/<pr>/`:
 
 | File            | What                                                              |
 | --------------- | ------------------------------------------------------------------ |
@@ -161,7 +161,7 @@ The worktree is removed as soon as `review.json` is copied out.
   steering with your own recent decisions.
 - **Review effort + focus** (`effort`, `focus`): starting a review is a form (`run_form`), not
   a link — the reviewer picks an effort level (auto-sized from the diff) and can add a
-  free-text focus note. `start_review` writes both and passes `PRBOT_EFFORT` / `PRBOT_FOCUS`;
+  free-text focus note. `start_review` writes both and passes `RS_EFFORT` / `RS_FOCUS`;
   `run-review.sh` maps effort to a timeout and a depth instruction, and appends the focus to
   the prompt. `deep` tells the agent to search the whole repo for impact before judging. The
   depth instructions are editable per team on the Skills page (`_effort_<level>.md`).
@@ -172,13 +172,13 @@ The worktree is removed as soon as `review.json` is copied out.
   `start_new_session`); `POST /stop` kills the process group and writes a `stopped` status.
 - **Active skill choice** (`state/skills/<login>.use`): one selector on `/skills` sets whether a
   user's reviews run with their own skill or the team default. `start_review` passes it as
-  `PRBOT_SKILL_CHOICE`, which `run-review.sh` honors (`team` ignores a personal skill on file). The
+  `RS_SKILL_CHOICE`, which `run-review.sh` honors (`team` ignores a personal skill on file). The
   team default is guarded — `save_skill` refuses to blank it, and `restore_global_skill` (typed
   confirm) is the only way back to the installed skill.
-- **Skills**: a user can bring their own review skill (`~/.claude-pr-bot/skills/<login>.md`), and
+- **Skills**: a user can bring their own review skill (`~/.reviewstage/skills/<login>.md`), and
   the **team default** is an editable file (`skills/_global.md`, seeded by bootstrap from
   `skills/global-review.md`) maintained from the `/skills` page. `run-review.sh` picks the
-  clicker's skill (`PRBOT_ACTOR`), else the editable team default, else the installed
+  clicker's skill (`RS_ACTOR`), else the editable team default, else the installed
   `pr-review` skill — and before all of those, a per-repo override at
   `skills/repos/<owner>__<name>/SKILL.md` if one exists (recorded as skill id `repo:<slug>`); it
   runs the skill's logic and **always appends an explicit `review.json` output contract**, so any skill yields the shape the dashboard needs. **Quick-add rule**:

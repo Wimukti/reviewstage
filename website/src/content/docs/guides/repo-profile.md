@@ -53,7 +53,7 @@ months, TypeScript-dominant): the signals stage took **120 ms** inside Python an
 
 ## What the model sees
 
-One `claude -p` call — **Sonnet by default**, `PRBOT_MODEL` overrides — receives the
+One `claude -p` call — **Sonnet by default**, `RS_MODEL` overrides — receives the
 `skills/repo-profile` skill, the signals JSON above, and a strict output contract:
 
 ```json

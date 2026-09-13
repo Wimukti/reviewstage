@@ -8,7 +8,7 @@
 #
 # Two stages. First, DETERMINISTIC signals with no model call: tree, languages, manifests,
 # CODEOWNERS, CI config names, top files by churn and by in-degree, critical-looking directories.
-# Then ONE `claude -p` call (Sonnet by default, PRBOT_MODEL overrides) with skills/repo-profile.
+# Then ONE `claude -p` call (Sonnet by default, RS_MODEL overrides) with skills/repo-profile.
 # Every path_glob the model returns is validated against the tree; hallucinated ones are dropped
 # and logged. `--signals-only` prints the gathered JSON and exits 0 without touching Claude —
 # for tests and for seeing what the model would see.
@@ -68,7 +68,7 @@ echo "[profile $REPO] signals gathered in $(( $(date +%s) - t0 ))s"
 SKILL="$HERE/../skills/repo-profile/SKILL.md"
 [ -s "$SKILL" ] || fail "skills/repo-profile/SKILL.md is missing next to $HERE"
 PROMPT=$(py prompt "$PDIR/signals.json" "$SKILL") || fail "could not build the prompt"
-MODEL="${PRBOT_MODEL:-sonnet}"
+MODEL="${RS_MODEL:-sonnet}"
 echo "$MODEL" > "$PDIR/model"
 
 # One heavy agent at a time on the box, shared with reviews and QA guides.
@@ -77,7 +77,7 @@ exec 8>"$ROOT/review.lock"
 flock 8
 
 status "asking the model (one call)"
-echo "${PRBOT_RUN_AS:-shared}" > "$PDIR/runner"
+echo "${RS_RUN_AS:-shared}" > "$PDIR/runner"
 # Read-only tools only, cwd = the base clone, so the model can confirm a path before naming it
 # but cannot write anywhere. One prompt, one reply; the JSON is the reply text.
 (cd "$BASE" && timeout 15m claude -p "$PROMPT" --model "$MODEL" \

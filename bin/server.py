@@ -79,7 +79,7 @@ SLACK_ICON = ("<svg viewBox='0 0 122.8 122.8' width=22 height=22>"
               "<path fill='#ECB22E' d='M77.6 97a12.9 12.9 0 1 1-12.9 12.9V97zM77.6 90.5a12.9 12.9 "
               "0 0 1 0-25.8h32.3a12.9 12.9 0 0 1 0 25.8z'/></svg>")
 
-ROOT = Path(os.environ.get("ROOT", Path.home() / ".claude-pr-bot"))
+ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 BIN = Path(__file__).resolve().parent
 STATE = P.STATE
 QUEUE = ROOT / "queue.json"
@@ -104,7 +104,7 @@ def load_env():
 
 
 ENV = load_env()
-SECRET = ENV.get("PRBOT_SECRET", "")
+SECRET = ENV.get("RS_SECRET", "")
 # The SERVICE token: reads (diffs, PR metadata, the poller's searches) and the base clone.
 # Never used to post or approve — those use the signed-in user's own PAT, see user_pat().
 PAT = ENV.get("GITHUB_PAT", "")
@@ -115,7 +115,7 @@ ALLOW_ORG = P.allow_org(ENV)
 SINGLE_REPO = REPOS[0] if len(REPOS) == 1 else ""
 # Signed links minted before the repo dimension existed (action:pr:exp) stay valid this long
 # after the upgrade, so Slack links already sent keep working through the transition.
-SIG_GRACE_DAYS = int(ENV.get("PRBOT_SIGNATURE_GRACE_DAYS", "7") or 0)
+SIG_GRACE_DAYS = int(ENV.get("RS_SIGNATURE_GRACE_DAYS", "7") or 0)
 SIG_V2_SINCE = ROOT / "sig-v2-since"
 
 
@@ -235,7 +235,7 @@ def webhooks_status():
 # users.json: {login: {pat_enc | gh_token_enc(+gh_exp, gh_refresh_enc), slack_id, discord_id,
 # admin, name, added, devices: {sha256: {id, name, created, last_seen}}}. Tokens are
 # AES-encrypted with a key
-# derived from PRBOT_SECRET — derived, not stored, so rotating the secret also invalidates
+# derived from RS_SECRET — derived, not stored, so rotating the secret also invalidates
 # every stored PAT, which is the right outcome if it was rotated because it leaked. The
 # shell scripts only ever read login + slack_id; they never see a PAT.
 def _users_key():
@@ -244,8 +244,8 @@ def _users_key():
 
 def _openssl(mode, data):
     r = subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-a", "-A",
-                        mode, "-pass", "env:PRBOT_KEY"], input=data, capture_output=True,
-                       text=True, env={**os.environ, "PRBOT_KEY": _users_key()})
+                        mode, "-pass", "env:RS_KEY"], input=data, capture_output=True,
+                       text=True, env={**os.environ, "RS_KEY": _users_key()})
     if r.returncode != 0:
         raise RuntimeError((r.stderr or "openssl failed").strip()[:200])
     return r.stdout.strip()
@@ -317,11 +317,11 @@ GH_OAUTH_SCOPES = ENV.get("GH_OAUTH_SCOPES", "")
 
 def public_url(env):
     """Where browsers reach this dashboard, without a trailing slash. PUBLIC_URL is the knob;
-    the older PRBOT_ENV + PRBOT_DOMAIN pair (host prbot-<env>.<domain>) is still honoured so an
+    the older RS_ENV + RS_DOMAIN pair (host reviewstage-<env>.<domain>) is still honoured so an
     existing .env keeps working. Empty when neither is set — see the startup warning."""
     u = env.get("PUBLIC_URL", "")
-    if not u and env.get("PRBOT_ENV") and env.get("PRBOT_DOMAIN"):
-        host = env.get("PRBOT_HOST") or f"prbot-{env['PRBOT_ENV']}.{env['PRBOT_DOMAIN']}"
+    if not u and env.get("RS_ENV") and env.get("RS_DOMAIN"):
+        host = env.get("RS_HOST") or f"reviewstage-{env['RS_ENV']}.{env['RS_DOMAIN']}"
         u = f"https://{host}"
     return u.rstrip("/")
 
@@ -614,12 +614,12 @@ def claude_connected(login):
 
 def review_env(login):
     """Environment for a review spawned by `login`: it runs on THEIR Claude account (required —
-    see claude_connected). PRBOT_ACTOR is the clicker (drives skill choice)."""
-    env = {**os.environ, "PRBOT_RUN_AS": "shared", "PRBOT_ACTOR": login or ""}
+    see claude_connected). RS_ACTOR is the clicker (drives skill choice)."""
+    env = {**os.environ, "RS_RUN_AS": "shared", "RS_ACTOR": login or ""}
     tok = user_claude_token(login) if login else ""
     if tok:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = tok
-        env["PRBOT_RUN_AS"] = login
+        env["RS_RUN_AS"] = login
     return env
 
 
@@ -627,7 +627,7 @@ def review_env(login):
 # A user can bring their own pr-review skill; reviews they start use it (its logic runs, but
 # run-review.sh always appends our own output contract, so any skill still yields the review.json
 # the dashboard needs). No skill => the global default on the box. run-review picks the file by
-# PRBOT_ACTOR and records the skill id next to the review so learnings can score it.
+# RS_ACTOR and records the skill id next to the review so learnings can score it.
 SKILLS_DIR = ROOT / "skills"
 GLOBAL_SKILL_PATH = SKILLS_DIR / "_global.md"   # the editable team default (maintained here)
 
@@ -1549,42 +1549,42 @@ def session_sig(login, exp):
 
 # Optional: a parent domain to scope the session cookie to, so one login works across several
 # hostnames that all point at this instance. Empty (the default) = host-only cookies.
-PRBOT_DOMAIN = ENV.get("PRBOT_DOMAIN", "")
+RS_DOMAIN = ENV.get("RS_DOMAIN", "")
 # Optional: the hostnames that are all THIS instance (comma-separated). When two or more are
 # listed, an unauthenticated visit on one bounces through another to pick up an existing
 # session (cross-host SSO). Empty (the default) = feature off.
-HOST_ALIASES = [h.strip().lower() for h in ENV.get("PRBOT_HOST_ALIASES", "").split(",")
+HOST_ALIASES = [h.strip().lower() for h in ENV.get("RS_HOST_ALIASES", "").split(",")
                 if h.strip()]
 
 
 def _cookie_domain(host):
-    """Scope the session cookie to PRBOT_DOMAIN when the request host sits under it. Host-only
+    """Scope the session cookie to RS_DOMAIN when the request host sits under it. Host-only
     otherwise (localhost, tests, a single hostname) — a Domain that doesn't match the host is
     dropped by the browser."""
     h = (host or "").split(":")[0]
-    if PRBOT_DOMAIN and (h == PRBOT_DOMAIN or h.endswith("." + PRBOT_DOMAIN)):
-        return f"Domain=.{PRBOT_DOMAIN}; "
+    if RS_DOMAIN and (h == RS_DOMAIN or h.endswith("." + RS_DOMAIN)):
+        return f"Domain=.{RS_DOMAIN}; "
     return ""
 
 
-# PRBOT_COOKIE_SECURE=0 drops the Secure flag, for a plain-http local install (Docker on
+# RS_COOKIE_SECURE=0 drops the Secure flag, for a plain-http local install (Docker on
 # localhost). Anything reachable from outside must stay behind TLS with the default.
-COOKIE_SECURE = " Secure;" if os.environ.get("PRBOT_COOKIE_SECURE", "1") != "0" else ""
+COOKIE_SECURE = " Secure;" if os.environ.get("RS_COOKIE_SECURE", "1") != "0" else ""
 
 
 def session_cookie(login, host=""):
     exp = int(time.time()) + SESSION_TTL
-    return (f"prbot_s={login}:{exp}:{session_sig(login, exp)}; {_cookie_domain(host)}Path=/; "
+    return (f"rs_session={login}:{exp}:{session_sig(login, exp)}; {_cookie_domain(host)}Path=/; "
             f"Max-Age={SESSION_TTL}; HttpOnly;{COOKIE_SECURE} SameSite=Lax")
 
 
 def clear_session_cookie(host=""):
-    return (f"prbot_s=; {_cookie_domain(host)}Path=/; Max-Age=0; HttpOnly;{COOKIE_SECURE} "
+    return (f"rs_session=; {_cookie_domain(host)}Path=/; Max-Age=0; HttpOnly;{COOKIE_SECURE} "
             "SameSite=Lax")
 
 
 def _is_alias_host(host):
-    """One of the PRBOT_HOST_ALIASES hostnames — only meaningful when at least two are listed."""
+    """One of the RS_HOST_ALIASES hostnames — only meaningful when at least two are listed."""
     h = (host or "").split(":")[0].lower()
     return len(HOST_ALIASES) >= 2 and h in HOST_ALIASES
 
@@ -1611,7 +1611,7 @@ def _accept_url_ok(url):
 def session_user(headers):
     """The signed-in login, or None. A user removed from users.json is signed out at once."""
     jar = SimpleCookie(headers.get("Cookie", ""))
-    m = jar.get("prbot_s")
+    m = jar.get("rs_session")
     if not m:
         return None
     parts = m.value.split(":")
@@ -1784,7 +1784,7 @@ def verify(action, subject, exp, sig, legacy_pr=""):
         return "Malformed link."
     if not hmac.compare_digest(sign(action, subject, exp), sig) \
             and not legacy_sig_ok(action, legacy_pr, exp, sig):
-        # Overwhelmingly this is a link minted under a previous PRBOT_SECRET — the box was
+        # Overwhelmingly this is a link minted under a previous RS_SECRET — the box was
         # rebuilt, or .env was regenerated. Say so, rather than implying tampering.
         return ("This link was signed with a different key — it is almost certainly from "
                 "before this box was rebuilt. Open the newest dashboard link in Slack.")
@@ -2279,7 +2279,7 @@ def tab_of(st):
 
 # --- handler ------------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
-    server_version = "prbot"
+    server_version = "reviewstage"
 
     def log_message(self, fmt, *args):
         print(f"{self.address_string()} {fmt % args}", flush=True)
@@ -2355,7 +2355,7 @@ class Handler(BaseHTTPRequestHandler):
                                         q.get("error") or [""])[0])
         # Everything else is a client-routed SPA page \u2192 serve the shell. React calls
         # /api/me and shows the login screen when there is no session.
-        # --- cross-host SSO: carry an existing session between PRBOT_HOST_ALIASES hosts --------
+        # --- cross-host SSO: carry an existing session between RS_HOST_ALIASES hosts --------
         if route == "/handoff":
             # This host may already hold a session. If authed, mint a short handoff
             # token and bounce to the sibling's accept endpoint; else bounce back so it shows login.
@@ -3376,12 +3376,12 @@ class Handler(BaseHTTPRequestHandler):
         (d / "status").write_text("queued")
         choice, _ = effective_skill(user, repo)
         env = review_env(user)
-        env["PRBOT_CACHE_KEY"] = key
-        env["PRBOT_EFFORT"] = eff
-        env["PRBOT_DEPTH"] = effort_depth(eff)
-        env["PRBOT_FOCUS"] = focus
-        env["PRBOT_MODEL"] = mdl
-        env["PRBOT_SKILL_CHOICE"] = choice
+        env["RS_CACHE_KEY"] = key
+        env["RS_EFFORT"] = eff
+        env["RS_DEPTH"] = effort_depth(eff)
+        env["RS_FOCUS"] = focus
+        env["RS_MODEL"] = mdl
+        env["RS_SKILL_CHOICE"] = choice
         # Stack context: if this PR is stacked on other open PRs, its diff is only its own changes.
         # Tell the agent the siblings exist so it doesn't flag setup a lower PR provides.
         try:
@@ -3393,7 +3393,7 @@ class Handler(BaseHTTPRequestHandler):
                 f"  #{it.get('number')} \u2014 {it.get('title', '')}"
                 + ("  \u2190 this PR" if str(it.get("number")) == pr else "")
                 for it in stack)
-            env["PRBOT_STACK"] = (
+            env["RS_STACK"] = (
                 f"This PR is part of a stack of {len(stack)} open PRs (each based on the one "
                 "above). The diff you see is ONLY this PR's own changes \u2014 assume the changes "
                 "from the other PRs in the stack are already present. Do not flag missing "
@@ -3597,7 +3597,7 @@ class Handler(BaseHTTPRequestHandler):
                 f"to GitHub.</b><br>Would post {len(inline)} inline comment(s)"
                 + (f", {len(orphans)} folded into the summary" if orphans else "")
                 + f", as <code>{event}</code>. Set <code>DRY_RUN=0</code> and restart "
-                  f"<code>prbot</code> to post for real.</div></div>")
+                  f"the <code>reviewstage</code> service to post for real.</div></div>")
 
         tok = user_pat(user)
         if not tok:
@@ -3652,7 +3652,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PRBOT_PORT", "8899"))
+    port = int(os.environ.get("RS_PORT", "8899"))
     if USERS.exists():
         os.chmod(USERS, 0o600)
     if not REPOS:
@@ -3674,10 +3674,10 @@ if __name__ == "__main__":
     if not PUBLIC_URL:
         print("WARN: PUBLIC_URL is not set in .env — OAuth sign-in and Slack links will not "
               "work until it is", flush=True)
-    # Loopback by default (a reverse proxy sits in front). PRBOT_BIND=0.0.0.0 for a container,
+    # Loopback by default (a reverse proxy sits in front). RS_BIND=0.0.0.0 for a container,
     # where the published port is the only way in.
-    bind = os.environ.get("PRBOT_BIND", "127.0.0.1")
-    print(f"prbot listening on {bind}:{port} (repos={','.join(REPOS)}"
+    bind = os.environ.get("RS_BIND", "127.0.0.1")
+    print(f"reviewstage listening on {bind}:{port} (repos={','.join(REPOS)}"
           f"{' +org:' + ALLOW_ORG if ALLOW_ORG else ''}, dry_run={DRY_RUN}, "
           f"users={len(load_users())})", flush=True)
     ThreadingHTTPServer((bind, port), Handler).serve_forever()

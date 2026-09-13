@@ -20,7 +20,7 @@ BASE=$(base_dir "$REPO")
 # reviewer running never touches (or blocks) another's. Only meta.json (PR title/author/size,
 # identical for everyone) stays shared in PRDIR.
 PRDIR=$(prdir "$REPO" "$PR")
-ACTOR="${PRBOT_ACTOR:-}"
+ACTOR="${RS_ACTOR:-}"
 DIR="$PRDIR"
 [ -n "$ACTOR" ] && DIR="$PRDIR/users/$ACTOR"
 mkdir -p "$DIR"
@@ -44,11 +44,11 @@ have_free_mem || fail "not enough free memory to start a review"
 # gates on this, so this is defence in depth.
 [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || fail "connect your Claude account in the dashboard to review"
 
-# Review effort — how deep the agent goes. The dashboard sets PRBOT_EFFORT (auto-sized from the
+# Review effort — how deep the agent goes. The dashboard sets RS_EFFORT (auto-sized from the
 # diff, human-overridable). It changes only two things: the timeout, and a depth instruction
 # appended to the prompt. Everything else about the run is identical.
-EFFORT="${PRBOT_EFFORT:-standard}"
-# The dashboard passes the depth instruction (PRBOT_DEPTH), editable per team on the Skills page.
+EFFORT="${RS_EFFORT:-standard}"
+# The dashboard passes the depth instruction (RS_DEPTH), editable per team on the Skills page.
 # The built-in text here is only a fallback for a direct/older invocation. Only the timeout is
 # decided by the level.
 case "$EFFORT" in
@@ -56,9 +56,9 @@ case "$EFFORT" in
   deep)  TIMEOUT=40m; FALLBACK="Effort: DEEP — search the whole repo for impact, trace data flow, cover perf/security.";;
   *)     EFFORT=standard; TIMEOUT=25m; FALLBACK="Effort: STANDARD — changed files + context, correctness and clear risks.";;
 esac
-DEPTH="${PRBOT_DEPTH:-$FALLBACK}"
+DEPTH="${RS_DEPTH:-$FALLBACK}"
 # Optional model override chosen at trigger time (validated server-side). Empty = account default.
-MODEL="${PRBOT_MODEL:-}"
+MODEL="${RS_MODEL:-}"
 MODEL_ARG=()
 [ -n "$MODEL" ] && MODEL_ARG=(--model "$MODEL")
 echo "$EFFORT" > "$DIR/effort"
@@ -139,10 +139,10 @@ exec 8>"$ROOT/review.lock"
 flock 8
 
 status "reviewing the diff"
-# Whose Claude account this runs on: the dashboard sets PRBOT_RUN_AS (and, for a connected
+# Whose Claude account this runs on: the dashboard sets RS_RUN_AS (and, for a connected
 # user, CLAUDE_CODE_OAUTH_TOKEN) when it spawns us. Recorded so the page can say so.
-echo "${PRBOT_RUN_AS:-shared}" > "$DIR/runner"
-echo "[$REPO#$PR] running on: ${PRBOT_RUN_AS:-shared}"
+echo "${RS_RUN_AS:-shared}" > "$DIR/runner"
+echo "[$REPO#$PR] running on: ${RS_RUN_AS:-shared}"
 rm -f "$DIR/cached"          # a fresh run replaces any reused (cached) result
 rm -f "$wt/review.json"
 # Learnings: findings reviewers have dropped as noise or reworded — same-repo rows first, then
@@ -161,8 +161,8 @@ USER_SKILL="$ROOT/skills/$ACTOR.md"
 GLOBAL_SKILL="$ROOT/skills/_global.md"
 # The dashboard's active-skill choice: "own" uses the clicker's skill if present, "team" forces
 # the shared default even when they have their own on file.
-CHOICE="${PRBOT_SKILL_CHOICE:-own}"
-FOCUS="${PRBOT_FOCUS:-}"
+CHOICE="${RS_SKILL_CHOICE:-own}"
+FOCUS="${RS_FOCUS:-}"
 FOCUSBLOCK=""
 [ -n "$FOCUS" ] && FOCUSBLOCK="
 
@@ -170,9 +170,9 @@ The reviewer specifically asked you to focus on the following — prioritise it 
 and if it turns out not to apply, say so briefly in the analysis:
 $FOCUS"
 
-# Stack context (PRBOT_STACK): when this PR is part of a stack, the diff shows only its own
+# Stack context (RS_STACK): when this PR is part of a stack, the diff shows only its own
 # changes, so tell the agent the sibling PRs exist to avoid false "undefined/missing" findings.
-STACK="${PRBOT_STACK:-}"
+STACK="${RS_STACK:-}"
 STACKBLOCK=""
 [ -n "$STACK" ] && STACKBLOCK="
 
@@ -268,7 +268,7 @@ if [ -n "$usage_line" ]; then
 fi
 
 # Phase 1 — write this result to the per-user content-addressed cache (if the server keyed it).
-CACHE_KEY="${PRBOT_CACHE_KEY:-}"
+CACHE_KEY="${RS_CACHE_KEY:-}"
 if [ -n "$CACHE_KEY" ]; then
   mkdir -p "$DIR/cache"
   usage_json="null"; [ -s "$DIR/usage.json" ] && usage_json=$(cat "$DIR/usage.json")

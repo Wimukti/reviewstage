@@ -14,7 +14,7 @@ const ctx = await browser.newContext({
 });
 if (cookieVal) {
   await ctx.addCookies([
-    { name: "prbot_s", value: cookieVal, domain: u.hostname, path: "/", httpOnly: true },
+    { name: "rs_session", value: cookieVal, domain: u.hostname, path: "/", httpOnly: true },
   ]);
 }
 const page = await ctx.newPage();

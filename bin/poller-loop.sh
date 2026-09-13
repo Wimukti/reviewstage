@@ -12,7 +12,7 @@
 set -uo pipefail
 
 BIN="$(cd "$(dirname "$0")" && pwd)"
-ROOT="${ROOT:-$HOME/.claude-pr-bot}"
+ROOT="${ROOT:-$HOME/.reviewstage}"
 SETTINGS_FILE="$ROOT/settings.json"
 DEFAULT_INTERVAL="${POLL_INTERVAL:-180}"
 LOCK="$ROOT/.pr-watch.lock"

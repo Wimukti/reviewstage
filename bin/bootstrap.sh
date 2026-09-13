@@ -4,26 +4,26 @@
 #   git clone <this repo> ~/reviewstage
 #   ~/reviewstage/bin/bootstrap.sh
 #
-# On first run it writes ~/.claude-pr-bot/.env, prompting for the per-install values (the repo
+# On first run it writes ~/.reviewstage/.env, prompting for the per-install values (the repo
 # to review, your GitHub login, the public URL of the dashboard), and tells you to paste your
 # secrets. Then you re-run it and it finishes. See docs/SETUP.md.
 #
-# Everything lives under ~/.claude-pr-bot, in $HOME — deliberately outside any directory a
+# Everything lives under ~/.reviewstage, in $HOME — deliberately outside any directory a
 # deploy tool or sync job of yours might rsync over or delete. The only files written outside
 # $HOME are the systemd unit and, when you opt in with SETUP_APACHE=1, an Apache vhost that is
 # config-tested before it is enabled.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$HOME/.claude-pr-bot"
+ROOT="$HOME/.reviewstage"
 BIN="$ROOT/bin"
 
 # The account that owns the install. It must be the same account Claude Code is signed in as,
 # because `claude` reads its credentials from $HOME. Defaults to whoever is running this; set
-# PRBOT_USER to guard against running it from the wrong shell by accident.
-PRBOT_USER="${PRBOT_USER:-$(id -un)}"
-[ "$(id -un)" = "$PRBOT_USER" ] \
-  || { echo "Run as $PRBOT_USER (sudo su - $PRBOT_USER), not $(id -un)."; exit 1; }
+# RS_USER to guard against running it from the wrong shell by accident.
+RS_USER="${RS_USER:-$(id -un)}"
+[ "$(id -un)" = "$RS_USER" ] \
+  || { echo "Run as $RS_USER (sudo su - $RS_USER), not $(id -un)."; exit 1; }
 
 echo "==> directories"
 mkdir -p "$BIN" "$ROOT/wt" "$ROOT/state" "$ROOT/repos"
@@ -62,14 +62,14 @@ grep -Eq '^REPOS?=.+' "$ROOT/.env" \
   || { echo "   !! REPOS is empty in $ROOT/.env — set it to owner/name[,owner/name…], then re-run"; exit 1; }
 # Optional: accept any repo under this org where a signed-in user gets a review request.
 ensure_key REPO_ALLOW_ORG ""
-ensure_key PRBOT_SIGNATURE_GRACE_DAYS 7
+ensure_key RS_SIGNATURE_GRACE_DAYS 7
 # Your GitHub login. The PAT must belong to this account — everything the dashboard posts is
 # attributed to it, which is the whole point of the design.
 ask REVIEWER "Your GitHub login"
 # Where browsers reach the dashboard: the hostname your reverse proxy forwards to the server.
-# Older installs may have PRBOT_ENV + PRBOT_DOMAIN instead; lib-common.sh still derives the
+# Older installs may have RS_ENV + RS_DOMAIN instead; lib-common.sh still derives the
 # URL from that pair, so only prompt when neither form is present.
-if ! grep -q '^PRBOT_ENV=.\+' "$ROOT/.env" || ! grep -q '^PRBOT_DOMAIN=.\+' "$ROOT/.env"; then
+if ! grep -q '^RS_ENV=.\+' "$ROOT/.env" || ! grep -q '^RS_DOMAIN=.\+' "$ROOT/.env"; then
   ask PUBLIC_URL "Public URL of this dashboard (e.g. https://reviews.example.com)"
   grep -q '^PUBLIC_URL=.\+' "$ROOT/.env" \
     || { echo "   !! PUBLIC_URL is empty in $ROOT/.env — set it, then re-run"; exit 1; }
@@ -80,9 +80,9 @@ ensure_key GH_CLIENT_SECRET ""
 ensure_key GH_OAUTH_SCOPES ""
 ensure_key DRY_RUN 1
 ensure_key SKIP_BOT_PRS 0
-ensure_key PRBOT_MAX_PR_AGE_DAYS 45
+ensure_key RS_MAX_PR_AGE_DAYS 45
 ensure_key RISK_PATHS ""
-ensure_key PRBOT_SECRET "$(openssl rand -hex 32)"
+ensure_key RS_SECRET "$(openssl rand -hex 32)"
 grep -q '^GITHUB_PAT=.\+' "$ROOT/.env" \
   || echo "   !! GITHUB_PAT is empty in $ROOT/.env — add it, then re-run"
 chmod 600 "$ROOT/.env"
@@ -91,7 +91,7 @@ chmod 600 "$ROOT/.env"
 # pair, so let lib-common.sh do that rather than repeating the logic here.
 # shellcheck disable=SC1091
 . "$SRC/lib-common.sh"
-PORT="${PRBOT_PORT:-8899}"
+PORT="${RS_PORT:-8899}"
 PUBLIC_HOST="${PUBLIC_URL#*://}"; PUBLIC_HOST="${PUBLIC_HOST%%[/:]*}"
 
 echo "==> gh"
@@ -108,7 +108,7 @@ echo "==> claude"
 if ! command -v claude >/dev/null; then
   curl -fsSL https://claude.ai/install.sh | bash \
     || sudo npm install -g @anthropic-ai/claude-code
-  echo "   installed claude — sign in AS $PRBOT_USER before the first review"
+  echo "   installed claude — sign in AS $RS_USER before the first review"
 fi
 
 echo "==> scripts"
@@ -154,7 +154,7 @@ if [ -d "$UI" ]; then
   install -m 0644 "$SRC/static/"* "$BIN/static/"
   echo "   built SPA bundle -> $BIN/static ($(ls -1 "$BIN/static" | tr '\n' ' '))"
 else
-  echo "   !! dashboard-ui not found at $UI — the SPA will not load (set PRBOT_SPA=0 to fall"
+  echo "   !! dashboard-ui not found at $UI — the SPA will not load (set RS_SPA=0 to fall"
   echo "      back to the legacy HTML UI); build it and re-run bootstrap"
 fi
 
@@ -193,14 +193,14 @@ if [ ! -f "$ROOT/skills/_global.md" ] && [ -f "$SRC/../skills/global-review.md" 
 fi
 
 echo "==> systemd unit"
-sudo tee /etc/systemd/system/prbot.service >/dev/null <<EOF
+sudo tee /etc/systemd/system/reviewstage.service >/dev/null <<EOF
 [Unit]
 Description=ReviewStage dashboard
 After=network.target
 
 [Service]
-User=$PRBOT_USER
-Environment=PRBOT_PORT=$PORT
+User=$RS_USER
+Environment=RS_PORT=$PORT
 # run-review.sh is spawned from this service and shells out to \`claude\`, which the native
 # installer puts in ~/.local/bin — not on systemd's default PATH. Without this the agent
 # step fails as "command not found" and surfaces only as an empty review.json.
@@ -217,10 +217,10 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable prbot.service
+sudo systemctl enable reviewstage.service
 # restart, not `enable --now`: the server reads .env once at startup, so an already-running
 # instance would keep serving stale secrets and a stale DRY_RUN after you edit them.
-sudo systemctl restart prbot.service
+sudo systemctl restart reviewstage.service
 
 echo "==> reverse proxy"
 # The server binds 127.0.0.1:$PORT only. Something you run must terminate TLS on $PUBLIC_HOST
@@ -232,11 +232,11 @@ if [ "${SETUP_APACHE:-0}" = 1 ]; then
   [ -n "$PUBLIC_HOST" ] || { echo "   !! PUBLIC_URL has no hostname — fix .env, then re-run"; exit 1; }
   # Extra hostnames that should also reach this instance (comma-separated in .env), e.g. an
   # old name kept alive so already-sent links keep resolving.
-  aliases=$(printf '%s' "${PRBOT_HOST_ALIASES:-}" | tr ',' ' ' | xargs || true)
+  aliases=$(printf '%s' "${RS_HOST_ALIASES:-}" | tr ',' ' ' | xargs || true)
   alias_line=""
   for a in $aliases; do [ "$a" = "$PUBLIC_HOST" ] || alias_line+="    ServerAlias $a"$'\n'; done
   sudo a2enmod proxy proxy_http >/dev/null
-  sudo tee /etc/apache2/sites-available/prbot.conf >/dev/null <<EOF
+  sudo tee /etc/apache2/sites-available/reviewstage.conf >/dev/null <<EOF
 <VirtualHost *:80>
     ServerName $PUBLIC_HOST
 ${alias_line}    ProxyPreserveHost On
@@ -244,32 +244,32 @@ ${alias_line}    ProxyPreserveHost On
     # prefix (the server strips it), so old bookmarks and signed links keep resolving.
     ProxyPass        / http://127.0.0.1:$PORT/
     ProxyPassReverse / http://127.0.0.1:$PORT/
-    ErrorLog \${APACHE_LOG_DIR}/prbot-error.log
-    CustomLog \${APACHE_LOG_DIR}/prbot-access.log combined
+    ErrorLog \${APACHE_LOG_DIR}/reviewstage-error.log
+    CustomLog \${APACHE_LOG_DIR}/reviewstage-access.log combined
 </VirtualHost>
 EOF
-  sudo a2ensite prbot >/dev/null
+  sudo a2ensite reviewstage >/dev/null
   if ! sudo apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
-    sudo a2dissite prbot >/dev/null
+    sudo a2dissite reviewstage >/dev/null
     echo "   !! apache configtest FAILED — vhost disabled, nothing else touched"; exit 1
   fi
   # Verify functionally, by asking the endpoint through the vhost. A graceful reload is enough
   # to pick up new LoadModule lines in practice; the restart stays only as a genuine fallback.
-  prbot_reachable() {
+  reviewstage_reachable() {
     [ "$(curl -s -m 5 -H "Host: $PUBLIC_HOST" http://127.0.0.1/health 2>/dev/null)" = "ok" ] \
       && [ "$(curl -s -m 5 -H "Host: $PUBLIC_HOST" http://127.0.0.1/prbot/health 2>/dev/null)" = "ok" ]
   }
   sudo systemctl reload apache2
   sleep 1
-  if ! prbot_reachable; then
+  if ! reviewstage_reachable; then
     echo "   endpoint not reachable after reload — restarting apache"
     sudo systemctl restart apache2
     sleep 2
   fi
-  if prbot_reachable; then
+  if reviewstage_reachable; then
     echo "   apache ok (root + legacy /prbot answer on $PUBLIC_HOST)"
   else
-    sudo a2dissite prbot >/dev/null && sudo systemctl reload apache2
+    sudo a2dissite reviewstage >/dev/null && sudo systemctl reload apache2
     echo "   !! endpoint unreachable — vhost disabled, nothing else touched"; exit 1
   fi
 else

@@ -81,8 +81,8 @@ dashboard's **public URL**, then stops and tells you the two secrets are still e
 them:
 
 ```bash
-read -rs PAT  && sed -i "s|^GITHUB_PAT=.*|GITHUB_PAT=$PAT|"    ~/.claude-pr-bot/.env && unset PAT
-read -rs HOOK && sed -i "s|^SLACK_WEBHOOK=.*|SLACK_WEBHOOK=$HOOK|" ~/.claude-pr-bot/.env && unset HOOK
+read -rs PAT  && sed -i "s|^GITHUB_PAT=.*|GITHUB_PAT=$PAT|"    ~/.reviewstage/.env && unset PAT
+read -rs HOOK && sed -i "s|^SLACK_WEBHOOK=.*|SLACK_WEBHOOK=$HOOK|" ~/.reviewstage/.env && unset HOOK
 ```
 
 `read -rs` keeps the secret off your screen and out of shell history. Then re-run to finish:
@@ -95,11 +95,11 @@ Re-running is safe at any point. It only ever **adds** missing keys to `.env`, s
 are never overwritten — including a `DRY_RUN` you have deliberately flipped to `0`.
 
 What it does: installs `gh` and `claude` if missing, copies the scripts to
-`~/.claude-pr-bot/bin/`, builds the dashboard, clones the repository as a blobless base clone,
+`~/.reviewstage/bin/`, builds the dashboard, clones the repository as a blobless base clone,
 installs the `pr-review` skill to `~/.claude/skills/`, seeds the editable team-default skill,
-writes and starts the `prbot` systemd unit, and installs the cron entry.
+writes and starts the `reviewstage` systemd unit, and installs the cron entry.
 
-It copies itself into `~/.claude-pr-bot/bin/` too, so later runs can use that stable path
+It copies itself into `~/.reviewstage/bin/` too, so later runs can use that stable path
 rather than the clone.
 
 ### Reverse proxy
@@ -121,7 +121,7 @@ server {
 
 If the server already runs Apache and you would like bootstrap to write the vhost for you,
 re-run it with `SETUP_APACHE=1 ~/reviewstage/bin/bootstrap.sh`. It writes a name-based vhost
-for the `PUBLIC_URL` hostname (plus any `PRBOT_HOST_ALIASES`), config-tests it, and disables it
+for the `PUBLIC_URL` hostname (plus any `RS_HOST_ALIASES`), config-tests it, and disables it
 again if anything is off, so an existing Apache is never left broken. TLS is still yours to
 terminate in front of it.
 
@@ -130,7 +130,7 @@ terminate in front of it.
 ```bash
 curl -s localhost:8899/health                  # -> ok
 curl -s https://reviews.example.com/health     # -> ok, through your proxy
-~/.claude-pr-bot/bin/pr-watch.sh               # -> a Slack card per open review request
+~/.reviewstage/bin/pr-watch.sh               # -> a Slack card per open review request
 ```
 
 The last one prints `==> notifying #NNNN` for each PR it announces. If you have no open
@@ -167,8 +167,8 @@ Register, copy the **Client ID**, click *Generate a new client secret* (shown on
 the server:
 
 ```bash
-sed -i "s|^GH_CLIENT_ID=.*|GH_CLIENT_ID=<client id>|; s|^GH_CLIENT_SECRET=.*|GH_CLIENT_SECRET=<secret>|; s|^GH_OAUTH_SCOPES=.*|GH_OAUTH_SCOPES=repo|" ~/.claude-pr-bot/.env
-sudo systemctl restart prbot
+sed -i "s|^GH_CLIENT_ID=.*|GH_CLIENT_ID=<client id>|; s|^GH_CLIENT_SECRET=.*|GH_CLIENT_SECRET=<secret>|; s|^GH_OAUTH_SCOPES=.*|GH_OAUTH_SCOPES=repo|" ~/.reviewstage/.env
+sudo systemctl restart reviewstage
 ```
 
 `repo` is the smallest classic scope that can comment on and approve a PR in a private
@@ -274,7 +274,7 @@ being bound before anything is handed over. Details: [MOBILE.md](MOBILE.md),
 
 ## 6. Configuration reference
 
-Everything lives in `~/.claude-pr-bot/.env` (chmod 600).
+Everything lives in `~/.reviewstage/.env` (chmod 600).
 [`config.example`](../config.example) documents every key with its reasoning.
 
 | Key                  | Set by      | Notes                                                          |
@@ -284,21 +284,21 @@ Everything lives in `~/.claude-pr-bot/.env` (chmod 600).
 | `REPO`               | prompt      | The repository to review, `owner/name`. **Required**           |
 | `REVIEWER`           | prompt      | Your GitHub login. Must match the PAT's account                |
 | `PUBLIC_URL`         | prompt      | Where browsers reach the dashboard. **Required**               |
-| `PRBOT_SECRET`       | generated   | Signs every dashboard link                                     |
+| `RS_SECRET`       | generated   | Signs every dashboard link                                     |
 | `DRY_RUN`            | default 1   | `1` = dashboard works fully but refuses to write to GitHub     |
 | `SKIP_BOT_PRS`       | default 0   | `1` ignores PRs authored by bots                               |
 | `MIN_FREE_MB`        | default 800 | Refuse to start a review below this much free RAM              |
 | `RISK_PATHS`         | default ""  | `label:pattern` rules for the risk-area banner. Empty = off    |
-| `PRBOT_HOST_ALIASES` | default ""  | Extra hostnames that are this instance (cross-host SSO)        |
-| `PRBOT_DOMAIN`       | default ""  | Parent domain to scope the session cookie to. Empty = host-only |
+| `RS_HOST_ALIASES` | default ""  | Extra hostnames that are this instance (cross-host SSO)        |
+| `RS_DOMAIN`       | default ""  | Parent domain to scope the session cookie to. Empty = host-only |
 
-Per-person data is not in `.env`. It lives in `~/.claude-pr-bot/users.json` (chmod 600):
+Per-person data is not in `.env`. It lives in `~/.reviewstage/users.json` (chmod 600):
 `{login: {pat_enc, slack_id, name, added}}`, written by the dashboard on sign-in. Tokens are
-AES-256 encrypted with a key derived from `PRBOT_SECRET`. To remove someone, delete their
+AES-256 encrypted with a key derived from `RS_SECRET`. To remove someone, delete their
 key from that file — their session dies on the next request.
 
 > **Gotcha:** `server.py` reads `.env` **once, at startup**. After editing any value —
-> especially `DRY_RUN` — run `sudo systemctl restart prbot` or the change silently does
+> especially `DRY_RUN` — run `sudo systemctl restart reviewstage` or the change silently does
 > nothing. `pr-watch.sh` and `run-review.sh` re-source it every run, so only the dashboard
 > needs this. Re-running `bootstrap.sh` restarts it for you.
 
@@ -309,7 +309,7 @@ report what *would* have happened.
 
 1. **Dry run.** Point it at PRs you have already reviewed by hand and compare. This is where
    you find out whether the output is good enough to carry your name. Do several.
-2. **Your own PRs.** Set `DRY_RUN=0`, `sudo systemctl restart prbot`, and post on a PR you
+2. **Your own PRs.** Set `DRY_RUN=0`, `sudo systemctl restart reviewstage`, and post on a PR you
    authored. Low stakes, real end-to-end.
 3. **Live.**
 
@@ -319,12 +319,12 @@ Read [SECURITY.md](SECURITY.md) before step 2. The endpoint is on the public int
 
 | Symptom                                          | Cause                                                          |
 | ------------------------------------------------ | ---------------------------------------------------------------- |
-| `Run as <user>, not <other>`                     | You set `PRBOT_USER` and ran bootstrap from a different account. `sudo su - <user>` first |
+| `Run as <user>, not <other>`                     | You set `RS_USER` and ran bootstrap from a different account. `sudo su - <user>` first |
 | `REPO is empty` / `PUBLIC_URL is empty`          | First bootstrap ran without a terminal, so the prompts were skipped. Edit `.env` and re-run |
 | `REVIEWER not set`                               | Same — edit `.env` and re-run                                    |
 | `apache configtest FAILED`                       | Only with `SETUP_APACHE=1`. The vhost is auto-disabled and nothing else is touched. Check `sudo apache2ctl configtest` |
 | `/health` unreachable through the proxy          | Your reverse proxy is not forwarding to `127.0.0.1:8899`, or is not preserving `Host` |
 | Review finishes instantly, empty `review.json`   | Claude Code is not signed in as the service user. `claude` bare, as that user |
 | `command not found: claude` in `agent.log`       | The systemd unit sets `PATH` to include `~/.local/bin`. Re-run bootstrap to rewrite the unit |
-| Slack card never arrives                         | `~/.claude-pr-bot/watch.log`. Then check the cron entry with `crontab -l` |
-| Card arrives, button 403s                        | Link expired (7 days) or `PRBOT_SECRET` was rotated. Open the dashboard link instead |
+| Slack card never arrives                         | `~/.reviewstage/watch.log`. Then check the cron entry with `crontab -l` |
+| Card arrives, button 403s                        | Link expired (7 days) or `RS_SECRET` was rotated. Open the dashboard link instead |

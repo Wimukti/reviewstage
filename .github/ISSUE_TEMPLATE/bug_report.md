@@ -20,9 +20,9 @@ A clear description of the wrong behaviour, and what you expected instead.
 Tick what applies and paste the relevant log lines (redact tokens, hostnames and PR titles you
 would not want public):
 
-- [ ] Dashboard (browser) — `journalctl -u prbot -n 100`
-- [ ] Review run — `~/.claude-pr-bot/state/<pr>/users/<login>/agent.log` and `status`
-- [ ] Poller / Slack — `~/.claude-pr-bot/watch.log`
+- [ ] Dashboard (browser) — `journalctl -u reviewstage -n 100`
+- [ ] Review run — `~/.reviewstage/state/<pr>/users/<login>/agent.log` and `status`
+- [ ] Poller / Slack — `~/.reviewstage/watch.log`
 - [ ] Posting / approving on GitHub — the banner text shown in the dashboard
 
 ```

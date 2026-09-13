@@ -5,7 +5,7 @@ that is a labeled example the dashboard already produces and used to discard. re
 render() turns recent rejections into a compact block appended to the review prompt so the agent
 stops re-raising the same noise; recent() backs the read-only /learnings page.
 
-Storage: $ROOT/learnings.jsonl (ROOT defaults to ~/.claude-pr-bot, same as the server + shell).
+Storage: $ROOT/learnings.jsonl (ROOT defaults to ~/.reviewstage, same as the server + shell).
 Only short gists are stored — high signal, low bloat. Rows carry the repo they came from;
 render(repo) prefers same-repo rows and pads with the rest. Imported by server.py;
 run-review.sh calls render() via `python3 -c`.
@@ -16,7 +16,7 @@ import re
 import time
 from pathlib import Path
 
-ROOT = Path(os.environ.get("ROOT", Path.home() / ".claude-pr-bot"))
+ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 FILE = ROOT / "learnings.jsonl"
 CAP = 300                          # keep only the most recent this many rows
 

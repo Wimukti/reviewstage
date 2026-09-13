@@ -46,7 +46,7 @@ browser ──HTTPS──▶ reverse proxy ──▶ server.py (127.0.0.1:8899)
 GitHub ──HTTPS──▶ (same proxy; this path must be reachable by GitHub) ──▶ /webhooks/github
 ```
 
-Every `POST` carries an HMAC token minted at render time (30 minutes) over `action:owner/name#pr:expiry`; the old `action:pr:expiry` form still verifies for `PRBOT_SIGNATURE_GRACE_DAYS` after the upgrade. Pages are gated by the session cookie, not a signature, so they stay bookmarkable. A PR is addressed as `?repo=owner/name&pr=N`; `?pr=N` alone resolves when one repository is configured or when the number exists under exactly one repository's state, and otherwise returns the candidate repos for a picker.
+Every `POST` carries an HMAC token minted at render time (30 minutes) over `action:owner/name#pr:expiry`; the old `action:pr:expiry` form still verifies for `RS_SIGNATURE_GRACE_DAYS` after the upgrade. Pages are gated by the session cookie, not a signature, so they stay bookmarkable. A PR is addressed as `?repo=owner/name&pr=N`; `?pr=N` alone resolves when one repository is configured or when the number exists under exactly one repository's state, and otherwise returns the candidate repos for a picker.
 
 ## The review step
 

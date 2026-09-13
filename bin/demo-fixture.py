@@ -6,7 +6,7 @@ service token and TWO demo repositories, one demo user, a queue spanning both re
 finished reviews on disk, and a fake `gh` that fails every call so the server renders from the
 on-disk state and nothing ever reaches GitHub. Playwright signs in by injecting a cookie; here
 the server's own /handoff/accept route mints the session instead, from a link signed with the
-fixture's PRBOT_SECRET.
+fixture's RS_SECRET.
 """
 import hmac
 import json
@@ -45,7 +45,7 @@ def row(repo, num, title, adds, dels, files, head, created, updated):
 
 
 def main():
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("ROOT", "~/.claude-pr-bot"))
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("ROOT", "~/.reviewstage"))
     root = root.expanduser()
     port = sys.argv[2] if len(sys.argv) > 2 else "8899"
     root.mkdir(parents=True, exist_ok=True)
@@ -55,12 +55,12 @@ def main():
     secret = ""
     if env_f.exists():
         for line in env_f.read_text().splitlines():
-            if line.startswith("PRBOT_SECRET="):
+            if line.startswith("RS_SECRET="):
                 secret = line.split("=", 1)[1].strip()
     secret = secret or secrets.token_hex(32)
 
     write(env_f, "\n".join([
-        f"PRBOT_SECRET={secret}",
+        f"RS_SECRET={secret}",
         f"REVIEWER={USER}",
         f"REPOS={REPO},{REPO2}",
         "DRY_RUN=1",

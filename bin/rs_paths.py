@@ -21,7 +21,7 @@ import shutil
 import time
 from pathlib import Path
 
-ROOT = Path(os.environ.get("ROOT", Path.home() / ".claude-pr-bot"))
+ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 STATE = ROOT / "state"
 REPOS_DIR = ROOT / "repos"
 MIGRATED = ROOT / "MIGRATED"

@@ -48,6 +48,7 @@ server strips it), so bookmarks and signed links from earlier versions keep reso
 | `POST /post`             | Post the selected (possibly edited) comments                     |
 | `POST /approve`          | LGTM comment + approve                                           |
 | `GET /health`            | Liveness                                                         |
+| `GET /manifest.webmanifest` `/sw.js` `/offline.html` `/icons/*` | PWA files, served at the root so the service worker's scope covers the whole app (see `docs/MOBILE.md`) |
 
 The React SPA talks to the same server over `/api/*`; the routes above are the URL shapes the
 SPA is mounted on and the legacy HTML fallbacks.

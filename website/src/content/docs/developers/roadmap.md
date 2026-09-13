@@ -26,19 +26,23 @@ Priorities, not promises. Open an issue to argue for reordering.
 - Docker Compose install with `team` and `demo` profiles; `bin/doctor.sh`.
 - Guided first-run tour; command palette.
 
-## P1 — next
+## P1 — in flight
 
-- **Discord notifier.** Same card shape via a Discord webhook; the notifier is one function.
+- **Notifier abstraction.** Slack, Discord and any webhook behind one `notify` interface; the card shape is shared.
+- **Multiple repositories per server**, with an org allowlist, per-repo skills and risk paths, and Insights across repositories.
+- **Settings page.** Repositories, notifiers and devices in the dashboard instead of `.env` edits.
 - **Confidence per finding.** The agent states how sure it is; the card shows it; learnings record whether confidence predicted keep rate.
 - **Reviewer handoff UI.** Explicitly pass a PR you have opened to a teammate, with your ticks and edits, instead of them starting cold.
+- **Installable PWA.** Manifest, root-scoped service worker, offline page, phone-width layout. Shipped; see [Mobile](/reviewstage/developers/mobile/).
+- **Device tokens for mobile clients.** `POST /api/device-token` from an authed session; bearer accepted alongside the cookie; revocable from Settings → Devices. Specified in [Mobile](/reviewstage/developers/mobile/), not yet implemented.
 - **Public keep rate.** An opt-in badge for a repository: "N% of assistant findings were posted unchanged over the last 90 days."
 
 ## P2 — later
 
 - **GitHub App as the default auth**, so no one pastes a token and an org owner can revoke centrally.
-- **Email and push notifications** for teams that do not live in chat.
+- **Email and push notifications** for teams that do not live in chat. Push is a `notify` backend that sends to registered devices (web push with VAPID, then FCM/APNs through the Capacitor wrapper).
+- **Capacitor apps for the App Store and Play Store.** The same React build in a native shell: native push, biometric unlock for the stored device token, `reviewstage://` deep links. See [Mobile](/reviewstage/developers/mobile/).
 - **Other agent adapters.** The run step is a script that must produce `review.json`; adapters for other coding agents are possible if they can honour the output contract and the no-write rule.
-- Multiple repositories per server.
 
 ## Not planned soon
 

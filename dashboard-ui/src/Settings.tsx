@@ -6,6 +6,7 @@ import {
   type RuntimeSettings,
   type SettingsData,
   type SettingSource,
+  type WebhooksStatus,
 } from "./api";
 
 // Runtime settings — the knobs an operator changes without editing .env or restarting
@@ -69,6 +70,121 @@ function agoText(ts: number | null): string {
   const mi = String(when.getMinutes()).padStart(2, "0");
   const rel = s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h ago`;
   return `${mm}/${dd}/${yy} ${hh}:${mi} (${rel})`;
+}
+
+// GitHub → ReviewStage webhooks. Read-only here: the secret lives in .env, the hook itself is
+// configured on GitHub. The card shows what GitHub needs and whether deliveries are arriving.
+const WEBHOOK_EVENTS = "Pull requests, Pull request reviews";
+
+function webhookInstructions(url: string): string {
+  return [
+    "GitHub → your repository (or organization) → Settings → Webhooks → Add webhook",
+    `Payload URL: ${url}`,
+    "Content type: application/json",
+    "Secret: the value of GITHUB_WEBHOOK_SECRET in the server's .env",
+    `Events: "Let me select individual events" → tick ${WEBHOOK_EVENTS}`,
+    "Save. GitHub sends a ping — 'Last ping' below updates within a few seconds.",
+  ].join("\n");
+}
+
+function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: number }) {
+  const [copied, setCopied] = useState(false);
+  const text = webhookInstructions(wh.url);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked (http, permissions) — the text is visible below anyway */
+    }
+  };
+  const minutes = Math.round(pollSeconds / 60);
+  return (
+    <div className="card" data-testid="webhooks-card">
+      <h2>Webhooks</h2>
+      <p className="muted sm">
+        GitHub can tell this install about a review request the moment it happens, instead of
+        waiting for the next poll. The receiver only updates the queue and sends the card — it
+        never starts a review.
+      </p>
+      <div className="setrow">
+        <div className="setlbl">
+          <b>Status</b>
+          <div className="hint">
+            {wh.active
+              ? "A verified event arrived within two poll intervals — GitHub is reaching this server."
+              : wh.configured
+                ? `No event in the last ${2 * minutes} minutes. The poller is keeping the queue fresh; add the hook on GitHub (or check its Recent Deliveries) to go instant.`
+                : "GITHUB_WEBHOOK_SECRET is not set in .env, so the endpoint answers 503 and the poller does all the work."}
+          </div>
+        </div>
+        <div className="setctl">
+          <span className={"pill " + (wh.active ? "ok" : "warn")} data-testid="webhooks-status">
+            {wh.active ? "webhooks active" : "polling only"}
+          </span>
+        </div>
+      </div>
+      <div className="setrow">
+        <div className="setlbl">
+          <b>Payload URL</b>
+          <div className="hint">
+            <code>{wh.url}</code>
+          </div>
+        </div>
+      </div>
+      <div className="setrow">
+        <div className="setlbl">
+          <b>Secret</b>
+          <div className="hint">
+            {wh.configured ? (
+              <span className="hint ok">✓ configured</span>
+            ) : (
+              <>
+                not set · <code>GITHUB_WEBHOOK_SECRET</code> in <code>.env</code> (restart the server after adding it)
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="setrow">
+        <div className="setlbl">
+          <b>Deliveries</b>
+          <div className="hint">
+            {wh.count.toLocaleString()} event{wh.count === 1 ? "" : "s"} received · last event{" "}
+            {wh.last_event_at ? `${agoText(wh.last_event_at)}${wh.last_event ? ` (${wh.last_event})` : ""}` : "never"}{" "}
+            · last ping {wh.last_ping ? agoText(wh.last_ping) : "never"}
+            {wh.last_error && (
+              <>
+                {" "}
+                · <span className="hint err">last error: {wh.last_error}</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="setrow">
+        <div className="setlbl">
+          <b>Set it up on GitHub</b>
+          <pre className="schema" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+            {text}
+          </pre>
+        </div>
+        <div className="setctl">
+          <button className="btn ghost" type="button" onClick={copy}>
+            {copied ? "Copied" : "Copy instructions"}
+          </button>
+        </div>
+      </div>
+      {wh.active && (
+        <div className="hint ok">
+          Webhooks are doing the work now — you can lower the poll interval or turn polling off
+          in the Poller card. Polling stays on until you change it; it is the safety net for a
+          missed delivery.
+        </div>
+      )}
+    </div>
+  );
 }
 
 const BACKEND_META: Record<NotifyBackend, { name: string; sub: string; envKey: (e: SettingsData["env"]) => boolean; envLabel: string }> = {
@@ -227,14 +343,16 @@ export function Settings({ me }: { me: Me }) {
           </div>
         </div>
         <div className="hint" style={{ marginTop: 12 }}>
-          Running behind a GitHub webhook? Then polling is redundant — switch it off here and let
-          the webhook keep the queue fresh. See{" "}
+          Running behind a GitHub webhook (see the Webhooks card below)? Then polling is only a
+          safety net — lower the interval or switch it off here. See{" "}
           <a href="https://wimukti.github.io/reviewstage/operations/configuration/#runtime-settings" target="_blank" rel="noopener">
             Runtime settings
           </a>{" "}
           in the docs.
         </div>
       </div>
+
+      <WebhooksCard wh={d.webhooks} pollSeconds={form.poll_interval_seconds} />
 
       <div className="card">
         <h2>Notifications</h2>

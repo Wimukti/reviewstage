@@ -59,6 +59,35 @@ policy for your team. Set `PUBLIC_URL=https://reviewstage.example.com`.
 Access sits in front of everything, including the health endpoint — if you monitor `/health`
 from outside, add a bypass rule for that path or a service token.
 
+## The GitHub webhook path
+
+If you turn on GitHub webhooks (`GITHUB_WEBHOOK_SECRET`, see
+[`../docs/INSTALL-DOCKER.md`](../docs/INSTALL-DOCKER.md#instant-updates-github-webhooks)),
+GitHub's servers must be able to `POST` to exactly one path:
+
+```
+<PUBLIC_URL>/webhooks/github
+```
+
+Everything else can stay private. The path authenticates itself — every delivery carries an
+HMAC over the body that the server checks before doing anything — so it is safe to expose on
+its own while the dashboard stays behind your identity layer.
+
+- **Caddy / public hostname**: nothing to do; the path is already reachable.
+- **Tailscale Serve**: GitHub is not on your tailnet. Either `tailscale funnel` the whole
+  dashboard, or run a second public entry (Caddy, a Cloudflare Tunnel) that proxies **only**
+  `/webhooks/github` to `127.0.0.1:8899`. With Caddy: `handle /webhooks/github { reverse_proxy 127.0.0.1:8899 }` and `respond 404` for everything else on that hostname.
+- **Cloudflare Access**: Access would present GitHub with a login page (a 302, which GitHub
+  reports as a failed delivery). Add a **Bypass** policy for the path: Zero Trust → Access →
+  Applications → your app → *Add an application* (or a second application) for
+  `reviewstage.example.com/webhooks/github` with a policy action *Bypass* → *Everyone*. The
+  health path can join it if you monitor `/health` from outside.
+
+Verify from the GitHub side: the webhook's *Recent Deliveries* tab shows a `200` for the ping
+and `202` for events. A `503` means the secret is not set on the server, a `401` that the two
+secrets differ, a `302`/timeout that the proxy or Access policy is still in the way. Polling
+keeps the queue correct throughout.
+
 ## The GitHub OAuth callback
 
 If you configure one-click **Sign in with GitHub** (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`, see

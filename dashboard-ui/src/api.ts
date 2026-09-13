@@ -72,6 +72,7 @@ export interface Me {
   brand: string;
   oauth: boolean;
   logo?: string;
+  webhooks_configured?: boolean; // GITHUB_WEBHOOK_SECRET is set on the server
 }
 
 export interface Token {
@@ -318,6 +319,17 @@ export interface RuntimeSettings {
   skip_bot_prs: boolean;
 }
 export type SettingSource = "settings" | "env" | "default";
+// $ROOT/webhooks.json + derived fields; the secret itself is never sent.
+export interface WebhooksStatus {
+  configured: boolean; // GITHUB_WEBHOOK_SECRET set
+  active: boolean; // a verified event within 2 × poll interval
+  url: string; // PUBLIC_URL + /webhooks/github — the GitHub payload URL
+  last_event_at: number | null;
+  last_event: string;
+  last_ping: number | null;
+  count: number;
+  last_error: string;
+}
 export interface SettingsData {
   token: Token;
   settings: RuntimeSettings;
@@ -330,6 +342,7 @@ export interface SettingsData {
   limits: { intervalMin: number; intervalMax: number };
   backends: NotifyBackend[];
   dry_run: boolean;
+  webhooks: WebhooksStatus;
   bannerHtml?: string;
 }
 

@@ -36,8 +36,14 @@ cd dashboard-ui && pnpm test && pnpm test:browser
 - `pnpm test` — Node's built-in runner over `src/*.test.ts` (pure functions).
 - `pnpm test:browser` — Playwright against the fixture server. Needs browsers once:
   `npx playwright install chromium`.
-- Shell and Python have no unit suite yet; keep them passing `bash -n bin/*.sh`,
-  `python3 -m py_compile bin/*.py` and `shellcheck bin/*.sh` if you have it. CI runs these.
+- `python3 -m unittest bin/test_prbot_webhook.py` — the GitHub webhook receiver and the
+  shared queue module (`prbot_queue.py`), including a parity check against `pr-watch.sh`'s jq
+  program so the poller and the webhook keep writing identical `queue.json` rows.
+- `bash bin/test-webhook-e2e.sh` — boots the real server on a scratch `ROOT` and drives
+  `POST /webhooks/github` with curl + openssl: 401 on a bad signature, 202 + queue row + `seen`
+  key on a signed `review_requested`, no duplicate on redelivery, stale on `synchronize`.
+- Otherwise shell and Python have no unit suite; keep them passing `bash -n bin/*.sh`,
+  `python3 -m py_compile bin/*.py` and `shellcheck bin/*.sh` if you have it. CI runs all of these.
 
 Add a browser test when you add a page or change a flow; add a unit test when you add a pure
 helper. Fixtures live in `dashboard-ui/e2e/fixture.ts` and use `acme/widgets` placeholders —
@@ -67,7 +73,8 @@ Prose body: what was wrong, what changed, and why this shape. Wrap at ~72.
 - Keep PRs focused; a rename and a behaviour change are two PRs.
 - Fill in the template: what changed, why, how you tested it, and anything a reviewer should
   look at first.
-- CI must be green: dashboard tests and build, `py_compile`, `bash -n`, shellcheck.
+- CI must be green: dashboard tests and build, `py_compile`, the webhook unit + e2e tests,
+  `bash -n`, shellcheck.
 - No company names, hostnames, logins or tokens in code, fixtures, comments or docs. The
   examples folder under `skills/examples/` is the one place domain-specific material lives,
   and it uses italic placeholders.

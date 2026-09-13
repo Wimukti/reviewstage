@@ -25,6 +25,21 @@ if [ "$(setting poller_enabled true)" = false ]; then
   echo "==> poller disabled in Settings (poller_enabled=false) — nothing to do"; exit 0
 fi
 
+# GitHub webhooks (POST /webhooks/github, see prbot_webhook.py) deliver the same facts within a
+# second and stamp $ROOT/webhooks.json. When one arrived within 2 × the poll interval this run
+# is only the safety net for missed deliveries — say so, then carry on exactly as before.
+WEBHOOKS_FILE="$ROOT/webhooks.json"
+if [ -s "$WEBHOOKS_FILE" ]; then
+  wh_last=$(jq -r '.last_event_at // 0' "$WEBHOOKS_FILE" 2>/dev/null)
+  wh_interval=$(setting poll_interval_seconds "${POLL_INTERVAL:-180}")
+  case "${wh_last}${wh_interval}" in
+    ''|*[!0-9]*) ;;
+    *) wh_age=$(( $(date +%s) - wh_last ))
+       [ "$wh_age" -le $(( 2 * wh_interval )) ] \
+         && echo "==> webhooks active (last event ${wh_age}s ago); poll is a safety net" ;;
+  esac
+fi
+
 # Don't Slack-nudge for PRs created long ago: a fresh review request on a years-old open PR is
 # almost always noise (see the pilot feedback). Such PRs are still marked seen (so they never
 # spam) and stay fully visible + reviewable in the dashboard queue — only the Slack ping is

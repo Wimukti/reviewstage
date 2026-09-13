@@ -19,10 +19,24 @@ A backend that fails — a dead URL, a 4xx from the provider — logs a `WARN` l
 
 | Kind | Fires when | Mentions |
 | --- | --- | --- |
-| `review_requested` | The poller sees a new review request for a signed-in user (once per PR per person; new commits never re-ping). Suppressed for PRs older than *max PR age* and, if enabled, for bot-authored PRs. | The requested reviewer |
+| `review_requested` | A new review request for a signed-in user — from a GitHub webhook the moment it happens, or from the poller on its next pass (once per PR per person; new commits never re-ping). Suppressed for PRs older than *max PR age* and, if enabled, for bot-authored PRs. | The requested reviewer |
 | `review_ready` | A review run you started finished; the card carries the verdict, the finding/blocker counts and the agent's summary. Nothing has been posted to GitHub yet. | Only the person who started the run |
 | `review_stopped` | A run was force-stopped from the dashboard (with confirmation that the agent is gone), or failed to produce a review. | The person who stopped / started it |
 | `qa_ready` | A QA guide finished building. | The person who asked for it |
+
+### From GitHub webhooks
+
+With `GITHUB_WEBHOOK_SECRET` set and a hook on the repository ([Configuration → GitHub webhooks](/reviewstage/operations/configuration/#github-webhooks)), GitHub events map onto the queue like this. Only `review_requested` produces a card; everything else changes the dashboard silently.
+
+| GitHub event | Effect | Card |
+| --- | --- | --- |
+| `pull_request` · `review_requested` | The PR joins the requested reviewer's *To review*; a **team** request is expanded and only signed-in members are added. | `review_requested`, unless that person was already told (same `seen` key as the poller) |
+| `pull_request` · `review_request_removed` | That reviewer's row disappears. | none |
+| `pull_request` · `synchronize` | The row's head SHA is refreshed, so an existing review shows the *stale* banner. | none — a push never re-pings |
+| `pull_request` · `closed` (or merged) | The PR leaves the queue; a review that was never posted is archived. Posted / approved rows stay as history. | none |
+| `pull_request_review` · `submitted` | A review the signed-in person submitted on GitHub itself moves their row to *Posted* (or *Approved*). | none |
+
+Deliveries for repositories outside `REPOS` / `REPO_ALLOW_ORG` are acknowledged and ignored, so one org-level hook is fine.
 
 ## Slack
 
@@ -144,7 +158,7 @@ Set `NOTIFY_BACKENDS=none` (or tick *None* in Settings, or configure no URLs at 
 
 ## Dedup
 
-Each reviewer is notified **once per PR** and never again for that PR: pushing new commits does not re-ping anyone, on any backend. The dashboard always reflects the live queue regardless of what was announced; a card is a nudge, not the source of truth. To re-announce, see [Troubleshooting](/reviewstage/operations/troubleshooting/#re-notifying-stale-cards).
+Each reviewer is notified **once per PR** and never again for that PR: pushing new commits does not re-ping anyone, on any backend. The webhook receiver and the poller share the same `seen` file and the same `<repo>:<pr>:<login>` key, so a request that arrives by webhook and is then found by the next poll (or the other way round) still produces exactly one card. The dashboard always reflects the live queue regardless of what was announced; a card is a nudge, not the source of truth. To re-announce, see [Troubleshooting](/reviewstage/operations/troubleshooting/#re-notifying-stale-cards).
 
 ## Privacy
 

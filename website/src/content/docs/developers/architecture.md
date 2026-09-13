@@ -20,6 +20,8 @@ Read this before changing anything. Most of the layout decisions look arbitrary 
 | `bin/prbot_agree.py` | imported | Matches findings across independent runs; independence-weighted agreement. |
 | `bin/prbot_rollup.py` | imported | Insights aggregation. |
 | `bin/prbot_md.py` | imported | Dependency-free markdown → HTML. |
+| `bin/prbot_queue.py` | imported | The queue + dedup logic the poller and the webhook share: `queue.json` upsert / stale / done, `seen` keys, the `review_requested` payload and signed links (byte-identical to `lib-common.sh`). |
+| `bin/prbot_webhook.py` | imported | `POST /webhooks/github`: `X-Hub-Signature-256` verification, the event → queue mapping, `webhooks.json`. Notify-only, like the poller. |
 | `bin/prbot_paths.py` | imported | The repository dimension: slugs, `base_dir` / `prdir` / `udir`, `iter_prdirs`, and the one-time legacy migration. |
 | `bin/lib-common.sh` | sourced | Config (`REPOS`, `REPO_ALLOW_ORG`), the bash twins of the path helpers, HMAC link signing, Slack posting (webhook or bot token). |
 | `dashboard-ui/` | built once | React 19 + TypeScript SPA: queue, PR page, stack page, QA, skills, learnings, insights, integrations, tour, command palette. |
@@ -37,7 +39,9 @@ browser ──HTTPS──▶ reverse proxy ──▶ prbot-server.py (127.0.0.1:
                                         ├─ POST /api/post    decrypt clicker's token → validate anchors → COMMENT review
                                         ├─ POST /api/approve LGTM comment → APPROVE, as the clicker
                                         ├─ POST /api/stop · /api/explain · /api/markdone · /api/archive · /api/skill/* · /api/claude/*
-                                        └─ GET  /oauth/start · /oauth/callback · /health
+                                        ├─ GET  /oauth/start · /oauth/callback · /health
+                                        └─ POST /webhooks/github   GitHub → HMAC check → 202 → thread: prbot_webhook.handle
+GitHub ──HTTPS──▶ (same proxy; this path must be reachable by GitHub) ──▶ /webhooks/github
 ```
 
 Every `POST` carries an HMAC token minted at render time (30 minutes) over `action:owner/name#pr:expiry`; the old `action:pr:expiry` form still verifies for `PRBOT_SIGNATURE_GRACE_DAYS` after the upgrade. Pages are gated by the session cookie, not a signature, so they stay bookmarkable. A PR is addressed as `?repo=owner/name&pr=N`; `?pr=N` alone resolves when one repository is configured or when the number exists under exactly one repository's state, and otherwise returns the candidate repos for a picker.
@@ -94,7 +98,8 @@ ROOT/skills/repos/<owner>__<name>/SKILL.md  optional per-repo team default
 - **Agreement** (`prbot_agree.py`): findings from independent runs on the same head are matched; a finding is confirmed when raised by runs that differ in skill, model or effort.
 - **Explain simply**: a one-turn Haiku call on the clicker's account, cached per finding content.
 - **Stacked PRs**: walks the chain of open PRs whose base is the previous head, on demand.
-- **Staleness**: the reviewed head SHA is recorded; the page flags a mismatch without re-running.
+- **Staleness**: the reviewed head SHA is recorded; the page flags a mismatch without re-running. A `synchronize` webhook refreshes the queue row's head immediately; the poller does the same on its next pass.
+- **Webhooks vs polling** (`prbot_webhook.py`, `prbot_queue.py`): both feed `queue.json` and `seen` through one module and dedup on `<repo>:<pr>:<login>`, so a request that arrives twice (webhook, then poll) yields one card. The receiver replies `202` and works on a thread; `webhooks.json` records the last event, and `pr-watch.sh` logs that it is only the safety net when an event landed within two intervals. A unit test feeds `pr-watch.sh`'s own jq program a `gh`-shaped row and asserts the two writers produce identical rows.
 - **Suggestion blocks**: a finding's `suggestion` is appended to the body as a ```` ```suggestion ```` block on post.
 - **Stop**: the run's pid is recorded; `POST /api/stop` kills the process group and writes `stopped`.
 - **Handoff**: a short signed token lets a session move between alias hostnames of the same server without re-login. Only the server's own hosts are accepted.

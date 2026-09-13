@@ -13,15 +13,16 @@ SETTINGS_FILE="${SETTINGS_FILE:-$ROOT/settings.json}"
 setting() {
   local key="$1" default="${2:-}" v
   [ -s "$SETTINGS_FILE" ] || { echo "$default"; return 0; }
-  v=$(jq -r --arg k "$key" '.[$k] // empty | if type=="array" or type=="object" then tojson else . end' \
-        "$SETTINGS_FILE" 2>/dev/null)
+  # `has` rather than `//`: a saved false must win over the default, and jq's // would drop it.
+  v=$(jq -r --arg k "$key" 'if has($k) and .[$k] != null then .[$k] else empty end
+        | if type=="array" or type=="object" then tojson else . end' "$SETTINGS_FILE" 2>/dev/null)
   [ -n "$v" ] && echo "$v" || echo "$default"
 }
 
 setting_list() {
   [ -s "$SETTINGS_FILE" ] || return 0
-  jq -r --arg k "$1" '.[$k] // empty | if type=="array" then join(",") else . end' \
-    "$SETTINGS_FILE" 2>/dev/null
+  jq -r --arg k "$1" 'if has($k) and .[$k] != null then .[$k] else empty end
+    | if type=="array" then join(",") else . end' "$SETTINGS_FILE" 2>/dev/null
 }
 
 # Apply the overrides the shell side honours. The .env names are kept so pr-watch.sh and

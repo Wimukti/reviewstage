@@ -22,7 +22,8 @@ trap 'echo "==> poller stopping"; exit 0' TERM INT
 
 setting() {   # <key> <default> — settings.json wins; anything unreadable falls back
   local v=""
-  [ -s "$SETTINGS_FILE" ] && v=$(jq -r --arg k "$1" '.[$k] // empty' "$SETTINGS_FILE" 2>/dev/null)
+  [ -s "$SETTINGS_FILE" ] && v=$(jq -r --arg k "$1" \
+      'if has($k) and .[$k] != null then .[$k] else empty end' "$SETTINGS_FILE" 2>/dev/null)
   [ -n "$v" ] && echo "$v" || echo "$2"
 }
 interval() {

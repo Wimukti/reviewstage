@@ -1,15 +1,17 @@
 ---
-/* One landing section body: copy column + screenshot, alternating sides. */
+/* One landing section body: copy column + a static DOM mock (slot "mock"), alternating
+ * sides. useScreenshot swaps the mock for the theme-aware screenshot pair instead. */
 import Shot from "./Shot.astro";
-interface Props { shot: string; alt: string; label?: string; flip?: boolean; points?: string[]; }
-const { shot, alt, label, flip = false, points = [] } = Astro.props;
+interface Props { shot: string; alt: string; label?: string; flip?: boolean; points?: string[]; useScreenshot?: boolean; }
+const { shot, alt, label, flip = false, points = [], useScreenshot = false } = Astro.props;
+const showMock = !useScreenshot && Astro.slots.has("mock");
 ---
 <div class:list={["feature", flip && "feature-flip"]}>
   <div class="feature-copy">
     <slot />
     {points.length > 0 && <ul class="points">{points.map((p) => <li>{p}</li>)}</ul>}
   </div>
-  <div class="feature-shot"><Shot name={shot} alt={alt} label={label} /></div>
+  <div class="feature-shot">{showMock ? <slot name="mock" /> : <Shot name={shot} alt={alt} label={label} />}</div>
 </div>
 <style>
   .feature { display: grid; gap: 2.5rem; align-items: center; }

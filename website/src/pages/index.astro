@@ -7,6 +7,12 @@ import Feature from "../components/marketing/Feature.astro";
 import Steps from "../components/marketing/Steps.astro";
 import Tiers from "../components/marketing/Tiers.astro";
 import ClosingCta from "../components/marketing/ClosingCta.astro";
+import GateMock from "../components/marketing/mocks/GateMock.astro";
+import StagingMock from "../components/marketing/mocks/StagingMock.astro";
+import RunMock from "../components/marketing/mocks/RunMock.astro";
+import TeamMock from "../components/marketing/mocks/TeamMock.astro";
+import LearnMock from "../components/marketing/mocks/LearnMock.astro";
+import QaMock from "../components/marketing/mocks/QaMock.astro";
 
 const title = "ReviewStage — stage your PR review, post it as yourself";
 const description =
@@ -18,14 +24,15 @@ const description =
 
   <Section id="gate" eyebrow="The gate" title="Nothing posts until you click"
     lede="The review step has no GitHub write path at all. It reads the diff and produces a file the dashboard renders. Every write to GitHub is a separate, deliberate click by a signed-in person, using that person's own token.">
-    <Feature shot="gate" alt="The Post to GitHub bar with three of six findings selected, and the separate Approve panel below it, greyed out until comments are posted."
-      label="post · 3 of 6 selected · COMMENT review"
+    <Feature shot="gate" alt="The Post to GitHub bar with four of six findings selected, and the separate Approve panel below it, greyed out until comments are posted."
+      label="post · 4 of 6 selected · COMMENT review"
       points={[
         "Comment-only. Posting is always a plain COMMENT review. ReviewStage never requests changes and never blocks a merge; the agent's verdict is shown to you as an assessment, nothing more.",
         "Approval is its own click, pre-filled with LGTM plus a checklist of the blocker and should-fix findings, editable before it goes.",
         "Every finding's file and line is validated against the actual diff before posting, so GitHub can never reject the whole review because one anchor pointed outside it.",
         "A failed GitHub read never degrades into a bad post: the fetch checks the response shape, retries once, and refuses on anything odd.",
       ]}>
+      <GateMock slot="mock" />
       <h3 class="card-title">Comment-only, by construction.</h3>
       <p class="body-text">A wrong nit costs a reply. A wrong approval ships a bug under a real person's name. So the two are different buttons, and the agent can press neither.</p>
     </Feature>
@@ -43,6 +50,7 @@ const description =
         "The review is flagged stale when the author pushes new commits. It is never re-run for you; you choose when.",
         "Re-run at any effort or focus. Every earlier run stays in history and can be opened read-only.",
       ]}>
+      <StagingMock slot="mock" />
       <h3 class="card-title">Your name, your call.</h3>
       <p class="body-text">The agent writes for a person deciding from its text alone, so the prose has to be readable, and the findings have to be few and confident. What you drop is recorded, and it stops coming back.</p>
     </Feature>
@@ -60,6 +68,7 @@ const description =
         "Runs serialise one at a time per server, and refuse to start below a free-memory floor, so two agents never fight over a small box.",
         "A re-run of the exact same commit, effort, focus and model is served from cache: zero new tokens.",
       ]}>
+      <RunMock slot="mock" />
       <h3 class="card-title">Honest about the cost.</h3>
       <p class="body-text">There is no shared API key and no metered SaaS. Whoever clicks Start pays for that run on their own subscription, and everyone requested on the PR reads the result.</p>
     </Feature>
@@ -76,6 +85,7 @@ const description =
         "The service token in the server's .env does reads and the base clone only. It cannot post or approve as anyone.",
         "Stacked PRs (Graphite or ghstack style) can be reviewed from one page, top to bottom, at one effort.",
       ]}>
+      <TeamMock slot="mock" />
       <h3 class="card-title">Shared server. Personal accountability.</h3>
       <p class="body-text">The design refuses to have a bot identity. If a comment carries your name, you chose it, and the audit trail on GitHub is the audit trail.</p>
     </Feature>
@@ -92,6 +102,7 @@ const description =
         "The team default is versioned. Every edit is committed with the editor's name, and the revision history is on the page. It cannot be blanked, and restoring the built-in takes a typed confirm.",
         "Independence-weighted agreement: when reviewers using a different skill, model or effort raise the same finding, it is marked confirmed. Same configuration twice does not count.",
       ]}>
+      <LearnMock slot="mock" />
       <h3 class="card-title">A flywheel with a human at every turn.</h3>
       <p class="body-text">Usage produces accept and reject signal. Signal shows which skills work. That informs a better team default, edited and approved by people.</p>
     </Feature>
@@ -107,6 +118,7 @@ const description =
         "Includes a surface matrix with the deliberate \"must not appear\" rows and a list of known non-defects, so QA does not file them.",
         "Runs on the requesting user's own Claude account, in its own worktree, never writing to GitHub.",
       ]}>
+      <QaMock slot="mock" />
       <h3 class="card-title">Hand testers something grounded.</h3>
       <p class="body-text">The guide is markdown you can paste anywhere. It is generated on demand, one job at a time, and can be stopped like a review.</p>
     </Feature>

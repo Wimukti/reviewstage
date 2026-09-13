@@ -1,0 +1,43 @@
+---
+/* The staging area: one finding card expanded, with the plain-words explanation. */
+import MockFrame from "./MockFrame.astro";
+---
+<MockFrame label="finding · should-fix · src/orders/cutoff.ts:142" right="stale · 1 new commit">
+  <div class="mk-card">
+    <div class="mk-line">
+      <span class="mk-check" aria-hidden="true"></span>
+      <span class="mk-sev mk-sev-should-fix">should-fix</span>
+      <span class="mk-title">Cut-off uses the server's clock, not the customer's</span>
+      <span class="mk-pill mk-pill-ok">confirmed ×2</span>
+    </div>
+    <p class="why">A customer in Perth can miss the 5 pm cut-off at 2 pm because the comparison runs in UTC.</p>
+    <details class="detail">
+      <summary class="mk-dim">Technical detail</summary>
+      <p class="mk-dim">isBeforeCutoff() compares Date.now() against a wall-clock hour with no zone. Every call site passes the customer's timezone already.</p>
+    </details>
+    <pre class="mk-code"><span class="mk-del">- const now = new Date();</span>
+<span class="mk-add">+ const now = zonedNow(customer.timezone);</span>
+  return now.getHours() &lt; CUTOFF_HOUR;</pre>
+    <div class="mk-sub">
+      <div class="mk-h"><b>Explain simply &amp; how to verify</b><span class="mk-pill mk-pill-accent">your claude</span></div>
+      <p class="mk-dim simple">The order deadline is checked on the server's clock. For a shop in another timezone the deadline lands at the wrong hour.</p>
+      <ol>
+        <li>Set a customer's timezone to Australia/Perth.</li>
+        <li>Place an order at 14:30 Perth time.</li>
+        <li>Expected: accepted. Current: rejected as past cut-off.</li>
+      </ol>
+    </div>
+    <div class="mk-foot">
+      <span class="mk-dim">Original kept for the learnings loop.</span>
+      <span class="mk-foot-actions"><span class="mk-btn mk-btn-ghost">Edit</span><span class="mk-btn mk-btn-ghost">Drop</span></span>
+    </div>
+  </div>
+</MockFrame>
+<style>
+  .why { margin: 0; color: var(--muted-foreground); }
+  .detail { font-size: 0.76rem; }
+  .detail summary { cursor: default; list-style: none; }
+  .detail summary::before { content: "▸ "; }
+  .detail p { margin: 0.3rem 0 0; }
+  .simple { margin: 0; font-size: 0.78rem; }
+</style>

@@ -1,0 +1,81 @@
+/* Shared visual language for the static DOM mocks in the feature sections (and the frame
+ * around them). Same tokens as the hero's live run: mono label chip, green dot, pills,
+ * compact rows. Static apart from a hover lift on rows. */
+.mk { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--foreground); }
+.mk-frame { position: relative; contain: inline-size; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-device); background: var(--surface-elevated); box-shadow: var(--shadow-elevated); }
+.mk-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; height: 2.1rem; padding-inline: 0.75rem; border-bottom: 1px solid var(--hairline); }
+.mk-chip { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; padding: 0.08rem 0.5rem; border: 1px solid var(--hairline); border-radius: 999px; color: var(--muted-foreground); font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-dot { flex: none; width: 0.35rem; height: 0.35rem; border-radius: 999px; background: var(--success); }
+.mk-screen { display: grid; gap: 0.75rem; padding: 1rem; background: var(--card); }
+
+.mk-mono { font-family: var(--font-mono); font-size: 0.72rem; }
+.mk-dim { color: var(--muted-foreground); }
+.mk-add { color: var(--success); } .mk-del { color: var(--destructive); }
+.mk-h { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.mk-h b { font-weight: 600; }
+.mk-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
+
+.mk-card { display: grid; gap: 0.6rem; padding: 0.85rem; border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--surface-elevated); }
+.mk-row { display: grid; grid-template-columns: auto 1fr; gap: 0.6rem; align-items: start; padding: 0.45rem 0.65rem; border: 1px solid var(--hairline); border-radius: var(--radius-chip); background: var(--surface-elevated); transition: transform 120ms var(--ease-out-expo), box-shadow 120ms var(--ease-out-expo); }
+.mk-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
+.mk-row.off { opacity: 0.45; }
+.mk-list { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+.mk-title { font-weight: 600; }
+.mk-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.mk-meta { display: flex; flex-wrap: wrap; gap: 0.15rem 0.6rem; align-items: baseline; color: var(--muted-foreground); font-size: 0.74rem; }
+
+.mk-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-height: 1.85rem; padding-inline: 0.75rem; border: 1px solid var(--hairline); border-radius: var(--radius-chip); font-weight: 600; font-size: 0.78rem; white-space: nowrap; }
+.mk-btn-ghost { background: color-mix(in oklab, var(--foreground) 5%, transparent); }
+.mk-btn-primary { border-color: color-mix(in oklab, var(--primary) 65%, transparent); background: var(--primary); color: var(--primary-foreground); box-shadow: var(--glow-primary); }
+.mk-btn-disabled { opacity: 0.45; border-style: dashed; }
+
+.mk-pill { display: inline-flex; align-items: center; padding: 0.05rem 0.45rem; border-radius: 999px; font-family: var(--font-mono); font-size: 0.62rem; line-height: 1.5; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.mk-pill-muted { border: 1px solid var(--hairline); color: var(--muted-foreground); }
+.mk-pill-accent { background: color-mix(in oklab, var(--primary) 18%, transparent); color: var(--primary); }
+.mk-pill-ok { background: color-mix(in oklab, var(--success) 18%, transparent); color: var(--success); }
+.mk-sev { padding: 0 0.4rem; border-radius: 999px; font-family: var(--font-mono); font-size: 0.6rem; line-height: 1.5; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+.mk-sev-high, .mk-sev-blocker, .mk-sev-p0 { background: color-mix(in oklab, var(--destructive) 18%, transparent); color: var(--destructive); }
+.mk-sev-medium, .mk-sev-should-fix, .mk-sev-p1 { background: color-mix(in oklab, var(--warning) 20%, transparent); color: var(--warning); }
+.mk-sev-low, .mk-sev-nit, .mk-sev-p2 { background: color-mix(in oklab, var(--info) 18%, transparent); color: var(--info); }
+
+.mk-check { position: relative; flex: none; width: 1rem; height: 1rem; margin-top: 0.1rem; border: 1px solid color-mix(in oklab, var(--primary) 70%, transparent); border-radius: 0.3rem; background: var(--primary); }
+.mk-check::after { content: ""; position: absolute; left: 0.3rem; top: 0.1rem; width: 0.28rem; height: 0.55rem; border: solid var(--primary-foreground); border-width: 0 2px 2px 0; rotate: 45deg; }
+.mk-check.off { border-color: var(--border); background: transparent; }
+.mk-check.off::after { display: none; }
+
+.mk-avatar { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 999px; border: 2px solid var(--card); color: var(--background); font-weight: 700; font-size: 0.62rem; }
+.mk-avatar-a { background: linear-gradient(150deg, var(--info), var(--success)); }
+.mk-avatar-b { background: linear-gradient(150deg, var(--primary), var(--warning)); }
+.mk-avatars { display: inline-flex; }
+.mk-avatars .mk-avatar + .mk-avatar { margin-left: -0.45rem; }
+
+.mk-seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0.2rem; border: 1px solid var(--hairline); border-radius: var(--radius-chip); background: color-mix(in oklab, var(--foreground) 4%, transparent); }
+.mk-seg-opt { position: relative; display: flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 1.8rem; border-radius: 0.35rem; color: var(--muted-foreground); font-weight: 500; }
+.mk-seg-on { background: var(--card); color: var(--foreground); box-shadow: 0 1px 0 var(--hairline); }
+.mk-tag { position: absolute; top: -0.65rem; right: -0.25rem; padding: 0.02rem 0.35rem; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); font-size: 0.55rem; font-weight: 600; letter-spacing: 0.04em; }
+.mk-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.mk-chip-opt { padding: 0.15rem 0.6rem; border: 1px solid var(--hairline); border-radius: 999px; color: var(--muted-foreground); }
+.mk-chip-on { border-color: color-mix(in oklab, var(--primary) 50%, transparent); background: color-mix(in oklab, var(--primary) 14%, transparent); color: var(--foreground); }
+.mk-input { display: flex; align-items: center; min-height: 2.1rem; padding: 0.4rem 0.6rem; border: 1px solid var(--hairline); border-radius: var(--radius-chip); background: var(--card); font-family: var(--font-mono); font-size: 0.74rem; }
+
+.mk-tabs { display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--hairline); }
+.mk-tab { padding: 0.35rem 0.6rem; border-bottom: 2px solid transparent; color: var(--muted-foreground); font-size: 0.78rem; font-weight: 500; }
+.mk-tab-on { border-bottom-color: var(--primary); color: var(--foreground); }
+.mk-tab .mk-n { margin-left: 0.3rem; font-family: var(--font-mono); font-size: 0.66rem; opacity: 0.8; }
+
+.mk-meter { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.75rem; align-items: center; }
+.mk-meter-bar { grid-column: 1 / -1; height: 0.4rem; border-radius: 999px; background: color-mix(in oklab, var(--foreground) 8%, transparent); overflow: hidden; }
+.mk-meter-bar i { display: block; height: 100%; width: var(--w); border-radius: 999px; background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--primary) 60%, var(--warning))); }
+
+.mk-code { display: block; margin: 0; padding: 0.5rem 0.65rem; border-radius: var(--radius-chip); background: var(--card); font-family: var(--font-mono); font-size: 0.7rem; line-height: 1.55; white-space: pre; overflow-x: auto; }
+.mk-code .mk-del { background: color-mix(in oklab, var(--destructive) 10%, transparent); }
+.mk-code .mk-add { background: color-mix(in oklab, var(--success) 10%, transparent); }
+.mk-sub { display: grid; gap: 0.35rem; padding: 0.6rem 0.75rem; border-left: 3px solid var(--primary); border-radius: 0.25rem 0.5rem 0.5rem 0.25rem; background: color-mix(in oklab, var(--primary) 6%, transparent); }
+.mk-sub ol { margin: 0; padding-left: 1.1rem; color: var(--muted-foreground); font-size: 0.76rem; }
+.mk-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--hairline); }
+.mk-foot-actions { display: flex; gap: 0.4rem; }
+
+@media (max-width: 30rem) {
+  .mk-screen { padding: 0.75rem; }
+  .mk-meta .mk-mono { display: none; }
+}

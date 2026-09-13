@@ -15,4 +15,5 @@
 @import "./tokens.css";
 @import "./base.css";
 @import "./marketing.css" layer(components);
+@import "./mock.css" layer(components);
 @import "./starlight.css";

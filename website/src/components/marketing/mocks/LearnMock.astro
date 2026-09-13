@@ -1,0 +1,47 @@
+---
+/* The loop: the Skills page with per-skill keep rates, a quick-add rule and revisions. */
+import MockFrame from "./MockFrame.astro";
+const skills = [
+  { n: "Team default", w: 71.4, runs: 38, on: true },
+  { n: "Your skill", w: 64.0, runs: 11 },
+  { n: "Built-in", w: 58.3, runs: 20 },
+];
+const revisions = [
+  { v: 3, who: "mira", when: "09/11/26", what: "Team rules: no ticket links in code comments" },
+  { v: 2, who: "you", when: "09/03/26", what: "Drop nits on test file naming" },
+  { v: 1, who: "jon", when: "08/22/26", what: "Forked from built-in" },
+];
+---
+<MockFrame label="skills · team default · v3" right="kept 71.4%">
+  <ul class="mk-list">
+    {skills.map((s) => (
+      <li class:list={["mk-row", "skill", s.on && "on"]}>
+        <div class="mk-meter">
+          <span class="mk-line"><span class="mk-title">{s.n}</span>{s.on && <span class="mk-pill mk-pill-accent">runs by default</span>}</span>
+          <span class="mk-mono"><b>{s.w.toFixed(1)}%</b> kept · {s.runs} reviews</span>
+          <span class="mk-meter-bar" aria-hidden="true"><i style={`--w:${s.w}%`}></i></span>
+        </div>
+      </li>
+    ))}
+  </ul>
+  <div class="mk-card">
+    <span class="mk-label">Quick-add a rule</span>
+    <div class="mk-h">
+      <div class="mk-input grow">don't ask for a ticket link in code comments</div>
+      <span class="mk-btn mk-btn-ghost">Add rule</span>
+    </div>
+    <span class="mk-dim hint">Tidied into the skill's Team rules section, committed under your name.</span>
+  </div>
+  <ol class="mk-list rev">
+    {revisions.map((r) => (
+      <li class="mk-meta"><span class="mk-mono">v{r.v}</span><span><b>{r.who}</b> · {r.when}</span><span>{r.what}</span></li>
+    ))}
+  </ol>
+</MockFrame>
+<style>
+  .skill { grid-template-columns: 1fr; }
+  .skill.on { border-color: color-mix(in oklab, var(--primary) 40%, var(--border)); }
+  .grow { flex: 1; min-width: 0; }
+  .hint { font-size: 0.72rem; }
+  .rev { gap: 0.25rem; font-size: 0.74rem; }
+</style>

@@ -209,3 +209,46 @@ jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
     [ -f "$ud/requested_at" ] || date +%s > "$ud/requested_at"
   done
 done
+
+# --- Auto re-profile ------------------------------------------------------------------------
+# For each repo with auto_profile on (settings.json, set from the Skills page): at most once a
+# day, refresh the base clone and hash `git ls-files`; if the tree changed materially since the
+# last profile, ask the server to rebuild it. The server runs it as the admin, on the admin's
+# connected Claude account — the poller never sees a token — and logs + skips when the admin has
+# none. "Materially" = at least max(5, 2%) of paths added or removed, so a renamed file or a new
+# doc never spends a Sonnet call.
+AUTO="$(setting auto_profile '{}')"
+if [ "$AUTO" != "{}" ] && [ -n "$AUTO" ]; then
+  for repo in $(repos_list); do
+    slug=$(repo_slug "$repo")
+    [ "$(printf '%s' "$AUTO" | jq -r --arg s "$slug" '.[$s] // false')" = true ] || continue
+    base=$(base_dir "$repo"); pd="$ROOT/profiles/$slug"; mkdir -p "$pd"
+    git -C "$base" rev-parse --git-dir >/dev/null 2>&1 || continue
+    now=$(date +%s); last=$(cat "$pd/tree.checked" 2>/dev/null || echo 0)
+    [ $((now - last)) -ge 86400 ] || continue
+    echo "$now" > "$pd/tree.checked"
+    git -C "$base" fetch -q origin 2>/dev/null || true
+    git -C "$base" pull -q --ff-only 2>/dev/null || true
+    git -C "$base" ls-files | sort > "$pd/tree.now"
+    if [ -f "$pd/tree.paths" ]; then
+      changed=$(comm -3 "$pd/tree.paths" "$pd/tree.now" | wc -l | tr -d ' ')
+      total=$(wc -l < "$pd/tree.now" | tr -d ' ')
+      min=$(( total / 50 )); [ "$min" -lt 5 ] && min=5
+      if [ "$changed" -lt "$min" ]; then
+        echo "==> auto-profile $repo: tree changed by $changed path(s) (< $min) — no re-profile"
+        rm -f "$pd/tree.now"; continue
+      fi
+      echo "==> auto-profile $repo: $changed path(s) added/removed — asking the server to re-profile"
+    else
+      echo "==> auto-profile $repo: first fingerprint recorded — no re-profile yet"
+      mv "$pd/tree.now" "$pd/tree.paths"; continue
+    fi
+    mv "$pd/tree.now" "$pd/tree.paths"
+    exp=$(( now + 300 )); sig=$(sign "profile-auto:$repo:$exp")
+    resp=$(curl -fsS -m 20 -X POST "http://127.0.0.1:${PRBOT_PORT:-8899}/api/profile/auto" \
+             -H 'Content-Type: application/json' \
+             -d "$(jq -n --arg r "$repo" --arg e "$exp" --arg s "$sig" '{repo:$r, exp:$e, sig:$s}')" \
+             2>&1) || { echo "==> auto-profile $repo: server did not accept the request: $resp"; continue; }
+    echo "==> auto-profile $repo: $(printf '%s' "$resp" | jq -c . 2>/dev/null || printf '%s' "$resp")"
+  done
+fi

@@ -182,6 +182,86 @@ export function buildFixture() {
     }),
   );
 
+  // A repository profile for REPO so the Skills page's "Repository profile" section renders as
+  // profiled (status line, counts, editor) — REPO2 stays "never run".
+  const profile = {
+    summary: "A storefront: product cards read vendor lead times; payments and auth are the sharp edges.",
+    critical_paths: [
+      {
+        path_glob: "app/payments/**",
+        why: "Charges real cards; a silent bug double-bills or under-bills a shopper.",
+        checks: ["Every amount is in minor units end to end", "Refund paths mirror the charge path"],
+      },
+      {
+        path_glob: "app/models/Product.php",
+        why: "Every product card and order line reads this model.",
+        checks: ["Callers handle a null vendor", "Lead-time cache is invalidated on vendor change"],
+      },
+    ],
+    risk_paths: [
+      { label: "payments", pattern: "app/payments/" },
+      { label: "auth", pattern: "app/auth/" },
+    ],
+    review_rules: ["Money is always integer cents; flag any float arithmetic on amounts."],
+    do_not_flag: ["The committed pnpm-lock.yaml is intentional."],
+    meta: {
+      generated_at: 1778000000,
+      model: "claude-sonnet-4-5",
+      dropped_globs: ["app/billing/**"],
+      head: "deadbeefcafe0000",
+      edited_at: null,
+      edited_by: "",
+    },
+  };
+  write(join(FIXTURE, "profiles", slug(REPO), "profile.json"), JSON.stringify(profile, null, 1) + "\n");
+  write(
+    join(FIXTURE, "profiles", slug(REPO), "profile.md"),
+    [
+      "# Repository profile",
+      "",
+      "## Summary",
+      "",
+      profile.summary,
+      "",
+      "## Critical paths",
+      "",
+      ...profile.critical_paths.flatMap((cp) => [
+        `### \`${cp.path_glob}\``,
+        "",
+        `Why: ${cp.why}`,
+        "",
+        ...cp.checks.map((c) => `- check: ${c}`),
+        "",
+      ]),
+      "## Risk paths",
+      "",
+      ...profile.risk_paths.map((r) => `- ${r.label}: ${r.pattern}`),
+      "",
+      "## Review rules",
+      "",
+      ...profile.review_rules.map((r) => `- ${r}`),
+      "",
+      "## Do not flag",
+      "",
+      ...profile.do_not_flag.map((r) => `- ${r}`),
+      "",
+    ].join("\n"),
+  );
+  write(join(FIXTURE, "profiles", slug(REPO), "status"), "done");
+  write(join(FIXTURE, "profiles", slug(REPO), "runner"), USER);
+  write(
+    join(FIXTURE, "profiles", slug(REPO), "usage.json"),
+    JSON.stringify({
+      model: "claude-sonnet-4-5",
+      input_tokens: 9120,
+      output_tokens: 1840,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cost_usd: 0.055,
+      duration_ms: 48000,
+    }),
+  );
+
   // Fake gh: every call fails, so gh_json() returns its defaults and the server renders from
   // the on-disk fixture. Placed on PATH ahead of any real gh by the webServer command.
   const gh = join(FIXTURE, "fakebin", "gh");

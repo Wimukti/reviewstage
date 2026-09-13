@@ -818,3 +818,17 @@ input[type=range]{accent-color:var(--purple);width:180px}
 .devcur{font-size:.72rem;padding:2px 7px;border-radius:99px;background:rgba(80,200,120,.12);color:#7fd39a;margin-left:8px}
 .devnew{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
 .devnew .in{flex:1;min-width:180px}
+
+/* repository profile */
+.cpbadge{font-size:.66rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;
+border-radius:999px;background:var(--warnbg);color:#f6cd8a;border:1px solid var(--warnln);white-space:nowrap}
+.profstat{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;font-size:.85rem;color:var(--dim)}
+.profstat .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block}
+.profstat .dot.run{background:#f7c26b;animation:pulse 1.2s ease-in-out infinite}
+.profstat .dot.ok{background:#6fe6b2}.profstat .dot.bad{background:#ff8ca0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.profcounts{font-family:var(--mono);font-size:.74rem;color:var(--faint);margin:6px 0 10px}
+.profauto{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:.85rem;color:var(--dim)}
+.profauto input{margin-top:3px}
+.profdrop{font-size:.78rem;color:var(--faint);margin-top:8px}
+.profdrop code{font-size:.72rem}

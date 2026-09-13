@@ -75,6 +75,7 @@ Precedence for every key it carries: **`settings.json` > `.env` > default**. Onl
   "notify_backends": ["slack", "discord"],
   "max_pr_age_days": 45,
   "skip_bot_prs": false,
+  "auto_profile": { "acme__widgets": true },
   "updated_at": 1789265317
 }
 ```
@@ -86,6 +87,7 @@ Precedence for every key it carries: **`settings.json` > `.env` > default**. Onl
 | `notify_backends` | list of `slack` / `discord` / `generic` / `none` | derived from configured URLs | `NOTIFY_BACKENDS` | Which backends `notify_card` posts to. `none` cannot be combined with others. |
 | `max_pr_age_days` | int, 0–3,650 | `45` | `PRBOT_MAX_PR_AGE_DAYS` | Suppress cards for PRs opened more than this many days ago; `0` = no cutoff. |
 | `skip_bot_prs` | bool | `false` | `SKIP_BOT_PRS` | Skip bot-authored PRs entirely. |
+| `auto_profile` | object, repo slug (`owner__name`) → bool | `{}` | — | Re-profile that repository automatically when its file tree changes materially (checked by `pr-watch.sh` at most once a day; runs as the admin on the admin's connected Claude account, skipped with a log line otherwise). Set from the Skills page's **Repository profile** card, admin only. See [Repository profile](/reviewstage/guides/repo-profile/). |
 
 `DRY_RUN` is deliberately **not** a runtime setting: flipping GitHub writes on stays an `.env` edit plus a restart.
 

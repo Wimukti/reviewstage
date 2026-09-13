@@ -28,6 +28,7 @@ Priorities, not promises. Open an issue to argue for reordering.
 - Device tokens: `POST /api/device-token` from a web session, bearer accepted on every `/api/*` route, Settings → Devices to list and revoke, 180-day sliding expiry, `/login?device=1` pairing page for mobile and CLI clients.
 - Docker Compose install with `team` and `demo` profiles; `bin/doctor.sh`.
 - Guided first-run tour; command palette.
+- Repository profile: deterministic signals + one Sonnet call name each repo's critical paths (validated against the tree); Standard/Deep reviews walk the ones a PR touches; editable, versioned, optional auto re-profile; kept rate on critical paths in Insights.
 
 ## P1 — in flight
 

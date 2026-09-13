@@ -71,6 +71,8 @@ def record(repo, pr, user, originals_sorted, form, skill="global"):
                "path": orig.get("path", ""), "line": orig.get("line"),
                "severity": orig.get("severity", "nit"),
                "gist": _gist(ob), "outcome": outcome}
+        if orig.get("critical_path"):
+            row["critical_path"] = str(orig["critical_path"])[:200]
         if outcome == "edited":
             row["edited_gist"] = _gist(edited_body)
         out.append(row)

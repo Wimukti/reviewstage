@@ -36,6 +36,10 @@ Type a preference in plain words — *"don't ask for a ticket link in code comme
 
 Each review records which skill ran it. On post, each finding is scored kept / edited / dropped, tagged with that skill. **How each skill scores** shows the keep rate per skill. It is a signal for improving the team default, not a leaderboard; a skill that produces many findings with a low keep rate is a skill that costs reviewers time.
 
+### Repository profile
+
+Alongside the per-repository skill, the Skills page holds a **repository profile**: the paths where a mistake hurts most, the checks a reviewer must perform when a PR touches one, the repository's risk paths and its rules. It is built once from deterministic signals plus one Sonnet call, validated against the tree, and editable in the same markdown editor. Standard and Deep reviews that touch a profiled path are told to walk it explicitly. See [Repository profile](/reviewstage/guides/repo-profile/).
+
 ## Learnings
 
 On every post, each original finding is recorded as one of:

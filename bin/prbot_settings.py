@@ -12,6 +12,8 @@ Schema (all keys optional):
                                      which URLs are set in .env (.env: NOTIFY_BACKENDS)
   max_pr_age_days        int 0..3650  default 45   (.env: PRBOT_MAX_PR_AGE_DAYS; 0 = no cutoff)
   skip_bot_prs           bool        default false (.env: SKIP_BOT_PRS)
+  auto_profile           {slug: bool} default {}  re-profile a repo when its file tree changes
+                                     materially (pr-watch.sh, at most once a day per repo)
 """
 import json
 import os
@@ -134,6 +136,14 @@ def validate(body):
         if not isinstance(body["skip_bot_prs"], bool):
             return None, "skip_bot_prs must be true or false."
         out["skip_bot_prs"] = body["skip_bot_prs"]
+    if "auto_profile" in body:
+        v = body["auto_profile"]
+        if not isinstance(v, dict) or not all(isinstance(b, bool) for b in v.values()):
+            return None, "auto_profile must map repository slugs to true/false."
+        bad = [k for k in v if not isinstance(k, str) or "__" not in k or "/" in k]
+        if bad:
+            return None, f"auto_profile keys must be repo slugs (owner__name): {', '.join(bad)}."
+        out["auto_profile"] = dict(v)
     return out, None
 
 

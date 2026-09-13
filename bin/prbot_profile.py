@@ -132,7 +132,7 @@ def _churn(base, files):
 
 
 _IMPORT_RE = {
-    "python": [re.compile(r"^\s*from\s+([\w.]+)\s+import", re.M),
+    "python": [re.compile(r"^\s*from\s+([\w.]+)\s+import\s+([\w, ]+)", re.M),
                re.compile(r"^\s*import\s+([\w.]+)", re.M)],
     "javascript": [re.compile(r"""(?:from|import|require\()\s*['"]([^'"]+)['"]""")],
     "typescript": [re.compile(r"""(?:from|import|require\()\s*['"]([^'"]+)['"]""")],
@@ -184,6 +184,16 @@ def _resolve_import(spec, src, lang, files, by_stem, by_base):
     return by_stem.get(stem)
 
 
+def _specs(m):
+    """Import targets from one regex match. `from X import a, b` yields X.a and X.b (a module
+    each, if they resolve) before X itself; every other pattern yields its single group."""
+    if m.lastindex == 2:
+        base = m.group(1)
+        names = [n.strip() for n in m.group(2).split(",") if n.strip()]
+        return [f"{base}.{n}" for n in names] + [base]
+    return [m.group(1)]
+
+
 def _indegree(base, files, languages):
     """Top files by how many other files import them, for the dominant language. Reads files
     from the checkout (a blobless clone fetches lazily — bounded by MAX_IMPORT_FILES)."""
@@ -214,10 +224,11 @@ def _indegree(base, files, languages):
         seen = set()
         for rx in pats:
             for m in rx.finditer(text):
-                tgt = _resolve_import(m.group(1), f, lang, fileset, by_stem, by_base)
-                if tgt and tgt != f and tgt not in seen:
-                    seen.add(tgt)
-                    deg[tgt] += 1
+                for spec in _specs(m):
+                    tgt = _resolve_import(spec, f, lang, fileset, by_stem, by_base)
+                    if tgt and tgt != f and tgt not in seen:
+                        seen.add(tgt)
+                        deg[tgt] += 1
     return {"language": lang,
             "rows": [{"path": p, "imported_by": n} for p, n in deg.most_common(TOP_N)]}
 

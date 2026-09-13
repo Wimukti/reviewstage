@@ -37,6 +37,8 @@ jobs:
         run: python3 -m py_compile bin/*.py
       - name: Bash parses
         run: bash -n bin/*.sh
+      - name: Python unit tests
+        run: python3 -m unittest discover -s bin -p 'test_*.py' -v
       - name: shellcheck
         uses: ludeeus/action-shellcheck@2.0.0
         with:

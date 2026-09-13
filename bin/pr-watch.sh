@@ -197,7 +197,6 @@ done
 # doc never spends a Sonnet call.
 AUTO="$(setting auto_profile '{}')"
 if [ "$AUTO" != "{}" ] && [ -n "$AUTO" ]; then
-  HERE="$(cd "$(dirname "$0")" && pwd)"
   for repo in $(repos_list); do
     slug=$(repo_slug "$repo")
     [ "$(printf '%s' "$AUTO" | jq -r --arg s "$slug" '.[$s] // false')" = true ] || continue

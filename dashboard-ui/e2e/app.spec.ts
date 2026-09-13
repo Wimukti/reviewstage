@@ -113,6 +113,44 @@ test.describe("signed in", () => {
     await expect(page.getByTestId("repo-skill").first()).toContainText(REPO);
   });
 
+  test("skills page shows a repository profile per repo with status and counts", async ({ page }) => {
+    await page.goto("/skills");
+    const profiles = page.getByTestId("repo-profile");
+    await expect(profiles).toHaveCount(2);
+    const first = profiles.filter({ hasText: REPO }).first();
+    await first.locator("summary").click();
+    await expect(first).toContainText(/profiled/i);
+    await expect(first.getByTestId("profile-status")).toContainText(/last run/i);
+    await expect(first.getByTestId("profile-status")).toContainText(/claude-sonnet-4-5/);
+    await expect(first.getByTestId("profile-counts")).toContainText(/2 critical paths/);
+    await expect(first.getByTestId("profile-counts")).toContainText(/2 risk paths/);
+    await expect(first).toContainText(/app\/billing/); // dropped glob is surfaced
+    const second = profiles.filter({ hasText: REPO2 }).first();
+    await second.locator("summary").click();
+    await expect(second.getByTestId("profile-status")).toContainText(/never run/i);
+  });
+
+  test("repository profile editor round-trips an edit", async ({ page }) => {
+    await page.goto("/skills");
+    const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
+    await card.locator("summary").click();
+    await card.getByRole("button", { name: "Edit" }).click();
+    const box = card.locator("textarea.fedit");
+    const before = await box.inputValue();
+    expect(before).toContain("app/payments/**");
+    const marker = `Refunds must be idempotent e2e-${Date.now()}`;
+    await box.fill(before.replace("## Review rules\n\n", `## Review rules\n\n- ${marker}\n`));
+    await card.getByRole("button", { name: "Save profile" }).click();
+    await expect(page.locator(".banner.ok")).toContainText(/saved the profile/i);
+    await expect(card.getByTestId("profile-counts")).toContainText(/2 review rules/);
+    await page.reload();
+    const again = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
+    await again.locator("summary").click();
+    await again.getByRole("button", { name: "Edit" }).click();
+    await expect(again.locator("textarea.fedit")).toHaveValue(new RegExp(marker));
+    await expect(again).toContainText(/edited by/i);
+  });
+
   test("insights dashboard renders from the rollup api", async ({ page }) => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: /^insights$/i })).toBeVisible();

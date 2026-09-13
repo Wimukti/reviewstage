@@ -56,7 +56,7 @@ echo "{\"$USER_LOGIN\": {\"name\": \"Acme Dev\", \"slack_id\": \"\", \"added\": 
 echo '{"at": 1, "note": "e2e"}' > "$ROOT/MIGRATED"
 echo '[]' > "$ROOT/queue.json"
 
-PATH="$ROOT/fakebin:$PATH" ROOT="$ROOT" PRBOT_PORT="$PORT" PRBOT_SPA=1 PRBOT_COOKIE_SECURE=0 \
+env PATH="$ROOT/fakebin:$PATH" ROOT="$ROOT" PRBOT_PORT="$PORT" PRBOT_SPA=1 PRBOT_COOKIE_SECURE=0 \
   python3 "$HERE/prbot-server.py" > "$ROOT/server.log" 2>&1 &
 SERVER_PID=$!
 for _ in $(seq 1 50); do curl -fs "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
@@ -130,7 +130,7 @@ check "server log says already seen" grep -q "already seen" "$ROOT/server.log"
 
 # 5. synchronize → stale. Pretend a review ran against the first head.
 ud="$ROOT/state/acme__widgets/$PR/users/$USER_LOGIN"; mkdir -p "$ud"
-echo aaaa1111 > "$ud/head"; echo done > "$ud/status"; echo '{"event":"COMMENT","summary":"ok","comments":[]}' > "$ud/review.json"
+echo aaaa1111 > "$ud/head"; echo 'done' > "$ud/status"; echo '{"event":"COMMENT","summary":"ok","comments":[]}' > "$ud/review.json"
 code=$(post pull_request "$(pr_json synchronize bbbb2222)"); check "synchronize → 202 (got $code)" [ "$code" = 202 ]
 check "queue row head flipped to bbbb2222" wait_for 5 head_is bbbb2222
 check "/api/pr reports the review as stale" \

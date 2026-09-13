@@ -167,7 +167,7 @@ The worktree is removed as soon as `review.json` is copied out.
   it's appended to the comment body as a GitHub ```` ```suggestion ```` block (one-click apply).
 - **Staleness**: `run-review.sh` records the reviewed head SHA (`head`); the detail page flags
   the review stale when the PR's current head differs — without auto-re-running.
-- **Slack threading**: with `SLACK_BOT_TOKEN` + `SLACK_CHANNEL`, `slack_post` uses
+- **Slack threading**: with `SLACK_BOT_TOKEN` + `SLACK_CHANNEL`, `slack_post` (in `bin/notify.sh`, behind `notify_card`) uses
   `chat.postMessage`, stores the request card's ts, and threads the review-ready reply under it;
   otherwise it falls back to the send-only webhook.
 - **Per-run cache, agreement and insights** (`prbot_agree.py`, `prbot_rollup.py`): a reviewer's

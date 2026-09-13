@@ -28,6 +28,22 @@ SLACK_WEBHOOK=
 SLACK_BOT_TOKEN=
 SLACK_CHANNEL=
 
+# A Discord channel webhook (channel settings → Integrations → Webhooks). Cards arrive as an
+# embed and mention the reviewer by the Discord user ID they saved in Integrations.
+DISCORD_WEBHOOK=
+
+# Any HTTPS endpoint that accepts a JSON POST — Teams, Zapier, n8n, your own service. Every
+# event (review_requested, review_ready, review_stopped, qa_ready) is one JSON object; see
+# the Integrations page or docs/guides/notifications for the schema. With WEBHOOK_SECRET set
+# the body is signed: X-ReviewStage-Signature: sha256=HMAC-SHA256(secret, body).
+WEBHOOK_URL=
+WEBHOOK_SECRET=
+
+# Which backends fire, comma-separated: slack, discord, generic, none. Empty = whichever of
+# the URLs above are set (so an existing Slack-only install changes nothing). Can be
+# overridden without a restart from the dashboard's Settings page.
+NOTIFY_BACKENDS=
+
 # --- per-install values (bootstrap prompts for these on first run) ----------------------------
 
 # The GitHub repository this instance reviews, as owner/name. REQUIRED, no default.
@@ -66,11 +82,15 @@ PRBOT_SECRET=
 DRY_RUN=1
 
 # 1 skips PRs opened by bots. Default 0: AI-written PRs are where a skeptical review pays
-# off most, and they are often the bulk of the queue.
+# off most, and they are often the bulk of the queue. Overridable from Settings.
 SKIP_BOT_PRS=0
 
-# Ignore review requests on PRs older than this many days.
+# Ignore review requests on PRs older than this many days. Overridable from Settings.
 PRBOT_MAX_PR_AGE_DAYS=45
+
+# NOTE: the poll interval and the poller on/off switch are NOT .env keys any more — they live
+# in the dashboard's Settings page (written to ~/.claude-pr-bot/settings.json, read by the
+# poller every cycle). settings.json > .env > default for every key it carries.
 
 # Refuse to start a review below this much available RAM, in MB.
 MIN_FREE_MB=800

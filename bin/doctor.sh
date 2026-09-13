@@ -130,10 +130,18 @@ else
   warn "PUBLIC_URL not set — Slack links will point at a derived hostname"
 fi
 
-# --- slack -----------------------------------------------------------------------------------
+# --- notifications -----------------------------------------------------------------------------
 if [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_CHANNEL:-}" ]; then pass "Slack: bot token + channel (threaded)"
-elif [ -n "${SLACK_WEBHOOK:-}" ]; then pass "Slack: incoming webhook set"
-else warn "Slack not configured — no review-request cards; open the dashboard yourself"; fi
+elif [ -n "${SLACK_WEBHOOK:-}" ]; then pass "Slack: incoming webhook set"; fi
+[ -n "${DISCORD_WEBHOOK:-}" ] && pass "Discord: webhook set"
+if [ -n "${WEBHOOK_URL:-}" ]; then
+  [ -n "${WEBHOOK_SECRET:-}" ] && pass "Generic webhook: URL set, requests signed" \
+    || warn "Generic webhook: URL set but WEBHOOK_SECRET empty — requests are unsigned"
+fi
+if [ -z "${SLACK_WEBHOOK:-}${SLACK_BOT_TOKEN:-}${DISCORD_WEBHOOK:-}${WEBHOOK_URL:-}" ]; then
+  warn "no notification backend configured — no review-request cards; the dashboard is the inbox"
+fi
+[ -s "$ROOT/settings.json" ] && note "runtime settings in $ROOT/settings.json override .env (Settings page)"
 
 # --- skills ------------------------------------------------------------------------------------
 for s in pr-review pr-qa-guide; do

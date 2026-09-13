@@ -11,12 +11,12 @@ One server serves the whole team. Each person signs in once; from then on their 
 docker compose --profile team up -d
 ```
 
-The `team` profile adds the **poller**: every 3 minutes it asks GitHub for PRs where any signed-in user's review is requested, writes the queue, and sends a notification card to whoever is requested.
+The `team` profile adds the **poller**: every 3 minutes (adjustable in *Settings*) it asks GitHub for PRs where any signed-in user's review is requested, writes the queue, and sends a notification card to whoever is requested.
 
 ## What each person does
 
 1. Open the server's URL and sign in with their own fine-grained GitHub token (or **Sign in with GitHub** if the owner configured an OAuth app; see [Configuration](/reviewstage/operations/configuration/#github-sign-in)).
-2. On the welcome checklist, paste their **Slack member ID** so cards mention them, and **Connect Claude** so their reviews bill to their own plan. Both live in *Integrations* and can be done later.
+2. On the welcome checklist, paste their **Slack member ID** (or Discord user ID) so cards mention them, and **Connect Claude** so their reviews bill to their own plan. Both live in *Integrations* and can be done later.
 
 That is it. The next review request pings them within three minutes.
 
@@ -37,7 +37,7 @@ Two reviewers on one PR get **independent runs**, each in its own git worktree, 
 
 ## Notifications
 
-Slack via an incoming webhook (simplest) or a bot token (threads the "review ready" reply under the request card). Discord is planned. Details in [Notifications](/reviewstage/guides/notifications/).
+Slack via an incoming webhook (simplest) or a bot token (threads the "review ready" reply under the request card), Discord via a channel webhook, or any JSON endpoint via a signed generic webhook. Details in [Notifications](/reviewstage/guides/notifications/).
 
 Cards carry PR titles, authors and diff sizes, and the review-ready card carries the agent's summary, which can quote code. Point them at a **private channel** containing only people who can already read the repository.
 

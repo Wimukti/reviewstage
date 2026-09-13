@@ -74,9 +74,12 @@ docker compose --profile team up -d
 ```
 
 adds a second container that runs `pr-watch.sh` every 3 minutes: it finds PRs awaiting each
-signed-in user's review, keeps the queue fresh, and — if `SLACK_WEBHOOK` is set — posts a Slack
-card mentioning the person requested. Without it the dashboard still works; you open it
-yourself and paste PR URLs.
+signed-in user's review, keeps the queue fresh, and — if `SLACK_WEBHOOK`, `DISCORD_WEBHOOK` or
+`WEBHOOK_URL` is set — posts a card mentioning the person requested. Without it the dashboard
+still works; you open it yourself and paste PR URLs.
+
+The poller is controlled from the dashboard's **Settings** page (admin only): pause it, change
+the interval (1–60 min) and pick the notification backends without restarting the container.
 
 For more than one person to sign in you need a URL they can reach, over HTTPS:
 [`../deploy/README.md`](../deploy/README.md) covers Caddy, Tailscale and Cloudflare Access.
@@ -174,5 +177,5 @@ install on a LAN also works — do not do that for anything reachable from outsi
 | Review fails: "could not fetch <branch>"         | Base clone not finished or failed — see `clone.log` in the volume |
 | Review fails: "not enough free memory"           | `MIN_FREE_MB` (default 800) — give Docker more RAM or lower it in `.env` |
 | Signed in, then straight back to the login page  | Cookie rejected: open `http://localhost:8899`, not `127.0.0.1`; behind a proxy, `PUBLIC_URL` must be `https://` and the proxy must forward `Host` |
-| Slack card never arrives                         | Poller not running (`--profile team`), or `SLACK_WEBHOOK` empty — `docker compose logs poller` |
+| Slack/Discord card never arrives                 | Poller not running (`--profile team`) or paused in Settings, or no webhook URL in `.env` — `docker compose logs poller` |
 | Port 8899 in use                                 | `PRBOT_PORT=9000 docker compose up -d` (host side only)         |

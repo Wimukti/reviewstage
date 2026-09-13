@@ -20,7 +20,8 @@ Priorities, not promises. Open an issue to argue for reordering.
 - Insights: reviews, tokens, keep rate, severity, by reviewer, by model, agreement, cycle time.
 - QA guide generation.
 - Stacked-PR review.
-- Slack via webhook or bot token; per-reviewer mentions; once-per-PR dedup.
+- Notifications: Slack via webhook or bot token, Discord embeds, generic signed webhook, or none; per-reviewer mentions; once-per-PR dedup.
+- Runtime settings page (poller on/off, interval, backends, PR filters) — `settings.json`, no restart.
 - Per-user Claude account via the genuine `claude setup-token` flow; encrypted at rest.
 - GitHub OAuth App / GitHub App sign-in with server-side refresh.
 - Docker Compose install with `team` and `demo` profiles; `bin/doctor.sh`.
@@ -28,7 +29,6 @@ Priorities, not promises. Open an issue to argue for reordering.
 
 ## P1 — next
 
-- **Discord notifier.** Same card shape via a Discord webhook; the notifier is one function.
 - **Confidence per finding.** The agent states how sure it is; the card shows it; learnings record whether confidence predicted keep rate.
 - **Reviewer handoff UI.** Explicitly pass a PR you have opened to a teammate, with your ticks and edits, instead of them starting cold.
 - **Public keep rate.** An opt-in badge for a repository: "N% of assistant findings were posted unchanged over the last 90 days."

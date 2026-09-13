@@ -35,7 +35,12 @@ cd dashboard-ui && pnpm install && pnpm test   # Node's built-in test runner ove
 pnpm exec playwright install chromium          # once
 pnpm test:browser                              # Playwright against the offline fixture server
 
-# shell and python have no unit suite; keep them compiling (CI runs these)
+# python: every bin/test_*.py suite (webhooks + queue, device tokens, repository profiles),
+# then the webhook end-to-end run against a real server (CI runs both)
+python3 -m unittest discover -s bin -p 'test_*.py'
+bash bin/test-webhook-e2e.sh
+
+# shell has no unit suite; keep everything compiling (CI runs these)
 bash -n bin/*.sh && python3 -m py_compile bin/*.py
 
 # website

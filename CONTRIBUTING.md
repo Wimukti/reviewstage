@@ -36,13 +36,16 @@ cd dashboard-ui && pnpm test && pnpm test:browser
 - `pnpm test` — Node's built-in runner over `src/*.test.ts` (pure functions).
 - `pnpm test:browser` — Playwright against the fixture server. Needs browsers once:
   `npx playwright install chromium`.
-- `python3 -m unittest bin/test_prbot_webhook.py` — the GitHub webhook receiver and the
-  shared queue module (`prbot_queue.py`), including a parity check against `pr-watch.sh`'s jq
-  program so the poller and the webhook keep writing identical `queue.json` rows.
+- `python3 -m unittest discover -s bin -p 'test_*.py'` — every Python suite under `bin/`:
+  `test_prbot_webhook.py` (the GitHub webhook receiver and the shared queue module
+  `prbot_queue.py`, including a parity check against `pr-watch.sh`'s jq program so the poller
+  and the webhook keep writing identical `queue.json` rows), `test_prbot_auth.py` (device
+  tokens: hashing, sliding expiry, the per-user cap) and `test_prbot_profile.py` (repository
+  profiles: glob validation, risk merging, prompt assembly, markdown round-trip).
 - `bash bin/test-webhook-e2e.sh` — boots the real server on a scratch `ROOT` and drives
   `POST /webhooks/github` with curl + openssl: 401 on a bad signature, 202 + queue row + `seen`
   key on a signed `review_requested`, no duplicate on redelivery, stale on `synchronize`.
-- Otherwise shell and Python have no unit suite; keep them passing `bash -n bin/*.sh`,
+- Otherwise shell has no unit suite; keep everything passing `bash -n bin/*.sh`,
   `python3 -m py_compile bin/*.py` and `shellcheck bin/*.sh` if you have it. CI runs all of these.
 
 Add a browser test when you add a page or change a flow; add a unit test when you add a pure

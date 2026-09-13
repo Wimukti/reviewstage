@@ -17,6 +17,7 @@ The dashboard is a process holding GitHub tokens that can comment on, review and
 | Each user's GitHub token | users file | **AES-256-CBC, PBKDF2**, key *derived* from `PRBOT_SECRET`, not stored beside it. Decrypted in the server only, at post time. |
 | Each user's Claude token | users file | Same encryption. Used only by `claude -p` for that user's runs. |
 | Slack webhook / bot token | `.env` | Treat as a secret; anyone holding it can post in the channel. |
+| `GITHUB_WEBHOOK_SECRET` | `.env` | Authenticates inbound GitHub deliveries (HMAC over the body). Anyone holding it can add or remove queue rows and trigger a review-request card, nothing more. |
 | Reviews, payloads, logs | per-PR state directory | Plain files. Contain diff excerpts and the agent's prose. |
 | Sessions | HttpOnly, Secure, SameSite cookie | HMAC-signed with `PRBOT_SECRET`, 30-day expiry. |
 
@@ -34,6 +35,7 @@ Rotating `PRBOT_SECRET` invalidates every session, every signed link and every s
 - **A failed GitHub call never degrades into a bad post.** Response shape is validated, retried once, refused on anything odd.
 - **OAuth sign-in** (if configured) uses an HMAC-signed `state` with a 10-minute expiry carrying only an in-app return path; forged or replayed callbacks are rejected and cannot redirect off-site. Tokens are refreshed server-side before expiry.
 - **The server binds `127.0.0.1`** (or the compose network). Put a reverse proxy in front for anything beyond localhost.
+- **The GitHub webhook endpoint is signature-gated.** `POST /webhooks/github` needs no session — GitHub is the caller — so every delivery must carry `X-Hub-Signature-256 = HMAC-SHA256(GITHUB_WEBHOOK_SECRET, raw body)`, compared in constant time; a missing or wrong signature is a `401`, an unset secret a `503`. A valid delivery can only do what the poller already does: add or remove a queue row, refresh a head SHA, archive a closed PR's unposted review, record a review the person submitted on GitHub, and send the `review_requested` card. It cannot start a review, post, approve, read a token or touch any repository outside `REPOS` / `REPO_ALLOW_ORG`. The body is parsed as JSON and only the fields named in `prbot_webhook.py` are read; the requested reviewer must already be a signed-in user, so a forged payload cannot make the dashboard notify a stranger.
 
 ## GitHub token permissions
 
@@ -62,7 +64,7 @@ The server is meant to sit behind something that terminates TLS and, ideally, de
 - **Tailscale**: bind to the tailnet address, or use `tailscale serve`, and only your tailnet can reach it. Recommended for small teams.
 - **Cloudflare Access** (or any identity-aware proxy): put an SSO gate in front. ReviewStage does not have SSO of its own and is not planning it soon.
 
-Whatever you choose, the reverse proxy should forward only the dashboard's path and nothing else on the host.
+Whatever you choose, the reverse proxy should forward only the dashboard's path and nothing else on the host. If you use webhooks, `/webhooks/github` is the one path GitHub itself must reach — with Cloudflare Access add a bypass rule for it, with Tailscale expose it separately (`deploy/README.md`); the signature check is what protects it, not the identity gate.
 
 ## What is not defended against
 

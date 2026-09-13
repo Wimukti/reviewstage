@@ -29,6 +29,7 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `DISCORD_WEBHOOK` | empty | A Discord channel webhook. Cards arrive as an embed and mention the reviewer's saved Discord user ID. |
 | `WEBHOOK_URL` | empty | Any JSON endpoint (Teams, Zapier, n8n, your own). Every event is one `POST` of the raw payload; see [Notifications](/reviewstage/guides/notifications/#generic-webhook). |
 | `WEBHOOK_SECRET` | empty | With `WEBHOOK_URL`, signs each body: `X-ReviewStage-Signature: sha256=HMAC-SHA256(secret, body)`. |
+| `GITHUB_WEBHOOK_SECRET` | empty | Enables `POST /webhooks/github`: every delivery's `X-Hub-Signature-256` is verified against it. Unset, the endpoint answers 503 and polling does all the work. See [GitHub webhooks](#github-webhooks). |
 | `NOTIFY_BACKENDS` | derived | Comma list of `slack`, `discord`, `generic`, `none`. Empty = whichever of the URLs above are set. Overridable in Settings. |
 | `GH_CLIENT_ID` | empty | Client ID of an OAuth App or GitHub App whose callback URL is `<PUBLIC_URL>/prbot/oauth/callback`. Leave empty and the login page offers token sign-in only. Restart after changing. |
 | `GH_CLIENT_SECRET` | empty | The matching client secret. |
@@ -73,6 +74,18 @@ Precedence for every key it carries: **`settings.json` > `.env` > default**. Onl
 `DRY_RUN` is deliberately **not** a runtime setting: flipping GitHub writes on stays an `.env` edit plus a restart.
 
 The **admin** is the `REVIEWER` login from `.env`; if that is empty, the user flagged `"admin": true` in `users.json`; if nobody is flagged, the first user who signed in (flagged automatically at that point so the choice is stable). `/api/me` reports `is_admin`. The API is `GET /api/settings` (anyone signed in) and `PUT /api/settings` (admin, with the signed token from the GET); the file is written atomically. `poller.last` next to it holds the epoch of the last completed poll, shown on the page.
+
+## GitHub webhooks
+
+Polling finds a review request up to one interval late; a webhook delivers it within a second. Both write the same queue and share the same dedup key, so turning webhooks on changes latency, not behaviour.
+
+1. `openssl rand -hex 32` → `GITHUB_WEBHOOK_SECRET=…` in `.env`, restart the dashboard.
+2. GitHub → repository or organization → **Settings → Webhooks → Add webhook**: payload URL `<PUBLIC_URL>/webhooks/github`, content type `application/json`, the same secret, events **Pull requests** + **Pull request reviews**.
+3. Watch **Settings → Webhooks** on the dashboard: *Last ping* fills in on save, the light turns from amber *polling only* to green *webhooks active* once a verified event has arrived within two poll intervals.
+
+What the receiver does with each event is listed in [Notifications → From GitHub webhooks](/reviewstage/guides/notifications/#from-github-webhooks). It ignores repositories outside `REPOS` / `REPO_ALLOW_ORG`, never starts a review, and responds `202` before doing any work. State lives in `ROOT/webhooks.json` (`last_event_at`, `last_event`, `last_ping`, `count`, `last_error`), which `/api/settings` exposes.
+
+Keep the poller on. When a webhook event arrived within `2 × poll_interval_seconds`, `pr-watch.sh` logs `webhooks active; poll is a safety net` and otherwise runs unchanged — it is the recovery path for a missed delivery. Once the light is green you can lower the interval or pause polling from the Poller card; nothing does that for you. GitHub must be able to reach the one path — `deploy/README.md` covers the Tailscale and Cloudflare Access cases.
 
 ## Things that are not settings
 

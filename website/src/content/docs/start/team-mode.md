@@ -55,6 +55,15 @@ Slack via an incoming webhook (simplest) or a bot token (threads the "review rea
 
 Cards carry PR titles, authors and diff sizes, and the review-ready card carries the agent's summary, which can quote code. Point them at a **private channel** containing only people who can already read the repository.
 
+### Webhooks or polling?
+
+Two ways the queue learns about a review request:
+
+- **GitHub webhooks** (recommended for teams): set `GITHUB_WEBHOOK_SECRET` and add a webhook on the repository or the organization pointing at `<PUBLIC_URL>/webhooks/github`. The card goes out within a second of the request; a push flags the review stale at once; a closed PR leaves the queue at once. GitHub must be able to reach that one path — see [Configuration](/reviewstage/operations/configuration/#github-webhooks) and the proxy notes in `deploy/README.md`.
+- **Polling** (the default, and the right choice for firewalled installs): `pr-watch.sh` searches GitHub every few minutes with the service token. Nothing inbound is needed, so it works on a laptop, behind a corporate proxy or inside a tailnet with no public hostname.
+
+With webhooks on, keep the poller running: it is the safety net for a missed delivery and it says so in its log (`webhooks active; poll is a safety net`). Settings → Webhooks shows which mode is in effect, and once webhooks are active you can lower the poll interval from the Poller card.
+
 ## What each person sees
 
 | Tab | Scope |

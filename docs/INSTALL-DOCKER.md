@@ -91,6 +91,29 @@ For more than one person to sign in you need a URL they can reach, over HTTPS:
 [`../deploy/README.md`](../deploy/README.md) covers Caddy, Tailscale and Cloudflare Access.
 Set `PUBLIC_URL` in `.env` to that URL.
 
+## Instant updates: GitHub webhooks
+
+The poller finds a new review request up to one interval late. Let GitHub push it instead:
+
+1. `openssl rand -hex 32` → put the value in `.env` as `GITHUB_WEBHOOK_SECRET=…` and
+   `docker compose up -d` (the server reads it at start).
+2. GitHub → the repository (or the organization, for every repo under it) → **Settings →
+   Webhooks → Add webhook**:
+   - Payload URL: `<PUBLIC_URL>/webhooks/github`
+   - Content type: `application/json`
+   - Secret: the same value
+   - Events: *Let me select individual events* → **Pull requests** and **Pull request reviews**
+3. Save. GitHub sends a `ping`; the dashboard's **Settings → Webhooks** card shows *Last ping*
+   within seconds, then *webhooks active* after the first real event.
+
+GitHub must be able to reach `/webhooks/github` — with Tailscale Serve or Cloudflare Access in
+front of the dashboard, expose or bypass that one path (see
+[`../deploy/README.md`](../deploy/README.md#the-github-webhook-path)). The receiver verifies
+every delivery's `X-Hub-Signature-256`, only ever updates the queue and sends the card, and
+never starts a review. Keep the poller running: it is the safety net for a missed delivery,
+and its log says `webhooks active; poll is a safety net` when the hook is doing the work — at
+that point you can lower the interval or pause it in Settings.
+
 ## Demo mode: no credentials at all
 
 ```bash
@@ -186,4 +209,5 @@ install on a LAN also works — do not do that for anything reachable from outsi
 | Review fails: "not enough free memory"           | `MIN_FREE_MB` (default 800) — give Docker more RAM or lower it in `.env` |
 | Signed in, then straight back to the login page  | Cookie rejected: open `http://localhost:8899`, not `127.0.0.1`; behind a proxy, `PUBLIC_URL` must be `https://` and the proxy must forward `Host` |
 | Slack/Discord card never arrives                 | Poller not running (`--profile team`) or paused in Settings, or no webhook URL in `.env` — `docker compose logs poller` |
+| Settings → Webhooks stays "polling only"         | GitHub cannot reach `<PUBLIC_URL>/webhooks/github` (check the hook's *Recent Deliveries* on GitHub: a 503 means `GITHUB_WEBHOOK_SECRET` is unset, a 401 means the secrets differ, a timeout means the proxy or Access policy blocks the path) |
 | Port 8899 in use                                 | `PRBOT_PORT=9000 docker compose up -d` (host side only)         |

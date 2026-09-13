@@ -39,6 +39,14 @@ DISCORD_WEBHOOK=
 WEBHOOK_URL=
 WEBHOOK_SECRET=
 
+# Optional: GitHub → ReviewStage webhooks, for instant review-request cards instead of waiting
+# for the next poll. Generate a random string (openssl rand -hex 32), paste it here AND in the
+# GitHub webhook form (repo or org → Settings → Webhooks → Add webhook; payload URL
+# <PUBLIC_URL>/webhooks/github, content type application/json, events "Pull requests" +
+# "Pull request reviews"). Every delivery is HMAC-verified against this value; unset = the
+# endpoint answers 503 and polling does all the work. Restart the server after changing.
+GITHUB_WEBHOOK_SECRET=
+
 # Which backends fire, comma-separated: slack, discord, generic, none. Empty = whichever of
 # the URLs above are set (so an existing Slack-only install changes nothing). Can be
 # overridden without a restart from the dashboard's Settings page.

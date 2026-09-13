@@ -15,6 +15,8 @@ review queue on a small server.
 | `prbot_md.py`     | imported                  | Dependency-free markdown → HTML (headings, tables, code, lists) |
 | `lib-common.sh`   | sourced                   | Config, repo helpers, HMAC signing, Slack posting               |
 | `prbot_paths.py`  | imported                  | The one place that knows the on-disk layout + the legacy migration |
+| `prbot_queue.py`  | imported                  | queue.json / seen writers shared by pr-watch.sh and the webhook |
+| `prbot_webhook.py`| imported                  | `POST /webhooks/github`: HMAC check, event → queue, webhooks.json |
 | `dashboard-ui/`   | built by bootstrap        | React + TypeScript SPA, bundled by esbuild into `bin/static/`   |
 | `bootstrap.sh`    | you, once                 | Installs all of the above                                       |
 

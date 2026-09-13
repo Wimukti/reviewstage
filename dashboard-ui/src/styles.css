@@ -98,6 +98,9 @@ white-space:nowrap;border:1px solid transparent}
 .new{background:rgba(91,124,250,.12);color:#9db4ff;border-color:rgba(91,124,250,.30)}
 .reviewing{background:var(--warnbg);color:#f7c26b;border-color:var(--warnln)}
 .done{background:rgba(91,124,250,.12);color:#9db4ff;border-color:rgba(91,124,250,.30)}
+/* Settings → Webhooks status light */
+.pill.ok{background:rgba(52,168,110,.14);color:#6fe6b2;border-color:rgba(52,168,110,.3)}
+.pill.warn{background:var(--warnbg);color:#f7c26b;border-color:var(--warnln)}
 .posted{background:var(--okbg);color:#6fe6b2;border-color:var(--okln)}
 .approved{background:var(--okbg);color:#6fe6b2;border-color:var(--okln)}
 .failed{background:var(--errbg);color:#ff8ca0;border-color:var(--errln)}

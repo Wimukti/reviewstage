@@ -170,6 +170,22 @@ test.describe("signed in", () => {
     await expect(page.locator(".banner.ok")).toBeVisible();
   });
 
+  test("settings shows the Webhooks card as polling-only for the fixture", async ({ page }) => {
+    // The fixture .env has no GITHUB_WEBHOOK_SECRET and no webhooks.json, so the card must show
+    // the payload URL GitHub needs, an unset secret, and the amber "polling only" light.
+    await page.goto("/settings");
+    const card = page.getByTestId("webhooks-card");
+    await expect(card.getByRole("heading", { name: /^webhooks$/i })).toBeVisible();
+    await expect(page.getByTestId("webhooks-status")).toHaveText(/polling only/i);
+    await expect(card.getByText("https://reviewstage.example.com/webhooks/github").first()).toBeVisible();
+    await expect(card.getByText(/GITHUB_WEBHOOK_SECRET/).first()).toBeVisible();
+    await expect(card.getByText(/0 events received/)).toBeVisible();
+    await expect(card.locator("pre.schema")).toContainText("Pull requests, Pull request reviews");
+    await expect(card.getByRole("button", { name: /copy instructions/i })).toBeVisible();
+    // The "lower the poll interval" hint only appears once webhooks are active.
+    await expect(card.getByText(/turn polling off/i)).toHaveCount(0);
+  });
+
   test("learnings page renders", async ({ page }) => {
     await page.goto("/learnings");
     await expect(page.getByRole("heading", { name: /has learned/i })).toBeVisible();

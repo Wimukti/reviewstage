@@ -16,9 +16,11 @@
 # read here — PATs stay encrypted and are only ever decrypted by the server, for posting.
 # With no users yet, falls back to polling $REVIEWER alone so a fresh box still works.
 set -uo pipefail
-cd "$(dirname "$0")" || exit 1
+# Resolve our own directory before the cd: a relative $0 would point at the wrong place after it.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$HERE" || exit 1
 # shellcheck source=lib-common.sh
-. "$(dirname "$0")/lib-common.sh"
+. "$HERE/lib-common.sh"
 require_env
 # The Settings page can pause polling without touching cron or the container.
 if [ "$(setting poller_enabled true)" = false ]; then
@@ -51,7 +53,7 @@ USERS_FILE="$ROOT/users.json"
 # Nightly: drop device tokens idle for 180 days (docs/MOBILE.md). Once per calendar day; the
 # prune rewrites users.json only when something actually expired.
 if [ -f "$USERS_FILE" ] && [ "$(cat "$ROOT/devices-pruned" 2>/dev/null)" != "$(date +%F)" ]; then
-  python3 "$(dirname "$0")/prbot_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
+  python3 "$HERE/prbot_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
 fi
 
 logins=$(jq -r 'keys[]' "$USERS_FILE" 2>/dev/null)

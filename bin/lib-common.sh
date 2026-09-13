@@ -93,6 +93,26 @@ DRY_RUN="${DRY_RUN:-1}"
 # and a small server usually shares the box with whatever else you run on it.
 MIN_FREE_MB="${MIN_FREE_MB:-800}"
 
+# have_free_mem — 0 when at least MIN_FREE_MB of RAM is available, 1 otherwise. Reads
+# MemAvailable from /proc/meminfo (falls back to `free -m`), so the check only runs on Linux;
+# on macOS or a box with neither source it returns 0 rather than blocking every review.
+have_free_mem() {
+  local free_mb=""
+  if [ -r /proc/meminfo ]; then
+    free_mb=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)
+  elif command -v free >/dev/null 2>&1; then
+    free_mb=$(free -m 2>/dev/null | awk '/^Mem:/ {print ($7 != "" ? $7 : $4)}')
+  fi
+  case "$free_mb" in
+    ''|*[!0-9]*) return 0 ;;   # unknown platform: skip rather than block
+  esac
+  if [ "$free_mb" -lt "$MIN_FREE_MB" ]; then
+    echo "==> low memory: ${free_mb} MB available, MIN_FREE_MB=${MIN_FREE_MB}" >&2
+    return 1
+  fi
+  return 0
+}
+
 mkdir -p "$WT" "$STATE" "$REPOS_DIR"; touch "$SEEN" "$USED"
 
 # gh + git both authenticate as $REVIEWER via the PAT, so every comment, review,

@@ -40,9 +40,7 @@ fail() { status "failed: $1"; exit 1; }
 py() { PYTHONPATH="$HERE" ROOT="$ROOT" python3 "$HERE/prbot_profile.py" "$@"; }
 
 if [ "$SIGNALS_ONLY" = 0 ]; then
-  if declare -f have_free_mem >/dev/null 2>&1; then
-    have_free_mem || fail "not enough free memory to start"
-  fi
+  have_free_mem || fail "not enough free memory to start"
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] \
     || fail "connect your Claude account in the dashboard to profile a repository"
 fi

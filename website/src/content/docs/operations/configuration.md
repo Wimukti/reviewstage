@@ -30,9 +30,9 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `WEBHOOK_URL` | empty | Any JSON endpoint (Teams, Zapier, n8n, your own). Every event is one `POST` of the raw payload; see [Notifications](/reviewstage/guides/notifications/#generic-webhook). |
 | `WEBHOOK_SECRET` | empty | With `WEBHOOK_URL`, signs each body: `X-ReviewStage-Signature: sha256=HMAC-SHA256(secret, body)`. |
 | `NOTIFY_BACKENDS` | derived | Comma list of `slack`, `discord`, `generic`, `none`. Empty = whichever of the URLs above are set. Overridable in Settings. |
-| `GH_CLIENT_ID` | empty | Client ID of an OAuth App or GitHub App whose callback URL is `<PUBLIC_URL>/prbot/oauth/callback`. Leave empty and the login page offers token sign-in only. Restart after changing. |
-| `GH_CLIENT_SECRET` | empty | The matching client secret. |
-| `GH_OAUTH_SCOPES` | empty | OAuth App: set to `repo` (tick *Expire user access tokens* when creating the app and tokens last 8 hours, refreshed here automatically). GitHub App: leave empty; permissions come from the app. |
+| `GH_CLIENT_ID` | empty | Client ID of an OAuth App or GitHub App whose callback URL is `<PUBLIC_URL>/prbot/oauth/callback`. With it set, **Continue with GitHub** is the login page's primary action and the token form moves behind a disclosure; empty, the page offers token sign-in only plus a hint for the admin. Restart after changing. See [GitHub sign-in](#github-sign-in). |
+| `GH_CLIENT_SECRET` | empty | The matching client secret. Both must be set for sign-in to be enabled. |
+| `GH_OAUTH_SCOPES` | empty | OAuth App: `repo` — the smallest classic scope that can comment on and approve a PR in a private repository (`public_repo` if every repo is public). OAuth Apps cannot request fine-grained permissions. GitHub App: leave empty; permissions come from the app. Tick *Expire user access tokens* on either and tokens last 8 hours, refreshed here automatically. |
 | `RISK_PATHS` | empty | Comma-separated `label:pattern` rules; a rule matches when a changed file path equals the glob or contains the substring, and the review then shows a "Touches *label* paths" banner. Context only, never a gate. Example: `billing:src/billing/,auth:*/auth/*`. |
 | `RISK_PATHS__<OWNER>__<NAME>` | unset | Per-repository override of `RISK_PATHS`. The key is the repo upper-cased with `/` → `__` and any other character outside `A-Z0-9_` → `_`: `acme/widgets-web` → `RISK_PATHS__ACME__WIDGETS_WEB`. When set (even empty) it replaces the global list for that repo. |
 | `PRBOT_SIGNATURE_GRACE_DAYS` | `7` | Signed links cover `action:owner/name#pr:expiry`. Links minted before the repository dimension existed (`action:pr:expiry`) keep verifying for this many days after the first start of the repo-aware server, so Slack cards already sent keep working. `0` rejects them at once. |
@@ -44,6 +44,22 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `PRBOT_BIND` | `127.0.0.1` | Process environment only. Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
 | `PRBOT_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` when `PUBLIC_URL` starts with `http://`. |
 | `ROOT` | `~/.claude-pr-bot` | Process environment only. Base directory for `.env`, the base clones (`repos/<owner>__<name>`), worktrees, per-PR state (`state/<owner>__<name>/<pr>`), `users.json`, learnings and skills. Docker mounts the data volume here. |
+
+## GitHub sign-in
+
+The three `GH_*` keys turn on **Sign in with GitHub**. The token GitHub returns is stored encrypted exactly like a pasted PAT and is the token used for that person's comments and approvals; an OAuth user never needs a PAT. Set-up is in [Install → GitHub sign-in](/reviewstage/start/install/#github-sign-in); what the token can do, and why the scope is `repo`, is in [Security → Signing in](/reviewstage/security/#signing-in).
+
+Two kinds of app work:
+
+| | OAuth App | GitHub App |
+| --- | --- | --- |
+| Needs an org owner | No (unless the org restricts third-party apps) | Yes — installed on the org |
+| `GH_OAUTH_SCOPES` | `repo` | empty |
+| Permissions | Classic scope: every repo the user can write to | *Pull requests: write*, *Contents: read* on the installed repos only |
+| Revocation | The user, at github.com/settings/applications | The user, or the org owner centrally |
+| Status | Supported today | Supported today; the roadmap default |
+
+Device tokens for phones and the CLI have no `.env` knob: they are per-user, created and revoked in Settings → Devices, expire 180 days after last use, and are pruned by the poller nightly.
 
 ## Runtime settings
 

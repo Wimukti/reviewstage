@@ -135,7 +135,8 @@ keep in the keychain behind biometrics. Hence **device tokens**.
    Revoking deletes the hash; the next call from that device gets `401` and the app returns to
    step 1.
 
-**Exact server changes** (spec only; the server is owned by another workstream this week):
+**Server changes** (implemented — `bin/prbot_devices.py`, `bearer_user()` and the `/api/devices*`
+handlers in `bin/prbot-server.py`; deviations from the original spec are listed after the list):
 
 - `bearer_user(headers) -> login | None` in the auth layer next to `session_user()`: read
   `Authorization: Bearer <tok>`, hash it, look up `users[login]["devices"][hash]`, refuse if
@@ -162,6 +163,31 @@ keep in the keychain behind biometrics. Hence **device tokens**.
   approve as that user) and no more; it cannot read the GitHub token or the Claude token. It is
   revocable per device, which the cookie is not. The `DRY_RUN` gate applies to bearer calls too.
 
+**Deviations in the implementation** (each deliberate; the rest is as specified):
+
+- **Pairing goes through an interstitial, `/device`.** `/login?device=1` keeps the flag through
+  either sign-in path and lands on a server-rendered page that shows the server URL and the
+  GitHub login being bound, with an editable device name (default from `?name=` or the
+  User-Agent) and an **Open the app** button. The token is minted *on that click*, never as a
+  side effect of the login redirect, and the page then navigates to
+  `reviewstage://auth?token=…&server=…`; if the scheme does not open, the same link and the
+  token itself are shown once for the CLI. The OAuth callback skips the first-run welcome detour
+  for this path.
+- **`GET /api/devices` returns an object**, `{ "devices": [...], "max": 10, "ttl_days": 180 }`,
+  not a bare array, so the UI can state the cap and lifetime. Rows are newest first.
+- **`POST /api/device-token` also returns `name`** (after trimming to 60 chars) and, when the cap
+  evicted something, a human-readable `warning`. A bearer calling it gets **403**, a session gets
+  the token.
+- **Eviction is least-recently-used** (by `last_seen`, then `created`), not strictly oldest
+  created: an old device still in daily use survives a burst of new pairings.
+- **`/api/me` never returns 401.** As on the web, an unknown or revoked bearer gets `200
+  {"authed": false}` there; every other `/api/*` route returns `401` as specified.
+- **`/api/me` reports `auth` (`cookie` | `bearer`) and `login_via` (`oauth` | `pat`)** so the
+  Settings card can disable minting when the current session is itself a bearer.
+- **The nightly prune is one poller step** (`pr-watch.sh` → `python3 prbot_devices.py prune`),
+  guarded by a per-day stamp, and it rewrites `users.json` only when something actually expired,
+  so the poller almost never writes the file the server owns.
+
 ## Push
 
 Push is implemented **once, server-side**, as a `push` backend of the `notify` abstraction being
@@ -184,7 +210,7 @@ backend looks up the user's registered devices and sends the card's title and de
 | Phase | Items | Status | Effort |
 | --- | --- | --- | --- |
 | **1 — PWA** | Manifest, icons, root-scoped service worker, offline page, `mobile.css`, e2e checks | **Shipped** in this change | Done; ongoing cost nil |
-| **2a — Device tokens** | `bearer_user`, `/api/device-token`, `/api/devices`, `/api/devices/revoke`, Settings → Devices | Specified above; unimplemented | ~2 days server + 1 day UI |
+| **2a — Device tokens** | `bearer_user`, `/api/device-token`, `/api/devices`, `/api/devices/revoke`, `/device` pairing page, Settings → Devices | **Shipped** | Done |
 | **2b — Push** | `push` notify backend, web push (VAPID) for the PWA, FCM/APNs for the wrapper, device registration | Roadmap (P2 with email) | ~1 week |
 | **2c — Capacitor apps** | Wrapper, in-app-browser sign-in, biometrics, deep links, multi-server picker, store listings | Roadmap (P2) | 2–3 weeks + store review |
 

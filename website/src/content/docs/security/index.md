@@ -19,12 +19,14 @@ The dashboard is a process holding GitHub tokens that can comment on, review and
 | Slack webhook / bot token | `.env` | Treat as a secret; anyone holding it can post in the channel. |
 | Reviews, payloads, logs | per-PR state directory | Plain files. Contain diff excerpts and the agent's prose. |
 | Sessions | HttpOnly, Secure, SameSite cookie | HMAC-signed with `PRBOT_SECRET`, 30-day expiry. |
+| Device tokens (mobile, CLI) | users file | **SHA-256 hash only**; the plaintext is shown once. Expire 180 days after last use; revocable per device in Settings → Devices. |
 
 Rotating `PRBOT_SECRET` invalidates every session, every signed link and every stored token at once. That is the right outcome if it was rotated because it leaked.
 
 ## Controls
 
-- **Pages need a signed-in session.** Signing in proves a GitHub token is real and can see the repository. Unauthenticated requests, including POSTs, bounce to login. Deleting a user from the users file ends their session on the next request.
+- **Pages need a signed-in session.** Signing in proves a GitHub token is real and can see the repository — the token GitHub issues through **Sign in with GitHub**, or a pasted PAT. Unauthenticated requests, including POSTs, bounce to login. Deleting a user from the users file ends their session, and every device token they hold, on the next request.
+- **Device tokens are the only other credential.** `Authorization: Bearer …` is accepted on every `/api/*` route alongside the cookie; see [Device tokens](#device-tokens).
 - **Every action is HMAC-signed** over `action:pr:expiry`: post, approve, mark done, archive, start review, stop, explain. Tokens are minted at render time and last **30 minutes**, so a bookmarked or forwarded page cannot act later and a cross-site form has nothing valid to present.
 - **Writes use the acting user's own token.** The service token does reads and the base clone only. Nothing can post or approve under another name, and GitHub's self-approval check runs against the real user.
 - **The review step has no GitHub write path.** The script that runs the agent produces a file; every write is a separate human click.
@@ -35,9 +37,30 @@ Rotating `PRBOT_SECRET` invalidates every session, every signed link and every s
 - **OAuth sign-in** (if configured) uses an HMAC-signed `state` with a 10-minute expiry carrying only an in-app return path; forged or replayed callbacks are rejected and cannot redirect off-site. Tokens are refreshed server-side before expiry.
 - **The server binds `127.0.0.1`** (or the compose network). Put a reverse proxy in front for anything beyond localhost.
 
+## Signing in
+
+| Option | Who should use it | What the server holds |
+| --- | --- | --- |
+| **Sign in with GitHub** — an OAuth App you register once (`GH_CLIENT_ID`, `GH_CLIENT_SECRET`) | Teams. Nobody creates or pastes a token; it is the primary button when configured. | GitHub's user token for the app, encrypted like a PAT, refreshed server-side before it expires when *Expire user access tokens* is on. |
+| **Personal access token** — behind *Use a personal access token instead*, or the only form when OAuth is not configured | Solo Docker installs; an org that has not yet approved the app | The PAT, encrypted. |
+
+The stored token is the working token in both cases: posting, approving and reading review state all use it, and an OAuth user never needs a PAT. Set-up steps are in [Install → GitHub sign-in](/reviewstage/start/install/#github-sign-in).
+
+**What the OAuth token can do.** An OAuth App can only request classic scopes, and the smallest one able to comment on and approve a pull request in a private repository is `repo` — the same scope a classic PAT needs. It therefore reaches every repository the person can write to, not only the ones being reviewed. Fine-grained, per-repository permissions are **not available to OAuth Apps**; GitHub offers them only to **GitHub Apps**. A GitHub App (user-to-server tokens with *Pull requests: write* and *Contents: read* on the repositories an org owner installs it on, revocable by that owner) is the roadmap path to narrower permissions, and the code already accepts one — leave `GH_OAUTH_SCOPES` empty.
+
+## Device tokens
+
+A device token is what a phone, the CLI or a second browser holds instead of the session cookie ([Mobile](/reviewstage/developers/mobile/) has the flow). It is minted from a signed-in **web** session only — a bearer cannot mint another bearer — shown once, and stored as a SHA-256 hash.
+
+- **Threat.** A stolen device token is exactly as powerful as a stolen session cookie: it can read the queue and reviews, and post and approve **as that user**. No more: it can never read the person's GitHub token or Claude token (no endpoint returns them), cannot create another device token, and `DRY_RUN` applies to it.
+- **Revocation.** Per device from Settings → Devices, or every device at once with *Sign out everywhere*. Revoking deletes the hash and the next call gets `401`. Removing a user from the users file revokes all of theirs. Signing out on the web clears only the cookie.
+- **Expiry.** 180 days since last use, sliding; `last_seen` is written at most once a minute and the poller prunes expired hashes nightly. Ten per person; the eleventh evicts the least recently used and the response says so.
+- **Pairing.** `/login?device=1` ends on a page that shows the server URL and the GitHub login being bound and mints only when the person clicks *Open the app*, so a browser never silently hands a credential to a custom URL scheme.
+- **Signed action links are unchanged.** The bearer authenticates the request; post/approve still need the 30-minute HMAC tokens the page fetched.
+
 ## GitHub token permissions
 
-Use **fine-grained** personal access tokens, scoped to the one repository.
+For pasted tokens, use **fine-grained** personal access tokens scoped to the one repository. (OAuth sign-in cannot be fine-grained; see [Signing in](#signing-in).)
 
 | Token | Permissions | Why |
 | --- | --- | --- |
@@ -73,6 +96,7 @@ Stated plainly so nobody assumes otherwise.
 - **The agent can run commands on the server** (see prompt injection above).
 - **No rate limiting** on the login endpoint beyond GitHub's own.
 - **No RBAC.** Every signed-in user has the same capabilities, including editing the team default skill (versioned, so it can be reverted).
+- **A device token is not bound to a device.** It is a bearer secret; whoever holds it is that user until it is revoked or expires. Keep it in the keychain, not in a shell history.
 
 ## Rotating the secret
 

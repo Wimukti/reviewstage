@@ -76,9 +76,11 @@ PUBLIC_URL=
 # sign-in only. Restart the server after changing.
 GH_CLIENT_ID=
 GH_CLIENT_SECRET=
-# OAuth App: set to `repo` (tokens act as the user; tick "Expire user access tokens" when
-# creating the app and they last 8 hours, refreshed here automatically). GitHub App: leave
-# EMPTY — permissions come from the app instead of a scope.
+# OAuth App: set to `repo` — the smallest classic scope that can comment on and approve a PR in
+# a private repository (`public_repo` if every repo is public). OAuth Apps cannot request
+# fine-grained per-repository permissions; only a GitHub App can. Tick "Expire user access
+# tokens" when creating the app and tokens last 8 hours, refreshed here automatically.
+# GitHub App: leave EMPTY — permissions come from the app instead of a scope.
 GH_OAUTH_SCOPES=
 
 # --- defaults that are usually right ----------------------------------------------------------

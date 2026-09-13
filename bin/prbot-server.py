@@ -45,6 +45,7 @@ from urllib.request import Request, urlopen
 
 import prbot_agree
 import prbot_assets
+import prbot_devices as prbot_dev
 import prbot_diff
 import prbot_howimg
 import prbot_learn
@@ -193,7 +194,9 @@ def notify_env_status():
 
 
 # --- users ---------------------------------------------------------------------------------
-# users.json: {login: {pat_enc, slack_id, discord_id, admin, name, added}}. PATs are AES-encrypted with a key
+# users.json: {login: {pat_enc | gh_token_enc(+gh_exp, gh_refresh_enc), slack_id, discord_id,
+# admin, name, added, devices: {sha256: {id, name, created, last_seen}}}. Tokens are
+# AES-encrypted with a key
 # derived from PRBOT_SECRET — derived, not stored, so rotating the secret also invalidates
 # every stored PAT, which is the right outcome if it was rotated because it leaked. The
 # shell scripts only ever read login + slack_id; they never see a PAT.
@@ -1424,6 +1427,108 @@ def session_user(headers):
     return login if login in load_users() else None
 
 
+# --- device tokens (bearer) -----------------------------------------------------------------
+# A mobile app, a CLI or a second browser holds an opaque token instead of the cookie; only its
+# hash is stored (prbot_devices). Same powers as the cookie — post and approve as the user —
+# and no more: it can never read the GitHub or Claude token. Revocable per device.
+def bearer_lookup(headers):
+    """(login, device_hash) for a live device token in `Authorization: Bearer`, else
+    (None, None). A user removed from users.json, or a token idle for 180 days, is refused.
+    Bumps last_seen at most once a minute so users.json writes stay rare."""
+    tok = prbot_dev.parse_bearer(headers)
+    if not tok:
+        return None, None
+    login, h, rec = prbot_dev.lookup(load_users(), tok)
+    if not login:
+        return None, None
+    if prbot_dev.needs_bump(rec):
+        def bump(users):
+            r = ((users.get(login) or {}).get("devices") or {}).get(h)
+            if isinstance(r, dict):
+                r["last_seen"] = int(time.time())
+        modify_users(bump)
+    return login, h
+
+
+def bearer_user(headers):
+    return bearer_lookup(headers)[0]
+
+
+def request_user(headers):
+    """Who is calling an /api/* endpoint: the session cookie, else a device token."""
+    return session_user(headers) or bearer_user(headers)
+
+
+def server_url(headers):
+    """The URL a device should talk to afterwards: PUBLIC_URL, else what the browser used."""
+    if PUBLIC_URL:
+        return PUBLIC_URL
+    host = headers.get("Host", "") or "localhost"
+    proto = headers.get("X-Forwarded-Proto") or ("https" if COOKIE_SECURE else "http")
+    return f"{proto}://{host}"
+
+
+def guess_device_name(headers):
+    ua = headers.get("User-Agent", "")
+    for needle, name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android phone"),
+                         ("Macintosh", "Mac"), ("Windows", "Windows PC"), ("Linux", "Linux")):
+        if needle in ua:
+            return name
+    return "This device"
+
+
+def device_page(login, headers, name):
+    """The /device interstitial: the last page before a token is handed to the app. Shows the
+    server and the GitHub login being bound so a phished user sees the mismatch, and mints
+    only on a click — a browser must never silently pass a credential to a custom scheme."""
+    srv = server_url(headers)
+    e = html.escape
+    return (
+        "<!doctype html><html lang=en><head><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        f"<title>{e(BRAND)} — connect this device</title>"
+        f"<link rel=icon href='{prbot_assets.FAVICON}'>"
+        "<link rel=stylesheet href='/static/app.css'></head><body>"
+        "<div class=auth><div class=authcard>"
+        f"<h1>{e(BRAND)}</h1>"
+        "<p class=authsub>Connect this device</p>"
+        "<p class=authlead>The app will get a token that lets it act as you on this server. "
+        "Check both values before you continue.</p>"
+        "<div class=devbind>"
+        f"<div><span class=muted>Server</span><br><code>{e(srv)}</code></div>"
+        f"<div><span class=muted>GitHub login</span><br><code>{e(login)}</code></div>"
+        "</div>"
+        "<form id=devform><label class='muted sm' for=devname>Device name</label>"
+        f"<input class=in id=devname maxlength=60 value='{e(name)}' autocomplete=off>"
+        "<button class='btn primary block' type=submit id=devgo>Open the app</button></form>"
+        "<div id=devout hidden></div>"
+        "<p class=authfine>Not you? <a href='/logout'>Sign out</a> and sign in again. "
+        "Devices can be revoked any time in Settings → Devices.</p>"
+        "</div></div>"
+        "<script>"
+        "(function(){var f=document.getElementById('devform'),o=document.getElementById('devout'),"
+        "b=document.getElementById('devgo');"
+        f"var srv={json.dumps(srv)};"
+        "f.addEventListener('submit',async function(ev){ev.preventDefault();b.disabled=true;"
+        "b.textContent='Creating token…';"
+        "try{var r=await fetch('/api/device-token',{method:'POST',credentials:'same-origin',"
+        "headers:{'Content-Type':'application/json'},"
+        "body:JSON.stringify({name:document.getElementById('devname').value})});"
+        "var d=await r.json();if(!r.ok||!d.token)throw new Error(d.error||('HTTP '+r.status));"
+        "var link='reviewstage://auth?token='+encodeURIComponent(d.token)+'&server='+"
+        "encodeURIComponent(srv);o.hidden=false;"
+        "o.innerHTML=\"<p class='muted sm'>Opening the app… If nothing happens, \"+"
+        "\"<a id=devlink>tap here</a>, or paste the token into the CLI. It is shown once.</p>\"+"
+        "\"<pre class=devtok id=devtok></pre>\";"
+        "document.getElementById('devlink').href=link;"
+        "document.getElementById('devtok').textContent=d.token;"
+        "f.hidden=true;window.location.href=link;}"
+        "catch(e){b.disabled=false;b.textContent='Open the app';o.hidden=false;"
+        "o.innerHTML=\"<div class='banner err'><span>🚫</span><div></div></div>\";"
+        "o.querySelector('div div').textContent=String(e.message||e);}});})();"
+        "</script></body></html>")
+
+
 # --- signing ------------------------------------------------------------------------------
 # HMAC over action:subject:exp. For PR actions the subject is `owner/name#123` (pr_subject);
 # for settings/handoff tokens it is the login. Links signed before the repo dimension existed
@@ -2020,6 +2125,21 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/logout":
             return self.redirect("/login",
                                  cookie=clear_session_cookie(self.headers.get("Host", "")))
+        if route == "/device" or (route == "/login" and q.get("device")):
+            # Mobile / CLI pairing (docs/MOBILE.md): sign in as usual, then hand a device token
+            # to the app from the interstitial — never straight from the login redirect.
+            name = (q.get("name") or [""])[0][:60]
+            nq = "&name=" + quote(name, safe="") if name else ""
+            user = session_user(self.headers)
+            if user and route == "/login":
+                return self.redirect("/device" + ("?" + nq[1:] if nq else ""))
+            if user:
+                return self.reply(200, device_page(user, self.headers,
+                                                   name or guess_device_name(self.headers)))
+            if route == "/device":
+                return self.redirect(f"/login?device=1{nq}")
+            # Signed out on /login?device=1: fall through to the SPA, whose login page keeps
+            # the device flag and lands on /device after sign-in.
         if route == "/oauth/start":
             if not OAUTH_ENABLED:
                 return self.redirect("/login?err=" + quote(
@@ -2102,10 +2222,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_get(self, route, q):
         user = session_user(self.headers)
+        auth = "cookie" if user else ""
+        if not user:
+            user = bearer_user(self.headers)
+            auth = "bearer" if user else ""
         if route == "/api/me":
-            return self.api_json(self.api_me(user))
+            return self.api_json(self.api_me(user, auth))
         if not user:
             return self.api_json({"error": "unauthorized"}, 401)
+        if route == "/api/devices":
+            return self.api_json(self.api_devices(user))
         if route == "/api/queue":
             return self.api_json(self.api_queue(user, (q.get("tab") or ["todo"])[0],
                                                 (q.get("sort") or ["newest"])[0]))
@@ -2427,7 +2553,8 @@ class Handler(BaseHTTPRequestHandler):
             claude_url, _ = claude_connect_start(user)
         vals, _src = runtime_settings()
         return {"token": {"exp": exp, "sig": sig},
-                "github": {"login": user},
+                "github": {"login": user,
+                           "via": "oauth" if u.get("gh_token_enc") else "pat"},
                 "slack": {"id": u.get("slack_id", "")},
                 "discord": {"id": u.get("discord_id", "")},
                 "claude": {"connected": connected, "authUrl": claude_url or ""},
@@ -2461,19 +2588,67 @@ class Handler(BaseHTTPRequestHandler):
                            "base": it.get("baseRefName", ""), "head": it.get("headRefName", ""),
                            "state": pr_state(repo, str(it["number"]), user)} for it in stack]}
 
-    def api_me(self, user):
+    def api_me(self, user, auth="cookie"):
         if not user:
             return {"authed": False, "brand": BRAND, "repo": SINGLE_REPO, "repos": REPOS,
                     "allowOrg": ALLOW_ORG, "dry_run": DRY_RUN,
-                    "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO}
+                    "oauth": OAUTH_ENABLED, "oauth_blocked": oauth_blocked(),
+                    "public_url": PUBLIC_URL, "logo": prbot_assets.LOGO}
         u = load_users().get(user) or {}
         choice, skill_label = effective_skill(user)
         return {"authed": True, "login": user, "name": u.get("name") or user,
                 "slack_id": u.get("slack_id", ""), "claude_connected": claude_connected(user),
                 "active_skill": choice, "skill_label": skill_label, "dry_run": DRY_RUN,
                 "is_admin": is_admin(user),
+                # How this request was authenticated and how the GitHub token was obtained.
+                "auth": auth or "cookie",
+                "login_via": "oauth" if u.get("gh_token_enc") else "pat",
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
-                "brand": BRAND, "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO}
+                "brand": BRAND, "oauth": OAUTH_ENABLED, "public_url": PUBLIC_URL,
+                "logo": prbot_assets.LOGO}
+
+    # -- devices (docs/MOBILE.md) -----------------------------------------------------------
+    def api_devices(self, user):
+        _, cur = bearer_lookup(self.headers)
+        u = load_users().get(user) or {}
+        return {"devices": prbot_dev.list_devices(u, cur), "max": prbot_dev.MAX_DEVICES,
+                "ttl_days": prbot_dev.TTL_SECONDS // 86400}
+
+    def api_device_token(self, user, body):
+        """Mint a device token. Cookie session only — a bearer may not mint another bearer."""
+        name = prbot_dev.clean_name(body.get("name"))
+        out = {}
+
+        def apply(users):
+            u = users.get(user)
+            if u is None:
+                return
+            tok, rec, evicted = prbot_dev.add_device(u, name)
+            out.update({"token": tok, "id": rec["id"], "created": rec["created"],
+                        "name": rec["name"]})
+            if evicted:
+                out["warning"] = (f"You had {prbot_dev.MAX_DEVICES} devices; the least recently "
+                                  f"used ({', '.join(evicted)}) was signed out.")
+        modify_users(apply)
+        if not out:
+            return {"error": "unauthorized"}, 401
+        print(f"device token minted: {user} ({name})", flush=True)
+        return out, 200
+
+    def api_devices_revoke(self, user, body):
+        n = {"n": 0}
+        everything = bool(body.get("all"))
+        did = str(body.get("id") or "")
+        if not everything and not did:
+            return {"error": "Pass a device id, or all: true."}, 400
+
+        def apply(users):
+            u = users.get(user)
+            if u is not None:
+                n["n"] = prbot_dev.revoke(u, device_id=did, all_devices=everything)
+        modify_users(apply)
+        print(f"device token(s) revoked: {user} ({n['n']})", flush=True)
+        return {"ok": True, "revoked": n["n"]}, 200
 
     def api_queue(self, user, tab, sort):
         if tab not in dict(TABS):
@@ -2567,11 +2742,19 @@ class Handler(BaseHTTPRequestHandler):
             print(f"login (api): {login}", flush=True)
             return self.api_json({"ok": True, "login": login},
                                  cookie=session_cookie(login, self.headers.get("Host", "")))
-        user = session_user(self.headers)
+        cookie_user = session_user(self.headers)
+        user = cookie_user or bearer_user(self.headers)
         if not user:
             return self.api_json({"error": "unauthorized"}, 401)
         if route == "/api/logout":
             return self.api_json({"ok": True}, cookie=clear_session_cookie(self.headers.get("Host", "")))
+        if route == "/api/device-token":
+            if not cookie_user:
+                return self.api_json({"error": "Sign in on the web to create a device token."},
+                                     403)
+            return self.api_json(*self.api_device_token(user, body))
+        if route == "/api/devices/revoke":
+            return self.api_json(*self.api_devices_revoke(user, body))
 
         # Settings-token actions with no PR: skills, integrations settings, Claude connect.
         def settings_gate():
@@ -2748,7 +2931,7 @@ class Handler(BaseHTTPRequestHandler):
         prev = load_users().get(login) or {}
         oauth_store(login, d, name, prev)
         print(f"login (github): {login}", flush=True)
-        if not prev.get("slack_id"):
+        if not prev.get("slack_id") and not nxt.startswith("/prbot/device"):
             nxt = "/integrations?welcome=1&next=" + quote(nxt, safe="")
         return self.redirect(nxt, cookie=session_cookie(login, self.headers.get("Host", "")))
 

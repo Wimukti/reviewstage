@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Python compiles
         run: python3 -m py_compile bin/*.py
+      - name: Auth unit tests
+        run: python3 -m unittest bin/test_prbot_auth.py
       - name: Bash parses
         run: bash -n bin/*.sh
       - name: shellcheck

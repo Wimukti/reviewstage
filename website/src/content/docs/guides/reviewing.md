@@ -7,6 +7,10 @@ sidebar:
 
 This is the reference for the PR page. For the guided walk-through, see [Your first review](/reviewstage/start/first-review/).
 
+## Addressing a PR
+
+A PR page is `/pr?repo=owner/name&pr=123`; the header reads `owner/name #123` and the breadcrumb's repository link filters the queue to that repository. The shorter `/pr?pr=123` still works when the server reviews one repository, or when that number exists under exactly one of them; otherwise the page offers a repository picker. In the paste box and the command palette (⌘K) you can paste a GitHub PR URL (the repository is derived from it), `owner/name#123`, or a bare number — with several repositories configured a bare number shows a picker.
+
 ## The run form
 
 Starting a review is a small form, not a link, because a review is a real agent run on your subscription.

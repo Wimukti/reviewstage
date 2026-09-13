@@ -1,0 +1,71 @@
+/* Phone-width overrides (<= 480px). Kept out of the component files on purpose: this sheet is
+   the one place mobile layout lives, and it only adds media queries on top of styles.css. */
+/* styles.css turns the sidebar into one row at <=820px but its base `.navgroup` rule (column)
+   is declared after that media block and wins the cascade, so the icon groups stack. Restate
+   the intended row layout here. */
+@media (max-width: 820px) {
+  .navgroup { flex-direction: row; margin: 0; gap: 2px; }
+}
+
+@media (max-width: 480px) {
+  /* Header: the single row overflows at 390px (Sign out ends up off-screen). Wrap it into two
+     lines: brand + account on the first, nav icons + the Review button on the second. */
+  .side {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding: 8px 12px 6px;
+    overflow: visible;
+  }
+  .side .brand { flex: none; order: 1; }
+  .side .brand .n { font-size: .95rem; }
+  .sidefoot { order: 2; flex: 1 0 auto; justify-content: flex-end; margin: 0; }
+  .nav {
+    order: 3;
+    /* basis wide enough that it can never share the first line with the brand */
+    flex: 1 1 240px;
+    min-width: 0;
+    justify-content: space-between;
+    border-top: 1px solid var(--hair);
+    padding-top: 4px;
+    margin-top: 2px;
+  }
+  .nav .navgroup { flex: 1; justify-content: space-around; }
+  .ni { padding: 8px 6px; }
+  .reviewbtn { order: 4; flex: none; width: auto; margin: 2px 0 0 6px; padding: 7px 10px; }
+  .foota { gap: 8px; }
+  .sidefoot .so { font-size: .8rem; white-space: nowrap; }
+  .helpmenu { left: auto; right: 0; }
+
+  /* Content column */
+  .main .wrap { padding: 18px 14px 40px; }
+  h1 { font-size: 1.3rem; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { padding: 13px 14px; }
+  .stat .k { font-size: 1.6rem; }
+
+  /* Queue rows: title on top, actions on their own line underneath instead of squeezing the
+     title to a few characters next to Done · archive. */
+  .row { flex-wrap: wrap; }
+  .rowlink { flex: 1 1 100%; padding: 13px 14px 6px; }
+  .rowmeta { flex: 1 1 100%; padding: 0 14px 12px; justify-content: flex-end; gap: 8px; }
+  .rowmeta .pill { min-width: 0; }
+
+  /* Findings + markdown: long paths and code never widen the page. */
+  .finding, .card, .fpreview, .md { min-width: 0; max-width: 100%; }
+  .fpreview pre, .md pre, pre { overflow-x: auto; max-width: 100%; }
+  code { overflow-wrap: anywhere; }
+  .finding .path, .fpath, .loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60vw; }
+  table { display: block; overflow-x: auto; max-width: 100%; }
+  img { max-width: 100%; height: auto; }
+
+  /* Sticky post bar and button rows stack rather than overflow. */
+  .bar { flex-wrap: wrap; gap: 8px; }
+  .btn { max-width: 100%; white-space: normal; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+
+  /* Standalone (installed) mode: respect the notch / home indicator. */
+  @supports (padding: env(safe-area-inset-top)) {
+    .side { padding-top: calc(8px + env(safe-area-inset-top)); }
+    .main .wrap { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+  }
+}

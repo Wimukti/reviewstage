@@ -1472,6 +1472,7 @@ def can_approve(pr, login):
         return False, "No review has been run for this PR on this box."
     return True, ""
 STATIC_DIR = BIN / "static"
+PWA_ROOT_FILES = ("/sw.js", "/manifest.webmanifest", "/offline.html")
 
 
 def index_html():
@@ -1481,6 +1482,14 @@ def index_html():
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{html.escape(BRAND)}</title>"
         f"<link rel=icon href='{prbot_assets.FAVICON}'>"
+        "<link rel=manifest href='/manifest.webmanifest'>"
+        "<meta name=theme-color content='#0a0b12'>"
+        "<meta name=color-scheme content='dark'>"
+        "<meta name=mobile-web-app-capable content='yes'>"
+        "<meta name=apple-mobile-web-app-capable content='yes'>"
+        "<meta name=apple-mobile-web-app-status-bar-style content='black-translucent'>"
+        f"<meta name=apple-mobile-web-app-title content='{html.escape(BRAND)}'>"
+        "<link rel=apple-touch-icon href='/icons/apple-touch-icon.png'>"
         "<link rel=preconnect href='https://fonts.googleapis.com'>"
         "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
         "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
@@ -1873,6 +1882,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, "ok", "text/plain; charset=utf-8")
         if route.startswith("/static/"):
             return self.serve_static(route)
+        if route in PWA_ROOT_FILES or route.startswith("/icons/"):
+            # PWA files must live at the origin root: a service worker's scope is its own
+            # directory, so /static/sw.js could never control /pr or /api.
+            return self.serve_static("/static" + route)
         if route.startswith("/api/"):
             return self.api_get(route, q)
         if route == "/logout":
@@ -1934,15 +1947,29 @@ class Handler(BaseHTTPRequestHandler):
         name = route[len("/static/"):]
         ctype = ("application/javascript; charset=utf-8" if name.endswith(".js")
                  else "text/css; charset=utf-8" if name.endswith(".css")
+                 else "application/manifest+json; charset=utf-8"
+                 if name.endswith(".webmanifest")
+                 else "text/html; charset=utf-8" if name.endswith(".html")
+                 else "image/png" if name.endswith(".png")
                  else "application/octet-stream")
         f = STATIC_DIR / name
         # basic traversal guard + must sit under STATIC_DIR
         if ".." in name or not f.is_file() or STATIC_DIR not in f.resolve().parents:
             return self.reply(404, "not found", "text/plain; charset=utf-8")
         try:
-            return self.reply(200, f.read_text(), ctype)
+            raw = f.read_bytes()
         except OSError:
             return self.reply(404, "not found", "text/plain; charset=utf-8")
+        # Bytes, not text: icons are binary. Hashed bundles could be cached longer, but app.js
+        # is rebuilt in place per release, so keep every static short-lived and let sw.js
+        # (which browsers re-check on every register) decide what to keep.
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control",
+                         "no-cache" if name == "sw.js" else "public, max-age=3600")
+        self.end_headers()
+        self.wfile.write(raw)
 
     def api_get(self, route, q):
         user = session_user(self.headers)

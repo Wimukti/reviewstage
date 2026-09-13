@@ -14,10 +14,17 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
 
 ## Controls
 
-- **Pages need a signed-in session.** Signing in means proving a GitHub PAT is real (`/user`)
-  and can see the repo, then receiving an HMAC-signed, HttpOnly, Secure, SameSite cookie
-  valid for 30 days. Unauthenticated requests — including POSTs — bounce to the login page.
-  Deleting a user from `users.json` invalidates their session on the next request.
+- **Pages need a signed-in session.** Signing in means proving a GitHub token is real (`/user`)
+  and can see the repo — either the token GitHub issues through **Sign in with GitHub**
+  (the default when `GH_CLIENT_ID` is set) or a pasted PAT — then receiving an HMAC-signed,
+  HttpOnly, Secure, SameSite cookie valid for 30 days. Unauthenticated requests — including
+  POSTs — bounce to the login page. Deleting a user from `users.json` invalidates their session
+  and every device token on the next request.
+
+- **Device tokens are the only other credential.** A phone, the CLI or a second browser may
+  hold a bearer token instead of the cookie (`Authorization: Bearer …`, see
+  [MOBILE.md](MOBILE.md)). Only its SHA-256 is stored; it expires 180 days after last use; each
+  person can list and revoke theirs in Settings → Devices. See *Device tokens* below.
 
 - **GitHub login tokens are GitHub's, not pasted.** The OAuth `state` is HMAC-signed with a
   10-minute expiry and carries only an in-app return path, so a forged or replayed callback is
@@ -66,6 +73,48 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
 
 - **Nothing reaches GitHub without a human clicking.** `run-review.sh` has no write path to
   GitHub at all.
+
+## Sign-in options
+
+| Option | Who should use it | What the server ends up holding |
+| --- | --- | --- |
+| **Sign in with GitHub** (OAuth App; `GH_CLIENT_ID` + `GH_CLIENT_SECRET`) | Teams — nobody creates or pastes a token | GitHub's user token for the app, encrypted, refreshed server-side before expiry when *Expire user access tokens* is on |
+| **Personal access token** (behind "Use a personal access token instead", or the only form when OAuth is not configured) | Solo installs; an org that has not yet approved the app | The PAT, encrypted |
+
+Either way the stored token is **the working token**: `user_pat()` prefers the OAuth token and
+falls back to a PAT, and post / approve / review-state reads all go through it. An OAuth user
+never needs a PAT.
+
+**Scopes.** An OAuth App can only ask for classic scopes, and the smallest one that can comment
+on and approve a pull request in a private repository is `repo` — the same scope a PAT needs.
+Fine-grained, per-repository permissions are **not available to OAuth Apps**; GitHub offers them
+only to GitHub Apps. That is why `GH_OAUTH_SCOPES=repo` is the documented default and why a
+**GitHub App** (user-to-server tokens, *Pull requests: write* + *Contents: read* on the
+repositories it is installed on, org-owner revocation) is the roadmap path to narrower
+permissions. The code already accepts a GitHub App: leave `GH_OAUTH_SCOPES` empty.
+
+## Device tokens
+
+A device token is what a mobile app, the CLI or a second browser holds instead of the session
+cookie. It is created from a signed-in **web** session only (a bearer may not mint another
+bearer), shown once, and stored as a SHA-256 hash under `users[login].devices`.
+
+- **Threat.** A stolen device token is exactly as powerful as a stolen session cookie: it can
+  read the queue and reviews, post and approve **as that user**, and nothing more. It cannot
+  read the user's GitHub token or Claude token (those never leave the server, and no endpoint
+  returns them), cannot create another device token, and is still subject to `DRY_RUN`.
+- **Revocation.** Per device from Settings → Devices, or all at once with *Sign out
+  everywhere*. Revoking deletes the hash; the next call gets `401`. Removing the user from
+  `users.json` revokes everything they hold. `/logout` clears the cookie only.
+- **Expiry.** 180 days since last use, sliding; `last_seen` is bumped at most once a minute.
+  The poller prunes expired hashes nightly. Ten devices per person; the eleventh evicts the
+  least recently used, and the response says so.
+- **Pairing.** `/login?device=1` ends on an interstitial that shows the server URL and the
+  GitHub login being bound and mints only when the person clicks *Open the app*, so a browser
+  never silently hands a credential to a custom URL scheme.
+- **Signed action links are unchanged.** A device token authenticates the request; the
+  per-action HMAC tokens (post, approve, …) are still minted at render time and expire in
+  30 minutes.
 
 ## Your token — and your teammates'
 

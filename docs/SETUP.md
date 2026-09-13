@@ -146,8 +146,11 @@ One server, many reviewers. The owner does steps 1–5 above once; everyone else
 
 ### GitHub login — one click instead of a token (recommended)
 
-Create an app, paste two values into `.env`, restart. Teammates then see **Sign in with
-GitHub** and never touch a token. Two kinds of app; start with the first:
+Create an app, paste two values into `.env`, restart. Teammates then see **Continue with
+GitHub** as the login page's one visible action (the token form moves behind *Use a personal
+access token instead*) and never touch a token. The token GitHub issues is stored encrypted
+and used exactly like a pasted PAT — an OAuth user never needs one. Optional for a solo box;
+recommended for a team. Two kinds of app; start with the first:
 
 **Option A — OAuth App (no org installation needed).** github.com → Settings → Developer
 settings → OAuth Apps → *New OAuth App*:
@@ -168,7 +171,11 @@ sed -i "s|^GH_CLIENT_ID=.*|GH_CLIENT_ID=<client id>|; s|^GH_CLIENT_SECRET=.*|GH_
 sudo systemctl restart prbot
 ```
 
-Teammates click *Sign in with GitHub* → GitHub's *Authorize* screen → back to the dashboard,
+`repo` is the smallest classic scope that can comment on and approve a PR in a private
+repository — OAuth Apps cannot request fine-grained, per-repository permissions; only GitHub
+Apps can (Option B). `public_repo` is enough if every repository is public.
+
+Teammates click *Continue with GitHub* → GitHub's *Authorize* screen → back to the dashboard,
 landing on Settings the first time so they add their Slack member ID. The token GitHub issues
 acts as them (comments carry their name), lasts 8 hours and is refreshed server-side before
 it lapses, and they can revoke the app any time at github.com/settings/applications.
@@ -189,9 +196,9 @@ Option A is the way to be live today.
 ### Teammate — under two minutes
 
 1. Open `<PUBLIC_URL>/login` (the owner sends you the link).
-2. **Sign in with GitHub** if the button is there. Otherwise the token path is two clicks:
-   *Create token on GitHub ↗* opens GitHub with the scope and name already filled in — pick
-   an expiry, *Generate token*, copy — then paste it. The page tells you as you paste whether
+2. **Continue with GitHub** if the button is there. Otherwise (or under *Use a personal access
+   token instead*) the token path is two clicks: *Create one* opens GitHub with the scope and
+   name already filled in — pick an expiry, *Generate token*, copy — then paste it. The page tells you as you paste whether
    it looks right, and checks it with GitHub on submit. The token is stored encrypted and used
    only to post the comments and approvals *you* choose, as *you*.
 3. You land on a **welcome checklist**: paste your **Slack member ID** (Slack → your profile
@@ -243,6 +250,17 @@ CLI, the CLI mints the token, and the token is only ever used by Claude Code (`c
 If you would rather not have the server involved in the sign-in at all, the fallback is the
 same command run on your own laptop and the token pasted in — under *Or paste a token from
 `claude setup-token` instead*.
+
+### Phones and the CLI — device tokens
+
+Settings → **Devices** is per person. *Create a token for the CLI/mobile* names and mints a
+bearer token, shown once with a copy button; use it as `Authorization: Bearer <token>` on any
+`/api/*` call. The list shows each device's name, creation and last-seen dates, with *Revoke*
+per row and *Sign out everywhere*. Tokens expire 180 days after last use; only their hash is
+stored; a token can act as you but can never read your GitHub or Claude token. A mobile app
+pairs through `<PUBLIC_URL>/login?device=1`, which ends on a page showing the server and login
+being bound before anything is handed over. Details: [MOBILE.md](MOBILE.md),
+[SECURITY.md](SECURITY.md#device-tokens).
 
 ### What each person sees
 

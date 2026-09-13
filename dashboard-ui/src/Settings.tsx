@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  type Device,
   type Me,
+  type MintedDevice,
   type NotifyBackend,
   type RuntimeSettings,
   type SettingsData,
@@ -213,6 +215,175 @@ const BACKEND_META: Record<NotifyBackend, { name: string; sub: string; envKey: (
     envLabel: "",
   },
 };
+
+function dateText(ts: number): string {
+  if (!ts) return "—";
+  const d = new Date(ts * 1000);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${mm}/${dd}/${yy}`;
+}
+
+// Settings → Devices. Per-user, not admin-only: every signed-in person manages the bearer
+// tokens their own phone / CLI / second browser hold (docs/MOBILE.md). The token is shown
+// exactly once, on creation; the server keeps only its hash.
+export function Devices({ me }: { me: Me }) {
+  const [rows, setRows] = useState<Device[] | null>(null);
+  const [meta, setMeta] = useState({ max: 10, ttl_days: 180 });
+  const [name, setName] = useState("");
+  const [minted, setMinted] = useState<MintedDevice | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const load = useCallback(
+    () =>
+      api.devices().then((d) => {
+        setRows(d.devices);
+        setMeta({ max: d.max, ttl_days: d.ttl_days });
+      }),
+    [],
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setErr("");
+    try {
+      await fn();
+      await load();
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const mint = () =>
+    run(async () => {
+      const r = await api.mintDevice(name.trim() || "CLI");
+      setMinted(r);
+      setCopied(false);
+      setName("");
+    });
+
+  const copy = async () => {
+    if (!minted) return;
+    try {
+      await navigator.clipboard.writeText(minted.token);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const viaBearer = me.auth === "bearer";
+
+  return (
+    <div className="card" id="devices">
+      <h2>Devices</h2>
+      <p className="muted sm">
+        Phones, the CLI and other browsers that hold a token for your account. Each one can post
+        and approve as you and nothing more — it can never read your GitHub or Claude token.
+        Unused for {meta.ttl_days} days, a token expires on its own; up to {meta.max} per person.
+      </p>
+      {err && (
+        <div className="banner err">
+          <span>🚫</span>
+          <div>{err}</div>
+        </div>
+      )}
+      {minted && (
+        <div className="banner warn" role="status">
+          <span>🔑</span>
+          <div>
+            <b>Token for “{minted.name}” — copy it now.</b> It is shown once and cannot be
+            recovered; the server keeps only a hash. Anyone holding it can act as you until you
+            revoke it here.
+            <pre className="devtok" data-testid="device-token">{minted.token}</pre>
+            <div className="devnew">
+              <button className="btn soft" type="button" onClick={copy}>
+                {copied ? "Copied ✓" : "Copy token"}
+              </button>
+              <button className="btn ghost" type="button" onClick={() => setMinted(null)}>
+                I have saved it
+              </button>
+            </div>
+            <div className="hint" style={{ marginTop: 8 }}>
+              Use it as <code>Authorization: Bearer &lt;token&gt;</code> on any <code>/api/*</code>{" "}
+              call.{minted.warning ? ` ${minted.warning}` : ""}
+            </div>
+          </div>
+        </div>
+      )}
+      {rows === null ? (
+        <div className="muted">Loading…</div>
+      ) : rows.length === 0 ? (
+        <p className="muted sm">No devices yet.</p>
+      ) : (
+        <div className="devlist">
+          {rows.map((d) => (
+            <div className="devrow" key={d.id} data-testid="device-row">
+              <div className="devmeta">
+                <b>{d.name}</b>
+                {d.current && <span className="devcur">this device</span>}
+                <div className="hint">
+                  Created {dateText(d.created)} · last seen {dateText(d.last_seen)}
+                </div>
+              </div>
+              <button
+                className="btn ghost"
+                type="button"
+                disabled={busy}
+                aria-label={`Revoke ${d.name}`}
+                onClick={() => run(() => api.revokeDevice(d.id))}
+              >
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="devnew">
+        <input
+          className="in"
+          type="text"
+          maxLength={60}
+          placeholder="Name it — “CLI on laptop”, “iPhone”…"
+          aria-label="New device name"
+          value={name}
+          disabled={busy || viaBearer}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button className="btn primary" type="button" disabled={busy || viaBearer} onClick={mint}>
+          Create a token for the CLI/mobile
+        </button>
+        {rows && rows.length > 0 && (
+          <button
+            className="btn ghost"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm("Sign out every device? Each one will need to pair again.")) {
+                run(() => api.revokeAllDevices());
+              }
+            }}
+          >
+            Sign out everywhere
+          </button>
+        )}
+      </div>
+      {viaBearer && (
+        <div className="hint" style={{ marginTop: 8 }}>
+          You are signed in with a device token. Creating another one needs a browser session —
+          open Settings on the web.
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Settings({ me }: { me: Me }) {
   const [d, setD] = useState<SettingsData | null>(null);
@@ -454,6 +625,8 @@ export function Settings({ me }: { me: Me }) {
           </span>
         </div>
       )}
+
+      <Devices me={me} />
     </>
   );
 }

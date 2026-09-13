@@ -47,6 +47,13 @@ fi
 MAX_AGE_DAYS="${PRBOT_MAX_PR_AGE_DAYS:-45}"
 
 USERS_FILE="$ROOT/users.json"
+
+# Nightly: drop device tokens idle for 180 days (docs/MOBILE.md). Once per calendar day; the
+# prune rewrites users.json only when something actually expired.
+if [ -f "$USERS_FILE" ] && [ "$(cat "$ROOT/devices-pruned" 2>/dev/null)" != "$(date +%F)" ]; then
+  python3 "$(dirname "$0")/prbot_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
+fi
+
 logins=$(jq -r 'keys[]' "$USERS_FILE" 2>/dev/null)
 [ -n "$logins" ] || logins="$REVIEWER"
 

@@ -21,9 +21,6 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     await expect(page.getByText(`#${PR}`)).toBeVisible();
     await expect(page.getByText(/lead-time badge/i)).toBeVisible();
-    // Legacy /prbot URLs must still resolve (old bookmarks + signed Slack links).
-    await page.goto("/prbot/?tab=reviewed");
-    await expect(page.getByText(`#${PR}`)).toBeVisible();
   });
 
   test("archive button works: moves a PR to Archived and restores it", async ({ page }) => {

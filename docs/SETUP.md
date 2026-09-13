@@ -159,7 +159,7 @@ settings → OAuth Apps → *New OAuth App*:
 | -------------------------- | ---------------------------------------------------------------- |
 | Application name           | `ReviewStage`                                                    |
 | Homepage URL               | `<PUBLIC_URL>/`                                                  |
-| Authorization callback URL | `<PUBLIC_URL>/prbot/oauth/callback`                              |
+| Authorization callback URL | `<PUBLIC_URL>/oauth/callback`                              |
 | Enable Device Flow         | off                                                              |
 | Expire user access tokens  | **on** — 8-hour tokens with refresh; the dashboard refreshes them itself |
 

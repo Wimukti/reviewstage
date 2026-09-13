@@ -11,15 +11,15 @@ SELECTION, POSTING and APPROVAL are per user, done with that user's own PAT so G
 attributes them to the human. Per-user markers live in state/<pr>/users/<login>/.
 
 Routes
-  GET  /prbot/health
-  GET  /prbot/login  POST /prbot/login  sign in with a GitHub PAT (+ optional Slack member ID)
-  GET  /prbot/logout
-  GET  /prbot/settings  POST /prbot/settings
-  GET  /prbot/?tab&sort                index — PRs awaiting YOUR review, with your state
-  GET  /prbot/pr?pr=N                  detail — shared review, your editable findings, actions
-  GET  /prbot/review?pr=N&exp&sig      start a review, then redirect to the detail page
-  POST /prbot/post                     post the selected (possibly edited) comments as you
-  POST /prbot/approve                  approve as you
+  GET  /health
+  GET  /login  POST /login  sign in with a GitHub PAT (+ optional Slack member ID)
+  GET  /logout
+  GET  /settings  POST /settings
+  GET  /?tab&sort                      index — PRs awaiting YOUR review, with your state
+  GET  /pr?pr=N                        detail — shared review, your editable findings, actions
+  GET  /review?pr=N&exp&sig            start a review, then redirect to the detail page
+  POST /post                           post the selected (possibly edited) comments as you
+  POST /approve                        approve as you
 """
 import base64
 import calendar
@@ -353,7 +353,7 @@ def oauth_check_state(state):
             return None
     except ValueError:
         return None
-    return nxt if nxt.startswith("/prbot/") else "/prbot/"
+    return nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
 
 
 OAUTH_BLOCKED = ROOT / "oauth-blocked"
@@ -367,7 +367,7 @@ def oauth_blocked():
 
 
 def oauth_authorize_url(nxt):
-    q = {"client_id": GH_CLIENT_ID, "redirect_uri": f"{PUBLIC_URL}/prbot/oauth/callback",
+    q = {"client_id": GH_CLIENT_ID, "redirect_uri": f"{PUBLIC_URL}/oauth/callback",
          "state": oauth_state(nxt)}
     if GH_OAUTH_SCOPES:
         q["scope"] = GH_OAUTH_SCOPES
@@ -1605,7 +1605,7 @@ def _accept_url_ok(url):
     except ValueError:
         return False
     return (u.scheme == "https" and _is_alias_host(u.netloc)
-            and u.path.rstrip("/") == "/prbot/handoff/accept")
+            and u.path.rstrip("/") == "/handoff/accept")
 
 
 def session_user(headers):
@@ -2311,7 +2311,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
-        route = u.path.rstrip("/").removeprefix("/prbot") or "/"
+        route = u.path.rstrip("/") or "/"
 
         if route == "/health":
             return self.reply(200, "ok", "text/plain; charset=utf-8")
@@ -2361,7 +2361,7 @@ class Handler(BaseHTTPRequestHandler):
             # token and bounce to the sibling's accept endpoint; else bounce back so it shows login.
             nxt = (q.get("next") or [""])[0]
             if not _accept_url_ok(nxt):
-                return self.redirect("/prbot/login")
+                return self.redirect("/login")
             user = session_user(self.headers)
             if user:
                 exp = int(time.time()) + 120
@@ -2376,14 +2376,14 @@ class Handler(BaseHTTPRequestHandler):
             ok = (hlogin and hexp.isdigit() and hlogin in load_users() and int(hexp) > time.time()
                   and hmac.compare_digest(sign("handoff", hlogin, int(hexp)), hsig))
             if ok:
-                return self.redirect("/prbot/",
+                return self.redirect("/",
                                      cookie=session_cookie(hlogin, self.headers.get("Host", "")))
-            return self.redirect("/prbot/?sso=1")
+            return self.redirect("/?sso=1")
         host = self.headers.get("Host", "")
         sib = _sibling_host(host)
         if sib and not q.get("sso") and route != "/login" and not session_user(self.headers):
-            accept = f"https://{host}/prbot/handoff/accept"
-            return self.redirect(f"https://{sib}/prbot/handoff?next=" + quote(accept, safe=""))
+            accept = f"https://{host}/handoff/accept"
+            return self.redirect(f"https://{sib}/handoff?next=" + quote(accept, safe=""))
         user = session_user(self.headers)
         ck = session_cookie(user, host) if user else None
         return self.reply(200, index_html(), cookie=ck)
@@ -2722,7 +2722,7 @@ class Handler(BaseHTTPRequestHandler):
         written atomically. Everything else is 404."""
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n)
-        route = urlparse(self.path).path.rstrip("/").removeprefix("/prbot")
+        route = urlparse(self.path).path.rstrip("/")
         if route not in ("/api/settings", "/api/profile"):
             return self.reply(404, "not found", "text/plain; charset=utf-8")
         user = session_user(self.headers)
@@ -3106,7 +3106,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n)
-        route = urlparse(self.path).path.rstrip("/").removeprefix("/prbot")
+        route = urlparse(self.path).path.rstrip("/")
         if route == "/webhooks/github":
             return self.webhook_github(raw)
         if route.startswith("/api/"):
@@ -3146,7 +3146,7 @@ class Handler(BaseHTTPRequestHandler):
     # -- auth pages ----------------------------------------------------------------------------
     def oauth_callback(self, code, state, error):
         def to_login_err(msg):
-            return self.redirect("/prbot/login?err=" + quote(msg))
+            return self.redirect("/login?err=" + quote(msg))
         nxt = oauth_check_state(state)
         if nxt is None:
             return to_login_err("That sign-in link was stale or altered \u2014 try again.")
@@ -3154,7 +3154,7 @@ class Handler(BaseHTTPRequestHandler):
             return to_login_err("GitHub did not complete the sign-in: "
                                 + (error or "no code returned"))
         d = oauth_token_request({"code": code,
-                                 "redirect_uri": f"{PUBLIC_URL}/prbot/oauth/callback"})
+                                 "redirect_uri": f"{PUBLIC_URL}/oauth/callback"})
         if not d:
             return to_login_err("GitHub rejected the sign-in code. Try again.")
         login, name, err = verify_pat(d["access_token"])
@@ -3170,7 +3170,7 @@ class Handler(BaseHTTPRequestHandler):
         prev = load_users().get(login) or {}
         oauth_store(login, d, name, prev)
         print(f"login (github): {login}", flush=True)
-        if not prev.get("slack_id") and not nxt.startswith("/prbot/device"):
+        if not prev.get("slack_id") and not nxt.startswith("/device"):
             nxt = "/integrations?welcome=1&next=" + quote(nxt, safe="")
         return self.redirect(nxt, cookie=session_cookie(login, self.headers.get("Host", "")))
 

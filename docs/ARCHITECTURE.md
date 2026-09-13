@@ -36,8 +36,7 @@ hostname points at the instance (an old name kept alive so already-sent links ke
 `RS_HOST_ALIASES` lists them and an unauthenticated visit on one bounces through another to
 pick up an existing session.
 
-The app is served at the site root and still answers under the legacy `/prbot` prefix (the
-server strips it), so bookmarks and signed links from earlier versions keep resolving.
+The app is served at the site root; every route is root-relative.
 
 ## The dashboard
 

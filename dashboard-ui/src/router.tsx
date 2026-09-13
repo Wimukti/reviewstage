@@ -1,19 +1,16 @@
-// Tiny hand-rolled router (no react-router). ReviewStage serves at the site root;
-// it still also answers under the legacy /prbot prefix, so we strip a leading /prbot when
-// reading the URL (old bookmarks/Slack links) and always build clean root-relative links.
+// Tiny hand-rolled router (no react-router). ReviewStage serves at the site root; links are
+// always built root-relative.
 
 import { useEffect, useState } from "react";
 
-const LEGACY = /^\/prbot(?=\/|$)/;
-
 export function toPath(loc: string): string {
-  let p = loc.replace(LEGACY, "") || "/";
+  let p = loc || "/";
   if (p.length > 1) p = p.replace(/\/$/, "");
   return p || "/";
 }
 
 export function navigate(to: string): void {
-  const url = to.replace(LEGACY, "") || "/";
+  const url = to || "/";
   window.history.pushState({}, "", url);
   window.dispatchEvent(new Event("reviewstage:navigate"));
 }
@@ -40,7 +37,7 @@ export function Link(
   props: React.AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }
 ) {
   const { to, onClick, children, ...rest } = props;
-  const href = to.startsWith("http") ? to : to.replace(LEGACY, "") || "/";
+  const href = to.startsWith("http") ? to : to || "/";
   const external = to.startsWith("http");
   return (
     <a

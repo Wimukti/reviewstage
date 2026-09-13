@@ -240,8 +240,7 @@ if [ "${SETUP_APACHE:-0}" = 1 ]; then
 <VirtualHost *:80>
     ServerName $PUBLIC_HOST
 ${alias_line}    ProxyPreserveHost On
-    # The app is served at the site root. It also still answers under the legacy /prbot
-    # prefix (the server strips it), so old bookmarks and signed links keep resolving.
+    # The app is served at the site root.
     ProxyPass        / http://127.0.0.1:$PORT/
     ProxyPassReverse / http://127.0.0.1:$PORT/
     ErrorLog \${APACHE_LOG_DIR}/reviewstage-error.log
@@ -256,8 +255,7 @@ EOF
   # Verify functionally, by asking the endpoint through the vhost. A graceful reload is enough
   # to pick up new LoadModule lines in practice; the restart stays only as a genuine fallback.
   reviewstage_reachable() {
-    [ "$(curl -s -m 5 -H "Host: $PUBLIC_HOST" http://127.0.0.1/health 2>/dev/null)" = "ok" ] \
-      && [ "$(curl -s -m 5 -H "Host: $PUBLIC_HOST" http://127.0.0.1/prbot/health 2>/dev/null)" = "ok" ]
+    [ "$(curl -s -m 5 -H "Host: $PUBLIC_HOST" http://127.0.0.1/health 2>/dev/null)" = "ok" ]
   }
   sudo systemctl reload apache2
   sleep 1
@@ -267,7 +265,7 @@ EOF
     sleep 2
   fi
   if reviewstage_reachable; then
-    echo "   apache ok (root + legacy /prbot answer on $PUBLIC_HOST)"
+    echo "   apache ok (answers on $PUBLIC_HOST)"
   else
     sudo a2dissite reviewstage >/dev/null && sudo systemctl reload apache2
     echo "   !! endpoint unreachable — vhost disabled, nothing else touched"; exit 1
@@ -293,7 +291,7 @@ crontab "$tmp"; rm -f "$tmp"
 
 echo
 echo "Done. Checks:"
-echo "  curl -s localhost:$PORT/health                # -> ok (also /prbot/health)"
+echo "  curl -s localhost:$PORT/health                # -> ok"
 echo "  curl -s $PUBLIC_URL/health                     # -> ok (through your reverse proxy)"
 echo "  $BIN/pr-watch.sh                              # -> Slack card per open request"
 echo

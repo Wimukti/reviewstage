@@ -79,7 +79,7 @@ PUBLIC_URL=
 # --- GitHub login (one-click sign-in instead of pasting a token) -------------------------------
 
 # Create an OAuth App (github.com/settings/developers) or a GitHub App, with callback URL
-#   <PUBLIC_URL>/prbot/oauth/callback
+#   <PUBLIC_URL>/oauth/callback
 # and paste its client ID + secret here. Leave empty and the login page offers token
 # sign-in only. Restart the server after changing.
 GH_CLIENT_ID=

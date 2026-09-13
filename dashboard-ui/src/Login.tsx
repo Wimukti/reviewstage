@@ -30,7 +30,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   // GitHub is demoted (but still offered) when the org has not approved the app yet.
   const [showPat, setShowPat] = useState(!me.oauth || !!me.oauth_blocked || !!err);
 
-  const deviceNext = "/prbot/device" + (devName ? `?name=${encodeURIComponent(devName)}` : "");
+  const deviceNext = "/device" + (devName ? `?name=${encodeURIComponent(devName)}` : "");
   const oauthHref = device ? `/oauth/start?next=${encodeURIComponent(deviceNext)}` : "/oauth/start";
 
   async function submit(e: React.FormEvent) {
@@ -118,7 +118,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
             <p className="authfine authadmin">
               <b>Running this server?</b> Teams should sign in with GitHub instead of tokens: create a
               GitHub OAuth App with callback{" "}
-              <code>{(me.public_url || "PUBLIC_URL") + "/prbot/oauth/callback"}</code> and set{" "}
+              <code>{(me.public_url || "PUBLIC_URL") + "/oauth/callback"}</code> and set{" "}
               <code>GH_CLIENT_ID</code> / <code>GH_CLIENT_SECRET</code>. Step by step in{" "}
               <a href={OAUTH_DOCS} target="_blank" rel="noopener">
                 the install guide

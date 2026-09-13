@@ -90,8 +90,6 @@ Prose body: what was wrong, what changed, and why this shape. Wrap at ~72.
 - **Dashboard**: TypeScript, React 19, no router or state library — the hand-rolled router in
   `src/router.tsx` is deliberate. Styles live in `src/styles.css`.
 - **Comments** explain *why*, sparingly. The code says what.
-- Internal identifiers still say `prbot` (env vars, file names, the `/prbot` URL prefix,
-  cookie names, the systemd unit). That rename is tracked separately; do not do it piecemeal.
 
 ## Reporting a security problem
 

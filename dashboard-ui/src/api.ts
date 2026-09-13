@@ -71,7 +71,32 @@ export interface Me {
   allowOrg: string;
   brand: string;
   oauth: boolean;
+  oauth_blocked?: boolean; // GitHub sign-in worked but the org has not approved the app yet
+  public_url?: string;
   logo?: string;
+  auth?: "cookie" | "bearer"; // how this request was authenticated
+  login_via?: "oauth" | "pat"; // how the stored GitHub token was obtained
+}
+
+// Settings → Devices (docs/MOBILE.md). Never carries the token or its hash.
+export interface Device {
+  id: string;
+  name: string;
+  created: number;
+  last_seen: number;
+  current: boolean; // the device whose bearer token made this request
+}
+export interface DevicesData {
+  devices: Device[];
+  max: number;
+  ttl_days: number;
+}
+export interface MintedDevice {
+  token: string; // shown once; the server keeps only its hash
+  id: string;
+  name: string;
+  created: number;
+  warning?: string;
 }
 
 export interface Token {
@@ -299,7 +324,7 @@ export interface NotifyEnv {
 
 export interface IntegrationsData {
   token: Token;
-  github: { login: string };
+  github: { login: string; via?: "oauth" | "pat" };
   slack: { id: string };
   discord: { id: string };
   claude: { connected: boolean; authUrl: string };
@@ -405,6 +430,10 @@ export const api = {
     get<QueueData>(`/queue?tab=${encodeURIComponent(tab)}&sort=${encodeURIComponent(sort)}`),
   login: (pat: string) => post<{ ok: boolean; login: string }>("/login", { pat }),
   logout: () => post<{ ok: boolean }>("/logout"),
+  devices: () => get<DevicesData>("/devices"),
+  mintDevice: (name: string) => post<MintedDevice>("/device-token", { name }),
+  revokeDevice: (id: string) => post<{ ok: boolean; revoked: number }>("/devices/revoke", { id }),
+  revokeAllDevices: () => post<{ ok: boolean; revoked: number }>("/devices/revoke", { all: true }),
   pr: (ref: PrRef, v?: string) => get<PrData>(`/pr?${prq(ref)}${v ? `&v=${v}` : ""}`),
   explain: (ref: PrRef, t: Token, idx: number) =>
     post<{ md: string }>("/explain", { ...prBody(ref), ...t, idx }),

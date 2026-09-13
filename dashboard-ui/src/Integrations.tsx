@@ -300,13 +300,28 @@ export function Integrations({ me }: { me: Me }) {
         chip={ON}
         ok
         sub={
-          <>
-            Connected as <code>{d.github.login}</code> — comments and approvals post under your
-            name.
-          </>
+          d.github.via === "oauth" ? (
+            <>
+              Connected as <code>{d.github.login}</code> via GitHub sign-in (OAuth) — comments
+              and approvals post under your name. Revoke at github.com → Settings → Applications.
+            </>
+          ) : (
+            <>
+              Connected as <code>{d.github.login}</code> — comments and approvals post under your
+              name.
+            </>
+          )
         }
       >
-        <GithubCtl token={d.token} onDone={onDone} />
+        {d.github.via === "oauth" ? (
+          d.oauth ? (
+            <a className="btn soft" href="/oauth/start?next=%2Fprbot%2Fintegrations">
+              Reconnect with GitHub
+            </a>
+          ) : null
+        ) : (
+          <GithubCtl token={d.token} onDone={onDone} />
+        )}
       </Card>
       <Card
         icon={BrandIcon.slack}

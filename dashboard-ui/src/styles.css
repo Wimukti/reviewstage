@@ -795,3 +795,23 @@ input[type=range]{accent-color:var(--purple);width:180px}
 .setfoot{display:flex;align-items:center;gap:12px;margin-top:18px}
 .setfoot .muted{font-size:.85rem}
 .schema{font-size:.78rem;line-height:1.45;max-height:340px;overflow:auto;margin:10px 0 0}
+
+/* --- sign-in alternatives + device pairing ------------------------------------------------ */
+.authalt{margin:14px 0 0;background:transparent;border-color:var(--line)}
+.authalt>summary{padding:10px 14px;font-size:.84rem;font-weight:500;color:var(--dim);text-align:center}
+.authalt>summary::after{content:none}
+.authalt[open]>summary{color:var(--fg)}
+.authalt form{padding:4px 14px 12px}
+.authadmin{border-top:1px solid var(--line);padding-top:14px;text-align:left}
+.devbind{display:grid;gap:10px;margin:0 0 16px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:var(--r);background:var(--panel2);text-align:left;font-size:.9rem}
+.devbind code{font-size:.92rem;word-break:break-all}
+.devtok{margin:8px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--panel2);font-size:.82rem;word-break:break-all;white-space:pre-wrap;user-select:all}
+.devrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.devrow:first-of-type{border-top:0}
+.devrow .devmeta{flex:1;min-width:200px}
+.devrow .devmeta .hint{margin-top:2px}
+.devcur{font-size:.72rem;padding:2px 7px;border-radius:99px;background:rgba(80,200,120,.12);color:#7fd39a;margin-left:8px}
+.devnew{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.devnew .in{flex:1;min-width:180px}

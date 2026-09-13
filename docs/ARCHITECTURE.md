@@ -203,6 +203,15 @@ The worktree is removed as soon as `review.json` is copied out.
   runs on the same SHA are clustered so the dashboard can show where reviewers agree; the
   Insights page aggregates activity, keep-rate and agreement from the files already on disk.
   See `docs/specs/multi-reviewer-trust-plan-v2.md`.
+- **Repository profile** (`prbot_profile.py`, `profile-repo.sh`): a per-repo
+  `profiles/<slug>/profile.json` naming the critical paths, risk paths, review rules and
+  do-not-flag list, built from deterministic git signals plus one Sonnet call and validated
+  against the tree (hallucinated globs dropped and logged). `run-review.sh` merges the risk paths
+  into the banners and, for Standard/Deep, appends the critical paths the PR touches with their
+  checks; findings may set `critical_path` (badge on the card, kept in learnings, kept-rate in
+  Insights). Editable as markdown from the Skills page, versioned on every write; `auto_profile`
+  in settings.json lets `pr-watch.sh` ask the server to re-profile (as the admin) when the tree
+  changes materially, at most once a day.
 
 ## What this is not
 

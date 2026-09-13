@@ -27,6 +27,7 @@ Priorities, not promises. Open an issue to argue for reordering.
 - GitHub OAuth App / GitHub App sign-in with server-side refresh.
 - Docker Compose install with `team` and `demo` profiles; `bin/doctor.sh`.
 - Guided first-run tour; command palette.
+- Repository profile: deterministic signals + one Sonnet call name each repo's critical paths (validated against the tree); Standard/Deep reviews walk the ones a PR touches; editable, versioned, optional auto re-profile; kept rate on critical paths in Insights.
 
 ## P1 — in flight
 

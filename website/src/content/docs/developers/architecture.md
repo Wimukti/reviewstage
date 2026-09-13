@@ -15,6 +15,8 @@ Read this before changing anything. Most of the layout decisions look arbitrary 
 | `bin/prbot-server.py` | the dashboard service, `127.0.0.1:8899` | Serves the React SPA shell and a JSON API: sessions, queue, PR pages, runs, posting, approving, skills, learnings, insights, QA. |
 | `bin/run-review.sh` | spawned per click, detached | Worktree → `claude -p` with the chosen skill + output contract → `review.json`. **Never writes to GitHub.** |
 | `bin/run-qa.sh` | spawned per click | Same shape, runs the QA-guide skill → `qa.md`. |
+| `bin/profile-repo.sh` | spawned per click, or by the poller | Deterministic signals → one Sonnet call with `skills/repo-profile` → validated `profiles/<slug>/profile.json` + `profile.md`. |
+| `bin/prbot_profile.py` | imported + CLI | The profile: signals gathering, prompt, validation against the tree, risk-rule merge, the critical-path prompt block, markdown round-trip, versioning. |
 | `bin/prbot_diff.py` | imported | Diff-anchor validation so GitHub cannot 422 a whole review. |
 | `bin/prbot_learn.py` | imported | Learnings loop: scores kept/edited/dropped, renders recent decisions into the next prompt, scores skills. |
 | `bin/prbot_agree.py` | imported | Matches findings across independent runs; independence-weighted agreement. |
@@ -98,6 +100,7 @@ ROOT/skills/repos/<owner>__<name>/SKILL.md  optional per-repo team default
 - **Suggestion blocks**: a finding's `suggestion` is appended to the body as a ```` ```suggestion ```` block on post.
 - **Stop**: the run's pid is recorded; `POST /api/stop` kills the process group and writes `stopped`.
 - **Handoff**: a short signed token lets a session move between alias hostnames of the same server without re-login. Only the server's own hosts are accepted.
+- **Repository profile** (`prbot_profile.py`, `profile-repo.sh`): one profile per repository under `$ROOT/profiles/<slug>/`. `run-review.sh` merges its `risk_paths` into the banner rules and, for Standard and Deep runs, appends a "Critical paths for this repository" section listing only the paths the PR touches (cap 12, `why` cut to 200 chars) with their checks, the repo's rules and do-not-flag list; findings may carry `critical_path`, which the card badges and learnings keep so Insights can report the kept rate on critical paths. The profile hash is part of the re-run cache key. `GET/PUT /api/profile`, `POST /api/profile/run|stop` (signed `profile` token, connected Claude required); `POST /api/profile/auto` is called by `pr-watch.sh` with a server-secret HMAC when `auto_profile` is on and the tree changed materially, and runs as the admin on the admin's account. See [Repository profile](/reviewstage/guides/repo-profile/).
 
 ## Repository layout
 

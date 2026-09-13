@@ -6,6 +6,7 @@ Runs against a scratch ROOT (no server, no network). The parity test extracts th
 pr-watch.sh uses to write queue.json and checks that prbot_queue produces the identical row
 from the REST-shaped payload a webhook carries — skipped when jq is not installed.
 """
+import importlib
 import json
 import os
 import re
@@ -25,6 +26,12 @@ sys.path.insert(0, str(HERE))
 import prbot_paths as P  # noqa: E402
 import prbot_queue as Q  # noqa: E402
 import prbot_webhook as W  # noqa: E402
+
+# `unittest discover` imports every test module first; another module may already have bound
+# prbot_paths to the default ROOT. Rebind the chain to _TMP so nothing here touches real state.
+for _m in (P, Q, W):
+    importlib.reload(_m)
+assert P.ROOT == Path(_TMP) and Q.QUEUE.parent == Path(_TMP), "test ROOT did not take"
 
 REPO = "acme/widgets"
 SECRET = "unit-test-secret"
@@ -53,6 +60,7 @@ def payload(action, reviewer="alice", team=None, **pr):
 
 class Base(unittest.TestCase):
     def setUp(self):
+        Path(_TMP).mkdir(exist_ok=True)  # a previous class's tearDownClass removed it
         for f in (Q.QUEUE, Q.SEEN, Path(_TMP, W.STATE_FILE)):
             f.unlink(missing_ok=True)
         shutil.rmtree(P.STATE, ignore_errors=True)

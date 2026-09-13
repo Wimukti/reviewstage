@@ -51,6 +51,7 @@ import prbot_learn
 import prbot_md
 import prbot_paths as P
 import prbot_rollup
+import prbot_settings
 
 BRAND = "ReviewStage"                    # product name shown beside the logo (see prbot_assets)
 CLAUDE_ICON = ("<svg viewBox='0 0 24 24' width=18 height=18 fill=currentColor aria-hidden=true>"
@@ -145,36 +146,54 @@ def resolve_repo(q_repo, pr=""):
 # multi-user layout) are read as theirs, so history survives the upgrade.
 REVIEWER = ENV.get("REVIEWER", "")
 DRY_RUN = ENV.get("DRY_RUN", "1") == "1"
-# Slack, for server-side alerts (e.g. confirming a review was force-stopped). Bot token + channel
-# is preferred (same as the shell scripts); a webhook is the fallback.
+# Notification URLs are only inspected here (is it set?) for the Settings/Integrations pages;
+# posting goes through bin/notify.sh (see notify_card below).
 SLACK_WEBHOOK = ENV.get("SLACK_WEBHOOK", "")
 SLACK_BOT_TOKEN = ENV.get("SLACK_BOT_TOKEN", "")
 SLACK_CHANNEL = ENV.get("SLACK_CHANNEL", "")
 
 
-def slack_notify(text):
-    """Best-effort plain-text Slack message from the server. Never raises — a failed notify must
-    not break the action that triggered it."""
-    try:
-        if SLACK_BOT_TOKEN and SLACK_CHANNEL:
-            req = Request("https://slack.com/api/chat.postMessage",
-                          data=json.dumps({"channel": SLACK_CHANNEL, "text": text}).encode(),
-                          headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-                                   "Content-Type": "application/json; charset=utf-8"})
-            urlopen(req, timeout=8).read()
-        elif SLACK_WEBHOOK:
-            req = Request(SLACK_WEBHOOK, data=json.dumps({"text": text}).encode(),
-                          headers={"Content-Type": "application/json"})
-            urlopen(req, timeout=8).read()
-    except Exception:
-        pass
-
 USERS = ROOT / "users.json"
 SESSION_TTL = 30 * 24 * 3600
 
+# --- runtime settings + notifier bridge (prbot_settings.py) ---------------------------------
+# $ROOT/settings.json is written from the Settings page and read live by the poller and the
+# scripts; settings.json > .env > default. Admin-only to change; everyone may read.
+SETTINGS = ROOT / "settings.json"
+
+
+def runtime_settings():
+    """(values, sources) for every runtime setting, layered settings.json > .env > default."""
+    return prbot_settings.effective(SETTINGS, ENV)
+
+
+def is_admin(login):
+    """REVIEWER from .env, else the user flagged admin in users.json, else the first user who
+    signed in (flagged on first resolution so it sticks)."""
+    if not login:
+        return False
+    if REVIEWER and login == REVIEWER:
+        return True
+    return prbot_settings.resolve_admin(load_users(), REVIEWER, modify_users) == login
+
+
+def notify_card(kind, payload):
+    """Post a card through bin/notify.sh — the same notifier the shell scripts use, so Slack,
+    Discord and generic webhooks all fire per the operator's settings. Best-effort, detached."""
+    prbot_settings.notify_card(BIN, ROOT, kind, payload)
+
+
+def notify_env_status():
+    """Which notification URLs .env provides (booleans only — never the values)."""
+    return {"slack_webhook": bool(SLACK_WEBHOOK),
+            "slack_bot": bool(SLACK_BOT_TOKEN and SLACK_CHANNEL),
+            "discord_webhook": bool(ENV.get("DISCORD_WEBHOOK")),
+            "webhook_url": bool(ENV.get("WEBHOOK_URL")),
+            "webhook_secret": bool(ENV.get("WEBHOOK_SECRET"))}
+
 
 # --- users ---------------------------------------------------------------------------------
-# users.json: {login: {pat_enc, slack_id, name, added}}. PATs are AES-encrypted with a key
+# users.json: {login: {pat_enc, slack_id, discord_id, admin, name, added}}. PATs are AES-encrypted with a key
 # derived from PRBOT_SECRET — derived, not stored, so rotating the secret also invalidates
 # every stored PAT, which is the right outcome if it was rotated because it leaked. The
 # shell scripts only ever read login + slack_id; they never see a PAT.
@@ -1173,12 +1192,14 @@ def _kill_group(pidfile):
 
 
 def _notify_stopped(repo, pr, user, confirmed, runner, kind="review"):
-    """Slack confirmation that a force-stop actually halted the agent (so no Claude tokens keep
-    burning unnoticed) — or a warning if it may not have."""
+    """Confirmation that a force-stop actually halted the agent (so no Claude tokens keep
+    burning unnoticed) — or a warning if it may not have. Slack keeps its original wording
+    (extra.text); Discord and the generic webhook render the structured fields."""
     meta = pr_meta(repo, pr)[0]
     title, url = meta.get("title", f"PR #{pr}"), meta.get("url", ghurl_of(repo, pr))
     ref = f"{repo}#{pr}"
-    sid = (load_users().get(user) or {}).get("slack_id") if user else ""
+    u = (load_users().get(user) or {}) if user else {}
+    sid = u.get("slack_id", "")
     by = f"<@{sid}>" if sid else (f"`@{user}`" if user else "someone")
     acct = (f" It was running on `{runner}`'s Claude account." if runner and runner != "shared"
             else " It was running on the shared box account." if runner else "")
@@ -1190,7 +1211,11 @@ def _notify_stopped(repo, pr, user, confirmed, runner, kind="review"):
         text = (f"⚠️ Stop requested for the {kind} of *<{url}|{ref} — {title}>* by {by}, but a "
                 f"process may still be running on the box — please check that Claude usage "
                 f"stopped.{acct}")
-    slack_notify(text)
+    notify_card("review_stopped", {
+        "repo": repo, "pr": str(pr), "title": title, "author": meta.get("author", ""), "url": url,
+        "login": user or "", "slack_id": sid, "discord_id": u.get("discord_id", ""),
+        "extra": {"status": "stopped", "job": kind.capitalize(), "confirmed": bool(confirmed),
+                  "runner": runner or "", "text": text}})
 
 
 def stop_review(repo, pr, user=""):
@@ -2075,6 +2100,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(self.api_skills(user))
         if route == "/api/integrations":
             return self.api_json(self.api_integrations(user))
+        if route == "/api/settings":
+            return self.api_json(self.api_settings(user))
         if route == "/api/learnings":
             return self.api_json(self.api_learnings(user))
         if route == "/api/rollup":
@@ -2315,6 +2342,55 @@ class Handler(BaseHTTPRequestHandler):
             "teamHistory": skill_history(5),
         }
 
+    def api_settings(self, user):
+        """Runtime settings for the Settings page: effective values + where each came from,
+        which notification URLs .env provides, the poller's last stamp, and a signed token the
+        admin sends back with PUT. Non-admins get the same view, read-only."""
+        vals, src = runtime_settings()
+        exp, sig = mint("runtime-settings", user, ACTION_TTL)
+        return {"token": {"exp": exp, "sig": sig}, "settings": vals, "sources": src,
+                "saved": prbot_settings.read_file(SETTINGS),
+                "env": notify_env_status(), "is_admin": is_admin(user),
+                "admin": prbot_settings.resolve_admin(load_users(), REVIEWER, modify_users),
+                "poller": {"lastPoll": prbot_settings.last_poll(ROOT),
+                           "envInterval": ENV.get("POLL_INTERVAL", "")},
+                "limits": {"intervalMin": prbot_settings.INTERVAL_MIN,
+                           "intervalMax": prbot_settings.INTERVAL_MAX},
+                "backends": list(prbot_settings.BACKENDS), "dry_run": DRY_RUN}
+
+    def do_PUT(self):
+        """PUT /api/settings — the admin saves runtime settings. Session cookie + the signed
+        token from GET (same CSRF model as every POST) + admin check; validated ranges only;
+        written atomically. Everything else is 404."""
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n)
+        route = urlparse(self.path).path.rstrip("/").removeprefix("/prbot")
+        if route != "/api/settings":
+            return self.reply(404, "not found", "text/plain; charset=utf-8")
+        user = session_user(self.headers)
+        if not user:
+            return self.api_json({"error": "unauthorized"}, 401)
+        try:
+            body = json.loads(raw or b"{}")
+        except json.JSONDecodeError:
+            body = None
+        if not isinstance(body, dict):
+            return self.api_json({"error": "Send a JSON object."}, 400)
+        if err := verify("runtime-settings", user, str(body.get("exp") or ""),
+                         str(body.get("sig") or "")):
+            return self.api_json({"error": err}, 403)
+        if not is_admin(user):
+            return self.api_json({"error": "Only the admin can change these settings."}, 403)
+        clean, err = prbot_settings.validate(body.get("settings") or {})
+        if err:
+            return self.api_json({"error": err}, 400)
+        prbot_settings.save(SETTINGS, clean)
+        print(f"settings saved by {user}: {json.dumps(clean)}", flush=True)
+        out = self.api_settings(user)
+        out["bannerHtml"] = ("<div class='banner ok'><span>✓</span><div>Saved — the poller and "
+                             "the scripts pick this up on their next cycle.</div></div>")
+        return self.api_json(out)
+
     def api_integrations(self, user):
         u = load_users().get(user) or {}
         exp, sig = mint("settings", user, ACTION_TTL)
@@ -2322,10 +2398,14 @@ class Handler(BaseHTTPRequestHandler):
         claude_url = ""
         if not connected:
             claude_url, _ = claude_connect_start(user)
+        vals, _src = runtime_settings()
         return {"token": {"exp": exp, "sig": sig},
                 "github": {"login": user},
                 "slack": {"id": u.get("slack_id", "")},
+                "discord": {"id": u.get("discord_id", "")},
                 "claude": {"connected": connected, "authUrl": claude_url or ""},
+                "notify": {"env": notify_env_status(), "backends": vals["notify_backends"],
+                           "payloadSchema": prbot_settings.PAYLOAD_SCHEMA},
                 "oauth": OAUTH_ENABLED, "brand": BRAND}
 
     def api_learnings(self, user):
@@ -2364,6 +2444,7 @@ class Handler(BaseHTTPRequestHandler):
         return {"authed": True, "login": user, "name": u.get("name") or user,
                 "slack_id": u.get("slack_id", ""), "claude_connected": claude_connected(user),
                 "active_skill": choice, "skill_label": skill_label, "dry_run": DRY_RUN,
+                "is_admin": is_admin(user),
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
                 "brand": BRAND, "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO}
 
@@ -2762,11 +2843,15 @@ class Handler(BaseHTTPRequestHandler):
         return ok(f"Saved {who} — reviews now use it (with ReviewStage's output format appended).")
 
     def _settings_result(self, user, form):
-        """Save the Slack ID and/or replace the GitHub PAT → banner HTML. Settings token assumed
-        verified. Only touches a field the form actually sent."""
+        """Save the Slack ID, Discord ID and/or replace the GitHub PAT → banner HTML. Settings
+        token assumed verified. Only touches a field the form actually sent."""
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
         err_b = lambda m: f"<div class='banner err'><span>🚫</span><div>{m}</div></div>"  # noqa
         slack_val = one("slack_id").strip() if "slack_id" in form else None
+        discord_val = one("discord_id").strip() if "discord_id" in form else None
+        if discord_val and not discord_val.isdigit():
+            return err_b("A Discord user ID is all digits (User Settings → Advanced → "
+                         "Developer Mode, then right-click your name → Copy User ID).")
         pat = one("pat").strip()
         new_pat_enc = new_name = None
         if pat:
@@ -2781,6 +2866,8 @@ class Handler(BaseHTTPRequestHandler):
             u = users.get(user) or {}
             if slack_val is not None:
                 u["slack_id"] = slack_val
+            if discord_val is not None:
+                u["discord_id"] = discord_val
             if new_pat_enc is not None:
                 u["pat_enc"], u["name"] = new_pat_enc, new_name
             u["updated"] = int(time.time())

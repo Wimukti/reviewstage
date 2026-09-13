@@ -53,6 +53,7 @@ Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped 
 - **It learns what your team drops.** Kept, reworded and dropped findings feed the next review of the repository. Skills are scored by keep rate; the team default is versioned with a revision history; add a rule in plain words.
 - **Independent reviews, weighted agreement.** Two reviewers on one PR get separate runs in separate worktrees; findings both raised with a different skill, model or effort are marked confirmed.
 - **From PR to QA guide.** A tester-ready P0/P1/P2 test plan built from the same diff and review threads.
+- **Slack, Discord or any webhook.** Cards for review requested, review ready, stopped and QA ready — Slack (webhook or threaded bot token), Discord embeds, or a signed JSON POST to Teams, Zapier, n8n or your own endpoint. Or none: the dashboard is the inbox. Switched live from the Settings page.
 - **Safe by construction.** Diff-anchor validation so GitHub never rejects a whole review; every action HMAC-signed and short-lived; tokens encrypted at rest; `DRY_RUN` on by default.
 
 ## Team mode
@@ -61,7 +62,7 @@ Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped 
 docker compose --profile team up -d
 ```
 
-Adds the review-request poller and Slack cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Slack works via an incoming webhook or a bot token (threaded replies); Discord is planned. See [Team mode](https://wimukti.github.io/reviewstage/start/team-mode/).
+Adds the review-request poller and notification cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Cards go to Slack (incoming webhook or bot token with threaded replies), Discord, or any JSON webhook; the poller's interval and on/off switch live in the dashboard's Settings page. See [Team mode](https://wimukti.github.io/reviewstage/start/team-mode/).
 
 ## Documentation
 

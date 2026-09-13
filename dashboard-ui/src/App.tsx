@@ -9,6 +9,7 @@ import { Integrations } from "./Integrations";
 import { Learnings } from "./Learnings";
 import { Queue } from "./Queue";
 import { Rollup } from "./Rollup";
+import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
@@ -33,8 +34,8 @@ function Routed({ me }: { me: Me }) {
   if (path.startsWith("/qa")) return <Qa me={me} />;
   if (path.startsWith("/skills")) return <Skills />;
   if (path.startsWith("/stack")) return <StackPage />;
-  if (path.startsWith("/integrations") || path.startsWith("/settings"))
-    return <Integrations me={me} />;
+  if (path.startsWith("/integrations")) return <Integrations me={me} />;
+  if (path.startsWith("/settings")) return <Settings me={me} />;
   if (path.startsWith("/learnings")) return <Learnings me={me} />;
   if (path.startsWith("/dashboard")) return <Rollup />;
   if (path.startsWith("/how")) return <HowItWorks />;

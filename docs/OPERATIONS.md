@@ -27,6 +27,11 @@ This is the single most common "why isn't it working" cause. `pr-watch.sh` and
 `run-review.sh` re-source `.env` on every run, so only the dashboard needs this. Re-running
 `bootstrap.sh` restarts it for you.
 
+The exception is `~/.claude-pr-bot/settings.json`, written by the dashboard's **Settings**
+page (poller on/off, poll interval, notification backends, PR filters): the poller and the
+scripts re-read it every cycle and it wins over `.env`, so nothing needs a restart. Delete a
+key from the file to fall back to `.env`.
+
 ## Re-notifying stale Slack cards
 
 Slack dedup is keyed on `<pr>:<login>` in `~/.claude-pr-bot/seen`. To re-announce PRs whose

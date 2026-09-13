@@ -22,6 +22,7 @@ const GROUPS: { label: string; items: [string, string, string][] }[] = [
     items: [
       ["skills", "Skills", "/skills"],
       ["integrations", "Integrations", "/integrations"],
+      ["settings", "Settings", "/settings"],
     ],
   },
 ];
@@ -32,7 +33,8 @@ function activeKey(path: string): string {
   if (path.startsWith("/learnings")) return "learnings";
   if (path.startsWith("/dashboard")) return "dashboard";
   if (path.startsWith("/skills")) return "skills";
-  if (path.startsWith("/integrations") || path.startsWith("/settings")) return "integrations";
+  if (path.startsWith("/integrations")) return "integrations";
+  if (path.startsWith("/settings")) return "settings";
   if (path.startsWith("/pr") || path.startsWith("/stack")) return "queue";
   return "";
 }

@@ -7,6 +7,8 @@ sidebar:
 
 Settings live in `.env` (Docker; mirrored into the data volume on every start) or `~/.claude-pr-bot/.env` (from source; chmod 600). `config.example` lists the file's full shape, `.env.example` the Docker subset. The dashboard reads the file **once at startup**; restart after any change. The poller and the review runner re-read it on every run. The last five rows are read from the process environment only, not from `.env`.
 
+A handful of operational knobs can also be changed **live** from the dashboard's Settings page; those are stored in `settings.json` and take precedence over `.env` — see [Runtime settings](#runtime-settings) below.
+
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `REPOS` | required (or `REPO`) | The GitHub repositories this instance reviews, as `owner/name`, comma-separated (quote the value if you separate with spaces — the file is sourced by bash). One install, many repositories. Each entry is validated as `owner/name` at startup. |
@@ -17,13 +19,17 @@ Settings live in `.env` (Docker; mirrored into the data volume on every start) o
 | `REVIEWER` | Docker: derived from `GITHUB_PAT` | The GitHub login the service token belongs to. From source, set it yourself; the Docker entrypoint fills it in by asking GitHub who the token is. |
 | `PRBOT_SECRET` | generated on first start | Signs every dashboard link and session, and derives the key that encrypts stored tokens. Rotating it signs everyone out and invalidates outstanding Slack links and stored tokens. |
 | `DRY_RUN` | `1` | `1`: the dashboard renders and the buttons work, but nothing is ever written to GitHub. Flip to `0` only after a dry run you have compared by hand, then restart. |
-| `SKIP_BOT_PRS` | `0` | `1` skips PRs opened by bots. Default off: AI-written PRs are where a skeptical review pays off most. |
-| `PRBOT_MAX_PR_AGE_DAYS` | `45` | The poller ignores review requests on PRs older than this many days. `0` disables the cutoff. |
+| `SKIP_BOT_PRS` | `0` | `1` skips PRs opened by bots. Default off: AI-written PRs are where a skeptical review pays off most. Overridable in Settings. |
+| `PRBOT_MAX_PR_AGE_DAYS` | `45` | The poller ignores review requests on PRs older than this many days. `0` disables the cutoff. Overridable in Settings. |
 | `MIN_FREE_MB` | `800` | Refuse to start a review below this much available RAM, in MB. |
 | `PRBOT_PORT` | `8899` | The port the server listens on. Docker maps `127.0.0.1:${PRBOT_PORT}` to the container. |
 | `SLACK_WEBHOOK` | empty | A Slack incoming webhook for review-request cards and "review ready" pings. Send-only: a fresh message each time. Point it at a private channel; cards name PR titles and authors. |
 | `SLACK_BOT_TOKEN` | empty | With `SLACK_CHANNEL`, posts via `chat.postMessage` so the review-ready message threads under the review-request card. Takes precedence over the webhook. |
 | `SLACK_CHANNEL` | empty | Channel ID for the bot-token path. |
+| `DISCORD_WEBHOOK` | empty | A Discord channel webhook. Cards arrive as an embed and mention the reviewer's saved Discord user ID. |
+| `WEBHOOK_URL` | empty | Any JSON endpoint (Teams, Zapier, n8n, your own). Every event is one `POST` of the raw payload; see [Notifications](/reviewstage/guides/notifications/#generic-webhook). |
+| `WEBHOOK_SECRET` | empty | With `WEBHOOK_URL`, signs each body: `X-ReviewStage-Signature: sha256=HMAC-SHA256(secret, body)`. |
+| `NOTIFY_BACKENDS` | derived | Comma list of `slack`, `discord`, `generic`, `none`. Empty = whichever of the URLs above are set. Overridable in Settings. |
 | `GH_CLIENT_ID` | empty | Client ID of an OAuth App or GitHub App whose callback URL is `<PUBLIC_URL>/prbot/oauth/callback`. Leave empty and the login page offers token sign-in only. Restart after changing. |
 | `GH_CLIENT_SECRET` | empty | The matching client secret. |
 | `GH_OAUTH_SCOPES` | empty | OAuth App: set to `repo` (tick *Expire user access tokens* when creating the app and tokens last 8 hours, refreshed here automatically). GitHub App: leave empty; permissions come from the app. |
@@ -34,15 +40,44 @@ Settings live in `.env` (Docker; mirrored into the data volume on every start) o
 | `PRBOT_DOMAIN` | empty | A parent domain to scope the session cookie to, so one login covers every alias. Empty = host-only cookies. |
 | `PRBOT_ENV` | empty | Legacy. With `PRBOT_DOMAIN`, an `.env` without `PUBLIC_URL` derives it as `https://prbot-<PRBOT_ENV>.<PRBOT_DOMAIN>`. New installs set `PUBLIC_URL` and leave this empty. |
 | `PRBOT_HOST` | empty | Legacy. Overrides the hostname derived from `PRBOT_ENV` + `PRBOT_DOMAIN`. |
-| `POLL_INTERVAL` | `180` | Process environment only. Seconds between poller passes. In Docker, put it in `.env` and compose passes it through; from source, export it before starting the poller. |
+| `POLL_INTERVAL` | `180` | Process environment only. Seconds between poller passes when Settings has not set `poll_interval_seconds`. Prefer the Settings page: it applies without a restart. |
 | `PRBOT_BIND` | `127.0.0.1` | Process environment only. Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
 | `PRBOT_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` when `PUBLIC_URL` starts with `http://`. |
 | `ROOT` | `~/.claude-pr-bot` | Process environment only. Base directory for `.env`, the base clones (`repos/<owner>__<name>`), worktrees, per-PR state (`state/<owner>__<name>/<pr>`), `users.json`, learnings and skills. Docker mounts the data volume here. |
 
+## Runtime settings
+
+The dashboard's **Settings** page (Setup group; admin only — everyone else sees it read-only) writes `ROOT/settings.json`. The poller re-reads it every cycle and `pr-watch.sh` / `notify.sh` read it on every run, so a change applies within seconds and never needs a restart or an `.env` edit.
+
+Precedence for every key it carries: **`settings.json` > `.env` > default**. Only keys present in the file override, so an install that never opened Settings behaves exactly as its `.env` says. Each row on the page shows where the current value comes from.
+
+```json
+{
+  "poller_enabled": true,
+  "poll_interval_seconds": 180,
+  "notify_backends": ["slack", "discord"],
+  "max_pr_age_days": 45,
+  "skip_bot_prs": false,
+  "updated_at": 1789265317
+}
+```
+
+| Key | Type / range | Default | `.env` fallback | Effect |
+| --- | --- | --- | --- | --- |
+| `poller_enabled` | bool | `true` | — | `false` pauses `pr-watch.sh` (the poller service keeps running and logs that it is paused; a cron-driven `pr-watch.sh` exits at once). |
+| `poll_interval_seconds` | int, 60–3,600 | `180` | `POLL_INTERVAL` | Seconds between polls; the loop notices a new value within 15 s. |
+| `notify_backends` | list of `slack` / `discord` / `generic` / `none` | derived from configured URLs | `NOTIFY_BACKENDS` | Which backends `notify_card` posts to. `none` cannot be combined with others. |
+| `max_pr_age_days` | int, 0–3,650 | `45` | `PRBOT_MAX_PR_AGE_DAYS` | Suppress cards for PRs opened more than this many days ago; `0` = no cutoff. |
+| `skip_bot_prs` | bool | `false` | `SKIP_BOT_PRS` | Skip bot-authored PRs entirely. |
+
+`DRY_RUN` is deliberately **not** a runtime setting: flipping GitHub writes on stays an `.env` edit plus a restart.
+
+The **admin** is the `REVIEWER` login from `.env`; if that is empty, the user flagged `"admin": true` in `users.json`; if nobody is flagged, the first user who signed in (flagged automatically at that point so the choice is stable). `/api/me` reports `is_admin`. The API is `GET /api/settings` (anyone signed in) and `PUT /api/settings` (admin, with the signed token from the GET); the file is written atomically. `poller.last` next to it holds the epoch of the last completed poll, shown on the page.
+
 ## Things that are not settings
 
-- **Poll frequency** is `POLL_INTERVAL` above; there is no minutes-based key.
+- **Poll frequency** is the `poll_interval_seconds` runtime setting above (or `POLL_INTERVAL` as a fallback); there is no minutes-based `.env` key.
 - **Review timeouts** come from the effort level chosen when starting a run: Quick 12 minutes, Standard 25, Deep 40. They are fixed in `bin/run-review.sh`.
 - **Request changes** is a checkbox on the post form, per review. The default review event is `COMMENT`; the agent never sets it.
 - **Claude credentials** are per user: each reviewer connects their own Claude account in *Integrations*, and their runs use that token. There is no server-wide API key setting; a user who has not connected Claude cannot run reviews.
-- **Per-user data** (encrypted GitHub and Claude tokens, Slack member ID) lives in `ROOT/users.json`, written by the dashboard on sign-in. To remove a user, delete their key.
+- **Per-user data** (encrypted GitHub and Claude tokens, Slack member ID, Discord user ID, the `admin` flag) lives in `ROOT/users.json`, written by the dashboard on sign-in. To remove a user, delete their key.

@@ -122,6 +122,77 @@ function SlackCtl({
   );
 }
 
+function DiscordCtl({
+  token,
+  value,
+  onDone,
+}: {
+  token: IntegrationsData["token"];
+  value: string;
+  onDone: (b: string) => void;
+}) {
+  const [id, setId] = useState(value);
+  useEffect(() => setId(value), [value]);
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const r = await api.saveSettings(token, { discord_id: id.trim() });
+        onDone(r.bannerHtml);
+      }}
+    >
+      <div className="inrow">
+        <input
+          type="text"
+          className="in"
+          placeholder="123456789012345678"
+          autoComplete="off"
+          spellCheck={false}
+          inputMode="numeric"
+          value={id}
+          onChange={(e) => setId(e.target.value)}
+        />
+        <button className="btn primary" type="submit">
+          Save
+        </button>
+      </div>
+      <div className="hint">
+        In Discord: <b>User Settings</b> → <b>Advanced</b> → turn on <b>Developer Mode</b>, then
+        right-click your name → <b>Copy User ID</b>.
+      </div>
+    </form>
+  );
+}
+
+function WebhookInfo({ notify }: { notify: IntegrationsData["notify"] }) {
+  const [open, setOpen] = useState(false);
+  const e = notify.env;
+  return (
+    <>
+      <div className="hint">
+        {e.webhook_url ? (
+          <span className="ok">
+            ✓ <code>WEBHOOK_URL</code> is set{e.webhook_secret ? " and requests are signed (WEBHOOK_SECRET)" : " — unsigned; set WEBHOOK_SECRET to sign requests"}.
+          </span>
+        ) : (
+          <>
+            Not configured. Set <code>WEBHOOK_URL</code> (and optionally <code>WEBHOOK_SECRET</code>) in{" "}
+            <code>.env</code>, then enable it in Settings.
+          </>
+        )}
+      </div>
+      <div className="hint">
+        Every event POSTs one JSON object with header <code>X-ReviewStage-Event</code> and, when
+        signed, <code>X-ReviewStage-Signature: sha256=HMAC-SHA256(secret, body)</code>.
+      </div>
+      <button className="btn sm soft" type="button" style={{ marginTop: 10 }} onClick={() => setOpen((o) => !o)}>
+        {open ? "Hide payload schema" : "Show payload schema"}
+      </button>
+      {open && <pre className="schema">{JSON.stringify(notify.payloadSchema, null, 2)}</pre>}
+    </>
+  );
+}
+
 function ClaudeCtl({
   d,
   onDone,
@@ -211,6 +282,7 @@ export function Integrations({ me }: { me: Me }) {
 
   if (!d) return <div className="muted">Loading…</div>;
   const hasSlack = !!d.slack.id;
+  const hasDiscord = !!d.discord.id;
   const hasClaude = d.claude.connected;
 
   return (
@@ -245,6 +317,33 @@ export function Integrations({ me }: { me: Me }) {
         sub="Pings you when a review is requested."
       >
         <SlackCtl token={d.token} value={d.slack.id} onDone={onDone} />
+      </Card>
+      <Card
+        icon={BrandIcon.discord}
+        cls="discord"
+        name="Discord"
+        chip={hasDiscord ? ON : OFF}
+        ok={hasDiscord}
+        sub={
+          <>
+            Mentions you in the Discord card when a review is requested.
+            {!d.notify.env.discord_webhook && (
+              <> <em>(No <code>DISCORD_WEBHOOK</code> on this server yet.)</em></>
+            )}
+          </>
+        }
+      >
+        <DiscordCtl token={d.token} value={d.discord.id} onDone={onDone} />
+      </Card>
+      <Card
+        icon={BrandIcon.webhook}
+        cls="hook"
+        name="Generic webhook"
+        chip={d.notify.env.webhook_url ? ON : OFF}
+        ok={d.notify.env.webhook_url}
+        sub="Teams, Zapier, n8n or your own endpoint — the raw event JSON, HMAC-signed."
+      >
+        <WebhookInfo notify={d.notify} />
       </Card>
       <Card
         icon={BrandIcon.claude}

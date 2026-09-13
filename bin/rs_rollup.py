@@ -10,7 +10,7 @@ import json
 import time
 from pathlib import Path
 
-from prbot_paths import is_slug, slug_repo
+from rs_paths import is_slug, slug_repo
 
 WEEK = 7 * 24 * 3600
 DAY = 24 * 3600

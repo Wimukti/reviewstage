@@ -2,7 +2,7 @@
 # lib-common.sh — shared config, HMAC link signing, and notifications for the review bot.
 # Sourced by pr-watch.sh and run-review.sh. Never executed directly.
 
-ROOT="${ROOT:-$HOME/.claude-pr-bot}"
+ROOT="${ROOT:-$HOME/.reviewstage}"
 ENV_FILE="$ROOT/.env"
 
 # Secrets live in .env (chmod 600), never in this repo. bootstrap.sh creates it.
@@ -10,7 +10,7 @@ ENV_FILE="$ROOT/.env"
 [ -f "$ENV_FILE" ] && set -a && . "$ENV_FILE" && set +a
 
 # --- per-install config ----------------------------------------------------------------------
-# All of these come from ~/.claude-pr-bot/.env, which bootstrap.sh writes. None of the
+# All of these come from ~/.reviewstage/.env, which bootstrap.sh writes. None of the
 # identity values has a default: the repositories, REVIEWER and PUBLIC_URL are yours alone, so
 # require_env fails loudly rather than letting the bot poll someone else's repo or mint dead links.
 #
@@ -23,16 +23,16 @@ REPO="${REPO:-}"
 REPO_ALLOW_ORG="${REPO_ALLOW_ORG:-}"
 REVIEWER="${REVIEWER:-}"                 # your GitHub login; the PAT must belong to it
 # Where browsers reach the dashboard, e.g. https://reviews.example.com — the one hostname your
-# reverse proxy forwards to 127.0.0.1:$PRBOT_PORT. Every Slack button is built from it.
-# Older installs set PRBOT_ENV + PRBOT_DOMAIN instead (host prbot-<env>.<domain>); that pair
+# reverse proxy forwards to 127.0.0.1:$RS_PORT. Every Slack button is built from it.
+# Older installs set RS_ENV + RS_DOMAIN instead (host reviewstage-<env>.<domain>); that pair
 # is still honoured so an existing .env keeps working. Record whether PUBLIC_URL was set
 # explicitly BEFORE the derived value fills it in, so the guard below can still fire.
-PRBOT_ENV="${PRBOT_ENV:-}"
-PRBOT_DOMAIN="${PRBOT_DOMAIN:-}"
+RS_ENV="${RS_ENV:-}"
+RS_DOMAIN="${RS_DOMAIN:-}"
 PUBLIC_URL_EXPLICIT="${PUBLIC_URL:+1}"
-if [ -z "${PUBLIC_URL:-}" ] && [ -n "$PRBOT_ENV" ] && [ -n "$PRBOT_DOMAIN" ]; then
-  PRBOT_HOST="${PRBOT_HOST:-prbot-${PRBOT_ENV}.${PRBOT_DOMAIN}}"
-  PUBLIC_URL="https://$PRBOT_HOST"
+if [ -z "${PUBLIC_URL:-}" ] && [ -n "$RS_ENV" ] && [ -n "$RS_DOMAIN" ]; then
+  RS_HOST="${RS_HOST:-reviewstage-${RS_ENV}.${RS_DOMAIN}}"
+  PUBLIC_URL="https://$RS_HOST"
 fi
 PUBLIC_URL="${PUBLIC_URL%/}"
 # shellcheck disable=SC2034  # consumed by scripts that source this file
@@ -43,7 +43,7 @@ SEEN="$ROOT/seen"                 # notified review requests, keyed <repo>:<pr>:
 USED="$ROOT/used-nonces"          # burned approve links (single-use enforcement)
 
 # --- repo dimension --------------------------------------------------------------------------
-# Mirrors prbot_paths.py exactly — the two must agree on every path.
+# Mirrors rs_paths.py exactly — the two must agree on every path.
 # repos_list: one configured owner/name per line (REPOS ∪ REPO), de-duplicated, order kept.
 repos_list() {
   printf '%s %s' "$REPOS" "$REPO" | tr ',' ' ' | tr -s '[:space:]' '\n' | sed 's#^https://github.com/##; s#^/##; s#/$##' \
@@ -123,7 +123,7 @@ die() { echo "FATAL: $*" >&2; exit 1; }
 
 require_env() {
   [ -n "${GITHUB_PAT:-}" ]   || die "GITHUB_PAT not set in $ENV_FILE"
-  [ -n "${PRBOT_SECRET:-}" ] || die "PRBOT_SECRET not set in $ENV_FILE"
+  [ -n "${RS_SECRET:-}" ] || die "RS_SECRET not set in $ENV_FILE"
   [ -n "${REVIEWER:-}" ]     || die "REVIEWER not set in $ENV_FILE (your GitHub login)"
   [ "$(repo_count)" -ge 1 ]  || die "no repository configured in $ENV_FILE (set REPOS=owner/name[,owner/name…] or REPO=owner/name)"
   local r
@@ -140,8 +140,8 @@ require_env() {
 # Assume ReviewStage is served over the PUBLIC internet with nothing in front of it, so every
 # link carries an HMAC over action + repo#pr + expiry. Unsigned or expired links are rejected
 # server-side. (Links minted before the repo dimension existed signed action:pr:exp; the server
-# keeps accepting those for PRBOT_SIGNATURE_GRACE_DAYS.)
-sign() { printf '%s' "$1" | openssl dgst -sha256 -hmac "$PRBOT_SECRET" -r | cut -d' ' -f1; }
+# keeps accepting those for RS_SIGNATURE_GRACE_DAYS.)
+sign() { printf '%s' "$1" | openssl dgst -sha256 -hmac "$RS_SECRET" -r | cut -d' ' -f1; }
 
 # signed_link <action> <repo> <pr> <ttl-seconds>
 signed_link() {

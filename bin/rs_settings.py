@@ -1,4 +1,4 @@
-"""Runtime settings ($ROOT/settings.json) and the notifier bridge for prbot-server.py.
+"""Runtime settings ($ROOT/settings.json) and the notifier bridge for server.py.
 
 Operators change these from the dashboard's Settings page, without editing .env or restarting
 anything. Precedence everywhere (server, poller, pr-watch): settings.json > .env > default. Only
@@ -10,7 +10,7 @@ Schema (all keys optional):
   poll_interval_seconds  int 60..3600  default 180  (.env: POLL_INTERVAL)
   notify_backends        [str]       subset of slack|discord|generic|none; default derived from
                                      which URLs are set in .env (.env: NOTIFY_BACKENDS)
-  max_pr_age_days        int 0..3650  default 45   (.env: PRBOT_MAX_PR_AGE_DAYS; 0 = no cutoff)
+  max_pr_age_days        int 0..3650  default 45   (.env: RS_MAX_PR_AGE_DAYS; 0 = no cutoff)
   skip_bot_prs           bool        default false (.env: SKIP_BOT_PRS)
   auto_profile           {slug: bool} default {}  re-profile a repo when its file tree changes
                                      materially (pr-watch.sh, at most once a day per repo)
@@ -66,7 +66,7 @@ def env_defaults(env):
         src["notify_backends"] = "env"
     else:
         vals["notify_backends"], src["notify_backends"] = env_backends(env), "default"
-    put("max_pr_age_days", "PRBOT_MAX_PR_AGE_DAYS", int, 45)
+    put("max_pr_age_days", "RS_MAX_PR_AGE_DAYS", int, 45)
     put("skip_bot_prs", "SKIP_BOT_PRS", _truthy, False)
     return vals, src
 

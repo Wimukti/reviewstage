@@ -9,18 +9,18 @@ review queue on a small server.
 | File              | Runs as                   | Does                                                            |
 | ----------------- | ------------------------- | --------------------------------------------------------------- |
 | `pr-watch.sh`     | cron, every 3 min         | Finds PRs awaiting your review → `queue.json` + Slack card      |
-| `prbot-server.py` | systemd, `127.0.0.1:8899` | The dashboard: renders reviews, posts, approves                 |
+| `server.py` | systemd, `127.0.0.1:8899` | The dashboard: renders reviews, posts, approves                 |
 | `run-review.sh`   | spawned per click         | Worktree → `claude -p` → `review.json`. Never writes to GitHub  |
-| `prbot_diff.py`   | imported                  | Diff-anchor validation, so GitHub can't 422 the whole review    |
-| `prbot_md.py`     | imported                  | Dependency-free markdown → HTML (headings, tables, code, lists) |
+| `rs_diff.py`   | imported                  | Diff-anchor validation, so GitHub can't 422 the whole review    |
+| `rs_md.py`     | imported                  | Dependency-free markdown → HTML (headings, tables, code, lists) |
 | `lib-common.sh`   | sourced                   | Config, repo helpers, HMAC signing, Slack posting               |
-| `prbot_paths.py`  | imported                  | The one place that knows the on-disk layout + the legacy migration |
-| `prbot_queue.py`  | imported                  | queue.json / seen writers shared by pr-watch.sh and the webhook |
-| `prbot_webhook.py`| imported                  | `POST /webhooks/github`: HMAC check, event → queue, webhooks.json |
+| `rs_paths.py`  | imported                  | The one place that knows the on-disk layout + the legacy migration |
+| `rs_queue.py`  | imported                  | queue.json / seen writers shared by pr-watch.sh and the webhook |
+| `rs_webhook.py`| imported                  | `POST /webhooks/github`: HMAC check, event → queue, webhooks.json |
 | `dashboard-ui/`   | built by bootstrap        | React + TypeScript SPA, bundled by esbuild into `bin/static/`   |
 | `bootstrap.sh`    | you, once                 | Installs all of the above                                       |
 
-## Why everything lives in `~/.claude-pr-bot/`
+## Why everything lives in `~/.reviewstage/`
 
 Because a deploy tool or sync job that runs `rsync --delete` into some directory can delete
 files out from under a running review. So the base clone, the worktrees, the per-PR state and
@@ -33,11 +33,10 @@ The server binds `127.0.0.1` only and expects a reverse proxy in front of it. Ev
 mints — Slack buttons, the OAuth callback — is built from a single `PUBLIC_URL`, so the
 hostname your proxy answers on and the hostname in Slack cannot drift apart. If more than one
 hostname points at the instance (an old name kept alive so already-sent links keep working),
-`PRBOT_HOST_ALIASES` lists them and an unauthenticated visit on one bounces through another to
+`RS_HOST_ALIASES` lists them and an unauthenticated visit on one bounces through another to
 pick up an existing session.
 
-The app is served at the site root and still answers under the legacy `/prbot` prefix (the
-server strips it), so bookmarks and signed links from earlier versions keep resolving.
+The app is served at the site root; every route is root-relative.
 
 ## The dashboard
 
@@ -99,7 +98,7 @@ the slug `<owner>__<name>` (owners cannot contain `_`, so the first `__` is the 
 | `state/<owner>__<name>/<pr>/`          | per-PR state (below)                            |
 | `skills/repos/<owner>__<name>/SKILL.md`| optional per-repo override of the team default  |
 
-`prbot_paths.py` (`repo_slug`, `base_dir`, `prdir`, `udir`, `iter_prdirs`) and the matching bash
+`rs_paths.py` (`repo_slug`, `base_dir`, `prdir`, `udir`, `iter_prdirs`) and the matching bash
 helpers in `lib-common.sh` are the only places that build these paths. Legacy installs kept the
 clone at `repo/` and state at `state/<pr>`; `migrate_legacy()` moves both into the new layout the
 first time the server starts with exactly one repo configured, stamps `repo` onto `queue.json`,
@@ -107,11 +106,11 @@ first time the server starts with exactly one repo configured, stamps `repo` ont
 and legacy state present it refuses to start and says which env to set — it never guesses.
 
 Signed links cover `action:owner/name#pr:expiry`; signatures of the old `action:pr:expiry` form
-verify for `PRBOT_SIGNATURE_GRACE_DAYS` (default 7) after the first repo-aware start.
+verify for `RS_SIGNATURE_GRACE_DAYS` (default 7) after the first repo-aware start.
 
 ## Per-PR state
 
-`~/.claude-pr-bot/state/<owner>__<name>/<pr>/`:
+`~/.reviewstage/state/<owner>__<name>/<pr>/`:
 
 | File            | What                                                              |
 | --------------- | ------------------------------------------------------------------ |
@@ -153,7 +152,7 @@ The worktree is removed as soon as `review.json` is copied out.
 
 ## Subsystems added since the first cut
 
-- **Learnings** (`prbot_learn.py`): on post, each original finding is scored dropped / edited /
+- **Learnings** (`rs_learn.py`): on post, each original finding is scored dropped / edited /
   kept and appended to `learnings.jsonl` (short gists, capped, tagged with the repo).
   `render(repo)` folds recent dropped/edited rows — same-repo first, then the rest — into the
   next review prompt so the agent stops re-raising rejected noise; the `/learnings` page shows
@@ -161,7 +160,7 @@ The worktree is removed as soon as `review.json` is copied out.
   steering with your own recent decisions.
 - **Review effort + focus** (`effort`, `focus`): starting a review is a form (`run_form`), not
   a link — the reviewer picks an effort level (auto-sized from the diff) and can add a
-  free-text focus note. `start_review` writes both and passes `PRBOT_EFFORT` / `PRBOT_FOCUS`;
+  free-text focus note. `start_review` writes both and passes `RS_EFFORT` / `RS_FOCUS`;
   `run-review.sh` maps effort to a timeout and a depth instruction, and appends the focus to
   the prompt. `deep` tells the agent to search the whole repo for impact before judging. The
   depth instructions are editable per team on the Skills page (`_effort_<level>.md`).
@@ -172,13 +171,13 @@ The worktree is removed as soon as `review.json` is copied out.
   `start_new_session`); `POST /stop` kills the process group and writes a `stopped` status.
 - **Active skill choice** (`state/skills/<login>.use`): one selector on `/skills` sets whether a
   user's reviews run with their own skill or the team default. `start_review` passes it as
-  `PRBOT_SKILL_CHOICE`, which `run-review.sh` honors (`team` ignores a personal skill on file). The
+  `RS_SKILL_CHOICE`, which `run-review.sh` honors (`team` ignores a personal skill on file). The
   team default is guarded — `save_skill` refuses to blank it, and `restore_global_skill` (typed
   confirm) is the only way back to the installed skill.
-- **Skills**: a user can bring their own review skill (`~/.claude-pr-bot/skills/<login>.md`), and
+- **Skills**: a user can bring their own review skill (`~/.reviewstage/skills/<login>.md`), and
   the **team default** is an editable file (`skills/_global.md`, seeded by bootstrap from
   `skills/global-review.md`) maintained from the `/skills` page. `run-review.sh` picks the
-  clicker's skill (`PRBOT_ACTOR`), else the editable team default, else the installed
+  clicker's skill (`RS_ACTOR`), else the editable team default, else the installed
   `pr-review` skill — and before all of those, a per-repo override at
   `skills/repos/<owner>__<name>/SKILL.md` if one exists (recorded as skill id `repo:<slug>`); it
   runs the skill's logic and **always appends an explicit `review.json` output contract**, so any skill yields the shape the dashboard needs. **Quick-add rule**:
@@ -200,12 +199,12 @@ The worktree is removed as soon as `review.json` is copied out.
 - **Slack threading**: with `SLACK_BOT_TOKEN` + `SLACK_CHANNEL`, `slack_post` (in `bin/notify.sh`, behind `notify_card`) uses
   `chat.postMessage`, stores the request card's ts, and threads the review-ready reply under it;
   otherwise it falls back to the send-only webhook.
-- **Per-run cache, agreement and insights** (`prbot_agree.py`, `prbot_rollup.py`): a reviewer's
+- **Per-run cache, agreement and insights** (`rs_agree.py`, `rs_rollup.py`): a reviewer's
   identical re-run on the same commit is served from a content-addressed cache; independent
   runs on the same SHA are clustered so the dashboard can show where reviewers agree; the
   Insights page aggregates activity, keep-rate and agreement from the files already on disk.
   See `docs/specs/multi-reviewer-trust-plan-v2.md`.
-- **Repository profile** (`prbot_profile.py`, `profile-repo.sh`): a per-repo
+- **Repository profile** (`rs_profile.py`, `profile-repo.sh`): a per-repo
   `profiles/<slug>/profile.json` naming the critical paths, risk paths, review rules and
   do-not-flag list, built from deterministic git signals plus one Sonnet call and validated
   against the tree (hallucinated globs dropped and logged). `run-review.sh` merges the risk paths

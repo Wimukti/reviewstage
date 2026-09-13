@@ -1,4 +1,4 @@
-"""prbot_paths.py — the ONE place that knows the on-disk layout and the repo dimension.
+"""rs_paths.py — the ONE place that knows the on-disk layout and the repo dimension.
 
 One ReviewStage install reviews many repositories. A PR is identified by (repo, number) where
 repo is `owner/name`. On disk a repo is a slug, `owner__name` (GitHub owners cannot contain `_`,
@@ -11,7 +11,7 @@ so the first `__` is always the separator and the mapping is reversible):
 Legacy (single-repo) installs kept the clone at $ROOT/repo and state at $ROOT/state/<pr>;
 migrate_legacy() moves them into the new layout once, on server start.
 
-Imported by prbot-server.py, prbot_learn.py and prbot_rollup.py; the bash side (lib-common.sh)
+Imported by server.py, rs_learn.py and rs_rollup.py; the bash side (lib-common.sh)
 mirrors repo_slug / base_dir / prdir / udir.
 """
 import json
@@ -21,7 +21,7 @@ import shutil
 import time
 from pathlib import Path
 
-ROOT = Path(os.environ.get("ROOT", Path.home() / ".claude-pr-bot"))
+ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 STATE = ROOT / "state"
 REPOS_DIR = ROOT / "repos"
 MIGRATED = ROOT / "MIGRATED"

@@ -35,7 +35,7 @@ export function buildFixture() {
   write(
     join(FIXTURE, ".env"),
     [
-      `PRBOT_SECRET=${SECRET}`,
+      `RS_SECRET=${SECRET}`,
       `REVIEWER=${USER}`,
       `REPOS=${REPO},${REPO2}`,
       "DRY_RUN=1",
@@ -277,7 +277,7 @@ export function mintAuthState() {
     JSON.stringify({
       cookies: [
         {
-          name: "prbot_s",
+          name: "rs_session",
           value: `${USER}:${exp}:${sig}`,
           domain: "127.0.0.1",
           path: "/",

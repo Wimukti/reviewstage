@@ -25,7 +25,7 @@ Every repository gets its own base clone and its own state directory; the queue 
 
 To accept repositories you did not list, set `REPO_ALLOW_ORG=acme`: any repo under that org where a signed-in user gets a review request is discovered by the poller and cloned on its first review. This needs the **service token** to be able to see the org (a fine-grained token with *All repositories* under that owner, or a classic token with `repo`).
 
-An existing single-repository install is migrated on the first start: the clone and per-PR state move into the per-repository layout once, a `MIGRATED` marker is written, and already-sent Slack links keep working for `PRBOT_SIGNATURE_GRACE_DAYS` (default 7). If several repositories are configured *and* legacy state is present, the server refuses to start and tells you to run once with exactly one `REPO` so the state can be attributed.
+An existing single-repository install is migrated on the first start: the clone and per-PR state move into the per-repository layout once, a `MIGRATED` marker is written, and already-sent Slack links keep working for `RS_SIGNATURE_GRACE_DAYS` (default 7). If several repositories are configured *and* legacy state is present, the server refuses to start and tells you to run once with exactly one `REPO` so the state can be attributed.
 
 ## What each person does
 

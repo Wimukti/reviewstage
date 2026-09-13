@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-webhook-e2e.sh — end-to-end check of POST /webhooks/github against a real server.
 #
-# Boots prbot-server.py on a scratch ROOT with a webhook secret and one signed-in user, then
+# Boots server.py on a scratch ROOT with a webhook secret and one signed-in user, then
 # uses curl + openssl (exactly what GitHub does, minus GitHub) to assert:
 #   1. a bad signature → 401, a missing secret header → 401
 #   2. ping → 200 and webhooks.json.last_ping is stamped
@@ -16,10 +16,10 @@
 #   bash bin/test-webhook-e2e.sh            # prints PASS/FAIL lines, exits non-zero on failure
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(mktemp -d "${TMPDIR:-/tmp}/prbot-wh-e2e.XXXXXX")"
+ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rs-wh-e2e.XXXXXX")"
 PORT="${PORT:-8997}"
 SECRET="e2e-webhook-secret"
-PRBOT_SECRET="e2e-fixed-test-secret-not-for-production"
+RS_SECRET="e2e-fixed-test-secret-not-for-production"
 USER_LOGIN="acme-dev"
 REPO="acme/widgets"
 PR=4242
@@ -43,7 +43,7 @@ trap cleanup EXIT
 mkdir -p "$ROOT/fakebin"
 printf '#!/bin/sh\nexit 1\n' > "$ROOT/fakebin/gh"; chmod +x "$ROOT/fakebin/gh"
 cat > "$ROOT/.env" <<EOF
-PRBOT_SECRET=$PRBOT_SECRET
+RS_SECRET=$RS_SECRET
 REVIEWER=$USER_LOGIN
 REPOS=$REPO
 DRY_RUN=1
@@ -56,16 +56,16 @@ echo "{\"$USER_LOGIN\": {\"name\": \"Acme Dev\", \"slack_id\": \"\", \"added\": 
 echo '{"at": 1, "note": "e2e"}' > "$ROOT/MIGRATED"
 echo '[]' > "$ROOT/queue.json"
 
-env PATH="$ROOT/fakebin:$PATH" ROOT="$ROOT" PRBOT_PORT="$PORT" PRBOT_SPA=1 PRBOT_COOKIE_SECURE=0 \
-  python3 "$HERE/prbot-server.py" > "$ROOT/server.log" 2>&1 &
+env PATH="$ROOT/fakebin:$PATH" ROOT="$ROOT" RS_PORT="$PORT" RS_SPA=1 RS_COOKIE_SECURE=0 \
+  python3 "$HERE/server.py" > "$ROOT/server.log" 2>&1 &
 SERVER_PID=$!
 for _ in $(seq 1 50); do curl -fs "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -fs "$BASE/health" >/dev/null || { echo "server did not start:"; cat "$ROOT/server.log"; exit 1; }
 
 # A session cookie for /api/* reads, minted the way the server does (session:<login>:<exp>).
 exp=$(( $(date +%s) + 3600 ))
-sig=$(printf '%s' "session:$USER_LOGIN:$exp" | openssl dgst -sha256 -hmac "$PRBOT_SECRET" -r | cut -d' ' -f1)
-COOKIE="prbot_s=$USER_LOGIN:$exp:$sig"
+sig=$(printf '%s' "session:$USER_LOGIN:$exp" | openssl dgst -sha256 -hmac "$RS_SECRET" -r | cut -d' ' -f1)
+COOKIE="rs_session=$USER_LOGIN:$exp:$sig"
 
 sign() { printf 'sha256=%s' "$(printf '%s' "$1" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)"; }
 post() { # <event> <body> [signature | none] → prints HTTP status

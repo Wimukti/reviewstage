@@ -63,7 +63,7 @@ DRY_RUN=0
 ```
 
 ```bash
-docker compose up -d    # or, from source: sudo systemctl restart prbot
+docker compose up -d    # or, from source: sudo systemctl restart reviewstage
 ```
 
 Start with a PR you authored so the stakes are low. Read [Security](/reviewstage/security/) first if the server is reachable from outside your machine.

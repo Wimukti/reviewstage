@@ -31,7 +31,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/prbot/api/")) return;
+  if (url.pathname.startsWith("/api/")) return;
 
   if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/icons/")) {
     e.respondWith(

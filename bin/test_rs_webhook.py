@@ -1,9 +1,9 @@
 """Unit tests for the GitHub webhook receiver and the shared queue module.
 
-    python3 -m unittest bin/test_prbot_webhook.py
+    python3 -m unittest bin/test_rs_webhook.py
 
 Runs against a scratch ROOT (no server, no network). The parity test extracts the jq program
-pr-watch.sh uses to write queue.json and checks that prbot_queue produces the identical row
+pr-watch.sh uses to write queue.json and checks that rs_queue produces the identical row
 from the REST-shaped payload a webhook carries — skipped when jq is not installed.
 """
 import importlib
@@ -19,16 +19,16 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-_TMP = tempfile.mkdtemp(prefix="prbot-webhook-test-")
-os.environ["ROOT"] = _TMP                       # before prbot_paths reads it
+_TMP = tempfile.mkdtemp(prefix="rs-webhook-test-")
+os.environ["ROOT"] = _TMP                       # before rs_paths reads it
 sys.path.insert(0, str(HERE))
 
-import prbot_paths as P  # noqa: E402
-import prbot_queue as Q  # noqa: E402
-import prbot_webhook as W  # noqa: E402
+import rs_paths as P  # noqa: E402
+import rs_queue as Q  # noqa: E402
+import rs_webhook as W  # noqa: E402
 
 # `unittest discover` imports every test module first; another module may already have bound
-# prbot_paths to the default ROOT. Rebind the chain to _TMP so nothing here touches real state.
+# rs_paths to the default ROOT. Rebind the chain to _TMP so nothing here touches real state.
 for _m in (P, Q, W):
     importlib.reload(_m)
 assert P.ROOT == Path(_TMP) and Q.QUEUE.parent == Path(_TMP), "test ROOT did not take"

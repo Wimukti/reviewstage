@@ -8,10 +8,10 @@
 #   entrypoint.sh demo     start the dashboard against an offline fixture — no credentials
 #   entrypoint.sh <cmd>    anything else is exec'd as-is
 #
-# ROOT (default ~/.claude-pr-bot) is the one persistent directory; compose mounts it as a volume.
+# ROOT (default ~/.reviewstage) is the one persistent directory; compose mounts it as a volume.
 set -euo pipefail
 
-ROOT="${ROOT:-$HOME/.claude-pr-bot}"
+ROOT="${ROOT:-$HOME/.reviewstage}"
 BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 SKILLS_SRC="$(cd "$BIN/.." && pwd)/skills"
 # Invoked through the `doctor` symlink (docker compose exec app doctor) => doctor mode.
@@ -53,7 +53,7 @@ write_env() {
   set_key REPO_ALLOW_ORG ""
   set_key GITHUB_PAT ""
   set_key DRY_RUN 1
-  set_key PUBLIC_URL "http://localhost:${PRBOT_PORT:-8899}"
+  set_key PUBLIC_URL "http://localhost:${RS_PORT:-8899}"
   set_key SLACK_WEBHOOK ""
   set_key SLACK_BOT_TOKEN ""
   set_key SLACK_CHANNEL ""
@@ -65,17 +65,17 @@ write_env() {
   set_key GH_CLIENT_SECRET ""
   set_key GH_OAUTH_SCOPES ""
   set_key SKIP_BOT_PRS 0
-  set_key PRBOT_MAX_PR_AGE_DAYS 45
+  set_key RS_MAX_PR_AGE_DAYS 45
   set_key MIN_FREE_MB 800
-  set_key PRBOT_SIGNATURE_GRACE_DAYS 7
+  set_key RS_SIGNATURE_GRACE_DAYS 7
   set_key REVIEWER ""
   # Signs every dashboard link and encrypts stored tokens. Generated once, kept on the volume.
-  if [ -n "${PRBOT_SECRET:-}" ]; then
-    set_key PRBOT_SECRET ""
-  elif ! grep -q '^PRBOT_SECRET=.\+' "$f"; then
-    sed -i '/^PRBOT_SECRET=/d' "$f"
-    printf 'PRBOT_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$f"
-    log "generated PRBOT_SECRET"
+  if [ -n "${RS_SECRET:-}" ]; then
+    set_key RS_SECRET ""
+  elif ! grep -q '^RS_SECRET=.\+' "$f"; then
+    sed -i '/^RS_SECRET=/d' "$f"
+    printf 'RS_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$f"
+    log "generated RS_SECRET"
   fi
   # REVIEWER is the "box owner" login the scripts fall back to. Derive it from the service
   # token when nobody set it, so run-review.sh's require_env is satisfied out of the box.
@@ -149,7 +149,7 @@ ensure_base_clones() {
 # Plain http (the localhost quick start) cannot carry a Secure cookie; drop the flag there.
 cookie_flag() {
   local url; url=$(sed -n 's/^PUBLIC_URL=//p' "$ROOT/.env")
-  case "$url" in http://*) export PRBOT_COOKIE_SECURE=0;; esac
+  case "$url" in http://*) export RS_COOKIE_SECURE=0;; esac
 }
 
 mkdir -p "$ROOT"
@@ -159,8 +159,8 @@ case "$MODE" in
     install_skills
     ensure_base_clones
     cookie_flag
-    log "ReviewStage dashboard on ${PRBOT_BIND:-127.0.0.1}:${PRBOT_PORT:-8899}  (ROOT=$ROOT)"
-    exec python3 "$BIN/prbot-server.py"
+    log "ReviewStage dashboard on ${RS_BIND:-127.0.0.1}:${RS_PORT:-8899}  (ROOT=$ROOT)"
+    exec python3 "$BIN/server.py"
     ;;
   poller)
     ( flock 9; write_env; seed_root ) 9>"$ROOT/.env.lock" 2>/dev/null || { write_env; seed_root; }
@@ -171,10 +171,10 @@ case "$MODE" in
     ;;
   demo)
     export ROOT
-    python3 "$BIN/demo-fixture.py" "$ROOT" "${PRBOT_PORT:-8899}"
+    python3 "$BIN/demo-fixture.py" "$ROOT" "${RS_PORT:-8899}"
     install_skills
-    export PATH="$ROOT/fakebin:$PATH" PRBOT_COOKIE_SECURE=0
-    exec python3 "$BIN/prbot-server.py"
+    export PATH="$ROOT/fakebin:$PATH" RS_COOKIE_SECURE=0
+    exec python3 "$BIN/server.py"
     ;;
   *)
     exec "$MODE" "$@"

@@ -95,12 +95,11 @@ If you configure one-click **Sign in with GitHub** (`GH_CLIENT_ID` / `GH_CLIENT_
 URL* must be exactly:
 
 ```
-<PUBLIC_URL>/prbot/oauth/callback
+<PUBLIC_URL>/oauth/callback
 ```
 
-for example `https://reviewstage.example.com/prbot/oauth/callback`. The `/prbot` prefix is
-required — the server accepts every route both with and without it, but GitHub compares the
-callback byte-for-byte with what the server sends, and the server sends the prefixed form.
+for example `https://reviewstage.example.com/oauth/callback`. GitHub compares the callback
+byte-for-byte with what the server sends, so the value must match `PUBLIC_URL` exactly.
 
 Whatever proxy you use must pass the path through unchanged (no prefix stripping) and forward
 the `Host` header, so the cookie domain and redirect URLs match `PUBLIC_URL`.

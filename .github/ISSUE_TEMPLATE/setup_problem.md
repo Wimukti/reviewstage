@@ -20,7 +20,7 @@ paste here
 
 ## Your .env, keys only
 
-`grep -o '^[A-Z_]*=' ~/.claude-pr-bot/.env | sort` — this lists key names without values.
+`grep -o '^[A-Z_]*=' ~/.reviewstage/.env | sort` — this lists key names without values.
 
 ```
 paste here
@@ -31,8 +31,8 @@ paste here
 - [ ] `curl -s localhost:8899/health` returns `ok`
 - [ ] `curl -s <PUBLIC_URL>/health` returns `ok` (through your reverse proxy)
 - [ ] `claude` (bare) shows the service user signed in
-- [ ] `~/.claude-pr-bot/bin/pr-watch.sh` runs without error
-- [ ] `systemctl status prbot` is active
+- [ ] `~/.reviewstage/bin/pr-watch.sh` runs without error
+- [ ] `systemctl status reviewstage` is active
 
 ## Environment
 

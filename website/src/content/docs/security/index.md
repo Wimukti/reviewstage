@@ -14,15 +14,15 @@ The dashboard is a process holding GitHub tokens that can comment on, review and
 | Data | Where | Protection |
 | --- | --- | --- |
 | Service GitHub token (`GITHUB_PAT`) | `.env` (chmod 600) | Read-only permissions; never posts. |
-| Each user's GitHub token | users file | **AES-256-CBC, PBKDF2**, key *derived* from `PRBOT_SECRET`, not stored beside it. Decrypted in the server only, at post time. |
+| Each user's GitHub token | users file | **AES-256-CBC, PBKDF2**, key *derived* from `RS_SECRET`, not stored beside it. Decrypted in the server only, at post time. |
 | Each user's Claude token | users file | Same encryption. Used only by `claude -p` for that user's runs. |
 | Slack webhook / bot token | `.env` | Treat as a secret; anyone holding it can post in the channel. |
 | `GITHUB_WEBHOOK_SECRET` | `.env` | Authenticates inbound GitHub deliveries (HMAC over the body). Anyone holding it can add or remove queue rows and trigger a review-request card, nothing more. |
 | Reviews, payloads, logs | per-PR state directory | Plain files. Contain diff excerpts and the agent's prose. |
-| Sessions | HttpOnly, Secure, SameSite cookie | HMAC-signed with `PRBOT_SECRET`, 30-day expiry. |
+| Sessions | HttpOnly, Secure, SameSite cookie | HMAC-signed with `RS_SECRET`, 30-day expiry. |
 | Device tokens (mobile, CLI) | users file | **SHA-256 hash only**; the plaintext is shown once. Expire 180 days after last use; revocable per device in Settings → Devices. |
 
-Rotating `PRBOT_SECRET` invalidates every session, every signed link and every stored token at once. That is the right outcome if it was rotated because it leaked.
+Rotating `RS_SECRET` invalidates every session, every signed link and every stored token at once. That is the right outcome if it was rotated because it leaked.
 
 ## Controls
 
@@ -37,7 +37,7 @@ Rotating `PRBOT_SECRET` invalidates every session, every signed link and every s
 - **A failed GitHub call never degrades into a bad post.** Response shape is validated, retried once, refused on anything odd.
 - **OAuth sign-in** (if configured) uses an HMAC-signed `state` with a 10-minute expiry carrying only an in-app return path; forged or replayed callbacks are rejected and cannot redirect off-site. Tokens are refreshed server-side before expiry.
 - **The server binds `127.0.0.1`** (or the compose network). Put a reverse proxy in front for anything beyond localhost.
-- **The GitHub webhook endpoint is signature-gated.** `POST /webhooks/github` needs no session — GitHub is the caller — so every delivery must carry `X-Hub-Signature-256 = HMAC-SHA256(GITHUB_WEBHOOK_SECRET, raw body)`, compared in constant time; a missing or wrong signature is a `401`, an unset secret a `503`. A valid delivery can only do what the poller already does: add or remove a queue row, refresh a head SHA, archive a closed PR's unposted review, record a review the person submitted on GitHub, and send the `review_requested` card. It cannot start a review, post, approve, read a token or touch any repository outside `REPOS` / `REPO_ALLOW_ORG`. The body is parsed as JSON and only the fields named in `prbot_webhook.py` are read; the requested reviewer must already be a signed-in user, so a forged payload cannot make the dashboard notify a stranger.
+- **The GitHub webhook endpoint is signature-gated.** `POST /webhooks/github` needs no session — GitHub is the caller — so every delivery must carry `X-Hub-Signature-256 = HMAC-SHA256(GITHUB_WEBHOOK_SECRET, raw body)`, compared in constant time; a missing or wrong signature is a `401`, an unset secret a `503`. A valid delivery can only do what the poller already does: add or remove a queue row, refresh a head SHA, archive a closed PR's unposted review, record a review the person submitted on GitHub, and send the `review_requested` card. It cannot start a review, post, approve, read a token or touch any repository outside `REPOS` / `REPO_ALLOW_ORG`. The body is parsed as JSON and only the fields named in `rs_webhook.py` are read; the requested reviewer must already be a signed-in user, so a forged payload cannot make the dashboard notify a stranger.
 
 ## Signing in
 
@@ -104,7 +104,7 @@ Stated plainly so nobody assumes otherwise.
 
 ```bash
 # .env
-PRBOT_SECRET=<openssl rand -hex 32>
+RS_SECRET=<openssl rand -hex 32>
 ```
 
 Restart. Every session, link and stored token is now invalid; users sign in and reconnect Claude again.

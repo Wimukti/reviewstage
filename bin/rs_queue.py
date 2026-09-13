@@ -1,10 +1,10 @@
-"""prbot_queue.py — the queue + notify logic pr-watch.sh and the GitHub webhook share.
+"""rs_queue.py — the queue + notify logic pr-watch.sh and the GitHub webhook share.
 
 pr-watch.sh rewrites $ROOT/queue.json from `gh pr list` every cycle and appends
 `<repo>:<pr>:<login>` to $ROOT/seen when it has told a reviewer about a PR. The webhook
-receiver (prbot_webhook.py) does the same things one event at a time, so both paths must
+receiver (rs_webhook.py) does the same things one event at a time, so both paths must
 produce byte-identical queue rows and agree on the dedup key — that is what this module
-pins down. The poller keeps its jq implementation; test_prbot_webhook.py compares the two.
+pins down. The poller keeps its jq implementation; test_rs_webhook.py compares the two.
 
 Queue row shape (pr-watch.sh's jq map, in this key order):
     repo, number, title, url, additions, deletions, changedFiles, requested,
@@ -24,7 +24,7 @@ from hashlib import sha256
 from pathlib import Path
 from urllib.parse import quote
 
-import prbot_paths as P
+import rs_paths as P
 
 ROOT = P.ROOT
 QUEUE = ROOT / "queue.json"

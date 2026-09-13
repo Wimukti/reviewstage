@@ -6,7 +6,7 @@ service token and TWO demo repositories, one demo user, a queue spanning both re
 finished reviews on disk, and a fake `gh` that fails every call so the server renders from the
 on-disk state and nothing ever reaches GitHub. Playwright signs in by injecting a cookie; here
 the server's own /handoff/accept route mints the session instead, from a link signed with the
-fixture's PRBOT_SECRET.
+fixture's RS_SECRET.
 """
 import hmac
 import json
@@ -18,7 +18,7 @@ import time
 from hashlib import sha256
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))   # prbot_profile lives beside us
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # rs_profile lives beside us
 
 USER = "demo-reviewer"
 REPO = "reviewstage/demo-repo"          # the web app
@@ -45,7 +45,7 @@ def row(repo, num, title, adds, dels, files, head, created, updated):
 
 
 def main():
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("ROOT", "~/.claude-pr-bot"))
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("ROOT", "~/.reviewstage"))
     root = root.expanduser()
     port = sys.argv[2] if len(sys.argv) > 2 else "8899"
     root.mkdir(parents=True, exist_ok=True)
@@ -55,12 +55,12 @@ def main():
     secret = ""
     if env_f.exists():
         for line in env_f.read_text().splitlines():
-            if line.startswith("PRBOT_SECRET="):
+            if line.startswith("RS_SECRET="):
                 secret = line.split("=", 1)[1].strip()
     secret = secret or secrets.token_hex(32)
 
     write(env_f, "\n".join([
-        f"PRBOT_SECRET={secret}",
+        f"RS_SECRET={secret}",
         f"REVIEWER={USER}",
         f"REPOS={REPO},{REPO2}",
         "DRY_RUN=1",
@@ -134,7 +134,7 @@ def main():
 
     # A repository profile for REPO, so the Skills page shows the "Repository profile" section
     # as profiled (REPO2 stays "never run"). Mirrors dashboard-ui/e2e/fixture.ts.
-    import prbot_profile
+    import rs_profile
     prof = {
         "summary": "A storefront: product cards read vendor lead times; payments and auth are "
                    "the sharp edges.",
@@ -156,7 +156,7 @@ def main():
                  "edited_at": None, "edited_by": ""}}
     pdir = root / "profiles" / slug(REPO)
     write(pdir / "profile.json", json.dumps(prof, indent=1) + "\n")
-    write(pdir / "profile.md", prbot_profile.to_markdown(prof))
+    write(pdir / "profile.md", rs_profile.to_markdown(prof))
     write(pdir / "status", "done")
     write(pdir / "runner", USER)
     write(pdir / "usage.json", json.dumps({

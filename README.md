@@ -107,7 +107,7 @@ bash -n bin/*.sh && python3 -m py_compile bin/*.py
 cd website && pnpm install && pnpm build && pnpm check
 ```
 
-To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently into `~/.claude-pr-bot/` as the `prbot.service` systemd unit (internal names that predate the rename; they will change in a later release); see [Install → From source](https://wimukti.github.io/reviewstage/start/install/#from-source-on-a-linux-server).
+To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently into `~/.reviewstage/` as the `reviewstage.service` systemd unit; see [Install → From source](https://wimukti.github.io/reviewstage/start/install/#from-source-on-a-linux-server).
 
 ## Contributing, security, and license
 

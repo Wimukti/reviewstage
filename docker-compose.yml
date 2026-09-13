@@ -16,7 +16,7 @@ x-app: &app
     - path: .env
       required: false
   volumes:
-    - reviewstage-data:/home/reviewstage/.claude-pr-bot
+    - reviewstage-data:/home/reviewstage/.reviewstage
   restart: unless-stopped
   init: true
 
@@ -25,7 +25,7 @@ services:
     <<: *app
     command: server
     ports:
-      - "127.0.0.1:${PRBOT_PORT:-8899}:8899"
+      - "127.0.0.1:${RS_PORT:-8899}:8899"
 
   # Optional: finds PRs awaiting each signed-in user's review and posts the Slack cards.
   # Without it the dashboard still works — you just open it yourself.
@@ -49,9 +49,9 @@ services:
     command: demo
     profiles: [demo]
     ports:
-      - "127.0.0.1:${PRBOT_PORT:-8899}:8899"
+      - "127.0.0.1:${RS_PORT:-8899}:8899"
     volumes:
-      - reviewstage-demo:/home/reviewstage/.claude-pr-bot
+      - reviewstage-demo:/home/reviewstage/.reviewstage
     init: true
 
 volumes:

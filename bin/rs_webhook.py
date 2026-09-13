@@ -1,7 +1,7 @@
-"""prbot_webhook.py — GitHub webhook receiver logic for POST /webhooks/github.
+"""rs_webhook.py — GitHub webhook receiver logic for POST /webhooks/github.
 
 The poller (pr-watch.sh) discovers review requests every few minutes; a webhook delivers the
-same facts within a second. Both feed the same files through prbot_queue.py, dedup on the same
+same facts within a second. Both feed the same files through rs_queue.py, dedup on the same
 `<repo>:<pr>:<login>` key in $ROOT/seen, and never run a review — a webhook only ever updates
 the queue and posts the review_requested card. The poller stays on as the safety net for
 missed deliveries (GitHub retries are best-effort) and for firewalled installs.
@@ -28,7 +28,7 @@ import time
 from hashlib import sha256
 from pathlib import Path
 
-import prbot_queue as Q
+import rs_queue as Q
 
 STATE_FILE = "webhooks.json"
 HANDLED = {

@@ -53,7 +53,7 @@ months, TypeScript-dominant): the signals stage took **120 ms** inside Python an
 
 ## What the model sees
 
-One `claude -p` call — **Sonnet by default**, `PRBOT_MODEL` overrides — receives the
+One `claude -p` call — **Sonnet by default**, `RS_MODEL` overrides — receives the
 `skills/repo-profile` skill, the signals JSON above, and a strict output contract:
 
 ```json
@@ -135,7 +135,7 @@ The setting is stored in `settings.json` as `"auto_profile": {"<owner>__<name>":
 ## Testing it without a model
 
 - `bin/profile-repo.sh <owner/name> --signals-only` — the deterministic stage, JSON on stdout.
-- `python3 -m unittest discover -s bin -p 'test_*.py'` — `bin/test_prbot_profile.py` covers glob
+- `python3 -m unittest discover -s bin -p 'test_*.py'` — `bin/test_rs_profile.py` covers glob
   validation (hallucinated globs dropped, directory globs match files beneath), risk-rule
   merging, prompt assembly (cap of 12, `why` truncation, Quick gets nothing), the markdown
   round-trip, versioning, and the signals stage on a throwaway git repository with a canned

@@ -315,7 +315,7 @@ export function Integrations({ me }: { me: Me }) {
       >
         {d.github.via === "oauth" ? (
           d.oauth ? (
-            <a className="btn soft" href="/oauth/start?next=%2Fprbot%2Fintegrations">
+            <a className="btn soft" href="/oauth/start?next=%2Fintegrations">
               Reconnect with GitHub
             </a>
           ) : null

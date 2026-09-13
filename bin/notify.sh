@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # notify.sh — one notifier, several backends. Sourced by lib-common.sh; also runnable directly
-# (prbot-server.py shells out to it):   notify.sh <kind> '<json-payload>'
+# (server.py shells out to it):   notify.sh <kind> '<json-payload>'
 #
 #   notify_card <kind> <json>    kind ∈ review_requested | review_ready | review_stopped | qa_ready
 #
@@ -232,7 +232,7 @@ _notify_generic() {
   return 0
 }
 
-# Direct invocation: notify.sh <kind> '<json>' — used by prbot-server.py. Loads the install's
+# Direct invocation: notify.sh <kind> '<json>' — used by server.py. Loads the install's
 # config through lib-common.sh (which sources this file again as a library; guarded below).
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ -z "${_NOTIFY_MAIN:-}" ]; then
   _NOTIFY_MAIN=1   # lib-common.sh sources this file again; the guard stops the recursion

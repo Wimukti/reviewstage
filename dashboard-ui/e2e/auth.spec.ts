@@ -33,7 +33,7 @@ test.describe("login page", () => {
     });
     await page.goto("/login?device=1&name=Pixel");
     const href = await page.getByRole("link", { name: "Continue with GitHub" }).getAttribute("href");
-    expect(href).toBe(`/oauth/start?next=${encodeURIComponent("/prbot/device?name=Pixel")}`);
+    expect(href).toBe(`/oauth/start?next=${encodeURIComponent("/device?name=Pixel")}`);
   });
 
   test("without OAuth: the token form is the sign-in and the admin hint names the callback URL", async ({ page }) => {
@@ -42,7 +42,7 @@ test.describe("login page", () => {
     await expect(page.getByRole("button", { name: "Sign in with token" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Continue with GitHub" })).toHaveCount(0);
     await expect(page.getByText("Running this server?")).toBeVisible();
-    await expect(page.getByText("https://reviewstage.example.com/prbot/oauth/callback")).toBeVisible();
+    await expect(page.getByText("https://reviewstage.example.com/oauth/callback")).toBeVisible();
     await expect(page.getByRole("link", { name: "the install guide" })).toHaveAttribute(
       "href",
       /start\/install\/#github-sign-in/,

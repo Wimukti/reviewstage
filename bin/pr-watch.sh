@@ -4,7 +4,7 @@
 #               notify.sh) for anything newly requested.
 #
 # cron (every 3 min, flock'd):
-#   */3 * * * * flock -n /tmp/pr-watch.lock $HOME/.claude-pr-bot/bin/pr-watch.sh
+#   */3 * * * * flock -n /tmp/pr-watch.lock $HOME/.reviewstage/bin/pr-watch.sh
 #
 # Notify only; no review runs from here. Dedup is per REPO + PR + LOGIN (`<repo>:<pr>:<login>`
 # in `seen`), so each reviewer is pinged once per PR and never again — pushing new commits
@@ -27,7 +27,7 @@ if [ "$(setting poller_enabled true)" = false ]; then
   echo "==> poller disabled in Settings (poller_enabled=false) — nothing to do"; exit 0
 fi
 
-# GitHub webhooks (POST /webhooks/github, see prbot_webhook.py) deliver the same facts within a
+# GitHub webhooks (POST /webhooks/github, see rs_webhook.py) deliver the same facts within a
 # second and stamp $ROOT/webhooks.json. When one arrived within 2 × the poll interval this run
 # is only the safety net for missed deliveries — say so, then carry on exactly as before.
 WEBHOOKS_FILE="$ROOT/webhooks.json"
@@ -45,15 +45,15 @@ fi
 # Don't Slack-nudge for PRs created long ago: a fresh review request on a years-old open PR is
 # almost always noise (see the pilot feedback). Such PRs are still marked seen (so they never
 # spam) and stay fully visible + reviewable in the dashboard queue — only the Slack ping is
-# suppressed. 0 disables the cutoff. Tunable in .env as PRBOT_MAX_PR_AGE_DAYS.
-MAX_AGE_DAYS="${PRBOT_MAX_PR_AGE_DAYS:-45}"
+# suppressed. 0 disables the cutoff. Tunable in .env as RS_MAX_PR_AGE_DAYS.
+MAX_AGE_DAYS="${RS_MAX_PR_AGE_DAYS:-45}"
 
 USERS_FILE="$ROOT/users.json"
 
 # Nightly: drop device tokens idle for 180 days (docs/MOBILE.md). Once per calendar day; the
 # prune rewrites users.json only when something actually expired.
 if [ -f "$USERS_FILE" ] && [ "$(cat "$ROOT/devices-pruned" 2>/dev/null)" != "$(date +%F)" ]; then
-  python3 "$HERE/prbot_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
+  python3 "$HERE/rs_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
 fi
 
 logins=$(jq -r 'keys[]' "$USERS_FILE" 2>/dev/null)
@@ -247,7 +247,7 @@ if [ "$AUTO" != "{}" ] && [ -n "$AUTO" ]; then
     fi
     mv "$pd/tree.now" "$pd/tree.paths"
     exp=$(( now + 300 )); sig=$(sign "profile-auto:$repo:$exp")
-    resp=$(curl -fsS -m 20 -X POST "http://127.0.0.1:${PRBOT_PORT:-8899}/api/profile/auto" \
+    resp=$(curl -fsS -m 20 -X POST "http://127.0.0.1:${RS_PORT:-8899}/api/profile/auto" \
              -H 'Content-Type: application/json' \
              -d "$(jq -n --arg r "$repo" --arg e "$exp" --arg s "$sig" '{repo:$r, exp:$e, sig:$s}')" \
              2>&1) || { echo "==> auto-profile $repo: server did not accept the request: $resp"; continue; }

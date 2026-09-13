@@ -32,7 +32,7 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
   stored exactly like PATs below, and refreshed server-side a minute before expiry.
 
 - **Stored tokens are encrypted at rest** (AES-256-CBC, PBKDF2) with a key *derived* from
-  `PRBOT_SECRET`, not stored beside them. Rotating the secret therefore also invalidates every
+  `RS_SECRET`, not stored beside them. Rotating the secret therefore also invalidates every
   stored token — the right outcome if the secret was rotated because it leaked. The shell
   scripts only ever read login + Slack ID; decryption happens in the server, at post time.
 
@@ -40,13 +40,13 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
   base clone only. Nothing can post or approve under a name other than the signed-in user's,
   and GitHub's own self-approval check runs against that user.
 
-- **Every action is HMAC-signed** over `action:pr:expiry` with `PRBOT_SECRET` — post, approve,
+- **Every action is HMAC-signed** over `action:pr:expiry` with `RS_SECRET` — post, approve,
   mark-done, archive, start-review. Tokens are **minted at render time and last 30 minutes**,
   so a bookmarked or forwarded page cannot act later, and a cross-site form has nothing valid
   to present. Pages themselves are gated by the session, not a signature, so they are plain
   bookmarkable URLs.
 
-- **Cross-host handoff is allow-listed.** When `PRBOT_HOST_ALIASES` is set, a session may be
+- **Cross-host handoff is allow-listed.** When `RS_HOST_ALIASES` is set, a session may be
   carried between those hostnames only — the handoff token is short-lived and is never sent to
   a URL outside the list. With the list empty the feature is off.
 
@@ -60,7 +60,7 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
   and get dumped into the summary body. The fetch validates the response shape, retries once,
   and refuses on anything odd.
 
-- **Diff-anchor validation** (`prbot_diff.py`) checks every comment's `path:line` against the
+- **Diff-anchor validation** (`rs_diff.py`) checks every comment's `path:line` against the
   actual diff before posting, so GitHub cannot 422 the entire review because one finding
   pointed at a line that isn't in the diff.
 
@@ -68,7 +68,7 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
   listening on a public port directly. Terminate TLS at the proxy; the session cookie is marked
   `Secure`, so plain HTTP will not carry it.
 
-- **Secrets stay in `~/.claude-pr-bot/.env`** (chmod 600), in `$HOME`, never in a git repo.
+- **Secrets stay in `~/.reviewstage/.env`** (chmod 600), in `$HOME`, never in a git repo.
   `.gitignore` here blocks `.env` and `*.pem` as a second line of defence.
 
 - **Nothing reaches GitHub without a human clicking.** `run-review.sh` has no write path to
@@ -138,14 +138,14 @@ Mitigations that are worth doing:
 - **Revoke it the moment the server is decommissioned**, not later. A disposable machine that
   gets torn down leaves a live token behind if you forget.
 
-## Rotating `PRBOT_SECRET`
+## Rotating `RS_SECRET`
 
 If a signed link ever leaks somewhere it shouldn't — a shared channel, a screenshot, a
 ticket — rotate it:
 
 ```bash
-sed -i "s|^PRBOT_SECRET=.*|PRBOT_SECRET=$(openssl rand -hex 32)|" ~/.claude-pr-bot/.env
-sudo systemctl restart prbot
+sed -i "s|^RS_SECRET=.*|RS_SECRET=$(openssl rand -hex 32)|" ~/.reviewstage/.env
+sudo systemctl restart reviewstage
 ```
 
 Every outstanding link is immediately invalid, including your own, and every stored token

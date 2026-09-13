@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-qa.sh <owner/name> <pr-number> — build a QA test guide for one PR with the pr-qa-guide skill.
 #
-# Spawned detached by prbot-server.py from the QA guide page. Writes progress to
+# Spawned detached by server.py from the QA guide page. Writes progress to
 # $(prdir <repo> <pr>)/qa.status and the finished guide (GitHub-flavored markdown) to qa.md there.
 # Never writes to GitHub — it only reads the PR (diff, review threads, history) and produces a
 # guide the human hands to QA, then pings the requester (notify_card qa_ready).
@@ -76,8 +76,8 @@ git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
 status "done"
 echo "[QA $REPO#$PR] done ($(wc -l < "$DIR/qa.md") lines)"
 
-# Tell whoever asked for it (PRBOT_ACTOR, set by the dashboard) that the guide is ready.
-ACTOR="${PRBOT_ACTOR:-}"
+# Tell whoever asked for it (RS_ACTOR, set by the dashboard) that the guide is ready.
+ACTOR="${RS_ACTOR:-}"
 notify_card qa_ready "$(jq -n --arg repo "$REPO" --arg p "$PR" --arg a "$ACTOR" \
     --arg l "$(signed_link qa "$REPO" "$PR" 604800)" \
     --argjson m "$(cat "$DIR/qa_meta.json")" \

@@ -1,4 +1,4 @@
-"""Unit tests for prbot_profile.py — glob validation, risk merging, prompt assembly, the
+"""Unit tests for rs_profile.py — glob validation, risk merging, prompt assembly, the
 markdown round-trip and the signals stage on a throwaway git repo.
 
     python3 -m unittest discover -s bin -p 'test_*.py'
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import prbot_profile as PF  # noqa: E402
+import rs_profile as PF  # noqa: E402
 
 TREE = ["app/auth/login.py", "app/auth/session.py", "app/payments/charge.py",
         "app/payments/refund.py", "app/models/product.py", "api/routes.py", "README.md",

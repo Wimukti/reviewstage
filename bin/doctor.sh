@@ -8,10 +8,10 @@
 #   docker compose run --rm app doctor    a throwaway container sharing the data volume
 set -uo pipefail
 
-ROOT="${ROOT:-$HOME/.claude-pr-bot}"
+ROOT="${ROOT:-$HOME/.reviewstage}"
 ENV_FILE="$ROOT/.env"
 STATE="$ROOT/state"
-PORT="${PRBOT_PORT:-8899}"
+PORT="${RS_PORT:-8899}"
 MIN_FREE_DISK_MB="${MIN_FREE_DISK_MB:-1024}"
 
 if [ -t 1 ]; then G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; D=$'\e[2m'; N=$'\e[0m'; else G=; Y=; R=; D=; N=; fi

@@ -3,7 +3,7 @@
 This is the shape of a team default that has grown domain rules. It started life as the review
 skill for a multi-tenant commerce platform (a PHP monolith with a graph-database ORM, a React +
 TypeScript frontend and GraphQL between them) and every identifier from that product has been
-replaced with a placeholder in *italics*. Copy it into `~/.claude-pr-bot/skills/_global.md`,
+replaced with a placeholder in *italics*. Copy it into `~/.reviewstage/skills/_global.md`,
 swap the placeholders for your own stack, and delete the sections that do not apply. The
 generic default ReviewStage ships is `../global-review.md`.
 

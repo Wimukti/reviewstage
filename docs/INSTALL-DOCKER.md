@@ -10,7 +10,7 @@ arm64 Linux all work — the image builds for the host's architecture.
 
 ```bash
 git clone <this repo> reviewstage && cd reviewstage
-cp .env.example .env            # set REPO and GITHUB_PAT (next section)
+cp .env.example .env            # set REPOS and GITHUB_PAT (next section)
 docker compose up -d            # builds the image the first time (~3–5 min)
 ```
 
@@ -30,9 +30,15 @@ and `docker compose up -d`.
 
 ## The two values in `.env`
 
-### `REPO`
+### `REPOS`
 
-`owner/name` of the repository to review. One repository per install.
+The repositories to review, as `owner/name`, comma-separated — one install reviews many. `REPO=owner/name`
+still works as a single-entry alias (if both are set the lists are unioned). Each entry is checked
+for the `owner/name` shape at startup.
+
+Optionally, `REPO_ALLOW_ORG=<org>` accepts any repository under that org where a signed-in user
+gets a review request: the poller discovers it (`gh search prs --owner <org> --review-requested=<login>`)
+and the base clone is made on the first review. The service token must be able to see the org.
 
 ### `GITHUB_PAT` — the service token
 
@@ -45,8 +51,8 @@ tokens → **Fine-grained tokens** → *Generate new token*.
 
 | Setting               | Value                                                              |
 | --------------------- | ------------------------------------------------------------------ |
-| Resource owner        | the org (or user) that owns `REPO`                                 |
-| Repository access     | **Only select repositories** → the repo in `REPO`                  |
+| Resource owner        | the org (or user) that owns the repos in `REPOS`                   |
+| Repository access     | **Only select repositories** → every repo in `REPOS` (or **All repositories** when using `REPO_ALLOW_ORG`) |
 | Repository permissions| **Pull requests: Read and write** · **Contents: Read** · **Metadata: Read** (added automatically) |
 | Expiration            | your call; the container keeps working until it lapses             |
 
@@ -126,13 +132,14 @@ real agent run (10–15 minutes on a 25-file PR) against that person's usage lim
 
 | In the container                         | What                                               |
 | ---------------------------------------- | -------------------------------------------------- |
-| `/home/reviewstage/.claude-pr-bot`       | **The data volume** (`reviewstage-data`): `.env`, `users.json`, `state/<pr>/…`, `queue.json`, `skills/`, the base clone `repo/`, worktrees `wt/` |
+| `/home/reviewstage/.claude-pr-bot`       | **The data volume** (`reviewstage-data`): `.env`, `users.json`, `state/<owner>__<name>/<pr>/…`, `queue.json`, `skills/` (with `skills/repos/<owner>__<name>/SKILL.md` per-repo overrides), the base clones `repos/<owner>__<name>/`, worktrees `wt/`, and a `MIGRATED` marker once a legacy single-repo layout has been moved |
 | `/app/bin`                               | the server and scripts (`prbot-server.py`, `run-review.sh`, `pr-watch.sh`, `doctor.sh`) |
 | `/app/bin/static`                        | the dashboard bundle built in the image's first stage |
 | `/app/skills`                            | the review skills shipped with the repo            |
 
-The base clone is made in the background on first start (blobless, so it is small). Until it
-finishes a review fails with "could not fetch"; `docker compose logs app` and
+One base clone per repo in `REPOS` is made in the background on first start (blobless, so each is
+small); a repo accepted via `REPO_ALLOW_ORG` is cloned on its first review. Until a clone
+finishes a review of that repo fails with "could not fetch"; `docker compose logs app` and
 `~/.claude-pr-bot/clone.log` (inside the volume) show progress.
 
 The host `.env` is mirrored into the volume on every start. A key **set** in the host file wins;
@@ -169,7 +176,8 @@ install on a LAN also works — do not do that for anything reachable from outsi
 
 | Symptom                                          | Cause / fix                                                     |
 | ------------------------------------------------ | --------------------------------------------------------------- |
-| `doctor` FAILs `gh repo view`                    | The token's *Repository access* does not include `REPO`, or the org has not approved it |
+| `doctor` FAILs `gh repo view`                    | The token's *Repository access* does not include that repo in `REPOS`, or the org has not approved it |
+| Server exits: "legacy single-repo state found … but N repositories are configured" | A pre-multi-repo volume needs one start with exactly one repo (`REPO=owner/name`, `REPOS` empty) so its state can be attributed; then add the others |
 | Review fails at once: "connect your Claude account" | The clicking user has not connected Claude (Settings)        |
 | Review fails: "could not fetch <branch>"         | Base clone not finished or failed — see `clone.log` in the volume |
 | Review fails: "not enough free memory"           | `MIN_FREE_MB` (default 800) — give Docker more RAM or lower it in `.env` |

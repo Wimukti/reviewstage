@@ -36,7 +36,18 @@ else
   fail ".env missing or unreadable at $ENV_FILE"
 fi
 
-if [ -n "${REPO:-}" ]; then pass "REPO=$REPO"; else fail "REPO not set"; fi
+# Repositories: REPOS (list) ∪ REPO (single alias); each must be owner/name.
+repos=$(printf '%s %s' "${REPOS:-}" "${REPO:-}" | tr ',' ' ' | tr -s '[:space:]' '\n' | awk 'NF && !s[tolower($0)]++')
+if [ -n "$repos" ]; then
+  pass "repositories: $(echo "$repos" | tr '\n' ' ')"
+  for r in $repos; do
+    printf '%s' "$r" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9_.-]+$' \
+      || fail "'$r' in REPOS/REPO is not owner/name shaped"
+  done
+else
+  fail "no repository configured (set REPOS=owner/name[,…] or REPO=owner/name)"
+fi
+[ -n "${REPO_ALLOW_ORG:-}" ] && note "REPO_ALLOW_ORG=$REPO_ALLOW_ORG — repos under that org are accepted on demand (the service token must see the org)"
 case "${DRY_RUN:-1}" in
   1) note "DRY_RUN=1 — nothing is written to GitHub";;
   0) note "DRY_RUN=0 — posting and approving are LIVE";;
@@ -63,21 +74,36 @@ if [ -n "${GITHUB_PAT:-}" ] && command -v gh >/dev/null; then
     fail "gh auth status failed with the service token"
     note "$(echo "$out" | head -2 | tr '\n' ' ')"
   fi
-  if [ -n "${REPO:-}" ]; then
-    if GH_TOKEN="$GITHUB_PAT" timeout 20 gh repo view "$REPO" --json nameWithOwner -q .nameWithOwner >/dev/null 2>&1; then
-      pass "gh repo view $REPO works with the service token"
+  for r in $repos; do
+    if GH_TOKEN="$GITHUB_PAT" timeout 20 gh repo view "$r" --json nameWithOwner -q .nameWithOwner >/dev/null 2>&1; then
+      pass "gh repo view $r works with the service token"
     else
-      fail "the service token cannot see $REPO (repository access or Metadata: Read missing?)"
+      fail "the service token cannot see $r (repository access or Metadata: Read missing?)"
+    fi
+  done
+  if [ -n "${REPO_ALLOW_ORG:-}" ]; then
+    if GH_TOKEN="$GITHUB_PAT" timeout 20 gh api "orgs/$REPO_ALLOW_ORG" -q .login >/dev/null 2>&1 \
+       || GH_TOKEN="$GITHUB_PAT" timeout 20 gh api "users/$REPO_ALLOW_ORG" -q .login >/dev/null 2>&1; then
+      pass "the service token can see the REPO_ALLOW_ORG owner $REPO_ALLOW_ORG"
+    else
+      warn "the service token cannot see $REPO_ALLOW_ORG — org discovery will find nothing"
     fi
   fi
 else
   [ -n "${GITHUB_PAT:-}" ] || fail "GITHUB_PAT not set — nothing can read GitHub"
 fi
-if [ -d "$ROOT/repo/.git" ]; then
-  pass "base clone present ($ROOT/repo)"
-else
-  warn "base clone not yet at $ROOT/repo — reviews fail until it exists"
-  [ -f "$ROOT/clone.log" ] && note "clone.log: $(tail -1 "$ROOT/clone.log")"
+for r in $repos; do
+  slug="${r/\//__}"
+  if [ -d "$ROOT/repos/$slug/.git" ]; then
+    pass "base clone present ($ROOT/repos/$slug)"
+  else
+    warn "base clone not yet at $ROOT/repos/$slug — cloned on first review, or see clone.log"
+    [ -f "$ROOT/clone.log" ] && note "clone.log: $(tail -1 "$ROOT/clone.log")"
+  fi
+done
+if [ -d "$ROOT/repo/.git" ] || ls -d "$STATE"/[0-9]* >/dev/null 2>&1; then
+  if [ -f "$ROOT/MIGRATED" ]; then note "legacy single-repo leftovers exist beside a MIGRATED marker (harmless)"
+  else warn "legacy single-repo layout ($ROOT/repo, $STATE/<pr>) not yet migrated — the server does it on its next start"; fi
 fi
 
 # --- resources -------------------------------------------------------------------------------

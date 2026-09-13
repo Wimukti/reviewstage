@@ -30,7 +30,7 @@ ReviewStage is an open-source, self-hosted PR review assistant built on [Claude 
 
 ```bash
 git clone https://github.com/Wimukti/reviewstage && cd reviewstage
-cp .env.example .env          # set REPO and a read-only GITHUB_PAT
+cp .env.example .env          # set REPOS and a read-only GITHUB_PAT
 docker compose up -d
 bin/doctor.sh                 # checks Docker, .env, and that the service is healthy
 ```
@@ -61,7 +61,7 @@ Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped 
 docker compose --profile team up -d
 ```
 
-Adds the review-request poller and Slack cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team; each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Slack works via an incoming webhook or a bot token (threaded replies); Discord is planned. See [Team mode](https://wimukti.github.io/reviewstage/start/team-mode/).
+Adds the review-request poller and Slack cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Slack works via an incoming webhook or a bot token (threaded replies); Discord is planned. See [Team mode](https://wimukti.github.io/reviewstage/start/team-mode/).
 
 ## Documentation
 

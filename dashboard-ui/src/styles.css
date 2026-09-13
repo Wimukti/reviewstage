@@ -751,3 +751,17 @@ color:var(--dim)}
 .clamp{display:-webkit-box;-webkit-line-clamp:4;line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .morebtn{margin-top:8px;background:none;border:0;color:var(--blue);font:inherit;font-size:.82rem;
 cursor:pointer;padding:0;text-decoration:underline}
+
+/* --- repository dimension --------------------------------------------------------------------- */
+.repochip{display:inline-flex;align-items:center;font-family:var(--mono);font-size:.72rem;font-weight:600;
+  padding:2px 8px;border-radius:6px;background:var(--panel2,rgba(124,131,240,.12));color:var(--dim);
+  border:1px solid var(--line);white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.repochip.big{font-size:.9rem;padding:3px 10px}
+.prtitle .repo{font-family:var(--mono);font-weight:500;color:var(--dim);font-size:.85em;margin-right:6px}
+.repofilter{display:inline-flex;align-items:center;gap:8px}
+.repofilter select,.repopick select{font:inherit;font-size:.85rem;padding:6px 10px;border-radius:8px;
+  border:1px solid var(--line);background:var(--panel,transparent);color:var(--fg)}
+.repopick{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.repopick .lbl{font-size:.85rem;color:var(--dim)}
+.cmdk-repo{font-family:var(--mono);font-size:.72rem;color:var(--dim);margin-left:6px}
+.rowsub .repochip{margin-right:4px}

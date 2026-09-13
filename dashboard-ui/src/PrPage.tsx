@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
+  ApiError,
   type Finding,
   type ReviewData,
   type Me,
   type PrData,
+  type PrRef,
   type ReviewersData,
   type RunFormData,
   type Token,
 } from "./api";
 import { Md } from "./Md";
 import { MdEditor } from "./MdEditor";
+import { prLabel, prUrl } from "./pr";
+import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
+
+const refOf = (d: PrData): PrRef => ({ repo: d.repo, num: d.pr });
 
 const REV_STATE: Record<string, [string, string, string]> = {
   APPROVED: ["ok", "✓", "Approved"],
@@ -85,7 +91,7 @@ function RunForm({
   connected,
   onStarted,
 }: {
-  pr: string;
+  pr: PrRef;
   token: Token;
   form: RunFormData;
   label: string;
@@ -206,14 +212,14 @@ function RunForm({
   );
 }
 
-function HistoryList({ pr, runs }: { pr: string; runs: PrData["history"] }) {
+function HistoryList({ pr, runs }: { pr: PrRef; runs: PrData["history"] }) {
   if (!runs || !runs.length) return null;
   return (
     <div className="card">
       <div className="effort-lbl">Earlier runs ({runs.length})</div>
       <div className="histlist">
         {runs.map((h) => (
-          <Link key={h.ts} className="histrow" to={`/pr?pr=${pr}&v=${h.ts}`}>
+          <Link key={h.ts} className="histrow" to={prUrl(pr, "/pr", `&v=${h.ts}`)}>
             <span className="histwhen">earlier run</span>
             <span className="muted sm">
               {h.effort} · {h.findings} finding(s)
@@ -226,13 +232,13 @@ function HistoryList({ pr, runs }: { pr: string; runs: PrData["history"] }) {
   );
 }
 
-function ProgressPanel({ pr, data, onStop }: { pr: string; data: PrData; onStop: () => void }) {
+function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: () => void }) {
   const r = data.reviewing!;
   const [stopping, setStopping] = useState(false);
   return (
     <div className="card top">
       <div className="prog-hd">
-        Drafting review for <b>#{pr}</b> · <span className="muted sm">{r.effortLabel} effort</span>
+        Drafting review for <b>{prLabel(pr)}</b> · <span className="muted sm">{r.effortLabel} effort</span>
       </div>
       <ul className="prog">
         {r.phases.map((ph, j) => (
@@ -283,7 +289,7 @@ function FindingCard({
   onToggle: () => void;
   body: string;
   onBody: (v: string) => void;
-  pr: string;
+  pr: PrRef;
   explainToken: Token;
 }) {
   const [exp, setExp] = useState("");
@@ -437,7 +443,7 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   async function submitPost(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const res = await api.post(data.pr, data.tokens.post, {
+    const res = await api.post(refOf(data), data.tokens.post, {
       selected: [...selected],
       bodies,
       suggs: {},
@@ -451,7 +457,7 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   async function submitApprove(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const res = await api.approve(data.pr, data.tokens.approve, approveBody, ack);
+    const res = await api.approve(refOf(data), data.tokens.approve, approveBody, ack);
     setBanner(res.bannerHtml);
     setBusy(false);
     onDone();
@@ -465,7 +471,7 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
       onToggle={() => toggle(f.i)}
       body={bodies[f.i] ?? ""}
       onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
-      pr={data.pr}
+      pr={refOf(data)}
       explainToken={data.tokens.explain}
     />
   );
@@ -687,14 +693,14 @@ function RerunSection({ data, onDone }: { data: PrData; onDone: () => void }) {
           Run it again — a fresh effort level or a focus note. The current review is kept in history below.
         </p>
         <RunForm
-          pr={data.pr}
+          pr={refOf(data)}
           token={data.tokens.review}
           form={data.runForm}
           label="Re-run review"
           connected={data.claudeConnected}
           onStarted={onDone}
         />
-        <HistoryList pr={data.pr} runs={data.history} />
+        <HistoryList pr={refOf(data)} runs={data.history} />
       </div>
     </div>
   );
@@ -721,17 +727,44 @@ function usageTitle(u: NonNullable<PrData["usage"]>): string {
   );
 }
 
+// Breadcrumbs: Queue / owner/name / #123. Clicking the repo crumb filters the queue to it.
+function Crumbs({ data, tail }: { data: PrData; tail?: React.ReactNode }) {
+  return (
+    <nav className="bc">
+      <Link to="/">Queue</Link>
+      {data.repo && (
+        <>
+          <span className="sep">/</span>
+          <Link to="/" className="repo" onClick={() => setRepoFilter(data.repo)} title="Filter the queue to this repository">
+            {data.repo}
+          </Link>
+        </>
+      )}
+      <span className="sep">/</span>
+      {tail ? <Link to={prUrl(refOf(data))}>#{data.pr}</Link> : <span className="cur">#{data.pr}</span>}
+      {tail && (
+        <>
+          <span className="sep">/</span>
+          <span className="cur">{tail}</span>
+        </>
+      )}
+    </nav>
+  );
+}
+
+function Title({ data }: { data: PrData }) {
+  return (
+    <h1 className="prtitle">
+      {data.repo && <span className="repo">{data.repo}</span>}#{data.pr} — {data.title}
+    </h1>
+  );
+}
+
 function HeaderTop({ data }: { data: PrData }) {
   return (
     <>
-      <nav className="bc">
-        <Link to="/">Queue</Link>
-        <span className="sep">/</span>
-        <span className="cur">#{data.pr}</span>
-      </nav>
-      <h1 className="prtitle">
-        #{data.pr} — {data.title}
-      </h1>
+      <Crumbs data={data} />
+      <Title data={data} />
     </>
   );
 }
@@ -745,10 +778,10 @@ function PrSidebar({ data }: { data: PrData }) {
         <a className="sideact" href={data.ghUrl} target="_blank" rel="noopener">
           <span className="sideact-ico">↗</span> Open on GitHub
         </a>
-        <Link className="sideact" to={`/qa?pr=${data.pr}`}>
+        <Link className="sideact" to={prUrl(refOf(data), "/qa")}>
           <span className="sideact-ico">🧪</span> QA guide
         </Link>
-        <Link className="sideact" to={`/stack?pr=${data.pr}`}>
+        <Link className="sideact" to={prUrl(refOf(data), "/stack")}>
           <span className="sideact-ico">🔗</span> Stacked review
         </Link>
       </div>
@@ -835,17 +868,37 @@ function PrBanners({ data }: { data: PrData }) {
   );
 }
 
-export function PrPage(_props: { me: Me }) {
+export function PrPage({ me }: { me: Me }) {
   const { search } = useLocation();
-  const pr = search.get("pr") || "";
+  const num = search.get("pr") || "";
+  const repo = search.get("repo") || "";
   const v = search.get("v") || "";
+  const pr: PrRef = { repo, num };
   const [data, setData] = useState<PrData | null>(null);
+  const [pick, setPick] = useState<string[] | null>(null); // repos to choose from (ambiguous link)
+  const [err, setErr] = useState("");
   const timer = useRef<number | undefined>(undefined);
 
   const load = useCallback(() => {
-    if (!pr) return;
-    api.pr(pr, v || undefined).then(setData);
-  }, [pr, v]);
+    if (!num) return;
+    api
+      .pr(pr, v || undefined)
+      .then((d) => {
+        setPick(null);
+        setErr("");
+        setData(d);
+      })
+      .catch((e: unknown) => {
+        // A legacy /pr?pr=N link on a multi-repo install: the server cannot place the number, so
+        // it hands back the candidates and we let the reviewer pick.
+        if (e instanceof ApiError && Array.isArray(e.data.repos) && e.data.error === "ambiguous repo") {
+          setPick(e.data.repos as string[]);
+        } else {
+          setErr(e instanceof Error ? e.message : "Could not load this PR.");
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, num, v]);
 
   useEffect(() => {
     setData(null);
@@ -861,25 +914,52 @@ export function PrPage(_props: { me: Me }) {
     return () => window.clearInterval(timer.current);
   }, [data, load]);
 
-  if (!data) return <div className="muted">Loading…</div>;
-
-  if (data.historyView) {
+  if (pick) {
+    const repos = pick.length ? pick : me.repos || [];
     return (
       <>
         <nav className="bc">
           <Link to="/">Queue</Link>
           <span className="sep">/</span>
-          <Link to={`/pr?pr=${data.pr}`}>#{data.pr}</Link>
-          <span className="sep">/</span>
-          <span className="cur">earlier run</span>
+          <span className="cur">#{num}</span>
         </nav>
-        <h1 className="prtitle">
-          #{data.pr} — {data.title}
-        </h1>
+        <h1 className="prtitle">Which repository is #{num} in?</h1>
+        <div className="card top" data-testid="repo-pick">
+          <p className="muted sm">
+            This link names a PR number but not a repository, and this ReviewStage reviews several.
+            Pick one to continue.
+          </p>
+          <div className="list">
+            {repos.map((r) => (
+              <Link key={r} className="row" to={prUrl({ repo: r, num })}>
+                <span className="rowlink">
+                  <span className="repochip big">{r}</span> <span className="num">#{num}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
+  if (err)
+    return (
+      <div className="banner err">
+        <span>🔴</span>
+        <div>{err}</div>
+      </div>
+    );
+  if (!data) return <div className="muted">Loading…</div>;
+
+  if (data.historyView) {
+    return (
+      <>
+        <Crumbs data={data} tail="earlier run" />
+        <Title data={data} />
         <div className="banner info">
           <span>🕓</span>
           <div>
-            <b>Viewing an earlier run</b> from {data.when}. <Link to={`/pr?pr=${data.pr}`}>Back to the current review</Link>.
+            <b>Viewing an earlier run</b> from {data.when}. <Link to={prUrl(refOf(data))}>Back to the current review</Link>.
           </div>
         </div>
         <h2>Assessment</h2>

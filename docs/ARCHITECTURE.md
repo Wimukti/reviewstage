@@ -13,7 +13,8 @@ review queue on a small server.
 | `run-review.sh`   | spawned per click         | Worktree → `claude -p` → `review.json`. Never writes to GitHub  |
 | `prbot_diff.py`   | imported                  | Diff-anchor validation, so GitHub can't 422 the whole review    |
 | `prbot_md.py`     | imported                  | Dependency-free markdown → HTML (headings, tables, code, lists) |
-| `lib-common.sh`   | sourced                   | Config, HMAC signing, Slack posting                             |
+| `lib-common.sh`   | sourced                   | Config, repo helpers, HMAC signing, Slack posting               |
+| `prbot_paths.py`  | imported                  | The one place that knows the on-disk layout + the legacy migration |
 | `dashboard-ui/`   | built by bootstrap        | React + TypeScript SPA, bundled by esbuild into `bin/static/`   |
 | `bootstrap.sh`    | you, once                 | Installs all of the above                                       |
 
@@ -43,8 +44,8 @@ server strips it), so bookmarks and signed links from earlier versions keep reso
 | `GET /login` `POST`      | Sign in with a GitHub PAT + optional Slack member ID, or OAuth  |
 | `GET /settings` `POST`   | Update Slack ID / rotate PAT / connect Claude / sign out         |
 | `GET /?tab=&sort=`       | Index — **your** queue: tabs, sorting, dates                     |
-| `GET /pr?pr=N`           | Detail — timeline, assessment, prose, editable findings, actions |
-| `GET /review?pr=N`       | Start a review, redirect to the detail page                      |
+| `GET /pr?repo=o/n&pr=N`  | Detail — timeline, assessment, prose, editable findings, actions (`?pr=N` alone resolves when one repo is configured) |
+| `GET /review?repo=&pr=N` | Start a review, redirect to the detail page                      |
 | `POST /post`             | Post the selected (possibly edited) comments                     |
 | `POST /approve`          | LGTM comment + approve                                           |
 | `GET /health`            | Liveness                                                         |
@@ -74,7 +75,7 @@ comment posted with it.
 - **`run-review.sh` never touches GitHub.** It only produces `review.json`. Every write is a
   separate, deliberate human click. This is the property that makes the whole thing safe to
   run against a real review queue.
-- **Slack dedup is per PR + login, not per head SHA.** Each reviewer is pinged once per PR and
+- **Slack dedup is per repo + PR + login, not per head SHA.** Each reviewer is pinged once per PR and
   never again; pushing new commits must not re-ping anyone. The dashboard always reflects the
   live queue regardless of what has been announced, so Slack is a one-time nudge, not the
   source of truth.
@@ -82,9 +83,32 @@ comment posted with it.
   updates a week. `review-requested:<login>` resolves server-side, so the poll costs one API
   call per user per 3 minutes, and `queue.json` means page loads never call `gh` at all.
 
+## Repositories
+
+One install reviews many repositories. `REPOS` lists them (`REPO` is a single-entry alias);
+`REPO_ALLOW_ORG` accepts any repo under that org where a signed-in user has a review request
+(discovered by the poller, cloned lazily). Internally a PR is `(repo, number)`; on disk a repo is
+the slug `<owner>__<name>` (owners cannot contain `_`, so the first `__` is the separator):
+
+| Path                                   | What                                            |
+| -------------------------------------- | ----------------------------------------------- |
+| `repos/<owner>__<name>/`               | blobless base clone; worktrees branch off it    |
+| `state/<owner>__<name>/<pr>/`          | per-PR state (below)                            |
+| `skills/repos/<owner>__<name>/SKILL.md`| optional per-repo override of the team default  |
+
+`prbot_paths.py` (`repo_slug`, `base_dir`, `prdir`, `udir`, `iter_prdirs`) and the matching bash
+helpers in `lib-common.sh` are the only places that build these paths. Legacy installs kept the
+clone at `repo/` and state at `state/<pr>`; `migrate_legacy()` moves both into the new layout the
+first time the server starts with exactly one repo configured, stamps `repo` onto `queue.json`,
+`seen` and `learnings.jsonl` rows, and writes a `MIGRATED` marker. With several repos configured
+and legacy state present it refuses to start and says which env to set — it never guesses.
+
+Signed links cover `action:owner/name#pr:expiry`; signatures of the old `action:pr:expiry` form
+verify for `PRBOT_SIGNATURE_GRACE_DAYS` (default 7) after the first repo-aware start.
+
 ## Per-PR state
 
-`~/.claude-pr-bot/state/<pr>/`:
+`~/.claude-pr-bot/state/<owner>__<name>/<pr>/`:
 
 | File            | What                                                              |
 | --------------- | ------------------------------------------------------------------ |
@@ -102,8 +126,8 @@ Per-user markers live one level down, in `state/<pr>/users/<login>/`: `opened`, 
 reviewer's own `review.json`, `status`, `effort`, `focus`, `risk`, `head` and `history/`.
 Markers found directly in `state/<pr>/` predate multi-user and are read as the owner's.
 
-`queue.json` rows carry `requested: [logins]` — the union of everyone awaiting that PR — and
-the dashboard filters on it, so one poller output serves every user.
+`queue.json` rows carry `repo` and `requested: [logins]` — the union of everyone awaiting that
+PR — and the dashboard filters on both, so one poller output serves every user.
 
 `meta.json` exists because `queue.json` only holds PRs *currently* awaiting review — the
 moment you submit, the PR drops out of it, and without the cache the dashboard would lose the
@@ -127,9 +151,10 @@ The worktree is removed as soon as `review.json` is copied out.
 ## Subsystems added since the first cut
 
 - **Learnings** (`prbot_learn.py`): on post, each original finding is scored dropped / edited /
-  kept and appended to `learnings.jsonl` (short gists, capped). `render()` folds recent
-  dropped/edited rows into the next review prompt so the agent stops re-raising rejected noise;
-  the `/learnings` page shows it. Shared per repo, attributed per user. Not ML — in-context
+  kept and appended to `learnings.jsonl` (short gists, capped, tagged with the repo).
+  `render(repo)` folds recent dropped/edited rows — same-repo first, then the rest — into the
+  next review prompt so the agent stops re-raising rejected noise; the `/learnings` page shows
+  it. Attributed per user. Not ML — in-context
   steering with your own recent decisions.
 - **Review effort + focus** (`effort`, `focus`): starting a review is a form (`run_form`), not
   a link — the reviewer picks an effort level (auto-sized from the diff) and can add a
@@ -151,8 +176,9 @@ The worktree is removed as soon as `review.json` is copied out.
   the **team default** is an editable file (`skills/_global.md`, seeded by bootstrap from
   `skills/global-review.md`) maintained from the `/skills` page. `run-review.sh` picks the
   clicker's skill (`PRBOT_ACTOR`), else the editable team default, else the installed
-  `pr-review` skill; it runs the skill's logic and **always appends an explicit `review.json`
-  output contract**, so any skill yields the shape the dashboard needs. **Quick-add rule**:
+  `pr-review` skill — and before all of those, a per-repo override at
+  `skills/repos/<owner>__<name>/SKILL.md` if one exists (recorded as skill id `repo:<slug>`); it
+  runs the skill's logic and **always appends an explicit `review.json` output contract**, so any skill yields the shape the dashboard needs. **Quick-add rule**:
   `add_skill_rule` tidies a plain-English preference into a managed `## Team rules` section of
   the target skill (kept last so appends are trivial). Each review records the skill id
   (`skill`); learnings rows carry it; the `/skills` page scores each skill by kept-rate. The
@@ -160,7 +186,8 @@ The worktree is removed as soon as `review.json` is copied out.
   (human-approved). Dashboard edits also commit to a local git repo in `$ROOT/skills` so the
   team's review standard has a who/when/why history.
 - **Risk-area flags** (`risk`): `run-review.sh` matches the PR's file list against the
-  `RISK_PATHS` rules from `.env` (`label:pattern`, comma-separated) and records the labels; the
+  `RISK_PATHS` rules from `.env` (`label:pattern`, comma-separated; a per-repo
+  `RISK_PATHS__<OWNER>__<NAME>` replaces the list for that repo) and records the labels; the
   detail page shows a context banner per label. It is informational — never a gate, never
   routing or auto-mentions. Empty `RISK_PATHS` turns it off.
 - **Suggestion blocks**: a finding may carry a `suggestion` (single-line replacement); on post

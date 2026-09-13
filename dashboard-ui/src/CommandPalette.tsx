@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type QueueRow } from "./api";
-import { prnum } from "./pr";
+import { api, type Me, type QueueRow } from "./api";
+import { parsePrRef, prUrl } from "./pr";
 import { navigate } from "./router";
 
 // The command palette is the one place to search + review any PR. Opened by the sidebar's
@@ -15,6 +15,7 @@ interface Cmd {
   group: string;
   run: () => void;
   num?: string; // PR rows
+  repo?: string;
   title?: string;
   author?: string;
   label?: string; // action / nav rows
@@ -31,7 +32,7 @@ const SECTIONS: [string, string, string][] = [
   ["How it works", "/how", "?"],
 ];
 
-export function CommandPalette() {
+export function CommandPalette({ me }: { me: Me }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -81,32 +82,51 @@ export function CommandPalette() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const num = prnum(q);
+  const repos = useMemo(() => {
+    const set = new Set<string>(me.repos || []);
+    for (const r of rows) if (r.repo) set.add(r.repo);
+    return [...set];
+  }, [me.repos, rows]);
+  const multi = repos.length > 1;
+  const parsed = parsePrRef(q, repos);
   const needle = q.trim().toLowerCase();
 
   const cmds: Cmd[] = useMemo(() => {
     const out: Cmd[] = [];
-    if (num) {
+    if (parsed && parsed.repo) {
       out.push({
         id: "review",
         group: "Review",
-        label: `Review PR #${num}`,
-        sub: "open the review page",
+        label: `Review PR #${parsed.number}`,
+        sub: multi ? `in ${parsed.repo}` : "open the review page",
         icon: "✨",
-        run: () => go(`/pr?pr=${num}`),
+        run: () => go(prUrl({ repo: parsed.repo, num: parsed.number })),
       });
+    } else if (parsed) {
+      // A bare number with several repositories configured: one row per repo — the picker.
+      for (const r of repos) {
+        out.push({
+          id: `review-${r}`,
+          group: "Review",
+          label: `Review PR #${parsed.number} in ${r}`,
+          sub: "open the review page",
+          icon: "✨",
+          run: () => go(prUrl({ repo: r, num: parsed.number })),
+        });
+      }
     }
     let n = 0;
     for (const r of rows) {
-      if (needle && !`#${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle)) continue;
+      if (needle && !`${r.repo} ${r.repo}#${r.num} #${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle)) continue;
       if (n++ >= 6) break;
       out.push({
-        id: `pr-${r.num}`,
+        id: `pr-${r.repo}-${r.num}`,
         group: "Your PRs",
         num: r.num,
+        repo: multi ? r.repo : "",
         title: r.title,
         author: r.author,
-        run: () => go(`/pr?pr=${r.num}`),
+        run: () => go(prUrl({ repo: r.repo, num: r.num })),
       });
     }
     for (const [label, to, icon] of SECTIONS) {
@@ -114,7 +134,7 @@ export function CommandPalette() {
       out.push({ id: `go-${to}`, group: "Go to", label, icon, run: () => go(to) });
     }
     return out;
-  }, [num, needle, rows, go]);
+  }, [parsed?.repo, parsed?.number, multi, repos, needle, rows, go]);
 
   useEffect(() => {
     setSel((s) => Math.max(0, Math.min(s, cmds.length - 1)));
@@ -154,7 +174,7 @@ export function CommandPalette() {
             type="text"
             autoComplete="off"
             spellCheck={false}
-            placeholder="Paste a PR number or URL, or jump to…"
+            placeholder={multi ? "Paste a PR URL, owner/name#123 or a number, or jump to…" : "Paste a PR number or URL, or jump to…"}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
@@ -180,6 +200,7 @@ export function CommandPalette() {
                   {c.num ? (
                     <>
                       <span className="cmdk-num">#{c.num}</span>
+                      {c.repo && <span className="cmdk-repo">{c.repo}</span>}
                       <span className="cmdk-title">{c.title}</span>
                       {c.author && <span className="cmdk-sub">{c.author}</span>}
                     </>

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { PR, PR2 } from "./fixture";
+import { PR, PR2, PR3, REPO, REPO2 } from "./fixture";
+
+const enc = (r: string) => encodeURIComponent(r);
 
 // Unauthenticated: the SPA shell mounts and shows the login screen (no session cookie).
 test.describe("signed out", () => {
@@ -40,13 +42,75 @@ test.describe("signed in", () => {
     await expect(rowFor(PR2)).toHaveCount(0);
   });
 
+  test("queue rows carry a repo chip and the repo filter narrows the list", async ({ page }) => {
+    await page.goto("/?tab=reviewed");
+    const rowFor = (num: string) => page.locator(".row", { hasText: `#${num}` });
+    await expect(rowFor(PR).locator(".repochip")).toHaveText(REPO);
+    await expect(rowFor(PR3).locator(".repochip")).toHaveText(REPO2);
+    // Filter to the second repo: only its PR remains …
+    await page.locator("#repofilter").selectOption(REPO2);
+    await expect(rowFor(PR3)).toBeVisible();
+    await expect(rowFor(PR)).toHaveCount(0);
+    // … and the choice survives a reload (localStorage).
+    await page.reload();
+    await expect(page.locator("#repofilter")).toHaveValue(REPO2);
+    await expect(rowFor(PR)).toHaveCount(0);
+    await page.locator("#repofilter").selectOption("");
+    await expect(rowFor(PR)).toBeVisible();
+    // The search box matches the repo name too.
+    await page.locator("#qsearch").fill("acme/api");
+    await expect(rowFor(PR3)).toBeVisible();
+    await expect(rowFor(PR)).toHaveCount(0);
+  });
+
+  test("pasting a bare number with several repos shows a repo picker", async ({ page }) => {
+    await page.goto("/");
+    await page.locator(".reviewany input").fill(PR3);
+    const pick = page.getByTestId("repo-pick");
+    await expect(pick).toBeVisible();
+    await pick.locator("select").selectOption(REPO2);
+    await page.locator(".reviewany button[type=submit]").click();
+    await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO2)}&pr=${PR3}`));
+    await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);
+  });
+
+  test("pasting a GitHub URL derives the repo — no picker", async ({ page }) => {
+    await page.goto("/");
+    await page.locator(".reviewany input").fill(`https://github.com/${REPO2}/pull/${PR3}`);
+    await expect(page.getByTestId("repo-pick")).toHaveCount(0);
+    await page.locator(".reviewany button[type=submit]").click();
+    await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO2)}&pr=${PR3}`));
+  });
+
   test("opens the PR detail with its drafted findings", async ({ page }) => {
-    await page.goto(`/pr?pr=${PR}`);
-    await expect(page.locator("h1.prtitle")).toContainText(`#${PR}`);
+    await page.goto(`/pr?repo=${enc(REPO)}&pr=${PR}`);
+    await expect(page.locator("h1.prtitle")).toContainText(`${REPO}#${PR}`);
     await expect(page.locator("h1.prtitle")).toContainText(/lead-time badge/i);
+    // Breadcrumbs include the repo.
+    await expect(page.locator("nav.bc")).toContainText(REPO);
     await expect(page.getByText(/can crash the lead-time badge/i).first()).toBeVisible();
     await expect(page.getByRole("button", { name: /explain simply/i }).first()).toBeVisible();
     await expect(page.getByText(/the badge logic is sound/i)).toBeVisible();
+  });
+
+  test("a legacy /pr?pr=N link resolves when the number is unique across repos", async ({ page }) => {
+    await page.goto(`/pr?pr=${PR3}`);
+    await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);
+  });
+
+  test("insights has a repo breakdown and a repo filter", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page.getByText(/by repository/i)).toBeVisible();
+    const pills = page.getByTestId("repo-pills");
+    await expect(pills).toBeVisible();
+    await pills.getByRole("button", { name: REPO2 }).click();
+    await expect(pills.getByRole("button", { name: REPO2 })).toHaveClass(/on/);
+  });
+
+  test("skills page offers a team default per repository", async ({ page }) => {
+    await page.goto("/skills");
+    await expect(page.getByTestId("repo-skill")).toHaveCount(2);
+    await expect(page.getByTestId("repo-skill").first()).toContainText(REPO);
   });
 
   test("insights dashboard renders from the rollup api", async ({ page }) => {
@@ -99,10 +163,17 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+k");
     await expect(page.locator(".cmdk")).toBeVisible();
+    // A bare number with two repos configured lists one row per repo (the picker).
     await page.locator(".cmdk-in").fill(PR);
-    await expect(page.getByText(`Review PR #${PR}`)).toBeVisible();
+    await expect(page.getByText(`Review PR #${PR} in ${REPO}`)).toBeVisible();
+    await expect(page.getByText(`Review PR #${PR} in ${REPO2}`)).toBeVisible();
     await page.locator(".cmdk-in").press("Enter");
-    await expect(page).toHaveURL(new RegExp(`/pr\\?pr=${PR}`));
+    await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO)}&pr=${PR}`));
+    // A GitHub URL needs no picker.
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.locator(".cmdk-in").fill(`https://github.com/${REPO2}/pull/${PR3}`);
+    await expect(page.getByText(`Review PR #${PR3}`)).toBeVisible();
+    await expect(page.getByText(`in ${REPO2}`)).toBeVisible();
   });
 
   test("the Review a PR button opens the palette", async ({ page }) => {

@@ -49,6 +49,7 @@ import prbot_diff
 import prbot_howimg
 import prbot_learn
 import prbot_md
+import prbot_paths as P
 import prbot_rollup
 
 BRAND = "ReviewStage"                    # product name shown beside the logo (see prbot_assets)
@@ -76,7 +77,7 @@ SLACK_ICON = ("<svg viewBox='0 0 122.8 122.8' width=22 height=22>"
 
 ROOT = Path(os.environ.get("ROOT", Path.home() / ".claude-pr-bot"))
 BIN = Path(__file__).resolve().parent
-STATE = ROOT / "state"
+STATE = P.STATE
 QUEUE = ROOT / "queue.json"
 
 PAGE_TTL = 7 * 24 * 3600
@@ -103,9 +104,43 @@ SECRET = ENV.get("PRBOT_SECRET", "")
 # The SERVICE token: reads (diffs, PR metadata, the poller's searches) and the base clone.
 # Never used to post or approve — those use the signed-in user's own PAT, see user_pat().
 PAT = ENV.get("GITHUB_PAT", "")
-# The GitHub repository this instance reviews, as owner/name. No default: every install names
-# its own repo in .env (bootstrap prompts for it).
-REPO = ENV.get("REPO", "")
+# The repositories this install reviews (REPOS, plus the single-entry alias REPO). No default.
+# REPO_ALLOW_ORG additionally accepts any repo under that org on demand (see repo_ok).
+REPOS = P.parse_repos(ENV)
+ALLOW_ORG = P.allow_org(ENV)
+SINGLE_REPO = REPOS[0] if len(REPOS) == 1 else ""
+# Signed links minted before the repo dimension existed (action:pr:exp) stay valid this long
+# after the upgrade, so Slack links already sent keep working through the transition.
+SIG_GRACE_DAYS = int(ENV.get("PRBOT_SIGNATURE_GRACE_DAYS", "7") or 0)
+SIG_V2_SINCE = ROOT / "sig-v2-since"
+
+
+def repo_ok(repo):
+    """May this install act on `repo`? Configured, or under REPO_ALLOW_ORG."""
+    return P.repo_allowed(repo, REPOS, ALLOW_ORG)
+
+
+def all_repos():
+    """Configured repos plus org-discovered ones that already have state or a clone."""
+    return P.known_repos(REPOS)
+
+
+def resolve_repo(q_repo, pr=""):
+    """(repo, error) for a request naming a PR. An explicit repo must be allowed. Without one:
+    the single configured repo; else the one repo holding state for that PR number (legacy
+    single-repo links); else an error naming the candidates so the UI can show a picker."""
+    q_repo = (q_repo or "").strip().strip("/")
+    if q_repo:
+        if not repo_ok(q_repo):
+            return None, f"{q_repo} is not a repository this ReviewStage reviews"
+        return P.canonical_repo(q_repo, all_repos()), None
+    if SINGLE_REPO:
+        return SINGLE_REPO, None
+    if pr:
+        hits = P.repos_with_pr(pr)
+        if len(hits) == 1:
+            return hits[0], None
+    return None, "ambiguous repo"
 # The box owner. Their legacy per-PR markers (state/<pr>/posted.json etc., from before the
 # multi-user layout) are read as theirs, so history survives the upgrade.
 REVIEWER = ENV.get("REVIEWER", "")
@@ -537,10 +572,35 @@ SKILLS_DIR = ROOT / "skills"
 GLOBAL_SKILL_PATH = SKILLS_DIR / "_global.md"   # the editable team default (maintained here)
 
 
-def skill_path(login):
+REPO_SKILL_PREFIX = "repo:"
+
+
+def repo_skill_path(repo):
+    """The optional per-repo override of the team default: skills/repos/<owner>__<name>/SKILL.md.
+    run-review.sh prefers it over a personal skill and the team default."""
+    return SKILLS_DIR / "repos" / P.repo_slug(repo) / "SKILL.md"
+
+
+def skill_path(target):
     """The file backing a skill target: a login for a personal skill, "global" for the team
-    default. Personal skills are `<login>.md`; the team default is `_global.md`."""
-    return GLOBAL_SKILL_PATH if login == "global" else SKILLS_DIR / f"{login}.md"
+    default, "repo:<owner/name>" for a per-repo override. Personal skills are `<login>.md`;
+    the team default is `_global.md`."""
+    if target == "global":
+        return GLOBAL_SKILL_PATH
+    if target.startswith(REPO_SKILL_PREFIX):
+        return repo_skill_path(target[len(REPO_SKILL_PREFIX):])
+    return SKILLS_DIR / f"{target}.md"
+
+
+def skill_label(skill_id, viewer=""):
+    """Human label for a recorded skill id: "global", a login, or "repo:<owner/name>" (also the
+    slug form run-review.sh records: "repo:<owner>__<name>")."""
+    if skill_id in ("", "global"):
+        return "team default"
+    if skill_id.startswith(REPO_SKILL_PREFIX):
+        rest = skill_id[len(REPO_SKILL_PREFIX):]
+        return f"team default for {P.slug_repo(rest) if '__' in rest else rest}"
+    return "your own skill" if skill_id == viewer else f"{skill_id}'s skill"
 
 
 def user_skill_path(login):
@@ -565,6 +625,7 @@ def save_skill(login, text):
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     p = skill_path(login)
     if text.strip():
+        p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
         return True
     if login == "global":
@@ -681,8 +742,12 @@ def set_active_skill(login, choice):
     (SKILLS_DIR / f"{login}.use").write_text("own" if choice == "own" else "team")
 
 
-def effective_skill(login):
-    """(choice, label) — which skill actually runs, resolving 'own' with no personal skill."""
+def effective_skill(login, repo=""):
+    """(choice, label) — which skill actually runs, resolving 'own' with no personal skill. A
+    per-repo override (skills/repos/<slug>/SKILL.md) wins for reviews of that repo, matching
+    run-review.sh's order: repo override → personal → team default."""
+    if repo and read_skill(REPO_SKILL_PREFIX + repo):
+        return "repo", f"the team default for {repo}"
     if active_skill(login) == "own" and read_skill(login):
         return "own", "your own skill"
     return "team", "the team default"
@@ -694,14 +759,15 @@ def effective_skill(login):
 REVIEW_SCHEMA_VERSION = "rv1"
 
 
-def review_cache_key(login, head, effort, focus, model):
+def review_cache_key(login, repo, head, effort, focus, model):
     """Hash of everything that determines a review's output, PLUS the reviewer — the cache is
     per-user, so it only ever reuses YOUR own identical re-run on the same commit, never serves
     one reviewer's generation to another. Resolves the *skill text* (not its name), so editing a
     skill changes the key automatically."""
-    choice, _ = effective_skill(login)
-    skill_text = read_skill(login) if choice == "own" else read_skill("global")
-    blob = "\x00".join([REVIEW_SCHEMA_VERSION, login or "", (head or "").strip(),
+    choice, _ = effective_skill(login, repo)
+    skill_text = (read_skill(REPO_SKILL_PREFIX + repo) if choice == "repo"
+                  else read_skill(login) if choice == "own" else read_skill("global"))
+    blob = "\x00".join([REVIEW_SCHEMA_VERSION, login or "", repo or "", (head or "").strip(),
                          effort or "", (focus or "").strip(), model or "",
                          sha256(skill_text.encode()).hexdigest(),
                          sha256(effort_depth(effort).encode()).hexdigest()])
@@ -821,19 +887,19 @@ def autosize_effort(meta):
     return "standard"
 
 
-def review_effort(pr, login):
+def review_effort(repo, pr, login):
     """The effort a review actually ran at, or "" if unknown/never run."""
     try:
-        v = upath(pr, login, "effort").read_text().strip()
+        v = upath(repo, pr, login, "effort").read_text().strip()
         return v if v in EFFORT else ""
     except OSError:
         return ""
 
 
-def review_usage(pr, login):
+def review_usage(repo, pr, login):
     """Token usage + model recorded for the last review, or None. Written by run-review.sh from
     Claude's stream-json output; best-effort, so a missing/garbled file just means no usage line."""
-    f = upath(pr, login, "usage.json")
+    f = upath(repo, pr, login, "usage.json")
     if not f.exists():
         return None
     try:
@@ -860,10 +926,10 @@ def review_usage(pr, login):
 RISK_LABEL = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 
-def review_risk(pr, login):
+def review_risk(repo, pr, login):
     """Risk-area labels recorded by run-review.sh from the RISK_PATHS rules, as a list."""
     try:
-        return [f for f in upath(pr, login, "risk").read_text().split() if RISK_LABEL.match(f)]
+        return [f for f in upath(repo, pr, login, "risk").read_text().split() if RISK_LABEL.match(f)]
     except OSError:
         return []
 
@@ -879,16 +945,16 @@ def risk_banner(label):
 RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status")
 
 
-def review_focus(pr, login):
+def review_focus(repo, pr, login):
     try:
-        return upath(pr, login, "focus").read_text().strip()
+        return upath(repo, pr, login, "focus").read_text().strip()
     except OSError:
         return ""
 
 
-def archive_review(pr, login):
+def archive_review(repo, pr, login):
     """Move the current review into history/<ts>/ so a re-run doesn't lose it. No-op if none."""
-    d = udir(pr, login)
+    d = udir(repo, pr, login)
     if not (d / "review.json").exists():
         return
     h = d / "history" / str(int(time.time()))
@@ -904,13 +970,13 @@ def archive_review(pr, login):
     (d / "review.json").unlink(missing_ok=True)
 
 
-def others_on_head(pr, exclude_login):
+def others_on_head(repo, pr, exclude_login):
     """Other reviewers who already have a COMPLETED run on this PR's CURRENT head SHA — the data
     behind the 'someone already reviewed this; look at something different' nudge (Phase 2).
     Empty until the PR has a cached head. Only counts genuinely finished runs."""
-    meta, _ = pr_meta(pr)
+    meta, _ = pr_meta(repo, pr)
     head = (meta.get("head") or "").strip()
-    base = STATE / str(pr) / "users"
+    base = P.prdir(repo, pr) / "users"
     if not head or not base.is_dir():
         return []
     out = []
@@ -923,7 +989,7 @@ def others_on_head(pr, exclude_login):
             continue
         if not (d / "review.json").exists():
             continue
-        if pr_state(str(pr), login) in ("reviewing", "queued", "failed", "stopped"):
+        if pr_state(repo, str(pr), login) in ("reviewing", "queued", "failed", "stopped"):
             continue
         rd = lambda name: ((d / name).read_text().strip() if (d / name).exists() else "")
         eff = rd("effort"); skl = rd("skill") or "global"
@@ -934,15 +1000,15 @@ def others_on_head(pr, exclude_login):
         out.append({"login": login,
                     "effort": EFFORT.get(eff, (eff or "?",))[0],
                     "effortKey": eff, "focus": rd("focus"), "model": rd("model"),
-                    "skill": ("team default" if skl == "global" else f"{skl}'s skill"),
+                    "skill": skill_label(skl),
                     "skillKey": skl, "when": ago(when) if when else ""})
     return out
 
 
-def agreement_runs(pr, head):
+def agreement_runs(repo, pr, head):
     """Completed reviews on this exact head across all reviewers — the input to convergence
     scoring (Phase 3). Excludes in-flight/failed runs."""
-    base = STATE / str(pr) / "users"
+    base = P.prdir(repo, pr) / "users"
     runs = []
     if not head or not base.is_dir():
         return runs
@@ -952,7 +1018,7 @@ def agreement_runs(pr, head):
         hf, rf = d / "head", d / "review.json"
         if not (hf.exists() and rf.exists() and hf.read_text().strip() == head):
             continue
-        if pr_state(str(pr), d.name) in ("reviewing", "queued", "failed", "stopped"):
+        if pr_state(repo, str(pr), d.name) in ("reviewing", "queued", "failed", "stopped"):
             continue
         try:
             rev = json.loads(rf.read_text())
@@ -965,10 +1031,10 @@ def agreement_runs(pr, head):
     return runs
 
 
-def convergence(pr, head, viewer):
+def convergence(repo, pr, head, viewer):
     """(per_finding_tags_by_cid, rate_summary, n_runs) for `viewer` on this head. Writes a small
     per-head index for the Phase 4 dashboard. Returns ({}, None, n) when fewer than 2 runs exist."""
-    runs = agreement_runs(pr, head)
+    runs = agreement_runs(repo, pr, head)
     n = len(runs)
     if n < 2:
         return {}, None, n
@@ -976,7 +1042,7 @@ def convergence(pr, head, viewer):
     clusters = prbot_agree.cluster(runs)
     ar = prbot_agree.rate(clusters)
     try:                                            # persist an index for the rollup dashboard
-        ad = STATE / str(pr) / "agreement"
+        ad = P.prdir(repo, pr) / "agreement"
         ad.mkdir(parents=True, exist_ok=True)
         (ad / f"{head}.json").write_text(json.dumps({
             "head": head, "at": int(time.time()), **ar,
@@ -988,17 +1054,17 @@ def convergence(pr, head, viewer):
     return tags, ar, n
 
 
-def explain_finding(pr, user, idx):
+def explain_finding(repo, pr, user, idx):
     """(markdown, error) — an on-demand plain-language explanation + how-to-verify for ONE finding,
     run on the user's own Claude account (haiku, one turn). Cached per finding-content so a repeat
     click is instant and free. Dashboard-only: never touches GitHub or the posted comment."""
-    rev = load_review(pr, user) or {}
+    rev = load_review(repo, pr, user) or {}
     comments = sorted(rev.get("comments", []), key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
     if idx < 0 or idx >= len(comments):
         return None, "That finding no longer exists — re-open the review."
     c = comments[idx]
     h = sha256((str(idx) + "\x00" + (c.get("body") or "")).encode()).hexdigest()[:16]
-    cf = udir(pr, user) / "explain" / f"{h}.md"
+    cf = udir(repo, pr, user) / "explain" / f"{h}.md"
     if cf.exists():
         try:
             return cf.read_text(), None
@@ -1007,7 +1073,7 @@ def explain_finding(pr, user, idx):
     tok = user_claude_token(user)
     if not tok:
         return None, "Connect your Claude account to use this."
-    meta, _ = pr_meta(pr)
+    meta, _ = pr_meta(repo, pr)
     ctx = (f"PR title: {meta.get('title', '')}\n"
            f"What the PR does: {(rev.get('explainer') or rev.get('summary') or '').strip()}\n\n"
            f"Finding location: {c.get('path')}:{c.get('line')} (severity {c.get('severity')})\n"
@@ -1047,11 +1113,11 @@ def explain_finding(pr, user, idx):
     return md, None
 
 
-def review_history(pr, login):
+def review_history(repo, pr, login):
     """Past runs, newest first: list of (ts, effort, focus, findings, event)."""
-    hd = udir(pr, login) / "history"
+    hd = udir(repo, pr, login) / "history"
     if not hd.is_dir() and login == REVIEWER:
-        hd = STATE / str(pr) / "history"      # legacy shared history for the box owner
+        hd = P.prdir(repo, pr) / "history"      # legacy shared history for the box owner
     if not hd.is_dir():
         return []
     out = []
@@ -1070,10 +1136,10 @@ def review_history(pr, login):
     return out
 
 
-def load_history_review(pr, login, ts):
-    f = udir(pr, login) / "history" / str(ts) / "review.json"
+def load_history_review(repo, pr, login, ts):
+    f = udir(repo, pr, login) / "history" / str(ts) / "review.json"
     if not f.exists() and login == REVIEWER:
-        f = STATE / str(pr) / "history" / str(ts) / "review.json"
+        f = P.prdir(repo, pr) / "history" / str(ts) / "review.json"
     try:
         return json.loads(f.read_text()) if f.exists() else None
     except json.JSONDecodeError:
@@ -1106,37 +1172,38 @@ def _kill_group(pidfile):
     return not alive
 
 
-def _notify_stopped(pr, user, confirmed, runner, kind="review"):
+def _notify_stopped(repo, pr, user, confirmed, runner, kind="review"):
     """Slack confirmation that a force-stop actually halted the agent (so no Claude tokens keep
     burning unnoticed) — or a warning if it may not have."""
-    meta = pr_meta(pr)[0]
-    title, url = meta.get("title", f"PR #{pr}"), meta.get("url", ghurl_of(pr))
+    meta = pr_meta(repo, pr)[0]
+    title, url = meta.get("title", f"PR #{pr}"), meta.get("url", ghurl_of(repo, pr))
+    ref = f"{repo}#{pr}"
     sid = (load_users().get(user) or {}).get("slack_id") if user else ""
     by = f"<@{sid}>" if sid else (f"`@{user}`" if user else "someone")
     acct = (f" It was running on `{runner}`'s Claude account." if runner and runner != "shared"
             else " It was running on the shared box account." if runner else "")
     if confirmed:
-        text = (f"🛑 {kind.capitalize()} of *<{url}|#{pr} — {title}>* was stopped by {by}. "
+        text = (f"🛑 {kind.capitalize()} of *<{url}|{ref} — {title}>* was stopped by {by}. "
                 f"✅ Confirmed the agent is gone and the lock is released — Claude usage has "
                 f"halted.{acct}")
     else:
-        text = (f"⚠️ Stop requested for the {kind} of *<{url}|#{pr} — {title}>* by {by}, but a "
+        text = (f"⚠️ Stop requested for the {kind} of *<{url}|{ref} — {title}>* by {by}, but a "
                 f"process may still be running on the box — please check that Claude usage "
                 f"stopped.{acct}")
     slack_notify(text)
 
 
-def stop_review(pr, user=""):
+def stop_review(repo, pr, user=""):
     """Force-stop a running review, verify it actually died, alert Slack, leave a re-runnable
     'stopped' status."""
-    d = udir(pr, user)
+    d = udir(repo, pr, user)
     runner = (d / "runner").read_text().strip() if (d / "runner").exists() else ""
     dead = _kill_group(d / "pid")
     time.sleep(0.2)
     d.mkdir(parents=True, exist_ok=True)
     (d / "status").write_text("stopped")
-    confirmed = (dead is not False) and not is_running(pr, user)
-    _notify_stopped(pr, user, confirmed, runner, "review")
+    confirmed = (dead is not False) and not is_running(repo, pr, user)
+    _notify_stopped(repo, pr, user, confirmed, runner, "review")
     return confirmed
 
 
@@ -1144,8 +1211,8 @@ def stop_review(pr, user=""):
 # A QA guide is a separate, lighter job than a review: run the pr-qa-guide skill against a PR and
 # park the resulting markdown so it can be rendered and handed to QA. Its state keys are all
 # `qa.*` so a guide and a review can coexist for the same PR without colliding.
-def qa_running(pr):
-    f = STATE / str(pr) / ".qa.lock"
+def qa_running(repo, pr):
+    f = P.prdir(repo, pr) / ".qa.lock"
     if not f.exists():
         return False
     try:
@@ -1162,23 +1229,23 @@ def qa_running(pr):
         os.close(fd)
 
 
-def qa_status_text(pr):
+def qa_status_text(repo, pr):
     try:
-        return (STATE / str(pr) / "qa.status").read_text().strip()
+        return (P.prdir(repo, pr) / "qa.status").read_text().strip()
     except OSError:
         return ""
 
 
-def load_qa(pr):
+def load_qa(repo, pr):
     try:
-        return (STATE / str(pr) / "qa.md").read_text()
+        return (P.prdir(repo, pr) / "qa.md").read_text()
     except OSError:
         return ""
 
 
-def qa_meta(pr):
+def qa_meta(repo, pr):
     for name in ("qa_meta.json", "meta.json"):
-        f = STATE / str(pr) / name
+        f = P.prdir(repo, pr) / name
         if f.exists():
             try:
                 return json.loads(f.read_text())
@@ -1187,36 +1254,35 @@ def qa_meta(pr):
     return {}
 
 
-def qa_state(pr):
+def qa_state(repo, pr):
     """'running' | 'failed' | 'stopped' | 'done' | 'none'."""
-    if qa_running(pr):
+    if qa_running(repo, pr):
         return "running"
-    s = qa_status_text(pr)
+    s = qa_status_text(repo, pr)
     if s.startswith("failed"):
         return "failed"
-    if s == "stopped" and not load_qa(pr):
+    if s == "stopped" and not load_qa(repo, pr):
         return "stopped"
-    return "done" if load_qa(pr) else "none"
+    return "done" if load_qa(repo, pr) else "none"
 
 
 def qa_list():
     out = []
-    if STATE.is_dir():
-        for d in STATE.iterdir():
-            if d.is_dir() and d.name.isdigit() and (d / "qa.md").exists():
-                m = qa_meta(d.name)
-                out.append({"num": d.name, "title": m.get("title", f"PR #{d.name}"),
-                            "at": int((d / "qa.md").stat().st_mtime)})
+    for repo, num, d in P.iter_prdirs():
+        if (d / "qa.md").exists():
+            m = qa_meta(repo, num)
+            out.append({"repo": repo, "num": num, "title": m.get("title", f"PR #{num}"),
+                        "at": int((d / "qa.md").stat().st_mtime)})
     return sorted(out, key=lambda x: -x["at"])
 
 
-def stop_qa(pr, user=""):
-    d = STATE / str(pr)
+def stop_qa(repo, pr, user=""):
+    d = P.prdir(repo, pr)
     dead = _kill_group(d / "qa.pid")
     time.sleep(0.2)
     (d / "qa.status").write_text("stopped")
-    confirmed = (dead is not False) and not qa_running(pr)
-    _notify_stopped(pr, user, confirmed, "", "QA guide")
+    confirmed = (dead is not False) and not qa_running(repo, pr)
+    _notify_stopped(repo, pr, user, confirmed, "", "QA guide")
     return confirmed
 
 
@@ -1240,8 +1306,10 @@ def verify_pat(pat):
     login = me.get("login")
     if not login:
         return None, None, "GitHub returned no login for that token."
-    if gh(["api", f"repos/{REPO}"], token=pat, timeout=20).returncode != 0:
-        return None, None, f"That token cannot see {REPO} — it needs the `repo` scope."
+    visible = [r for r in REPOS if gh(["api", f"repos/{r}"], token=pat, timeout=20).returncode == 0]
+    if REPOS and not visible:
+        return None, None, (f"That token cannot see {', '.join(REPOS)} — it needs the `repo` "
+                            "scope (or access to at least one of them).")
     return login, me.get("name") or "", None
 
 
@@ -1332,28 +1400,50 @@ def session_user(headers):
 
 
 # --- signing ------------------------------------------------------------------------------
-def sign(action, pr, exp):
-    return hmac.new(SECRET.encode(), f"{action}:{pr}:{exp}".encode(), sha256).hexdigest()
+# HMAC over action:subject:exp. For PR actions the subject is `owner/name#123` (pr_subject);
+# for settings/handoff tokens it is the login. Links signed before the repo dimension existed
+# used the bare PR number as the subject; verify() still accepts those during SIG_GRACE_DAYS.
+def sign(action, subject, exp):
+    return hmac.new(SECRET.encode(), f"{action}:{subject}:{exp}".encode(), sha256).hexdigest()
 
 
-def mint(action, pr, ttl):
+def pr_subject(repo, pr):
+    return f"{repo}#{pr}"
+
+
+def mint(action, subject, ttl):
     exp = int(time.time()) + ttl
-    return exp, sign(action, pr, exp)
+    return exp, sign(action, subject, exp)
 
 
-def link(action, pr, ttl=PAGE_TTL):
+def legacy_sig_ok(action, pr, exp, sig):
+    """A pre-multi-repo signature (action:pr:exp), accepted only within the grace window that
+    started when this server first ran with repo-aware signing."""
+    if not pr or SIG_GRACE_DAYS <= 0:
+        return False
+    try:
+        since = int(SIG_V2_SINCE.read_text().strip())
+    except (OSError, ValueError):
+        return False
+    if time.time() > since + SIG_GRACE_DAYS * 86400:
+        return False
+    return hmac.compare_digest(sign(action, str(pr), exp), sig)
+
+
+def link(action, repo, pr, ttl=PAGE_TTL):
     # Pages are gated by the session cookie, so they get plain, bookmarkable URLs. Only the
     # actions that change something carry a signed, expiring token.
     if not action:
         return "/"
+    rq = f"repo={quote(repo, safe='')}&" if repo else ""
     if action == "pr":
-        return f"/pr?pr={pr}"
-    exp, sig = mint(action, pr, ttl)
-    q = f"?pr={pr}&exp={exp}&sig={sig}" if pr else f"?exp={exp}&sig={sig}"
+        return f"/pr?{rq}pr={pr}"
+    exp, sig = mint(action, pr_subject(repo, pr) if pr else "", ttl)
+    q = f"?{rq}pr={pr}&exp={exp}&sig={sig}" if pr else f"?exp={exp}&sig={sig}"
     return f"/{action}{q}"
 
 
-def verify(action, pr, exp, sig):
+def verify(action, subject, exp, sig, legacy_pr=""):
     if not (SECRET and sig and exp):
         return "Missing or unsigned link."
     try:
@@ -1361,7 +1451,8 @@ def verify(action, pr, exp, sig):
             return "This link has expired — reload the page for a fresh one."
     except ValueError:
         return "Malformed link."
-    if not hmac.compare_digest(sign(action, pr, exp), sig):
+    if not hmac.compare_digest(sign(action, subject, exp), sig) \
+            and not legacy_sig_ok(action, legacy_pr, exp, sig):
         # Overwhelmingly this is a link minted under a previous PRBOT_SECRET — the box was
         # rebuilt, or .env was regenerated. Say so, rather than implying tampering.
         return ("This link was signed with a different key — it is almost certainly from "
@@ -1386,7 +1477,7 @@ def gh_json(args, default=None):
         return default
 
 
-def fetch_pr_files(pr):
+def fetch_pr_files(repo, pr):
     """(files, error). Never conflate a failed API call with an empty diff.
 
     `--slurp` wraps whatever came back in an array, so a GitHub error object arrives looking
@@ -1396,7 +1487,7 @@ def fetch_pr_files(pr):
     """
     last = "unknown error"
     for attempt in range(2):   # GitHub's files endpoint 404s intermittently under degradation
-        r = gh(["api", f"repos/{REPO}/pulls/{pr}/files", "--paginate", "--slurp"])
+        r = gh(["api", f"repos/{repo}/pulls/{pr}/files", "--paginate", "--slurp"])
         if r.returncode == 0:
             try:
                 pages = json.loads(r.stdout or "null") or []
@@ -1445,7 +1536,7 @@ def default_approve_msg(rev):
     return "\n".join(lines)
 
 
-def can_approve(pr, login):
+def can_approve(repo, pr, login):
     """(ok, why) — may `login` approve this PR?
 
     Deliberately NOT "is `login` a requested reviewer": GitHub clears the review request the
@@ -1454,7 +1545,7 @@ def can_approve(pr, login):
     it is not the user's own PR (GitHub forbids self-approval), and this box genuinely
     reviewed it — which, combined with the signed session and action token, is the control.
     """
-    r = gh(["api", f"repos/{REPO}/pulls/{pr}"], token=user_pat(login))
+    r = gh(["api", f"repos/{repo}/pulls/{pr}"], token=user_pat(login))
     if r.returncode != 0:
         err = (r.stderr or "unknown error").strip().splitlines()[-1][:250]
         return False, f"GitHub rejected the check: {err}"
@@ -1468,7 +1559,7 @@ def can_approve(pr, login):
         return False, "That PR is still a draft."
     if ((d.get("user") or {}).get("login")) == login:
         return False, "GitHub does not allow approving your own PR."
-    if not upath(pr, login, "review.json").exists():
+    if not upath(repo, pr, login, "review.json").exists():
         return False, "No review has been run for this PR on this box."
     return True, ""
 STATIC_DIR = BIN / "static"
@@ -1491,14 +1582,14 @@ def index_html():
 
 
 # --- state --------------------------------------------------------------------------------
-def is_running(pr, login):
+def is_running(repo, pr, login):
     """True while run-review.sh holds this user's per-PR flock.
 
     Exact, unlike guessing from a timestamp: if we can take the lock, nothing is running.
     A review killed mid-flight (systemd used to reap detached children on restart) otherwise
     leaves `status` reading "reviewing" forever.
     """
-    f = udir(pr, login) / ".lock"
+    f = udir(repo, pr, login) / ".lock"
     if not f.exists():
         return False
     try:
@@ -1515,43 +1606,43 @@ def is_running(pr, login):
         os.close(fd)
 
 
-def udir(pr, login):
-    """Where one user's markers for one PR live. The review itself stays at STATE/<pr>/."""
-    return STATE / str(pr) / "users" / login
+def udir(repo, pr, login):
+    """Where one user's markers for one PR live: state/<owner>__<name>/<pr>/users/<login>."""
+    return P.udir(repo, pr, login)
 
 
-def upath(pr, login, name):
+def upath(repo, pr, login, name):
     """Read path for a per-user marker.
 
     Falls back to the legacy per-PR marker for the box owner: before the multi-user layout
-    every marker sat directly in STATE/<pr>/, and all of it was REVIEWER's. Writers always
+    every marker sat directly in the PR dir, and all of it was REVIEWER's. Writers always
     target udir(); only reads consult the legacy spot, so nothing new lands there.
     """
-    p = udir(pr, login) / name
+    p = udir(repo, pr, login) / name
     if p.exists():
         return p
-    legacy = STATE / str(pr) / name
+    legacy = P.prdir(repo, pr) / name
     if login == REVIEWER and legacy.exists():
         return legacy
     return p
 
 
-def touch_user(pr, login, name="opened"):
-    d = udir(pr, login)
+def touch_user(repo, pr, login, name="opened"):
+    d = udir(repo, pr, login)
     d.mkdir(parents=True, exist_ok=True)
     f = d / name
     if not f.exists():
         f.write_text(str(int(time.time())))
 
 
-def pr_state(pr, login):
-    if upath(pr, login, "archived").exists():
+def pr_state(repo, pr, login):
+    if upath(repo, pr, login, "archived").exists():
         return "archived"
-    if upath(pr, login, "approved").exists():
+    if upath(repo, pr, login, "approved").exists():
         return "approved"
-    if upath(pr, login, "posted.json").exists():
+    if upath(repo, pr, login, "posted.json").exists():
         return "posted"
-    sp = upath(pr, login, "status")
+    sp = upath(repo, pr, login, "status")
     s = sp.read_text().strip() if sp.exists() else ""
     if not s:
         return "new"
@@ -1561,11 +1652,11 @@ def pr_state(pr, login):
         return "stopped"
     if s.startswith(("done", "posted", "dry-run")):
         return "done"
-    return "reviewing" if is_running(pr, login) else "stalled"
+    return "reviewing" if is_running(repo, pr, login) else "stalled"
 
 
-def load_review(pr, login):
-    f = upath(pr, login, "review.json")
+def load_review(repo, pr, login):
+    f = upath(repo, pr, login, "review.json")
     if not f.exists():
         return None
     try:
@@ -1575,31 +1666,45 @@ def load_review(pr, login):
 
 
 def queue():
+    """queue.json rows, each guaranteed a `repo`. Rows written before the repo dimension carry
+    none and are the single configured repo's; with several repos configured they cannot be
+    placed and are skipped until the poller rewrites the file (every few minutes)."""
+    rows = []
     if QUEUE.exists():
         try:
-            return json.loads(QUEUE.read_text())
+            rows = json.loads(QUEUE.read_text()) or []
         except json.JSONDecodeError:
-            pass
-    return []
+            rows = []
+    out = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        if not r.get("repo"):
+            if not SINGLE_REPO:
+                continue
+            r = {**r, "repo": SINGLE_REPO}
+        out.append(r)
+    return out
 
 
-def fetch_pr_meta(pr):
+def fetch_pr_meta(repo, pr):
     """Fetch a PR's identity from GitHub for one that isn't in the local queue (e.g. opened by
     number/URL from the command palette). Normalized to the queue.json shape and cached to
     meta.json so the detail header shows the real title/author/size, not just the number."""
-    d = gh_json(["pr", "view", str(pr), "--repo", REPO, "--json",
+    d = gh_json(["pr", "view", str(pr), "--repo", repo, "--json",
                  "number,title,url,additions,deletions,changedFiles,author,isDraft,"
                  "headRefOid,createdAt,updatedAt"], default=None)
     if not isinstance(d, dict) or not d.get("number"):
         return None
-    m = {"number": d["number"], "title": d.get("title", ""), "url": d.get("url", ""),
+    m = {"repo": repo, "number": d["number"], "title": d.get("title", ""),
+         "url": d.get("url", ""),
          "additions": d.get("additions", 0), "deletions": d.get("deletions", 0),
          "changedFiles": d.get("changedFiles", 0),
          "author": (d.get("author") or {}).get("login", ""),
          "isDraft": d.get("isDraft", False), "head": d.get("headRefOid", ""),
          "createdAt": d.get("createdAt"), "updatedAt": d.get("updatedAt")}
     try:
-        f = STATE / str(pr) / "meta.json"
+        f = P.prdir(repo, pr) / "meta.json"
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(m))
     except OSError:
@@ -1607,23 +1712,23 @@ def fetch_pr_meta(pr):
     return m
 
 
-def pr_meta(pr):
+def pr_meta(repo, pr):
     """Identity for a PR, from the live queue if still there, else the cached copy, else fetched
     live from GitHub for a PR opened by number that was never in this user's queue.
     """
     for item in queue():
-        if str(item.get("number")) == str(pr):
+        if str(item.get("number")) == str(pr) and item.get("repo", "").lower() == repo.lower():
             return item, True
-    f = STATE / str(pr) / "meta.json"
+    f = P.prdir(repo, pr) / "meta.json"
     if f.exists():
         try:
-            return json.loads(f.read_text()), False
+            return {"repo": repo, **json.loads(f.read_text())}, False
         except json.JSONDecodeError:
             pass
-    fetched = fetch_pr_meta(pr)
+    fetched = fetch_pr_meta(repo, pr)
     if fetched:
         return fetched, False
-    return {"number": pr, "title": f"PR #{pr}"}, False
+    return {"repo": repo, "number": pr, "title": f"PR #{pr}"}, False
 
 
 def requested_of(item):
@@ -1633,31 +1738,30 @@ def requested_of(item):
     return list(r) if isinstance(r, list) else [REVIEWER]
 
 
-def mine(pr, login):
+def mine(repo, pr, login):
     """Has this user touched this PR here — opened, posted, approved or archived it?"""
-    if udir(pr, login).exists():
+    if udir(repo, pr, login).exists():
         return True
     if login != REVIEWER:
         return False
-    d = STATE / str(pr)
+    d = P.prdir(repo, pr)
     return any((d / n).exists() for n in ("posted.json", "approved", "archived", "status"))
 
 
 def all_prs(login):
     """The user's queue first, then anything they touched here that has since left it."""
     live = [i for i in queue() if login in requested_of(i)]
-    seen = {str(i.get("number")) for i in live}
+    seen = {(i.get("repo", "").lower(), str(i.get("number"))) for i in live}
     extra = []
-    if STATE.exists():
-        for d in STATE.iterdir():
-            if d.is_dir() and d.name.isdigit() and d.name not in seen and mine(d.name, login):
-                extra.append((pr_meta(d.name)[0], False))
+    for repo, num, _ in P.iter_prdirs():
+        if (repo.lower(), num) not in seen and mine(repo, num, login):
+            extra.append((pr_meta(repo, num)[0], False))
     extra.sort(key=lambda m: -int(m[0].get("number", 0)))
     return [(i, True) for i in live] + extra
 
 
-def ghurl_of(pr):
-    return (pr_meta(pr)[0].get("url") or f"https://github.com/{REPO}/pull/{pr}")
+def ghurl_of(repo, pr):
+    return (pr_meta(repo, pr)[0].get("url") or f"https://github.com/{repo}/pull/{pr}")
 
 
 # --- stacked PRs -----------------------------------------------------------------------------
@@ -1667,45 +1771,45 @@ def ghurl_of(pr):
 _SFIELDS = "number,title,baseRefName,headRefName,url"
 
 
-def _pr_bh(pr):
-    d = gh_json(["pr", "view", str(pr), "--repo", REPO, "--json", _SFIELDS], default=None)
+def _pr_bh(repo, pr):
+    d = gh_json(["pr", "view", str(pr), "--repo", repo, "--json", _SFIELDS], default=None)
     return d if isinstance(d, dict) and d.get("number") else None
 
 
-def _pr_first(flag, branch):
-    rows = gh_json(["pr", "list", "--repo", REPO, "--state", "open", flag, branch,
+def _pr_first(repo, flag, branch):
+    rows = gh_json(["pr", "list", "--repo", repo, "--state", "open", flag, branch,
                     "--json", _SFIELDS, "--limit", "5"], default=[])
     return rows[0] if isinstance(rows, list) and rows else None
 
 
-def pr_stack(pr):
+def pr_stack(repo, pr):
     """Open PRs forming the stack that contains `pr`, ordered top (nearest mainline) → bottom.
     Just [pr] if it isn't stacked. A few gh calls, so call it on demand, not on every page."""
-    info = _pr_bh(pr)
+    info = _pr_bh(repo, pr)
     if not info:
         return []
     chain, seen, cur = [info], {info["number"]}, info
     for _ in range(15):                          # up: a PR whose head == cur's base is the parent
-        p = _pr_first("--head", cur["baseRefName"])
+        p = _pr_first(repo, "--head", cur["baseRefName"])
         if not p or p["number"] in seen:
             break
         chain.insert(0, p); seen.add(p["number"]); cur = p
     cur = info
     for _ in range(15):                          # down: a PR whose base == cur's head is the child
-        c = _pr_first("--base", cur["headRefName"])
+        c = _pr_first(repo, "--base", cur["headRefName"])
         if not c or c["number"] in seen:
             break
         chain.append(c); seen.add(c["number"]); cur = c
     return chain
 
 
-def pr_reviewers(pr):
+def pr_reviewers(repo, pr):
     """GitHub's reviewer list + each one's status + overall decision — like GitHub's Reviewers
     sidebar. Uses the REST API (works with a plain `repo` token; the GraphQL reviewRequests query
     needs `read:org`, which our service token doesn't have)."""
-    reqs = gh_json(["api", f"repos/{REPO}/pulls/{pr}/requested_reviewers"], default={})
+    reqs = gh_json(["api", f"repos/{repo}/pulls/{pr}/requested_reviewers"], default={})
     # --slurp wraps each page in an array so --paginate stays valid JSON; flatten it.
-    pages = gh_json(["api", f"repos/{REPO}/pulls/{pr}/reviews", "--paginate", "--slurp"], default=[])
+    pages = gh_json(["api", f"repos/{repo}/pulls/{pr}/reviews", "--paginate", "--slurp"], default=[])
     reviews = []
     for pg in pages if isinstance(pages, list) else []:
         reviews.extend(pg if isinstance(pg, list) else [pg])
@@ -1780,9 +1884,9 @@ def fmt_date(ts):
     return time.strftime("%m/%d/%y", time.localtime(int(ts))) if ts else ""
 
 
-def marker(pr, name, login):
+def marker(repo, pr, name, login):
     """Read one user's state marker; plain-text (legacy) or JSON. Returns a dict."""
-    f = upath(pr, login, name)
+    f = upath(repo, pr, login, name)
     if not f.exists():
         return {}
     raw = f.read_text().strip()
@@ -1796,13 +1900,13 @@ def marker(pr, name, login):
             return {"at": 0}
 
 
-def pr_times(pr, login):
+def pr_times(repo, pr, login):
     """Every timestamp we know about a PR for this user, for sorting and display."""
-    rev_f = upath(pr, login, "review.json")
+    rev_f = upath(repo, pr, login, "review.json")
     return {
         "reviewed": int(rev_f.stat().st_mtime) if rev_f.exists() else 0,
-        "posted": marker(pr, "posted.json", login).get("at", 0),
-        "approved": marker(pr, "approved", login).get("at", 0),
+        "posted": marker(repo, pr, "posted.json", login).get("at", 0),
+        "approved": marker(repo, pr, "approved", login).get("at", 0),
     }
 
 
@@ -1953,15 +2057,20 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/queue":
             return self.api_json(self.api_queue(user, (q.get("tab") or ["todo"])[0],
                                                 (q.get("sort") or ["newest"])[0]))
-        if route == "/api/pr":
+        if route in ("/api/pr", "/api/qa", "/api/stack"):
             pr = (q.get("pr") or [""])[0]
+            if route == "/api/qa" and not pr:
+                return self.api_json(self.api_qa_index(user))
             if not pr.isdigit():
                 return self.api_json({"error": "missing pr"}, 400)
-            return self.api_json(self.api_pr(pr, user, (q.get("v") or [""])[0]))
-        if route == "/api/qa":
-            pr = (q.get("pr") or [""])[0]
-            return self.api_json(self.api_qa_detail(pr, user) if pr.isdigit()
-                                 else self.api_qa_index(user))
+            repo, err = resolve_repo((q.get("repo") or [""])[0], pr)
+            if err:
+                return self.api_json({"error": err, "repos": all_repos(), "pr": pr}, 400)
+            if route == "/api/pr":
+                return self.api_json(self.api_pr(repo, pr, user, (q.get("v") or [""])[0]))
+            if route == "/api/qa":
+                return self.api_json(self.api_qa_detail(repo, pr, user))
+            return self.api_json(self.api_stack(repo, pr, user))
         if route == "/api/skills":
             return self.api_json(self.api_skills(user))
         if route == "/api/integrations":
@@ -1969,40 +2078,36 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/learnings":
             return self.api_json(self.api_learnings(user))
         if route == "/api/rollup":
-            return self.api_json(prbot_rollup.compute(STATE, ROOT))
+            rf = (q.get("repo") or [""])[0].strip()
+            return self.api_json(prbot_rollup.compute(STATE, ROOT, repo=rf or None))
         if route == "/api/how":
             return self.api_json({"images": prbot_howimg.IMG, "brand": BRAND,
                                   "reviewer": REVIEWER, "tabs": [{"key": k, "label": lbl,
                                                                   "desc": TAB_DESC.get(k, "")}
                                                                  for k, lbl in TABS if k != "all"]})
-        if route == "/api/stack":
-            pr = (q.get("pr") or [""])[0]
-            if not pr.isdigit():
-                return self.api_json({"error": "missing pr"}, 400)
-            return self.api_json(self.api_stack(pr, user))
         return self.api_json({"error": "not found"}, 404)
 
-    def _run_form_data(self, user, meta, pr=None):
-        _, skill_label = effective_skill(user)
+    def _run_form_data(self, user, meta, repo="", pr=None):
+        _, skill_label = effective_skill(user, repo)
         return {"suggested": autosize_effort(meta),
                 "levels": [{"key": k, "name": EFFORT[k][0], "sub": EFFORT[k][1]}
                            for k in EFFORT_ORDER],
                 "models": [{"key": k, "name": n, "sub": sub} for k, n, sub in MODELS],
                 "skillLabel": skill_label,
-                "othersOnHead": (others_on_head(pr, user) if pr else [])}
+                "othersOnHead": (others_on_head(repo, pr, user) if pr else [])}
 
-    def _tok(self, action, pr, ttl=ACTION_TTL):
-        exp, sig = mint(action, pr, ttl)
+    def _tok(self, action, repo, pr, ttl=ACTION_TTL):
+        exp, sig = mint(action, pr_subject(repo, pr), ttl)
         return {"exp": exp, "sig": sig}
 
-    def api_pr(self, pr, user, version):
-        touch_user(pr, user)
+    def api_pr(self, repo, pr, user, version):
+        touch_user(repo, pr, user)
         if version.isdigit():
-            rev = load_history_review(pr, user, int(version)) or {}
+            rev = load_history_review(repo, pr, user, int(version)) or {}
             comments = sorted(rev.get("comments", []),
                               key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
-            return {"historyView": True, "pr": pr, "ts": int(version),
-                    "title": qa_meta(pr).get("title") or pr_meta(pr)[0].get("title", f"PR #{pr}"),
+            return {"historyView": True, "repo": repo, "pr": pr, "ts": int(version),
+                    "title": qa_meta(repo, pr).get("title") or pr_meta(repo, pr)[0].get("title", f"PR #{pr}"),
                     "when": f"{fmt_date(int(version))} ({ago(int(version))})",
                     "summary": rev.get("summary", ""),
                     "findings": [{"severity": c.get("severity", "nit"),
@@ -2010,18 +2115,18 @@ class Handler(BaseHTTPRequestHandler):
                                                             c.get("severity", "nit")),
                                   "path": c.get("path", "?"), "line": c.get("line", "?"),
                                   "body": c.get("body", "")} for c in comments]}
-        st = pr_state(pr, user)
-        meta, active = pr_meta(pr)
-        up = lambda name: upath(pr, user, name)  # noqa: E731  per-user review artifacts
-        eff = review_effort(pr, user)
-        foc = review_focus(pr, user)
+        st = pr_state(repo, pr, user)
+        meta, active = pr_meta(repo, pr)
+        up = lambda name: upath(repo, pr, user, name)  # noqa: E731  per-user review artifacts
+        eff = review_effort(repo, pr, user)
+        foc = review_focus(repo, pr, user)
         runner = up("runner").read_text().strip() if up("runner").exists() else ""
         head_f = up("head")
         cur_head = meta.get("head", "")
         stale = bool(head_f.exists() and cur_head and head_f.read_text().strip() != cur_head)
         out = {
-            "pr": pr, "title": meta.get("title", f"PR #{pr}"), "state": st,
-            "ghUrl": meta.get("url", f"https://github.com/{REPO}/pull/{pr}"),
+            "repo": repo, "pr": pr, "title": meta.get("title", f"PR #{pr}"), "state": st,
+            "ghUrl": meta.get("url", f"https://github.com/{repo}/pull/{pr}"),
             "author": meta.get("author", ""),
             "size": (f"+{meta.get('additions', 0):,} −{meta.get('deletions', 0):,} · "
                      f"{meta['changedFiles']} files") if meta.get("changedFiles") else "",
@@ -2030,21 +2135,21 @@ class Handler(BaseHTTPRequestHandler):
             "runner": runner,
             "effortBadge": ({"label": EFFORT[eff][0], "hint": EFFORT[eff][2]}
                             if eff and st not in ("reviewing", "queued") else None),
-            "usage": (review_usage(pr, user) if st not in ("reviewing", "queued") else None),
+            "usage": (review_usage(repo, pr, user) if st not in ("reviewing", "queued") else None),
             "focus": foc,
             "stale": stale,
-            "risk": [risk_banner(f) for f in review_risk(pr, user)],
-            "timeline": self._timeline_data(pr, user),
-            "reviewers": (pr_reviewers(pr) if st not in ("reviewing", "queued") else None),
+            "risk": [risk_banner(f) for f in review_risk(repo, pr, user)],
+            "timeline": self._timeline_data(repo, pr, user),
+            "reviewers": (pr_reviewers(repo, pr) if st not in ("reviewing", "queued") else None),
             "claudeConnected": claude_connected(user),
-            "runForm": self._run_form_data(user, meta, pr),
-            "tokens": {"review": self._tok("review", pr, PAGE_TTL),
-                       "stop": self._tok("stop", pr), "post": self._tok("post", pr),
-                       "approve": self._tok("approve", pr), "markdone": self._tok("markdone", pr),
-                       "archive": self._tok("archive", pr),
-                       "unarchive": self._tok("unarchive", pr),
-                       "explain": self._tok("explain", pr, PAGE_TTL)},
-            "history": review_history(pr, user),
+            "runForm": self._run_form_data(user, meta, repo, pr),
+            "tokens": {"review": self._tok("review", repo, pr, PAGE_TTL),
+                       "stop": self._tok("stop", repo, pr), "post": self._tok("post", repo, pr),
+                       "approve": self._tok("approve", repo, pr), "markdone": self._tok("markdone", repo, pr),
+                       "archive": self._tok("archive", repo, pr),
+                       "unarchive": self._tok("unarchive", repo, pr),
+                       "explain": self._tok("explain", repo, pr, PAGE_TTL)},
+            "history": review_history(repo, pr, user),
         }
         if st == "reviewing":
             s = up("status").read_text().strip().lower() if up("status").exists() else ""
@@ -2058,15 +2163,15 @@ class Handler(BaseHTTPRequestHandler):
                 "effortHint": EFFORT[reff][2], "focus": foc}
             return out
         if st == "stopped":
-            out["stopped"] = {"halted": not is_running(pr, user)}
+            out["stopped"] = {"halted": not is_running(repo, pr, user)}
             return out
         if st == "stalled":
             log = up("agent.log")
             out["stalled"] = {"was": (up("status").read_text().strip() if up("status").exists() else ""),
                               "tail": (log.read_text()[-400:].strip() if log.exists() else "")}
             return out
-        rev = load_review(pr, user)
-        appr = marker(pr, "approved", user)
+        rev = load_review(repo, pr, user)
+        appr = marker(repo, pr, "approved", user)
         if not rev:
             out["notReviewed"] = True
             if st == "failed":
@@ -2074,13 +2179,13 @@ class Handler(BaseHTTPRequestHandler):
             if appr.get("at"):
                 out["approved"] = self._approved_data(appr, user)
             return out
-        out["review"] = self._review_data(pr, user, rev, appr)
+        out["review"] = self._review_data(repo, pr, user, rev, appr)
         out["showMarkDone"] = st != "approved"
         return out
 
-    def _timeline_data(self, pr, user):
-        t = pr_times(pr, user)
-        posted = marker(pr, "posted.json", user)
+    def _timeline_data(self, repo, pr, user):
+        t = pr_times(repo, pr, user)
+        posted = marker(repo, pr, "posted.json", user)
         return [
             {"label": "Reviewed", "done": bool(t["reviewed"]),
              "note": ago(t["reviewed"]) if t["reviewed"] else ""},
@@ -2120,13 +2225,13 @@ class Handler(BaseHTTPRequestHandler):
         loc = c.get("path", "?")
         return f"{loc}:{c.get('line')}" if c.get("line") not in (None, "?") else loc
 
-    def _review_data(self, pr, user, rev, appr):
+    def _review_data(self, repo, pr, user, rev, appr):
         ev = rev.get("event", "COMMENT")
         comments = sorted(rev.get("comments", []),
                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
         cs = sev_counts(comments)
-        head = pr_meta(pr)[0].get("head", "")
-        conv_tags, conv_rate, conv_n = convergence(pr, head, user)   # Phase 3
+        head = pr_meta(repo, pr)[0].get("head", "")
+        conv_tags, conv_rate, conv_n = convergence(repo, pr, head, user)   # Phase 3
         findings = []
         for i, c in enumerate(comments):
             findings.append({"i": i, "severity": c.get("severity", "nit"),
@@ -2149,9 +2254,9 @@ class Handler(BaseHTTPRequestHandler):
             "chips": [{"kind": k, "n": n, "label": SEV_LABEL.get(k, k)}
                       for k, n in sorted(cs.items(), key=lambda kv: SEV_ORDER.get(kv[0], 9))],
             "findings": findings, "count": len(comments),
-            "posted": upath(pr, user, "posted.json").exists(),
+            "posted": upath(repo, pr, user, "posted.json").exists(),
             "postLabel": "Post selected" + (" (dry run)" if DRY_RUN else " to GitHub"),
-            "reused": upath(pr, user, "cached").exists(),
+            "reused": upath(repo, pr, user, "cached").exists(),
             "convergence": ({"rate": conv_rate["rate"], "confirmed": conv_rate["confirmed"],
                              "total": conv_rate["total"], "nRuns": conv_n}
                             if conv_rate else None),
@@ -2165,30 +2270,31 @@ class Handler(BaseHTTPRequestHandler):
         return data
 
     def api_qa_index(self, user):
-        return {"guides": [{"num": g["num"], "title": g["title"],
+        return {"repos": all_repos(),
+                "guides": [{"repo": g["repo"], "num": g["num"], "title": g["title"],
                             "when": f"{fmt_date(g['at'])} ({ago(g['at'])})"} for g in qa_list()]}
 
-    def api_qa_detail(self, pr, user):
-        st = qa_state(pr)
-        meta = qa_meta(pr)
-        out = {"pr": pr, "title": meta.get("title", f"PR #{pr}"),
-               "ghUrl": meta.get("url", f"https://github.com/{REPO}/pull/{pr}"),
+    def api_qa_detail(self, repo, pr, user):
+        st = qa_state(repo, pr)
+        meta = qa_meta(repo, pr)
+        out = {"repo": repo, "pr": pr, "title": meta.get("title", f"PR #{pr}"),
+               "ghUrl": meta.get("url", f"https://github.com/{repo}/pull/{pr}"),
                "state": st, "connected": claude_connected(user),
-               "genToken": self._tok("qa", pr, PAGE_TTL)}
+               "genToken": self._tok("qa", repo, pr, PAGE_TTL)}
         if st == "running":
-            s = qa_status_text(pr).lower()
+            s = qa_status_text(repo, pr).lower()
             out["running"] = {"phases": ["Fetching the PR", "Checking out the branch",
                                          "Building the QA guide"],
                               "cur": (0 if "fetch" in s else
                                       1 if ("checking out" in s or "queued" in s) else 2),
                               "queued": "queued" in s}
-            out["stopToken"] = self._tok("qastop", pr)
+            out["stopToken"] = self._tok("qastop", repo, pr)
         elif st == "failed":
-            out["failed"] = qa_status_text(pr)
+            out["failed"] = qa_status_text(repo, pr)
         elif st == "stopped":
             out["stopped"] = True
         elif st == "done":
-            out["md"] = load_qa(pr)
+            out["md"] = load_qa(repo, pr)
         return out
 
     def api_skills(self, user):
@@ -2202,7 +2308,10 @@ class Handler(BaseHTTPRequestHandler):
             "depths": {lv: {"name": EFFORT[lv][0], "meta": EFFORT[lv][1],
                             "content": effort_depth(lv), "edited": effort_edited(lv)}
                        for lv in EFFORT_ORDER},
-            "stats": prbot_learn.skill_stats(),
+            "repoSkills": [{"repo": r, "content": read_skill(REPO_SKILL_PREFIX + r),
+                            "has": bool(read_skill(REPO_SKILL_PREFIX + r))} for r in all_repos()],
+            "stats": [{**st, "label": skill_label(st["skill"], user)}
+                      for st in prbot_learn.skill_stats()],
             "teamHistory": skill_history(5),
         }
 
@@ -2228,30 +2337,35 @@ class Handler(BaseHTTPRequestHandler):
             return {"kind": pk.get(o, "archived"), "label": pl.get(o, o or ""),
                     "loc": r.get("path", "") + (f":{r['line']}" if r.get("line") else ""),
                     "severity": r.get("severity", "nit"), "gist": r.get("gist", ""),
+                    "repo": r.get("repo", ""),
                     "editedGist": r.get("edited_gist", "") if o == "edited" else ""}
-        return {"counts": prbot_learn.counts(), "rows": [item(r) for r in prbot_learn.recent(80)]}
+        return {"counts": prbot_learn.counts(), "repos": all_repos(),
+                "rows": [item(r) for r in prbot_learn.recent(80)]}
 
-    def api_stack(self, pr, user):
-        stack = pr_stack(pr)
-        exp, sig = mint("stackrun", pr, PAGE_TTL)
-        return {"pr": pr, "isStack": len(stack) > 1, "connected": claude_connected(user),
+    def api_stack(self, repo, pr, user):
+        stack = pr_stack(repo, pr)
+        exp, sig = mint("stackrun", pr_subject(repo, pr), PAGE_TTL)
+        return {"repo": repo, "pr": pr, "isStack": len(stack) > 1,
+                "connected": claude_connected(user),
                 "runToken": {"exp": exp, "sig": sig},
                 "levels": [{"key": k, "name": EFFORT[k][0], "sub": EFFORT[k][1]}
                            for k in EFFORT_ORDER],
                 "stack": [{"num": str(it["number"]), "title": it.get("title", ""),
                            "base": it.get("baseRefName", ""), "head": it.get("headRefName", ""),
-                           "state": pr_state(str(it["number"]), user)} for it in stack]}
+                           "state": pr_state(repo, str(it["number"]), user)} for it in stack]}
 
     def api_me(self, user):
         if not user:
-            return {"authed": False, "brand": BRAND, "repo": REPO, "dry_run": DRY_RUN,
+            return {"authed": False, "brand": BRAND, "repo": SINGLE_REPO, "repos": REPOS,
+                    "allowOrg": ALLOW_ORG, "dry_run": DRY_RUN,
                     "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO}
         u = load_users().get(user) or {}
         choice, skill_label = effective_skill(user)
         return {"authed": True, "login": user, "name": u.get("name") or user,
                 "slack_id": u.get("slack_id", ""), "claude_connected": claude_connected(user),
                 "active_skill": choice, "skill_label": skill_label, "dry_run": DRY_RUN,
-                "repo": REPO, "brand": BRAND, "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO}
+                "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
+                "brand": BRAND, "oauth": OAUTH_ENABLED, "logo": prbot_assets.LOGO}
 
     def api_queue(self, user, tab, sort):
         if tab not in dict(TABS):
@@ -2259,12 +2373,14 @@ class Handler(BaseHTTPRequestHandler):
         entries = []
         for item, active in all_prs(user):
             num = str(item.get("number"))
-            st = pr_state(num, user)
-            rev = load_review(num, user)
+            repo = item.get("repo", "")
+            st = pr_state(repo, num, user)
+            rev = load_review(repo, num, user)
             cs = sev_counts(rev.get("comments", [])) if rev else {}
-            t = pr_times(num, user)
+            t = pr_times(repo, num, user)
             upd = iso_ts(item.get("updatedAt")) or iso_ts(item.get("createdAt"))
-            entries.append({"num": num, "item": item, "active": active, "st": st, "t": t,
+            entries.append({"repo": repo, "num": num, "item": item, "active": active,
+                            "st": st, "t": t,
                             "cs": cs, "updated": upd,
                             "touched": max(t["approved"], t["posted"], t["reviewed"], upd),
                             "blockers": cs.get("blocker", 0), "total": sum(cs.values())})
@@ -2293,7 +2409,7 @@ class Handler(BaseHTTPRequestHandler):
         shown.sort(key=keys.get(sort, keys["newest"]))
         rows = []
         for e in shown:
-            item, t, num = e["item"], e["t"], e["num"]
+            item, t, num, repo = e["item"], e["t"], e["num"], e["repo"]
             when = []
             if t["approved"]:
                 when.append(f"approved {fmt_date(t['approved'])}")
@@ -2310,8 +2426,9 @@ class Handler(BaseHTTPRequestHandler):
             sev = [{"kind": k, "n": n, "label": SEV_LABEL.get(k, k)}
                    for k, n in sorted(e["cs"].items(), key=lambda kv: SEV_ORDER.get(kv[0], 9))]
             archived = e["st"] == "archived"
-            aexp, asig = mint("unarchive" if archived else "archive", num, ACTION_TTL)
-            rows.append({"num": num, "title": item.get("title", ""),
+            aexp, asig = mint("unarchive" if archived else "archive", pr_subject(repo, num),
+                              ACTION_TTL)
+            rows.append({"repo": repo, "num": num, "title": item.get("title", ""),
                          "author": item.get("author", ""), "state": e["st"], "size": size,
                          "when": when, "sev": sev, "archived": archived,
                          "archiveToken": {"exp": aexp, "sig": asig}})
@@ -2319,7 +2436,7 @@ class Handler(BaseHTTPRequestHandler):
                 "tabs": [{"key": k, "label": lbl, "count": counts[k]} for k, lbl in TABS],
                 "stats": {k: counts[k] for k in ("todo", "reviewed", "posted", "approved")},
                 "tabDesc": TAB_DESC.get(tab, ""),
-                "rows": rows,
+                "rows": rows, "repos": all_repos(),
                 "slackOk": bool((load_users().get(user) or {}).get("slack_id"))}
 
     def api_post(self, route, body):
@@ -2376,14 +2493,17 @@ class Handler(BaseHTTPRequestHandler):
         exp, sig = str(body.get("exp") or ""), str(body.get("sig") or "")
         if not pr.isdigit():
             return self.api_json({"error": "missing pr"}, 400)
+        repo, rerr = resolve_repo(str(body.get("repo") or ""), pr)
+        if rerr:
+            return self.api_json({"error": rerr, "repos": all_repos(), "pr": pr}, 400)
 
         def gate(action):
-            return verify(action, pr, exp, sig)
+            return verify(action, pr_subject(repo, pr), exp, sig, legacy_pr=pr)
 
         if route == "/api/review":
             if err := gate("review"):
                 return self.api_json({"error": err}, 403)
-            started = self._spawn_review(pr, user, str(body.get("effort") or ""),
+            started = self._spawn_review(repo, pr, user, str(body.get("effort") or ""),
                                          str(body.get("focus") or ""),
                                          str(body.get("model") or ""))
             # started is False when a previous run still holds the per-PR lock (e.g. a stop that
@@ -2392,33 +2512,33 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/stop":
             if err := gate("stop"):
                 return self.api_json({"error": err}, 403)
-            return self.api_json({"ok": True, "confirmed": stop_review(pr, user)})
+            return self.api_json({"ok": True, "confirmed": stop_review(repo, pr, user)})
         if route == "/api/qa/gen":
             if err := gate("qa"):
                 return self.api_json({"error": err}, 403)
-            self._spawn_qa(pr, user)
+            self._spawn_qa(repo, pr, user)
             return self.api_json({"ok": True})
         if route == "/api/qa/stop":
             if err := gate("qastop"):
                 return self.api_json({"error": err}, 403)
-            return self.api_json({"ok": True, "confirmed": stop_qa(pr, user)})
+            return self.api_json({"ok": True, "confirmed": stop_qa(repo, pr, user)})
         if route == "/api/stack/run":
             if err := gate("stackrun"):
                 return self.api_json({"error": err}, 403)
-            stack_nums = [str(it["number"]) for it in pr_stack(pr)]
+            stack_nums = [str(it["number"]) for it in pr_stack(repo, pr)]
             want = [n for n in (str(x) for x in (body.get("nums") or [])) if n in stack_nums]
             if not want:                              # no selection sent → review the whole stack
                 want = stack_nums
             started = 0
             for n in want:
-                if self._spawn_review(n, user, str(body.get("effort") or ""),
+                if self._spawn_review(repo, n, user, str(body.get("effort") or ""),
                                       model=str(body.get("model") or "")):
                     started += 1
             return self.api_json({"ok": True, "started": started})
         if route == "/api/markdone":
             if err := gate("markdone"):
                 return self.api_json({"error": err}, 403)
-            d = udir(pr, user)
+            d = udir(repo, pr, user)
             d.mkdir(parents=True, exist_ok=True)
             (d / "approved").write_text(json.dumps(
                 {"at": int(time.time()), "manual": True,
@@ -2428,7 +2548,7 @@ class Handler(BaseHTTPRequestHandler):
             act = "unarchive" if body.get("action") == "unarchive" else "archive"
             if err := gate(act):
                 return self.api_json({"error": err}, 403)
-            f = udir(pr, user) / "archived"
+            f = udir(repo, pr, user) / "archived"
             f.parent.mkdir(parents=True, exist_ok=True)
             if act == "archive":
                 f.write_text(str(int(time.time())))
@@ -2442,27 +2562,27 @@ class Handler(BaseHTTPRequestHandler):
                 idx = int(body.get("idx"))
             except (TypeError, ValueError):
                 return self.api_json({"error": "missing finding"}, 400)
-            md, err = explain_finding(pr, user, idx)
+            md, err = explain_finding(repo, pr, user, idx)
             if err:
                 return self.api_json({"error": err}, 400)
             return self.api_json({"md": md})
         if route == "/api/post":
             if err := gate("post"):
                 return self.api_json({"error": err}, 403)
-            return self.api_json({"bannerHtml": self._post_result(pr, user, self._post_form(pr, user, body))})
+            return self.api_json({"bannerHtml": self._post_result(repo, pr, user, self._post_form(repo, pr, user, body))})
         if route == "/api/approve":
             if err := gate("approve"):
                 return self.api_json({"error": err}, 403)
             form = {"pr": [pr], "ack": ["1"] if body.get("ack") else [],
                     "approve_body": [str(body.get("body") or "")]}
-            return self.api_json({"bannerHtml": self._approve_result(pr, user, form)})
+            return self.api_json({"bannerHtml": self._approve_result(repo, pr, user, form)})
         return self.api_json({"error": "not found"}, 404)
 
-    def _post_form(self, pr, user, body):
+    def _post_form(self, repo, pr, user, body):
         """Rebuild the form dict _post_result expects from the JSON post body. path/line/severity
         come from the stored review (not the client) — only selection, body and suggestion are
         the reviewer's to change."""
-        rev = load_review(pr, user) or {}
+        rev = load_review(repo, pr, user) or {}
         originals = sorted(rev.get("comments", []),
                            key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
         sel = set(body.get("selected") or [])
@@ -2513,7 +2633,7 @@ class Handler(BaseHTTPRequestHandler):
             # or an OAuth App not approved under the org's third-party access settings.
             OAUTH_BLOCKED.write_text(str(int(time.time())))
             return to_login_err(
-                f"GitHub signed you in, but the token cannot see {REPO}. An org owner needs to "
+                f"GitHub signed you in, but the token cannot see {', '.join(REPOS)}. An org owner needs to "
                 "allow this app once (OAuth App: approve under Third-party access; GitHub App: "
                 "install it on the org). Until then, sign in with a token.")
         OAUTH_BLOCKED.unlink(missing_ok=True)
@@ -2668,28 +2788,28 @@ class Handler(BaseHTTPRequestHandler):
         modify_users(apply)
         return "<div class='banner ok'><span>✓</span><div>Saved.</div></div>"
 
-    def _spawn_review(self, pr, user, effort="", focus="", model=""):
+    def _spawn_review(self, repo, pr, user, effort="", focus="", model=""):
         """Queue one review (no redirect). Returns True if it actually spawned, False if a review
         was already running for that PR. Shared by start_review and the stack runner."""
         pr = str(pr)
         if not claude_connected(user):
             return False                            # reviews require the user's own Claude account
-        d = udir(pr, user)                          # each reviewer's run + review live under here
+        d = udir(repo, pr, user)                          # each reviewer's run + review live under here
         d.mkdir(parents=True, exist_ok=True)
-        touch_user(pr, user)
+        touch_user(repo, pr, user)
         # run-review.sh takes a per-PR flock, so a genuine duplicate is impossible — only skip
         # when a review is ACTUALLY running. This lets a finished review be re-run and, crucially,
         # a stalled one (status stuck at "reviewing" but the process is gone) be recovered.
-        if is_running(pr, user):
+        if is_running(repo, pr, user):
             return False
-        meta, _ = pr_meta(pr)
+        meta, _ = pr_meta(repo, pr)
         eff = effort if effort in EFFORT else autosize_effort(meta)
         focus = (focus or "").strip()[:2000]
-        archive_review(pr, user)                    # keep the prior run in history/
+        archive_review(repo, pr, user)                    # keep the prior run in history/
         mdl = model if model in MODEL_KEYS else ""
         head = (meta.get("head") or "").strip()
         # Phase 1 — reuse YOUR own identical re-run on this commit: 0 tokens, no LLM call.
-        key = review_cache_key(user, head, eff, focus, mdl)
+        key = review_cache_key(user, repo, head, eff, focus, mdl)
         cf = d / "cache" / f"{key}.json"
         cached = None
         if cf.exists():
@@ -2718,7 +2838,7 @@ class Handler(BaseHTTPRequestHandler):
         (d / "focus").write_text(focus)
         (d / "model").write_text(mdl)
         (d / "status").write_text("queued")
-        choice, _ = effective_skill(user)
+        choice, _ = effective_skill(user, repo)
         env = review_env(user)
         env["PRBOT_CACHE_KEY"] = key
         env["PRBOT_EFFORT"] = eff
@@ -2729,7 +2849,7 @@ class Handler(BaseHTTPRequestHandler):
         # Stack context: if this PR is stacked on other open PRs, its diff is only its own changes.
         # Tell the agent the siblings exist so it doesn't flag setup a lower PR provides.
         try:
-            stack = pr_stack(pr)
+            stack = pr_stack(repo, pr)
         except Exception:
             stack = []
         if len(stack) > 1:
@@ -2745,43 +2865,43 @@ class Handler(BaseHTTPRequestHandler):
                 "do consider cross-PR dependencies and whether this PR is coherent on top of the "
                 "ones below it.\nStack (top \u2192 bottom):\n" + rows)
         with open(d / "run.log", "ab") as log:
-            proc = subprocess.Popen([str(BIN / "run-review.sh"), pr], stdout=log,
+            proc = subprocess.Popen([str(BIN / "run-review.sh"), repo, pr], stdout=log,
                                     stderr=subprocess.STDOUT, start_new_session=True, env=env)
         (d / "pid").write_text(str(proc.pid))
         return True
 
     # --- QA guides ---------------------------------------------------------------------------
-    def _spawn_qa(self, pr, user):
+    def _spawn_qa(self, repo, pr, user):
         if not claude_connected(user):              # QA runs Claude too — needs their own account
             return False
-        d = STATE / pr
+        d = P.prdir(repo, pr)
         d.mkdir(parents=True, exist_ok=True)
-        if qa_running(pr):
+        if qa_running(repo, pr):
             return False
         (d / "qa.status").write_text("queued")
         env = review_env(user)                  # runs on the clicker's Claude account
         with open(d / "qa.log", "ab") as log:
-            proc = subprocess.Popen([str(BIN / "run-qa.sh"), pr], stdout=log,
+            proc = subprocess.Popen([str(BIN / "run-qa.sh"), repo, pr], stdout=log,
                                     stderr=subprocess.STDOUT, start_new_session=True, env=env)
         (d / "qa.pid").write_text(str(proc.pid))
         return True
 
-    def _post_result(self, pr, user, form):
+    def _post_result(self, repo, pr, user, form):
         """Post the selected comments; returns a banner HTML string (reused by the HTML page and
         the JSON API)."""
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
         # Don't post a review that is still being (re)generated — the review.json on disk may be
         # the previous run's, and posting it produces a half-built comment on the real PR.
-        if is_running(pr, user):
+        if is_running(repo, pr, user):
             return ("<div class='banner warn'><span>⏳</span><div>A review is still running "
                     "for this PR — wait for it to finish, then post.</div></div>")
         # Idempotency: a successful real post writes posted.json. Refuse a second one — a
         # double-click, or a replayed 30-min action token — so a reviewer never lands two
         # reviews on the same PR. (Dry runs never write it, so they stay repeatable.)
-        if upath(pr, user, "posted.json").exists():
+        if upath(repo, pr, user, "posted.json").exists():
             return ("<div class='banner ok'><span>✓</span><div>Already posted to GitHub as your "
                     "review — not posting again.</div></div>")
-        rev = load_review(pr, user) or {}
+        rev = load_review(repo, pr, user) or {}
         chosen = []
         blank = []
         for i in range(int(one("count") or 0)):
@@ -2815,16 +2935,16 @@ class Handler(BaseHTTPRequestHandler):
         # before the dry-run branch so it learns during the pilot too.
         originals = sorted(rev.get("comments", []),
                            key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
-        skill_f = upath(pr, user, "skill")
+        skill_f = upath(repo, pr, user, "skill")
         skill = skill_f.read_text().strip() if skill_f.exists() else "global"
-        prbot_learn.record(pr, user, originals, form, skill=skill)
+        prbot_learn.record(repo, pr, user, originals, form, skill=skill)
         if not chosen:
             return ("<div class='banner warn'><span>⚠️</span><div>"
                     "Nothing selected — nothing sent.</div></div>")
 
         # Re-validate anchors against the CURRENT diff: the PR may have gained commits while
         # this review sat in the dashboard, and one stale line 422s the whole review.
-        files, err = fetch_pr_files(pr)
+        files, err = fetch_pr_files(repo, pr)
         if err is not None:
             return (
                 f"<div class='banner err'><span>🔴</span><div><b>Could not fetch the PR diff "
@@ -2848,7 +2968,7 @@ class Handler(BaseHTTPRequestHandler):
         # from the post bar (never the agent's call) — a human-only, blocking action.
         event = "REQUEST_CHANGES" if form.get("request_changes") else "COMMENT"
         payload = {"body": body, "event": event, "comments": inline}
-        ud = udir(pr, user)
+        ud = udir(repo, pr, user)
         ud.mkdir(parents=True, exist_ok=True)
         (ud / "payload.json").write_text(json.dumps(payload))
 
@@ -2865,7 +2985,7 @@ class Handler(BaseHTTPRequestHandler):
             return ("<div class='banner err'><span>🚫</span><div>"
                     "Your stored GitHub token could not be read — "
                     "paste it again in <a href='/integrations'>settings</a>.</div></div>")
-        r = gh(["api", "--method", "POST", f"repos/{REPO}/pulls/{pr}/reviews",
+        r = gh(["api", "--method", "POST", f"repos/{repo}/pulls/{pr}/reviews",
                 "--input", str(ud / "payload.json")], token=tok)
         if r.returncode != 0:
             return (f"<div class='banner err'><span>🔴</span><div>GitHub rejected it: <code>"
@@ -2878,9 +2998,9 @@ class Handler(BaseHTTPRequestHandler):
             + (f" {len(orphans)} could not be anchored and went into the summary."
                if orphans else "") + "</div></div>")
 
-    def _approve_result(self, pr, user, form):
+    def _approve_result(self, repo, pr, user, form):
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
-        rev = load_review(pr, user) or {}
+        rev = load_review(repo, pr, user) or {}
         blockers = sev_counts(rev.get("comments", [])).get("blocker", 0)
         lgtm = blockers == 0 and rev.get("event") != "REQUEST_CHANGES"
         if not lgtm and not one("ack"):
@@ -2892,7 +3012,7 @@ class Handler(BaseHTTPRequestHandler):
             return ("<div class='banner err'><span>🚫</span><div>Your stored GitHub token could "
                     "not be read — paste it again in <a href='/integrations'>settings</a>."
                     "</div></div>")
-        ok, why = can_approve(pr, user)
+        ok, why = can_approve(repo, pr, user)
         if not ok:
             return f"<div class='banner err'><span>🚫</span><div>{html.escape(why)}</div></div>"
         if DRY_RUN:
@@ -2900,15 +3020,15 @@ class Handler(BaseHTTPRequestHandler):
                 f"<div class='banner warn'><span>🧪</span><div><b>DRY RUN — not approved.</b>"
                 f"<br>Would submit an APPROVE review as <code>{html.escape(user)}</code> with "
                 f"body: <em>{html.escape(msg[:200])}</em></div></div>")
-        r = gh(["api", "--method", "POST", f"repos/{REPO}/pulls/{pr}/reviews",
+        r = gh(["api", "--method", "POST", f"repos/{repo}/pulls/{pr}/reviews",
                 "-f", "event=APPROVE", "-f", f"body={msg}"], token=tok)
         if r.returncode != 0:
             return (f"<div class='banner err'><span>🔴</span><div>GitHub rejected it: <code>"
                     f"{html.escape(r.stderr[:400])}</code></div></div>")
-        ud = udir(pr, user)
+        ud = udir(repo, pr, user)
         ud.mkdir(parents=True, exist_ok=True)
         (ud / "approved").write_text(json.dumps({"at": int(time.time()), "body": msg}))
-        return (f"<div class='banner ok'><span>✅</span><div>Approved #{pr} as "
+        return (f"<div class='banner ok'><span>✅</span><div>Approved {repo}#{pr} as "
                 f"<code>{html.escape(user)}</code>.</div></div>")
 
 
@@ -2916,16 +3036,29 @@ if __name__ == "__main__":
     port = int(os.environ.get("PRBOT_PORT", "8899"))
     if USERS.exists():
         os.chmod(USERS, 0o600)
-    if not REPO:
-        print("FATAL: REPO is not set in .env (the GitHub repository to review, as owner/name)",
-              flush=True)
+    if not REPOS:
+        print("FATAL: no repository configured in .env — set REPOS=owner/name[,owner/name…] "
+              "(or the single-entry alias REPO=owner/name)", flush=True)
         raise SystemExit(1)
+    bad = [r for r in REPOS if not P.valid_repo(r)]
+    if bad:
+        print(f"FATAL: not owner/name shaped in REPOS/REPO: {', '.join(bad)}", flush=True)
+        raise SystemExit(1)
+    if ALLOW_ORG and not re.match(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$", ALLOW_ORG):
+        print(f"FATAL: REPO_ALLOW_ORG={ALLOW_ORG!r} is not a GitHub org/user name", flush=True)
+        raise SystemExit(1)
+    # Legacy single-repo layout ($ROOT/repo, $ROOT/state/<pr>) → per-repo layout, once. Exits
+    # with an operator-facing message when the state cannot be attributed to one repo.
+    P.migrate_legacy(REPOS, log=lambda m: print(m, flush=True))
+    if not SIG_V2_SINCE.exists():                  # starts the legacy-signature grace window
+        SIG_V2_SINCE.write_text(str(int(time.time())))
     if not PUBLIC_URL:
         print("WARN: PUBLIC_URL is not set in .env — OAuth sign-in and Slack links will not "
               "work until it is", flush=True)
     # Loopback by default (a reverse proxy sits in front). PRBOT_BIND=0.0.0.0 for a container,
     # where the published port is the only way in.
     bind = os.environ.get("PRBOT_BIND", "127.0.0.1")
-    print(f"prbot listening on {bind}:{port} (repo={REPO}, dry_run={DRY_RUN}, "
+    print(f"prbot listening on {bind}:{port} (repos={','.join(REPOS)}"
+          f"{' +org:' + ALLOW_ORG if ALLOW_ORG else ''}, dry_run={DRY_RUN}, "
           f"users={len(load_users())})", flush=True)
     ThreadingHTTPServer((bind, port), Handler).serve_forever()

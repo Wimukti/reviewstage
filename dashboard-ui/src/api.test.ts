@@ -55,12 +55,29 @@ test("api.queue encodes tab and sort into the query string", async () => {
   assert.equal(calls[0].url, "/api/queue?tab=to%20do&sort=oldest%20first");
 });
 
-test("api.pr appends the version param only when given", async () => {
+test("api.pr encodes the repo, omits it when empty, and appends the version only when given", async () => {
   stubFetch(200, {});
-  await api.pr("42");
+  await api.pr({ repo: "", num: "42" });
   assert.equal(calls[0].url, "/api/pr?pr=42");
-  await api.pr("42", "3");
-  assert.equal(calls[1].url, "/api/pr?pr=42&v=3");
+  await api.pr({ repo: "acme/widgets", num: "42" }, "3");
+  assert.equal(calls[1].url, "/api/pr?repo=acme%2Fwidgets&pr=42&v=3");
+});
+
+test("PR-scoped posts carry repo and pr in the body", async () => {
+  stubFetch(200, { ok: true });
+  await api.archive({ repo: "acme/api", num: "7" }, { exp: "1", sig: "s" }, "archive");
+  assert.equal(calls[0].url, "/api/archive");
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+    repo: "acme/api", pr: "7", exp: "1", sig: "s", action: "archive",
+  });
+});
+
+test("api.rollup passes the repo filter only when given", async () => {
+  stubFetch(200, {});
+  await api.rollup();
+  assert.equal(calls[0].url, "/api/rollup");
+  await api.rollup("acme/api");
+  assert.equal(calls[1].url, "/api/rollup?repo=acme%2Fapi");
 });
 
 test("api.skillAction posts to the step-scoped route", async () => {

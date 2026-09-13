@@ -9,8 +9,10 @@ Settings live in `.env` (Docker; mirrored into the data volume on every start) o
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `REPO` | required | The GitHub repository this instance reviews, as `owner/name`. One repository per server. |
-| `GITHUB_PAT` | required | The service token: reads PR metadata and diffs, clones the repo, runs the poller's searches. Never posts; comments and approvals use each signed-in reviewer's own token. Fine-grained PAT scoped to the repo: Pull requests read/write, Contents read, Metadata read. |
+| `REPOS` | required (or `REPO`) | The GitHub repositories this instance reviews, as `owner/name`, comma-separated (quote the value if you separate with spaces — the file is sourced by bash). One install, many repositories. Each entry is validated as `owner/name` at startup. |
+| `REPO` | empty | Single-entry alias for `REPOS`, kept for existing installs. If both are set the lists are unioned. |
+| `REPO_ALLOW_ORG` | empty | An org (or user) whose repositories are accepted on demand in addition to `REPOS`: the poller discovers them by searching each signed-in user's open review requests under that owner, and the base clone is made on the first review. The service token must be able to see the org. |
+| `GITHUB_PAT` | required | The service token: reads PR metadata and diffs, clones the repos, runs the poller's searches. Never posts; comments and approvals use each signed-in reviewer's own token. Fine-grained PAT scoped to the repos (or all repos under the owner when using `REPO_ALLOW_ORG`): Pull requests read/write, Contents read, Metadata read. |
 | `PUBLIC_URL` | required (Docker: `http://localhost:8899`) | Where browsers reach the dashboard. Every Slack button and the OAuth callback are built from it. No trailing slash. |
 | `REVIEWER` | Docker: derived from `GITHUB_PAT` | The GitHub login the service token belongs to. From source, set it yourself; the Docker entrypoint fills it in by asking GitHub who the token is. |
 | `PRBOT_SECRET` | generated on first start | Signs every dashboard link and session, and derives the key that encrypts stored tokens. Rotating it signs everyone out and invalidates outstanding Slack links and stored tokens. |
@@ -26,6 +28,8 @@ Settings live in `.env` (Docker; mirrored into the data volume on every start) o
 | `GH_CLIENT_SECRET` | empty | The matching client secret. |
 | `GH_OAUTH_SCOPES` | empty | OAuth App: set to `repo` (tick *Expire user access tokens* when creating the app and tokens last 8 hours, refreshed here automatically). GitHub App: leave empty; permissions come from the app. |
 | `RISK_PATHS` | empty | Comma-separated `label:pattern` rules; a rule matches when a changed file path equals the glob or contains the substring, and the review then shows a "Touches *label* paths" banner. Context only, never a gate. Example: `billing:src/billing/,auth:*/auth/*`. |
+| `RISK_PATHS__<OWNER>__<NAME>` | unset | Per-repository override of `RISK_PATHS`. The key is the repo upper-cased with `/` → `__` and any other character outside `A-Z0-9_` → `_`: `acme/widgets-web` → `RISK_PATHS__ACME__WIDGETS_WEB`. When set (even empty) it replaces the global list for that repo. |
+| `PRBOT_SIGNATURE_GRACE_DAYS` | `7` | Signed links cover `action:owner/name#pr:expiry`. Links minted before the repository dimension existed (`action:pr:expiry`) keep verifying for this many days after the first start of the repo-aware server, so Slack cards already sent keep working. `0` rejects them at once. |
 | `PRBOT_HOST_ALIASES` | empty | Comma-separated extra hostnames that point at this instance. A visit on one hostname without a session bounces through another to pick up an existing login. |
 | `PRBOT_DOMAIN` | empty | A parent domain to scope the session cookie to, so one login covers every alias. Empty = host-only cookies. |
 | `PRBOT_ENV` | empty | Legacy. With `PRBOT_DOMAIN`, an `.env` without `PUBLIC_URL` derives it as `https://prbot-<PRBOT_ENV>.<PRBOT_DOMAIN>`. New installs set `PUBLIC_URL` and leave this empty. |
@@ -33,7 +37,7 @@ Settings live in `.env` (Docker; mirrored into the data volume on every start) o
 | `POLL_INTERVAL` | `180` | Process environment only. Seconds between poller passes. In Docker, put it in `.env` and compose passes it through; from source, export it before starting the poller. |
 | `PRBOT_BIND` | `127.0.0.1` | Process environment only. Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
 | `PRBOT_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` when `PUBLIC_URL` starts with `http://`. |
-| `ROOT` | `~/.claude-pr-bot` | Process environment only. Base directory for `.env`, the base clone, worktrees, per-PR state, `users.json`, learnings and skills. Docker mounts the data volume here. |
+| `ROOT` | `~/.claude-pr-bot` | Process environment only. Base directory for `.env`, the base clones (`repos/<owner>__<name>`), worktrees, per-PR state (`state/<owner>__<name>/<pr>`), `users.json`, learnings and skills. Docker mounts the data volume here. |
 
 ## Things that are not settings
 

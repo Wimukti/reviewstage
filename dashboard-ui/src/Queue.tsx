@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Me, type QueueData, type QueueRow } from "./api";
-import { prnum } from "./pr";
+import { parsePrRef, prUrl } from "./pr";
+import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
 import { Link, navigate, useLocation } from "./router";
 
 const SORTS: [string, string][] = [
@@ -19,8 +20,9 @@ const EMPTY: Record<string, [string, string, string]> = {
 };
 
 
-function Row({ row, onChange }: { row: QueueRow; onChange: () => void }) {
+function Row({ row, onChange, showRepo }: { row: QueueRow; onChange: () => void; showRepo: boolean }) {
   const [busy, setBusy] = useState(false);
+  const ref = { repo: row.repo, num: row.num };
   async function toggleArchive(e: React.MouseEvent) {
     // The button sits outside the row's <Link>, but guard anyway so a click never navigates.
     e.preventDefault();
@@ -28,7 +30,7 @@ function Row({ row, onChange }: { row: QueueRow; onChange: () => void }) {
     if (busy) return;
     setBusy(true);
     try {
-      await api.archive(row.num, row.archiveToken, row.archived ? "unarchive" : "archive");
+      await api.archive(ref, row.archiveToken, row.archived ? "unarchive" : "archive");
       onChange();
     } finally {
       setBusy(false);
@@ -36,8 +38,9 @@ function Row({ row, onChange }: { row: QueueRow; onChange: () => void }) {
   }
   return (
     <div className="row">
-      <Link className="rowlink" to={`/pr?pr=${row.num}`}>
+      <Link className="rowlink" to={prUrl(ref)}>
         <div className="rowtop">
+          {showRepo && <span className="repochip" title={row.repo}>{row.repo}</span>}
           <span className="num">#{row.num}</span>
           <span className="ttl">{row.title}</span>
         </div>
@@ -69,7 +72,7 @@ function Row({ row, onChange }: { row: QueueRow; onChange: () => void }) {
         >
           {busy ? "…" : row.archived ? "restore" : "archive"}
         </button>
-        <Link className="chev" to={`/pr?pr=${row.num}`} aria-hidden="true">
+        <Link className="chev" to={prUrl(ref)} aria-hidden="true">
           ›
         </Link>
       </div>
@@ -84,7 +87,15 @@ export function Queue({ me }: { me: Me }) {
   const [data, setData] = useState<QueueData | null>(null);
   const [q, setQ] = useState("");
   const [rv, setRv] = useState("");
+  const [rvRepo, setRvRepo] = useState("");
   const [nonce, setNonce] = useState(0);
+  // Repository filter — remembered per browser (localStorage), "" = all.
+  const [repoFilter, setRepoFilterState] = useState(getRepoFilter);
+  useEffect(() => {
+    const on = () => setRepoFilterState(getRepoFilter());
+    window.addEventListener(REPO_FILTER_EVENT, on);
+    return () => window.removeEventListener(REPO_FILTER_EVENT, on);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -94,14 +105,33 @@ export function Queue({ me }: { me: Me }) {
     };
   }, [tab, sort, nonce]);
 
+  // Every repo we know of: configured + anything in the rows (org-discovered).
+  const repos = useMemo(() => {
+    const set = new Set<string>([...(me.repos || []), ...(data?.repos || [])]);
+    for (const r of data?.rows || []) if (r.repo) set.add(r.repo);
+    return [...set];
+  }, [me.repos, data]);
+  const multi = repos.length > 1;
+  // A remembered filter for a repo that no longer exists falls back to "all".
+  const activeFilter = repoFilter && repos.includes(repoFilter) ? repoFilter : "";
+
   const filtered = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
-    if (!needle) return data.rows;
-    return data.rows.filter((r) =>
-      `#${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle)
-    );
-  }, [data, q]);
+    return data.rows.filter((r) => {
+      if (activeFilter && r.repo !== activeFilter) return false;
+      if (!needle) return true;
+      return `${r.repo} ${r.repo}#${r.num} #${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle);
+    });
+  }, [data, q, activeFilter]);
+
+  const parsed = parsePrRef(rv, repos);
+  const needsPick = !!parsed && !parsed.repo && multi;
+  const goReview = () => {
+    if (!parsed) return;
+    const repo = parsed.repo || (multi ? rvRepo || repos[0] : repos[0] || "");
+    navigate(prUrl({ repo, num: parsed.number }));
+  };
 
   if (!data) return <div className="wrap-load muted">Loading…</div>;
   const empty = EMPTY[tab] || ["📭", "Nothing here yet", "This view is empty."];
@@ -110,16 +140,23 @@ export function Queue({ me }: { me: Me }) {
     <>
       <h1>Your review queue</h1>
       <p className="muted sm">
-        Reviews requested from you across <code>{me.repo}</code>. Nothing reaches GitHub without
-        your click.
+        Reviews requested from you across{" "}
+        {multi ? (
+          <>
+            <b>{repos.length} repositories</b>
+            {me.allowOrg ? <> (and any under <code>{me.allowOrg}</code>)</> : null}
+          </>
+        ) : (
+          <code>{repos[0] || me.repo}</code>
+        )}
+        . Nothing reaches GitHub without your click.
       </p>
 
       <form
         className="reviewany"
         onSubmit={(e) => {
           e.preventDefault();
-          const n = prnum(rv);
-          if (n) navigate(`/pr?pr=${n}`);
+          goReview();
         }}
       >
         <span className="ra-ico">✨</span>
@@ -127,14 +164,34 @@ export function Queue({ me }: { me: Me }) {
           className="in"
           type="text"
           autoComplete="off"
-          placeholder="Review any PR — paste a number or GitHub URL…"
+          placeholder={
+            multi
+              ? "Review any PR — paste a GitHub URL, owner/name#123, or a number…"
+              : "Review any PR — paste a number or GitHub URL…"
+          }
           value={rv}
           onChange={(e) => setRv(e.target.value)}
         />
-        <button className="btn primary" type="submit" disabled={!prnum(rv)}>
+        <button className="btn primary" type="submit" disabled={!parsed}>
           Review
         </button>
       </form>
+      {needsPick && (
+        <div className="repopick" data-testid="repo-pick">
+          <span className="lbl">Which repository is #{parsed!.number} in?</span>
+          <select
+            aria-label="Repository for the pasted PR number"
+            value={rvRepo || repos[0]}
+            onChange={(e) => setRvRepo(e.target.value)}
+          >
+            {repos.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {!data.slackOk && (
         <div className="banner warn">
           <span>💬</span>
@@ -182,10 +239,28 @@ export function Queue({ me }: { me: Me }) {
           className="in"
           type="search"
           autoComplete="off"
-          placeholder="Filter your queue…"
+          placeholder={multi ? "Filter your queue — title, author, repo…" : "Filter your queue…"}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        {multi && (
+          <label className="repofilter">
+            <span className="muted sm">Repository</span>
+            <select
+              id="repofilter"
+              aria-label="Filter by repository"
+              value={activeFilter}
+              onChange={(e) => setRepoFilter(e.target.value)}
+            >
+              <option value="">All repositories</option>
+              {repos.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="sortbar">
           <span className="muted sm">Sort</span>
           {SORTS.map(([k, lbl]) => (
@@ -200,14 +275,14 @@ export function Queue({ me }: { me: Me }) {
       {filtered.length > 0 ? (
         <div className="list" id="qlist" data-tour="queuelist">
           {filtered.map((r) => (
-            <Row key={r.num} row={r} onChange={() => setNonce((n) => n + 1)} />
+            <Row key={`${r.repo}#${r.num}`} row={r} showRepo={multi} onChange={() => setNonce((n) => n + 1)} />
           ))}
         </div>
-      ) : q ? (
+      ) : q || activeFilter ? (
         <div className="empty">
           <span className="ic">🔍</span>
           <b>No matches</b>
-          Nothing in this view matches your search.
+          Nothing in this view matches your {q ? "search" : "repository filter"}.
         </div>
       ) : (
         <div className="empty">

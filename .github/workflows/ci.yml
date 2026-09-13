@@ -35,6 +35,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Python compiles
         run: python3 -m py_compile bin/*.py
+      - name: Webhook + queue unit tests
+        run: python3 -m unittest bin/test_prbot_webhook.py
+      - name: Webhook end-to-end (real server, curl + openssl)
+        run: bash bin/test-webhook-e2e.sh
       - name: Bash parses
         run: bash -n bin/*.sh
       - name: shellcheck

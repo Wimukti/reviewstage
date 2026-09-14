@@ -274,6 +274,8 @@ export interface PrData {
   focus: string;
   stale: boolean;
   risk: Risk[];
+  // Whether this PR is part of a stack of open PRs, and how many are in it.
+  stack?: { isStack: boolean; size: number };
   timeline: TimelineStep[];
   reviewers: ReviewersData | null;
   claudeConnected: boolean;

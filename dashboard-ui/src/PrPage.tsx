@@ -843,9 +843,11 @@ function PrSidebar({ data }: { data: PrData }) {
         <Link className="sideact" to={prUrl(refOf(data), "/qa")}>
           <span className="sideact-ico">🧪</span> QA guide
         </Link>
-        <Link className="sideact" to={prUrl(refOf(data), "/stack")}>
-          <span className="sideact-ico">🔗</span> Stacked review
-        </Link>
+        {data.stack?.isStack && (
+          <Link className="sideact" to={prUrl(refOf(data), "/stack")}>
+            <span className="sideact-ico">🔗</span> Stacked review ({data.stack.size} PRs)
+          </Link>
+        )}
       </div>
 
       <div className="sidecard">

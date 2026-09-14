@@ -56,6 +56,7 @@ import rs_profile
 import rs_review_body as RB
 import rs_rollup
 import rs_settings
+import rs_stack
 import rs_state
 import rs_webhook
 
@@ -2177,7 +2178,14 @@ def ghurl_of(repo, pr):
 # A "stack" is a chain of open PRs where each one's base branch is the previous one's head branch
 # (Graphite/ghstack style). We walk that chain from a given PR so a reviewer can review the whole
 # stack from one click instead of hunting down each PR.
+#
+# The walk itself is pure (rs_stack.chain) over one list of the repo's open PRs, and that list is
+# fetched once per repo per OPEN_PRS_TTL. So the PR page can ask "is this stacked?" for free:
+# a warm cache costs a dict walk over a few hundred rows, and the one `gh pr list` behind it is
+# shared by every PR page, every user and the stack page.
 _SFIELDS = "number,title,baseRefName,headRefName,url"
+OPEN_PRS_TTL = 300
+_OPEN_PRS = {}                          # repo -> (fetched_at, rows)
 
 
 def _pr_bh(repo, pr):
@@ -2185,31 +2193,39 @@ def _pr_bh(repo, pr):
     return d if isinstance(d, dict) and d.get("number") else None
 
 
-def _pr_first(repo, flag, branch):
-    rows = gh_json(["pr", "list", "--repo", repo, "--state", "open", flag, branch,
-                    "--json", _SFIELDS, "--limit", "5"], default=[])
-    return rows[0] if isinstance(rows, list) and rows else None
+def open_prs(repo):
+    """Every open PR in `repo` as {number, title, base, head, url}, cached for OPEN_PRS_TTL.
+
+    A failed `gh` call keeps the previous copy rather than reporting an empty repo: a transient
+    GitHub blip should not make a stacked PR look unstacked.
+    """
+    now = time.time()
+    hit = _OPEN_PRS.get(repo)
+    if hit and now - hit[0] < OPEN_PRS_TTL:
+        return hit[1]
+    rows = gh_json(["pr", "list", "--repo", repo, "--state", "open", "--json", _SFIELDS,
+                    "--limit", "300"], default=None)
+    if not isinstance(rows, list):
+        return hit[1] if hit else []
+    if len(_OPEN_PRS) > 32:             # bounded: this is a cache, not a store
+        _OPEN_PRS.clear()
+    _OPEN_PRS[repo] = (now, rows)
+    return rows
 
 
 def pr_stack(repo, pr):
     """Open PRs forming the stack that contains `pr`, ordered top (nearest mainline) → bottom.
-    Just [pr] if it isn't stacked. A few gh calls, so call it on demand, not on every page."""
-    info = _pr_bh(repo, pr)
-    if not info:
-        return []
-    chain, seen, cur = [info], {info["number"]}, info
-    for _ in range(15):                          # up: a PR whose head == cur's base is the parent
-        p = _pr_first(repo, "--head", cur["baseRefName"])
-        if not p or p["number"] in seen:
-            break
-        chain.insert(0, p); seen.add(p["number"]); cur = p
-    cur = info
-    for _ in range(15):                          # down: a PR whose base == cur's head is the child
-        c = _pr_first(repo, "--base", cur["headRefName"])
-        if not c or c["number"] in seen:
-            break
-        chain.append(c); seen.add(c["number"]); cur = c
-    return chain
+    Just [pr] if it isn't stacked, [] if we cannot see the PR at all."""
+    found = rs_stack.chain(open_prs(repo), pr)
+    if found:
+        return found
+    info = _pr_bh(repo, pr)             # closed, or past the cached page — ask about it directly
+    return [info] if info else []
+
+
+def stack_summary(repo, pr):
+    """{isStack, size} for a PR — the cheap half of pr_stack, for the PR page's side rail."""
+    return rs_stack.summary(open_prs(repo), pr)
 
 
 def pr_reviewers(repo, pr):
@@ -2594,6 +2610,9 @@ class Handler(BaseHTTPRequestHandler):
             "focus": foc,
             "stale": stale,
             "risk": [risk_banner(f) for f in review_risk(repo, pr, user)],
+            # Whether this PR sits in a stack, so the side rail can offer the stacked review
+            # only when there is one. Free on a warm open-PR cache (see stack_summary).
+            "stack": stack_summary(repo, pr),
             "timeline": self._timeline_data(repo, pr, user),
             "reviewers": (pr_reviewers(repo, pr) if st not in ("reviewing", "queued") else None),
             "claudeConnected": claude_connected(user),

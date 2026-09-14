@@ -41,7 +41,7 @@ import { navLinks, repo, withBase } from "../../content/site-links";
   .site-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid transparent; transition: border-color 300ms var(--ease-out-expo), background-color 300ms var(--ease-out-expo); }
   .site-header[data-scrolled="true"] { border-bottom-color: var(--hairline); background-color: var(--glass); backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%); }
   .brand { display: inline-flex; align-items: center; gap: 0.6rem; color: var(--foreground); font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; letter-spacing: -0.03em; text-decoration: none; }
-  .brand-mark { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border: 1px solid var(--hairline); border-radius: 0.7rem; color: var(--primary); background: linear-gradient(150deg, color-mix(in oklab, var(--primary) 22%, transparent), transparent); }
+  .brand-mark { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border: 1px solid var(--hairline); border-radius: 0.7rem; background: color-mix(in oklab, var(--foreground) 5%, transparent); }
   .mobile-menu { position: relative; }
   .mobile-menu summary { list-style: none; cursor: pointer; }
   .mobile-menu summary::-webkit-details-marker { display: none; }

@@ -34,7 +34,7 @@ height:56px;padding:0 20px;background:rgba(10,11,18,.72);backdrop-filter:saturat
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.02rem;
 color:var(--fg);letter-spacing:-.02em}
 .brand:hover{color:var(--fg)}
-.brand img{width:28px;height:28px;display:block;filter:drop-shadow(0 2px 6px rgba(124,131,240,.35))}
+.brand img{width:28px;height:28px;display:block;filter:drop-shadow(0 2px 6px rgba(57,71,255,.35))}
 .brand .n{background:var(--grad);-webkit-background-clip:text;background-clip:text;
 -webkit-text-fill-color:transparent}
 .brand .tag{color:var(--faint);font-weight:500;font-size:.82rem;margin-left:2px;
@@ -574,7 +574,7 @@ border:1px solid var(--line);border-radius:22px;padding:40px 34px 30px;text-alig
 box-shadow:0 32px 90px -34px rgba(0,0,0,.85),0 0 0 1px rgba(124,131,240,.05);
 animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
 .authlogo{width:66px;height:66px;margin:0 auto 16px;display:block;
-filter:drop-shadow(0 8px 22px rgba(124,131,240,.45))}
+filter:drop-shadow(0 8px 22px rgba(57,71,255,.45))}
 .authcard h1{font-size:1.9rem;letter-spacing:-.02em;margin:0;background:var(--grad);
 -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .authsub{color:var(--fg);font-size:.98rem;font-weight:550;margin:6px 0 0}

@@ -110,13 +110,16 @@ def record(repo, pr, user, originals_sorted, form, skill="global"):
 
 # --- clustering: when a rejection stops being a mood and becomes a standard -------------------
 # Similarity is deliberately cheap and dependency-free, in the same spirit as rs_agree's coarse
-# matching. Two gists are "the same complaint" when the SHORTER one's significant vocabulary is
-# mostly present in the other — the overlap coefficient |A∩B| / min(|A|,|B|) rather than Jaccard,
-# because gists vary wildly in length ("Prefer const over let" vs. a 20-word version of the same
-# note) and Jaccard would punish that asymmetry as if it were disagreement. 0.6 means "most of
-# the shorter gist's real words are in the other one"; below that, paraphrases of different
-# complaints start colliding. _MIN_SHARED stops two 2-token gists from matching on one word.
-SIM_THRESHOLD = 0.6
+# matching. Two gists are "the same complaint" when at least half of the SHORTER one's
+# significant vocabulary appears in the other — the overlap coefficient |A∩B| / min(|A|,|B|)
+# rather than Jaccard, because gists vary wildly in length ("Prefer const over let" vs. a
+# 20-word version of the same note) and Jaccard would punish that asymmetry as if it were
+# disagreement. 0.5 is where real paraphrases land once stopwords are gone: two people writing
+# the same complaint agree on the nouns and little else ("const/binding" survives, "prefer" vs.
+# "rather than" does not). It is a loose bar on its own, so it never stands on its own — a match
+# also needs the same severity, the same top-two directory segments and at least _MIN_SHARED
+# tokens in common, which is what stops one shared word from merging two complaints.
+SIM_THRESHOLD = 0.5
 _MIN_SHARED = 2
 
 _STOP = set((
@@ -171,18 +174,27 @@ def _same_group(a, b):
     return _sim(_toks(a.get("gist", "")), _toks(b.get("gist", ""))) >= SIM_THRESHOLD
 
 
+def _commonest(values):
+    freq = {}
+    for v in values:
+        if v:
+            freq[v] = freq.get(v, 0) + 1
+    return sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[0][0] if freq else ""
+
+
 def signature(rows):
-    """A stable id for a cluster: severity, directory and its six commonest tokens.
+    """A stable id for a cluster: severity, directory and its six commonest tokens, sorted.
 
     Keyed on vocabulary rather than membership so the signature survives new rows joining the
-    same cluster — a dismissal made today must still match tomorrow's larger cluster."""
+    same cluster — a dismissal made today must still match tomorrow's larger cluster. The tokens
+    are sorted before hashing so a shift in their relative frequency does not mint a new id."""
     freq = {}
     for r in rows:
         for t in _toks(r.get("gist", "")):
             freq[t] = freq.get(t, 0) + 1
-    top = [t for t, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[:6]]
-    sev = (rows[0].get("severity") or "nit") if rows else "nit"
-    key = f"{sev}|{_dirkey(rows[0].get('path', '')) if rows else ''}|{','.join(top)}"
+    top = sorted(t for t, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[:6])
+    sev = _commonest(r.get("severity") or "nit" for r in rows) or "nit"
+    key = f"{sev}|{_commonest(_dirkey(r.get('path', '')) for r in rows)}|{','.join(top)}"
     return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
@@ -207,8 +219,8 @@ def _cluster_info(members, outcome):
     repos = sorted({m.get("repo", "") for m in members if m.get("repo")})
     longest = max(members, key=lambda m: len(m.get("gist", "")))
     return {"signature": signature(members), "outcome": outcome,
-            "severity": members[0].get("severity", "nit"),
-            "dir": _dirkey(members[0].get("path", "")),
+            "severity": _commonest(m.get("severity") or "nit" for m in members) or "nit",
+            "dir": _commonest(_dirkey(m.get("path", "")) for m in members),
             "count": len(members), "prs": len(prs), "repos": repos,
             "gist": longest.get("gist", ""),
             "findings": [{"repo": m.get("repo", ""), "pr": str(m.get("pr", "")),

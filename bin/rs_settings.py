@@ -221,7 +221,9 @@ PAYLOAD_SCHEMA = {
     "extra": {
         "review_requested": {"additions": 0, "deletions": 0, "files": 0,
                              "detail": "dashboard link", "board": "dashboard index"},
-        "review_ready": {"event": "COMMENT | REQUEST_CHANGES", "findings": 0, "blockers": 0,
+        "review_ready": {"verdict": "lgtm | minor | attention | blocked",
+                         "findings": 0, "blockers": 0, "should_fix": 0,
+                         "event": "COMMENT | REQUEST_CHANGES (how the review would be posted)",
                          "summary": "agent summary", "detail": "dashboard link"},
         "review_stopped": {"status": "stopped | failed", "message": "(failed only)",
                            "job": "Review | QA guide", "confirmed": True,

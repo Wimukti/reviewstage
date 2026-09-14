@@ -16,6 +16,7 @@ export const SECRET = "e2e-fixed-test-secret-not-for-production";
 export const USER = "acme-dev";
 export const REPO = "acme/widgets";
 export const REPO2 = "acme/api";
+export const REPO3 = "acme/billing"; // its profile run failed — the Skills page error state
 export const PR = "38849"; // in REPO
 export const PR2 = "38850"; // in REPO — dedicated archive-test target — no other test touches it
 export const PR3 = "7"; // in REPO2
@@ -37,7 +38,7 @@ export function buildFixture() {
     [
       `RS_SECRET=${SECRET}`,
       `REVIEWER=${USER}`,
-      `REPOS=${REPO},${REPO2}`,
+      `REPOS=${REPO},${REPO2},${REPO3}`,
       "DRY_RUN=1",
       "PUBLIC_URL=https://reviewstage.example.com",
       "GITHUB_PAT=ghp_e2e_dummy_never_used",
@@ -260,6 +261,17 @@ export function buildFixture() {
       cost_usd: 0.055,
       duration_ms: 48000,
     }),
+  );
+
+  // REPO3's last profile run failed before the model answered anything usable: a status line
+  // beginning "failed:" and an agent.log holding the CLI error (state failed, log tail, Retry).
+  write(
+    join(FIXTURE, "profiles", slug(REPO3), "status"),
+    `failed: the model produced no result (see ${join(FIXTURE, "profiles", slug(REPO3), "agent.log")})`,
+  );
+  write(
+    join(FIXTURE, "profiles", slug(REPO3), "agent.log"),
+    ["error: unknown option '---'", "", "(Did you mean --add-dir?)", ""].join("\n"),
   );
 
   // Fake gh: every call fails, so gh_json() returns its defaults and the server renders from

@@ -133,7 +133,8 @@ def main():
              "confidence": "high"}]}))
 
     # A repository profile for REPO, so the Skills page shows the "Repository profile" section
-    # as profiled (REPO2 stays "never run"). Mirrors dashboard-ui/e2e/fixture.ts.
+    # as profiled; REPO2's last run failed, so the page shows the error state (the failure text,
+    # the log tail, Retry). Mirrors dashboard-ui/e2e/fixture.ts.
     import rs_profile
     prof = {
         "summary": "A storefront: product cards read vendor lead times; payments and auth are "
@@ -163,6 +164,11 @@ def main():
         "model": "claude-sonnet-4-5", "input_tokens": 9120, "output_tokens": 1840,
         "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "cost_usd": 0.055,
         "duration_ms": 48000}))
+
+    pdir2 = root / "profiles" / slug(REPO2)
+    write(pdir2 / "status", "failed: the model produced no result (see "
+                            f"{pdir2 / 'agent.log'})")
+    write(pdir2 / "agent.log", "error: unknown option '---'\n\n(Did you mean --add-dir?)\n")
 
     # Fake gh: every call fails, so the server falls back to the on-disk fixture.
     gh = root / "fakebin" / "gh"

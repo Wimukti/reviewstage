@@ -141,7 +141,9 @@ class PromptAssembly(unittest.TestCase):
     def test_prompt_wraps_skill_signals_and_contract(self):
         sig = {"repo": "o/r", "file_count": 3, "tree": ["a/"], "gathered_at": 1, "duration_ms": 5}
         prompt = PF.build_prompt(sig, "---\nname: repo-profile\n---\nBODY")
-        self.assertTrue(prompt.startswith("---\nname: repo-profile"))
+        # Front-matter is dropped: a prompt starting with `---` was parsed as a CLI option.
+        self.assertTrue(prompt.startswith("BODY\n\n## Signals"), prompt[:40])
+        self.assertNotIn("name: repo-profile", prompt)
         self.assertIn('"file_count": 3', prompt)
         self.assertNotIn("gathered_at", prompt)
         self.assertIn("Reply with ONLY one JSON object", prompt)
@@ -175,6 +177,46 @@ class MarkdownRoundTrip(unittest.TestCase):
         self.assertEqual(p["risk_paths"], [{"label": "auth", "pattern": "app/auth/"}])
         self.assertEqual(p["review_rules"], [])
         self.assertEqual(p["do_not_flag"], ["lockfile"])
+
+
+class JobState(unittest.TestCase):
+    def test_every_state_is_one_of_the_five(self):
+        cases = {
+            (True, "asking the model (one call)", False): ("running", ""),
+            (True, "failed: x", True): ("running", ""),
+            (False, "", False): ("none", ""),
+            (False, "done", True): ("done", ""),
+            (False, "stopped", False): ("stopped", ""),
+            (False, "stopped", True): ("done", ""),
+        }
+        for (running, status, has), want in cases.items():
+            self.assertEqual(PF.job_state(running, status, has), want, (running, status, has))
+
+    def test_a_failed_run_is_failed_not_none(self):
+        st, why = PF.job_state(False, "failed: the model produced no result (see x)", False)
+        self.assertEqual(st, "failed")
+        self.assertEqual(why, "failed: the model produced no result (see x)")
+
+    def test_a_failed_rerun_keeps_the_old_profile_and_reports_the_failure(self):
+        st, why = PF.job_state(False, "failed: boom", True)
+        self.assertEqual(st, "done")
+        self.assertEqual(why, "failed: boom")
+
+    def test_a_dead_run_still_showing_progress_is_a_failure(self):
+        for status in ("queued", "gathering signals", "asking the model (one call)"):
+            st, why = PF.job_state(False, status, False)
+            self.assertEqual(st, "failed", status)
+            self.assertIn(status, why)
+
+    def test_log_tail_keeps_the_last_non_empty_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp, "agent.log")
+            f.write_text("\n".join(f"line {i}" if i % 7 else "" for i in range(60)) + "\n\n")
+            tail = PF.log_tail(f)
+            self.assertEqual(len(tail), 20)
+            self.assertEqual(tail[-1], "line 59")
+            self.assertNotIn("", tail)
+            self.assertEqual(PF.log_tail(Path(tmp, "missing.log")), [])
 
 
 class Storage(unittest.TestCase):

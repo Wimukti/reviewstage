@@ -210,13 +210,13 @@ scannable (point form, plain language), not long prose — then selects, edits a
 comments. Keep findings few and high-confidence.${LEARN}"
 
 if [ -s "$REPO_SKILL" ]; then
-  echo "repo:$(repo_slug "$REPO")" > "$DIR/skill"; APPROACH="$(cat "$REPO_SKILL")"
+  echo "repo:$(repo_slug "$REPO")" > "$DIR/skill"; APPROACH="$(skill_body "$REPO_SKILL")"
   echo "[$REPO#$PR] skill: team default for $REPO (repo override)"
 elif [ "$CHOICE" != team ] && [ -n "$ACTOR" ] && [ -f "$USER_SKILL" ]; then
-  echo "$ACTOR" > "$DIR/skill"; APPROACH="$(cat "$USER_SKILL")"
+  echo "$ACTOR" > "$DIR/skill"; APPROACH="$(skill_body "$USER_SKILL")"
   echo "[$REPO#$PR] skill: $ACTOR's own"
 elif [ -f "$GLOBAL_SKILL" ]; then
-  echo "global" > "$DIR/skill"; APPROACH="$(cat "$GLOBAL_SKILL")"
+  echo "global" > "$DIR/skill"; APPROACH="$(skill_body "$GLOBAL_SKILL")"
   echo "[$REPO#$PR] skill: team default"
 else
   echo "global" > "$DIR/skill"; APPROACH=""
@@ -238,10 +238,12 @@ $FOCUSBLOCK$STACKBLOCK$PROFILE_BLOCK
 ${CONTRACT}"
 fi
 
-(cd "$wt" && timeout "$TIMEOUT" claude -p "$PROMPT" \
+# The prompt goes in on stdin, never as an argument: a skill that begins with `---` (or any
+# `-`) would otherwise be parsed as an option, and argv has a length limit a long skill can hit.
+(cd "$wt" && printf '%s' "$PROMPT" | timeout "$TIMEOUT" claude -p \
   ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} \
   --output-format stream-json --verbose \
-  --allowedTools "Bash Read Glob Grep Write" < /dev/null) >"$DIR/agent.log" 2>&1
+  --allowedTools "Bash Read Glob Grep Write") >"$DIR/agent.log" 2>&1
 
 [ -s "$wt/review.json" ] || fail "agent produced no review.json (see $DIR/agent.log)"
 jq -e . "$wt/review.json" >/dev/null 2>&1 || fail "review.json is not valid JSON"

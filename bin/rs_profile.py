@@ -300,13 +300,26 @@ OUTPUT_CONTRACT = (
     "[A-Za-z0-9_-] only.")
 
 
+def strip_front_matter(text):
+    """`text` without a leading YAML front-matter block (`---` … `---`). Mirrors skill_body in
+    lib-common.sh: an unterminated header is returned untouched."""
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return "".join(lines[i + 1:])
+    return text
+
+
 def build_prompt(signals, skill_text):
     """The single model call's prompt: the repo-profile skill, then the signals, then the
-    contract. Bounded JSON so the call stays one Sonnet-sized turn."""
+    contract. Bounded JSON so the call stays one Sonnet-sized turn. The skill's front-matter is
+    dropped so the prompt never starts with `---`."""
     sig = dict(signals)
     sig.pop("gathered_at", None)
     sig.pop("duration_ms", None)
-    return (f"{skill_text.strip()}\n\n"
+    return (f"{strip_front_matter(skill_text).strip()}\n\n"
             f"## Signals gathered from {signals.get('repo') or 'the repository'} "
             f"(deterministic, from git — no guessing needed)\n\n"
             f"```json\n{json.dumps(sig, indent=1)}\n```\n\n{OUTPUT_CONTRACT}")
@@ -554,6 +567,45 @@ def from_markdown(md):
                 prof["do_not_flag"].append(m.group(1).strip())
     prof["summary"] = " ".join(summary)
     return prof
+
+
+# --- job state ------------------------------------------------------------------------------
+TERMINAL_STATUS = ("done", "stopped", "")
+LOG_TAIL_LINES = 20
+
+
+def job_state(running, status, has_profile):
+    """(state, failure) for one profile job from what is on disk. `state` is exactly one of
+    none | running | done | failed | stopped; `failure` is the text to show when the last run
+    failed, else "". A run that is not holding the lock but whose status is still a progress
+    line died without reporting (killed, OOM, a `die` before its first status) — that is a
+    failure too, not "never run". An existing profile keeps state=done even after a failed
+    re-run, with the failure text alongside so the page can say so."""
+    status = (status or "").strip()
+    if running:
+        return "running", ""
+    if status.startswith("failed"):
+        failure = status
+    elif status not in TERMINAL_STATUS:
+        failure = f"failed: the profiler exited without reporting why (last status: {status})"
+    else:
+        failure = ""
+    if has_profile:
+        return "done", failure
+    if failure:
+        return "failed", failure
+    if status == "stopped":
+        return "stopped", ""
+    return "none", ""
+
+
+def log_tail(path, n=LOG_TAIL_LINES):
+    """The last `n` non-empty lines of a log file, or [] when there is none."""
+    try:
+        lines = Path(path).read_text(errors="replace").splitlines()
+    except OSError:
+        return []
+    return [ln.rstrip() for ln in lines if ln.strip()][-n:]
 
 
 # --- storage --------------------------------------------------------------------------------

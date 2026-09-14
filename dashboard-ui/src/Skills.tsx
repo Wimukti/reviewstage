@@ -269,6 +269,8 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
       setD(r);
       setMd(r.md);
       if (r.bannerHtml) onBanner(r.bannerHtml);
+      else if (r.started === false && r.reason)
+        onBanner(`<div class='banner err'><span>⏳</span><div>Not started: ${r.reason}.</div></div>`);
     } catch (e) {
       onBanner(
         `<div class='banner err'><span>🚫</span><div>${(e as Error).message || "That didn't work."}</div></div>`
@@ -289,6 +291,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
     );
   const usage = d.last?.usage;
   const c = d.counts;
+  const running = d.state === "running";
 
   return (
     <details className="skilled" data-testid="repo-profile">
@@ -327,12 +330,24 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
         ) : d.state === "failed" ? (
           <div className="profstat" data-testid="profile-status">
             <span className="dot bad" />
-            <span>{d.failed || "The last run failed."}</span>
+            <span>The last run failed.</span>
           </div>
         ) : (
           <div className="profstat" data-testid="profile-status">
             <span className="dot" />
             <span>{d.stopped ? "Stopped before it finished." : "Never run."}</span>
+          </div>
+        )}
+
+        {d.failed && d.state !== "running" && (
+          <div className="proferr" role="alert" data-testid="profile-error">
+            <div className="proferr-text">{d.failed}</div>
+            {d.logTail && d.logTail.length > 0 && (
+              <details className="proferr-log" data-testid="profile-log">
+                <summary>Last {d.logTail.length} lines of the log</summary>
+                <pre>{d.logTail.join("\n")}</pre>
+              </details>
+            )}
           </div>
         )}
 
@@ -343,24 +358,31 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
           </div>
         )}
 
-        {d.state !== "running" && (
-          <div className="inrow">
-            <button
-              className="btn primary"
-              type="button"
-              disabled={busy || !d.connected}
-              title={d.connected ? "" : "Connect your Claude account in Integrations first"}
-              onClick={() => act(() => api.profileRun(repo, d.token))}
-            >
-              {d.state === "done" ? "Re-profile this repo" : "Profile this repo"}
-            </button>
-            {!d.connected && (
-              <span className="hint" style={{ margin: 0 }}>
-                Runs on your Claude account — connect it in Integrations first.
-              </span>
-            )}
-          </div>
-        )}
+        <div className="inrow">
+          <button
+            className="btn primary"
+            type="button"
+            data-testid="profile-run"
+            disabled={busy || running || !d.connected}
+            aria-busy={running || undefined}
+            title={d.connected ? "" : "Connect your Claude account in Integrations first"}
+            onClick={() => act(() => api.profileRun(repo, d.token))}
+          >
+            {running && <span className="spin" aria-hidden="true" />}{" "}
+            {running
+              ? `Profiling… (${d.running?.text || "starting"})`
+              : d.state === "failed" || d.failed
+                ? "Retry"
+                : d.state === "done"
+                  ? "Re-profile this repo"
+                  : "Profile this repo"}
+          </button>
+          {!d.connected && (
+            <span className="hint" style={{ margin: 0 }}>
+              Runs on your Claude account — connect it in Integrations first.
+            </span>
+          )}
+        </div>
         <div className="hint">
           Gathers the tree, churn, in-degree, CODEOWNERS and CI names with no model call, then makes one
           Sonnet call to name the critical paths. Every path is checked against the tree; anything that

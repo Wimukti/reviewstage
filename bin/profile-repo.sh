@@ -67,7 +67,9 @@ echo "[profile $REPO] signals gathered in $(( $(date +%s) - t0 ))s"
 
 SKILL="$HERE/../skills/repo-profile/SKILL.md"
 [ -s "$SKILL" ] || fail "skills/repo-profile/SKILL.md is missing next to $HERE"
-PROMPT=$(py prompt "$PDIR/signals.json" "$SKILL") || fail "could not build the prompt"
+# Front-matter off (skill_body) — the prompt must never begin with `---`.
+skill_body "$SKILL" > "$PDIR/skill.md"
+PROMPT=$(py prompt "$PDIR/signals.json" "$PDIR/skill.md") || fail "could not build the prompt"
 MODEL="${RS_MODEL:-sonnet}"
 echo "$MODEL" > "$PDIR/model"
 
@@ -79,10 +81,12 @@ flock 8
 status "asking the model (one call)"
 echo "${RS_RUN_AS:-shared}" > "$PDIR/runner"
 # Read-only tools only, cwd = the base clone, so the model can confirm a path before naming it
-# but cannot write anywhere. One prompt, one reply; the JSON is the reply text.
-(cd "$BASE" && timeout 15m claude -p "$PROMPT" --model "$MODEL" \
+# but cannot write anywhere. One prompt, one reply; the JSON is the reply text. The prompt goes
+# in on stdin (`claude -p` reads it when no positional prompt is given): it can never be taken
+# for an option and there is no argv length limit.
+(cd "$BASE" && printf '%s' "$PROMPT" | timeout 15m claude -p --model "$MODEL" \
   --output-format stream-json --verbose --max-turns 25 \
-  --allowedTools "Read Glob Grep" < /dev/null) >"$PDIR/agent.log" 2>&1
+  --allowedTools "Read Glob Grep") >"$PDIR/agent.log" 2>&1
 
 result_line=$(grep -a '"type":"result"' "$PDIR/agent.log" | tail -1 || true)
 [ -n "$result_line" ] || fail "the model produced no result (see $PDIR/agent.log)"

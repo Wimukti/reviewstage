@@ -47,3 +47,15 @@ export function prUrl(ref: PrRef, path = "/pr", extra = ""): string {
 export function prLabel(ref: PrRef): string {
   return ref.repo ? `${ref.repo} #${ref.num}` : `#${ref.num}`;
 }
+
+// Wall-clock of a finished run for the usage chip: "3m 24s", "48s", "1h 02m". 0/undefined → "".
+export function fmtDuration(ms: number | undefined | null): string {
+  if (!ms || ms <= 0) return "";
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}

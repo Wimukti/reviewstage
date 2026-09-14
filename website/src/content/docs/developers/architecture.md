@@ -55,7 +55,7 @@ Every `POST` carries an HMAC token minted at render time (30 minutes) over `acti
 1. Clones the repository's base clone if it does not exist yet (`repos/<owner>__<name>`, blobless), fetches the PR head and creates a **git worktree** per repo per reviewer per PR, so two people never collide.
 2. Picks the skill, in order: a per-repo override (`skills/repos/<owner>__<name>/SKILL.md`), else the clicker's personal skill if selected, else the editable team default, else the installed built-in — and logs which one it used. It runs that skill's logic and **always appends an explicit `review.json` output contract**, so any skill yields the shape the dashboard needs.
 3. Renders recent learnings and the focus note into the prompt, plus a depth instruction for the effort level.
-4. Runs `claude -p` headless with `--allowedTools "Bash Read Glob Grep Write"`, an optional `--model`, and a timeout (12/25/40 minutes by effort), with the clicker's Claude token in the environment.
+4. Runs `claude -p` headless with `--allowedTools "Bash Read Glob Grep Write"`, an optional `--model`, and a timeout ceiling by effort (a typical run finishes well inside it — a few minutes on Opus), with the clicker's Claude token in the environment.
 5. Parses token usage and the model from the stream log, records the head SHA (for staleness) and a path-based risk flag, copies `review.json` out, and removes the worktree.
 
 The prompt tells the agent a human will read `explainer` and `analysis` in a dashboard to decide whether to trust the findings. That framing is load-bearing: it is what makes the prose readable rather than a wall of bullets.

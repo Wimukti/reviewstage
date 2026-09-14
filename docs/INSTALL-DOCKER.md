@@ -154,7 +154,7 @@ Claude login.
   at least one user has connected. There is no `ANTHROPIC_API_KEY` fallback in the review path.
 
 Plans: connecting needs a Claude Pro, Max, Team or Enterprise subscription. Each review is a
-real agent run (10–15 minutes on a 25-file PR) against that person's usage limits.
+real agent run (a few minutes for a typical PR on Opus; longer for Deep) against that person's usage limits.
 
 ## Where things live
 

@@ -16,7 +16,7 @@ a PR needs your review
   └─ you open it in ReviewStage (or a Slack card brings you there)
        └─ click Start review: effort, optional focus note, model
             └─ the agent checks out the branch in a worktree and reads the real diff
-                 └─ review.json — findings with file:line, severity, body   (10–15 min for ~25 files)
+                 └─ review.json — findings with file:line, severity, body   (a few minutes for a typical PR)
                       └─ you tick the findings worth posting, edit any wording
                            └─ Post to GitHub — a plain COMMENT review, as you
                                 └─ Approve — a separate click, also as you

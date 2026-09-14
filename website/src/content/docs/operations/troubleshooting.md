@@ -63,5 +63,5 @@ The fine-grained token was not granted on that repository, or the organisation r
 - **Team review requests are not polled.** `review-requested:<login>` matches direct requests only; a request routed through a team handle never fires.
 - **Slack replies are threaded only with a bot token.** Webhooks are send-only.
 - **One repository per server.**
-- **Reviews cost tokens.** 10–15 minutes of agent time on a 25-file PR, on the clicker's plan. That is what click-to-run is for.
+- **Reviews cost tokens.** A few minutes of agent time for a typical PR on Opus (longer for Deep), on the clicker's plan. That is what click-to-run is for.
 - **Runs serialise.** One heavy job (review or QA guide) at a time per server.

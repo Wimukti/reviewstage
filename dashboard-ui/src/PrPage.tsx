@@ -13,7 +13,7 @@ import {
 } from "./api";
 import { Md } from "./Md";
 import { MdEditor } from "./MdEditor";
-import { prLabel, prUrl } from "./pr";
+import { fmtDuration, prLabel, prUrl } from "./pr";
 import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
 
@@ -159,16 +159,27 @@ function RunForm({
       )}
       <div className="effort-lbl">Effort</div>
       <div className="effrow">
-        {form.levels.map((l) => (
-          <label key={l.key} className={"eff" + (effort === l.key ? " hot" : "")}>
-            <input type="radio" name="effort" checked={effort === l.key} onChange={() => setEffort(l.key)} />
-            <span className="effname">
-              {l.name}
-              {l.key === form.suggested ? " · suggested" : ""}
-            </span>
-            <span className="effsub">{l.sub}</span>
-          </label>
-        ))}
+        {form.levels.map((l) => {
+          const est = form.estimates?.[l.key];
+          return (
+            <label
+              key={l.key}
+              className={"eff" + (effort === l.key ? " hot" : "")}
+              title={
+                est?.source === "measured"
+                  ? `Median of ${est.samples} ${l.name} run${est.samples === 1 ? "" : "s"} on this install`
+                  : undefined
+              }
+            >
+              <input type="radio" name="effort" checked={effort === l.key} onChange={() => setEffort(l.key)} />
+              <span className="effname">
+                {l.name}
+                {l.key === form.suggested ? " · suggested" : ""}
+              </span>
+              <span className="effsub">{l.sub}</span>
+            </label>
+          );
+        })}
       </div>
       {form.models && form.models.length > 0 && (
         <>
@@ -209,7 +220,9 @@ function RunForm({
         </button>
       </div>
       <div className="hint" style={{ marginTop: 6 }}>
-        Times are estimates — they depend on the PR’s size and your plan.
+        {Object.values(form.estimates ?? {}).some((e) => e.source === "measured")
+          ? "“Typically” times are medians of this install’s own runs; ranges are estimates. Both depend on the PR’s size, the model and your plan."
+          : "Times are estimates — they depend on the PR’s size, the model and your plan."}
       </div>
     </form>
   );
@@ -735,7 +748,8 @@ function RerunSection({ data, onDone }: { data: PrData; onDone: () => void }) {
 }
 
 function usageChip(u: NonNullable<PrData["usage"]>): string {
-  return `${u.model.replace(/^claude-/, "")} · ${u.realTokens.toLocaleString()} tokens`;
+  const dur = fmtDuration(u.durationMs);
+  return `${u.model.replace(/^claude-/, "")} · ${u.realTokens.toLocaleString()} tokens${dur ? ` · ${dur}` : ""}`;
 }
 
 // Details on hover: the real breakdown, plus the API-list-price estimate clearly marked as NOT

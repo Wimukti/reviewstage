@@ -796,6 +796,161 @@ def add_skill_rule(text, rule):
     return f"{head}{RULES_MARKER}\n\n{RULES_INTRO}\n\n{bullet}\n"
 
 
+# --- Phase 6: repeated rejections become PROPOSED team rules -----------------------------------
+# rs_learn clusters the findings the team keeps dropping; here each qualifying cluster is turned
+# into one imperative sentence in the house style and offered on the Skills page. Nothing reaches
+# a skill without someone clicking Accept — the model drafts, a human decides, and the accept
+# path is the same quick-add that a hand-typed rule goes through.
+_PROPOSAL_LOCK = threading.Lock()
+_PROPOSAL_DRAFTING = set()          # signatures a background draft is already working on
+
+
+def suggestion_target(cluster):
+    """Which skill a cluster's rule belongs to.
+
+    Cross-repo evidence is a team standard. Single-repo evidence goes to that repository's own
+    team default — but only when the repository already HAS one: creating a repo skill from a
+    single rule would silently override the team default for every review of that repo."""
+    repos = cluster.get("repos") or []
+    if len(repos) == 1 and read_skill(REPO_SKILL_PREFIX + repos[0]):
+        return REPO_SKILL_PREFIX + repos[0]
+    return "global"
+
+
+def _house_prompt(cluster, existing):
+    ex = "\n".join(f"- {r}" for r in existing[:8]) or "- (none yet)"
+    gists = "\n".join(f"- [{f['severity']}] {f['path'] or 'no file'} — {f['gist']}"
+                      for f in cluster["findings"][:12])
+    return (
+        "A code-review assistant raised these findings and a human reviewer chose NOT to post "
+        f"any of them ({cluster['count']} times across {cluster['prs']} pull requests). They are "
+        "the same complaint in different words. Write the standing rule that would have stopped "
+        "the assistant raising it.\n\n"
+        "Existing rules, for house style — match their voice and length exactly:\n" + ex +
+        "\n\nThe rejected findings:\n" + gists +
+        "\n\nReply with EXACTLY two lines and nothing else:\n"
+        "RULE: one imperative sentence, under 20 words, telling the reviewer what not to raise "
+        "(or what to raise instead). No preamble, no markdown, no quotes.\n"
+        "WHY: one short line of evidence-based rationale, under 20 words.\n")
+
+
+def _parse_proposal(text):
+    rule = why = ""
+    for line in (text or "").splitlines():
+        ln = line.strip().lstrip("-* ").strip()
+        if ln.upper().startswith("RULE:"):
+            rule = ln[5:].strip().strip('"')
+        elif ln.upper().startswith("WHY:"):
+            why = ln[4:].strip().strip('"')
+    return rule[:300], why[:300]
+
+
+def draft_proposal(user, cluster):
+    """(rule, rationale, error) — one Claude call on the acting user's account, then cached."""
+    cached = rs_learn.proposals().get(cluster["signature"])
+    if cached and cached.get("rule"):
+        return cached["rule"], cached.get("rationale", ""), None
+    tok = user_claude_token(user)
+    if not tok:
+        return "", "", "Connect your Claude account to draft rules from your dropped findings."
+    existing = rs_learn.parse_rules(read_skill(suggestion_target(cluster)), RULES_MARKER)
+    try:
+        r = subprocess.run(["claude", "-p", _house_prompt(cluster, existing),
+                            "--max-turns", "1", "--model", "haiku"],
+                           capture_output=True, text=True, timeout=90,
+                           stdin=subprocess.DEVNULL,
+                           env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": tok})
+    except FileNotFoundError:
+        return "", "", "claude is not installed on this box."
+    except subprocess.TimeoutExpired:
+        return "", "", "Claude did not answer in time — reopen the page to retry."
+    if r.returncode != 0:
+        tail = ((r.stderr or r.stdout or "error").strip().splitlines() or ["error"])[-1]
+        return "", "", tail[:200]
+    rule, why = _parse_proposal(r.stdout)
+    if not rule:
+        return "", "", "No rule was produced — reopen the page to retry."
+    rs_learn.save_proposal(cluster["signature"], rule, why, "haiku")
+    return rule, why, None
+
+
+def _draft_missing(user, pending):
+    """Draft up to two missing proposals in the background so the Skills page never blocks."""
+    for cluster in pending[:2]:
+        sig = cluster["signature"]
+        with _PROPOSAL_LOCK:
+            if sig in _PROPOSAL_DRAFTING:
+                continue
+            _PROPOSAL_DRAFTING.add(sig)
+        try:
+            _, _, err = draft_proposal(user, cluster)
+            if err:
+                print(f"rule proposal {sig} failed: {err}", flush=True)
+        finally:
+            with _PROPOSAL_LOCK:
+                _PROPOSAL_DRAFTING.discard(sig)
+
+
+def rule_suggestions(user, draft=True):
+    """Every qualifying cluster that is not already a rule, with its proposal when we have one.
+
+    A cluster already covered by a Team rule is not a suggestion — the rule carries it. Dismissed
+    ones stay in the list, flagged, so the page can offer 'Show dismissed' with an Undo."""
+    proms, dis, props = rs_learn.promotions(), rs_learn.dismissals(), rs_learn.proposals()
+    connected = claude_connected(user)
+    out, pending = [], []
+    for outcome in ("dropped", "edited"):
+        for c in rs_learn.clusters(outcome):
+            sig = c["signature"]
+            if sig in proms:
+                continue                       # already a rule
+            target = suggestion_target(c)
+            if rs_learn.covered_by_rule(c, rs_learn.parse_rules(read_skill(target),
+                                                                RULES_MARKER)):
+                continue
+            p = props.get(sig) or {}
+            d = rs_learn.dismissed_match(c, dis)
+            item = {**c, "target": "team" if target == "global" else target,
+                    "targetLabel": ("the team default" if target == "global"
+                                    else f"the team default for {target[len(REPO_SKILL_PREFIX):]}"),
+                    "rule": p.get("rule", ""), "rationale": p.get("rationale", ""),
+                    "dismissed": bool(d), "dismissedBy": (d or {}).get("by", ""),
+                    "connected": connected}
+            if not item["rule"] and not d:
+                item["pending"] = True
+                pending.append(c)
+            out.append(item)
+    if draft and pending and connected:
+        threading.Thread(target=_draft_missing, args=(user, pending), daemon=True).start()
+    out.sort(key=lambda s: (s["dismissed"], not s["rule"], -s["count"]))
+    return out
+
+
+def accept_suggestion(user, cluster, rule):
+    """Land a proposed rule through the same quick-add path a typed rule uses."""
+    target = suggestion_target(cluster)
+    who = ("the team default skill" if target == "global"
+           else f"the team default for {target[len(REPO_SKILL_PREFIX):]}")
+    new_text = add_skill_rule(read_skill(target), rule)
+    if len(new_text) > 40000:
+        return None, "That skill is already very large (>40k chars). Trim it first."
+    save_skill(target, new_text)
+    commit_skill_change(user, f"Promoted a rule to {who} from {cluster['count']} dropped "
+                              f"findings across {cluster['prs']} PRs: {tidy_rule(rule)}")
+    rs_learn.promote(cluster["signature"], cluster, user, tidy_rule(rule), target)
+    print(f"rule promoted to {target} by {user}: {tidy_rule(rule)!r} "
+          f"({cluster['count']} findings)", flush=True)
+    return who, None
+
+
+def find_cluster(sig):
+    for outcome in ("dropped", "edited"):
+        for c in rs_learn.clusters(outcome):
+            if c["signature"] == sig:
+                return c
+    return None
+
+
 # Which skill a user's reviews run with: their own, or the shared team default. A saved choice
 # wins; with none, we default to "own" when they have a personal skill, else "team". The team
 # default is never destructively resettable through this — see save_skill / do_skill.
@@ -2778,7 +2933,43 @@ class Handler(BaseHTTPRequestHandler):
             "stats": [{**st, "label": skill_label(st["skill"], user)}
                       for st in rs_learn.skill_stats()],
             "teamHistory": skill_history(5),
+            "suggestions": rule_suggestions(user),
+            "suggestMin": rs_learn.RULE_SUGGEST_MIN,
         }
+
+    def api_suggestion(self, user, body):
+        """Accept / dismiss / undismiss one proposed rule. Any signed-in user, exactly like the
+        quick-add box they would otherwise have typed the rule into by hand."""
+        sig = str(body.get("signature") or "")
+        action = str(body.get("action") or "")
+        if action not in ("accept", "dismiss", "undismiss"):
+            return {"error": "Unknown action."}, 400
+        if action == "undismiss":
+            rs_learn.undismiss(sig)
+            return {**self.api_skills(user),
+                    "bannerHtml": "<div class='banner ok'><span>\u21ba</span><div>Restored — the "
+                                  "suggestion is back in the list.</div></div>"}, 200
+        cluster = find_cluster(sig)
+        if not cluster:
+            return {"error": "That suggestion is no longer current — reload the page."}, 400
+        if action == "dismiss":
+            rs_learn.dismiss(sig, cluster, user)
+            return {**self.api_skills(user),
+                    "bannerHtml": "<div class='banner ok'><span>\u2713</span><div>Dismissed — it "
+                                  "won't be suggested again. Find it under <b>Show dismissed</b>."
+                                  "</div></div>"}, 200
+        rule = str(body.get("rule") or "").strip() or \
+            (rs_learn.proposals().get(sig) or {}).get("rule", "")
+        if not rule:
+            return {"error": "There is no drafted rule to accept yet."}, 400
+        who, err = accept_suggestion(user, cluster, rule)
+        if err:
+            return {"error": err}, 400
+        return {**self.api_skills(user),
+                "bannerHtml": f"<div class='banner ok'><span>\u2713</span><div>Added to {who} "
+                              f"from {cluster['count']} dropped findings across "
+                              f"{cluster['prs']} PRs: <b>{html.escape(tidy_rule(rule))}</b>"
+                              f"</div></div>"}, 200
 
     def api_settings(self, user):
         """Runtime settings for the Settings page: effective values + where each came from,
@@ -2862,6 +3053,8 @@ class Handler(BaseHTTPRequestHandler):
                     "repo": r.get("repo", ""),
                     "editedGist": r.get("edited_gist", "") if o == "edited" else ""}
         return {"counts": rs_learn.counts(), "repos": all_repos(),
+                "clusters": rs_learn.cluster_status(),
+                "promoted": rs_learn.promoted_count(),
                 "rows": [item(r) for r in rs_learn.recent(80)]}
 
     def api_stack(self, repo, pr, user):
@@ -3066,6 +3259,10 @@ class Handler(BaseHTTPRequestHandler):
         def settings_gate():
             return verify("settings", user, str(body.get("exp") or ""), str(body.get("sig") or ""))
 
+        if route == "/api/skills/suggestion":
+            if err := settings_gate():
+                return self.api_json({"error": err}, 403)
+            return self.api_json(*self.api_suggestion(user, body))
         if route.startswith("/api/skill/"):
             step = route.rsplit("/", 1)[1]
             if err := settings_gate():

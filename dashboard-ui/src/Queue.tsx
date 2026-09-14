@@ -272,6 +272,7 @@ export function Queue({ me }: { me: Me }) {
       </div>
 
 
+      <div data-tour="queue">
       {filtered.length > 0 ? (
         <div className="list" id="qlist" data-tour="queuelist">
           {filtered.map((r) => (
@@ -291,6 +292,7 @@ export function Queue({ me }: { me: Me }) {
           {empty[2]}
         </div>
       )}
+      </div>
     </>
   );
 }

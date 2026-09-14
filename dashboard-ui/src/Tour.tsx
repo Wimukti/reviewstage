@@ -24,7 +24,8 @@ const TOUR: TourStep[] = [
     text: "ReviewStage follows a review skill. The shared team default works out of the box — or bring your own here. You can switch any time.",
   },
   {
-    sel: '[data-tour="queuelist"]',
+    // The list when there is one; the card (empty state included) otherwise.
+    sel: '[data-tour="queuelist"], [data-tour="queue"]',
     title: "3. Your review queue",
     text: "PRs waiting on your review land here. Open one, choose an effort level, and ReviewStage drafts the review — nothing posts to GitHub without your click.",
   },
@@ -37,6 +38,49 @@ const TOUR: TourStep[] = [
 
 const SEEN_KEY = "reviewstage_tour";
 const EVT = "reviewstage:start-tour";
+// The queue renders after its data loads, so the auto-start waits for the target this long.
+const AUTO_START_SEL = '[data-tour="queue"]';
+const AUTO_START_WAIT_MS = 5000;
+
+// Comma-separated selectors are tried in order: the first that matches wins (unlike
+// querySelector, which picks document order).
+function findTarget(sel: string): HTMLElement | null {
+  for (const one of sel.split(",")) {
+    const el = document.querySelector(one.trim()) as HTMLElement | null;
+    if (el) return el;
+  }
+  return null;
+}
+
+function tourSeen(): boolean {
+  try {
+    return localStorage.getItem(SEEN_KEY) === "done";
+  } catch {
+    return false; /* private mode */
+  }
+}
+
+// Resolve once `sel` is in the DOM (now, or when it appears within `ms`); false on timeout.
+function whenPresent(sel: string, ms: number): { promise: Promise<boolean>; cancel: () => void } {
+  let cancel = () => {};
+  const promise = new Promise<boolean>((resolve) => {
+    if (document.querySelector(sel)) return resolve(true);
+    const obs = new MutationObserver(() => {
+      if (document.querySelector(sel)) {
+        done(true);
+      }
+    });
+    const t = window.setTimeout(() => done(false), ms);
+    const done = (ok: boolean) => {
+      obs.disconnect();
+      window.clearTimeout(t);
+      resolve(ok);
+    };
+    cancel = () => done(false);
+    obs.observe(document.body, { childList: true, subtree: true });
+  });
+  return { promise, cancel };
+}
 
 // Fire from anywhere (e.g. the sidebar) to (re)open the tour.
 export function startTour() {
@@ -65,18 +109,19 @@ export function Tour() {
       setOpen(true);
     };
     window.addEventListener(EVT, onStart);
-    let seen = false;
-    try {
-      seen = localStorage.getItem(SEEN_KEY) === "done";
-    } catch {
-      /* private mode */
-    }
     let t: number | undefined;
-    if (!seen && document.querySelector('[data-tour="queuelist"]')) {
-      t = window.setTimeout(onStart, 450);
+    let waiter: ReturnType<typeof whenPresent> | undefined;
+    if (!tourSeen()) {
+      // First visit: the queue card mounts after its fetch, so wait for it rather than
+      // checking once. Empty queue or not, the card is there — the tour still runs.
+      waiter = whenPresent(AUTO_START_SEL, AUTO_START_WAIT_MS);
+      waiter.promise.then((ok) => {
+        if (ok && !tourSeen()) t = window.setTimeout(onStart, 450);
+      });
     }
     return () => {
       window.removeEventListener(EVT, onStart);
+      waiter?.cancel();
       window.clearTimeout(t);
     };
   }, []);
@@ -87,7 +132,7 @@ export function Tour() {
     const ring = ringRef.current;
     const card = cardRef.current;
     if (!ring || !card) return;
-    const tgt = s.sel ? (document.querySelector(s.sel) as HTMLElement | null) : null;
+    const tgt = s.sel ? findTarget(s.sel) : null;
     if (tgt) {
       tgt.scrollIntoView({ block: "center", behavior: "smooth" });
       const r = tgt.getBoundingClientRect();
@@ -121,7 +166,7 @@ export function Tour() {
   const last = i === TOUR.length - 1;
 
   return (
-    <div className={"tourv" + (dimmed ? " dim" : "")}>
+    <div className={"tourv" + (dimmed ? " dim" : "")} data-testid="tour" role="dialog" aria-label="Guided tour">
       <div className="tourmask" onClick={end} />
       <div className="tourring" ref={ringRef} />
       <div className="tourcard" ref={cardRef}>

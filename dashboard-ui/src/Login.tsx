@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, type Me } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { api, type DeviceStart, type Me } from "./api";
 
 // Fine-grained PAT (recommended): Pull requests read/write, Contents read, Metadata read on
 // the repositories you review. A classic token with `repo` also works.
@@ -18,10 +18,109 @@ function query() {
   }
 }
 
-// Sign-in. With GitHub OAuth configured, "Continue with GitHub" is the one visible action and
-// the token form sits behind a disclosure. Without it, the token form is the sign-in and the
-// admin gets a pointer to the OAuth App setup. `?device=1` is the mobile / CLI pairing flow:
-// after sign-in the server's /device interstitial hands a device token to the app.
+type DeviceState =
+  | { step: "idle" }
+  | { step: "starting" }
+  | { step: "waiting"; start: DeviceStart }
+  | { step: "done"; login: string }
+  | { step: "failed"; why: "denied" | "expired" | "error"; message: string };
+
+// Device flow: the server hands us a short code; the person enters it at
+// github.com/login/device; we poll the server (which polls GitHub) until it has a token. The
+// server enforces GitHub's minimum interval, so a 429 simply means "ask again later".
+function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
+  const [state, setState] = useState<DeviceState>({ step: "idle" });
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alive = useRef(true);
+  const waiting = useRef(false);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  function fail(why: "denied" | "expired" | "error", message: string) {
+    waiting.current = false;
+    setState({ step: "failed", why, message });
+  }
+
+  function schedule(session: string, seconds: number) {
+    if (timer.current) clearTimeout(timer.current);
+    // A touch after the interval so the server never sees us early.
+    timer.current = setTimeout(() => void poll(session, seconds), seconds * 1000 + 250);
+  }
+
+  async function poll(session: string, seconds: number) {
+    if (!alive.current || !waiting.current) return;
+    try {
+      const r = await api.devicePoll(session);
+      if (!alive.current || !waiting.current) return;
+      if (r.status === "pending") {
+        schedule(session, Math.max(r.interval || seconds, 1));
+        return;
+      }
+      if (r.status === "ok") {
+        waiting.current = false;
+        setState({ step: "done", login: r.login || "" });
+        onOk(r.login || "", !!r.welcome);
+        return;
+      }
+      if (r.status === "denied") return fail("denied", "You cancelled the sign-in on GitHub.");
+      if (r.status === "expired") return fail("expired", "That code expired before GitHub saw it.");
+      fail("error", r.error || "GitHub did not complete the sign-in.");
+    } catch {
+      if (!alive.current || !waiting.current) return;
+      // Network blip or the server restarting: keep waiting rather than failing the sign-in.
+      schedule(session, seconds);
+    }
+  }
+
+  async function begin() {
+    if (timer.current) clearTimeout(timer.current);
+    setCopied(false);
+    waiting.current = false;
+    setState({ step: "starting" });
+    try {
+      const start = await api.deviceStart();
+      if (!alive.current) return;
+      waiting.current = true;
+      setState({ step: "waiting", start });
+      schedule(start.session, Math.max(start.interval || 5, 1));
+    } catch (x) {
+      if (!alive.current) return;
+      fail("error", x instanceof Error ? x.message : "Could not reach GitHub.");
+    }
+  }
+
+  function cancel() {
+    if (timer.current) clearTimeout(timer.current);
+    waiting.current = false;
+    setState({ step: "idle" });
+  }
+
+  async function copy(code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => alive.current && setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable (plain http, permissions) — the code is selectable text anyway */
+    }
+  }
+
+  return { state, begin, cancel, copy, copied };
+}
+
+// Sign-in. "Sign in with GitHub" is the one visible action whenever either GitHub path is on:
+// the redirect flow when the admin registered an OAuth App (one click), else the device flow
+// (a short code at github.com/login/device — works on every install, nothing to register).
+// The token form sits behind a disclosure; it is the sign-in when both are off. `?device=1`
+// is the mobile / CLI pairing flow: after sign-in the server's /device interstitial hands a
+// device token to the app.
 export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   const [pat, setPat] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,11 +129,38 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   const devName = q.get("name") || "";
   // Seed from ?err= so an OAuth failure (redirected here by the server) is shown.
   const [err, setErr] = useState(() => q.get("err") || "");
+  const redirectFlow = !!me.oauth;
+  const deviceFlow = !redirectFlow && !!me.device_flow;
+  const github = redirectFlow || deviceFlow;
   // GitHub is demoted (but still offered) when the org has not approved the app yet.
-  const [showPat, setShowPat] = useState(!me.oauth || !!me.oauth_blocked || !!err);
+  const [showPat, setShowPat] = useState(!github || !!me.oauth_blocked || !!err);
 
   const deviceNext = "/device" + (devName ? `?name=${encodeURIComponent(devName)}` : "");
   const oauthHref = device ? `/oauth/start?next=${encodeURIComponent(deviceNext)}` : "/oauth/start";
+
+  // Where a fresh session lands: the /device interstitial when pairing, the welcome checklist
+  // on a first sign-in (as the redirect callback does), else ?next= or the queue. Only local
+  // paths — an open redirect otherwise.
+  const rawNext = q.get("next") || "";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+  function landed(welcome: boolean) {
+    if (device) {
+      window.location.assign(deviceNext);
+      return;
+    }
+    if (welcome) {
+      window.location.assign("/integrations?welcome=1&next=" + encodeURIComponent(next));
+      return;
+    }
+    // Signed in on /login itself: the SPA has no page there, so move to the destination.
+    if (window.location.pathname.replace(/\/+$/, "") === "/login") {
+      window.location.assign(next);
+      return;
+    }
+    onDone();
+  }
+
+  const flow = useDeviceFlow((_login, welcome) => landed(welcome));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,11 +169,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
     setErr("");
     try {
       await api.login(pat.trim());
-      if (device) {
-        window.location.assign("/device" + (devName ? `?name=${encodeURIComponent(devName)}` : ""));
-        return;
-      }
-      onDone();
+      landed(false);
     } catch (x) {
       setErr(x instanceof Error ? x.message : "Sign-in failed.");
       setBusy(false);
@@ -70,7 +192,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
         />
       </div>
       <button
-        className={"btn block " + (me.oauth ? "soft" : "primary")}
+        className={"btn block " + (github ? "soft" : "primary")}
         type="submit"
         disabled={busy || !pat.trim()}
         aria-busy={busy}
@@ -96,6 +218,59 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
     </form>
   );
 
+  const st = flow.state;
+  const deviceCard =
+    st.step === "waiting" || st.step === "done" ? (
+      <div className="devflow" role="group" aria-labelledby="devflow-title">
+        <p id="devflow-title" className="devflow-title">
+          {st.step === "waiting" ? "Enter this code on GitHub" : "Signed in"}
+        </p>
+        {st.step === "waiting" && (
+          <>
+            <output className="devcode" data-testid="device-user-code" aria-label="Your one-time GitHub code">
+              {st.start.user_code}
+            </output>
+            <div className="devflow-actions">
+              <button type="button" className="btn soft" onClick={() => void flow.copy(st.start.user_code)}>
+                {flow.copied ? "Copied" : "Copy code"}
+              </button>
+              <a className="btn primary" href={st.start.verification_uri} target="_blank" rel="noopener">
+                Open github.com/login/device
+              </a>
+            </div>
+            <p className="devflow-wait" role="status" aria-live="polite" aria-label="Waiting for GitHub…">
+              <span className="spin" aria-hidden="true" /> Waiting for GitHub…
+            </p>
+            <p className="authfine">
+              GitHub asks for the code, then to authorise <b>{me.brand}</b>. This page signs you in by
+              itself the moment you do.{" "}
+              <button type="button" className="linkbtn" onClick={flow.cancel}>
+                Cancel
+              </button>
+            </p>
+          </>
+        )}
+        {st.step === "done" && (
+          <p className="devflow-wait" role="status" aria-live="polite">
+            Signed in{st.login ? ` as ${st.login}` : ""} — loading…
+          </p>
+        )}
+      </div>
+    ) : null;
+
+  const deviceFailed =
+    st.step === "failed" ? (
+      <div className="banner err" role="alert">
+        <span>🚫</span>
+        <div>
+          {st.message}{" "}
+          <button type="button" className="linkbtn" onClick={() => void flow.begin()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    ) : null;
+
   return (
     <div className="auth">
       <div className="authcard">
@@ -113,11 +288,32 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
             <div>{err}</div>
           </div>
         )}
-        {me.oauth ? (
+        {github ? (
           <>
-            <a className="btn primary block" href={oauthHref}>
-              Continue with GitHub
-            </a>
+            {deviceFailed}
+            {deviceCard}
+            {redirectFlow && (
+              <a className="btn primary block" href={oauthHref}>
+                Sign in with GitHub
+              </a>
+            )}
+            {deviceFlow && st.step !== "waiting" && st.step !== "done" && (
+              <button
+                type="button"
+                className="btn primary block"
+                onClick={() => void flow.begin()}
+                disabled={st.step === "starting"}
+                aria-busy={st.step === "starting"}
+              >
+                {st.step === "starting" && <span className="spin" aria-hidden="true" />}{" "}
+                {st.step === "starting" ? "Asking GitHub for a code…" : "Sign in with GitHub"}
+              </button>
+            )}
+            {deviceFlow && st.step === "idle" && (
+              <p className="authfine devflow-hint">
+                Shows a short code to enter at github.com/login/device. Nothing to install, no token to paste.
+              </p>
+            )}
             {me.oauth_blocked && !err && (
               <p className="authfine">
                 GitHub sign-in is waiting on an org owner to approve the app; a token works meanwhile.
@@ -136,10 +332,11 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
           <>
             {patForm}
             <p className="authfine authadmin">
-              <b>Running this server?</b> Teams should sign in with GitHub instead of tokens: create a
-              GitHub OAuth App with callback{" "}
-              <code>{(me.public_url || "PUBLIC_URL") + "/oauth/callback"}</code> and set{" "}
-              <code>GH_CLIENT_ID</code> / <code>GH_CLIENT_SECRET</code>. Step by step in{" "}
+              <b>Running this server?</b> Teams should sign in with GitHub instead of tokens. Set{" "}
+              <code>GH_DEVICE_FLOW=1</code> for the zero-setup device flow, or create a GitHub OAuth App
+              with callback <code>{(me.public_url || "PUBLIC_URL") + "/oauth/callback"}</code> and set{" "}
+              <code>GH_CLIENT_ID</code> / <code>GH_CLIENT_SECRET</code> for one-click sign-in. Step by
+              step in{" "}
               <a href={OAUTH_DOCS} target="_blank" rel="noopener">
                 the install guide
               </a>

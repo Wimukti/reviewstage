@@ -8,7 +8,9 @@ export interface PrRef {
   num: string;
 }
 
-const URL_RE = /github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9_.-]+)\/pull\/(\d+)/;
+// Case-insensitive: hostnames are, and a URL copied from a title bar or an email can
+// arrive as "GitHub.com". canonicalRepo() then restores the configured spelling.
+const URL_RE = /github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9_.-]+)\/pull\/(\d+)/i;
 const SHORT_RE = /^([A-Za-z0-9-]+\/[A-Za-z0-9_.-]+)#(\d{1,7})$/;
 
 // The configured spelling of a repo (GitHub repo names are case-insensitive), else as typed.

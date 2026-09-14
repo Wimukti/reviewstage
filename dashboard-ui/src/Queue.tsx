@@ -164,11 +164,7 @@ export function Queue({ me }: { me: Me }) {
           className="in"
           type="text"
           autoComplete="off"
-          placeholder={
-            multi
-              ? "Review any PR — paste a GitHub URL, owner/name#123, or a number…"
-              : "Review any PR — paste a number or GitHub URL…"
-          }
+          placeholder="Review any PR — PR URL, owner/name#123, or a number…"
           value={rv}
           onChange={(e) => setRv(e.target.value)}
         />

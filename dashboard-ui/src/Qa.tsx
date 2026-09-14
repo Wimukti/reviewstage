@@ -40,7 +40,7 @@ function QaIndex({ me }: { me: Me }) {
           <input
             className="in"
             autoComplete="off"
-            placeholder={multi ? "PR URL, owner/name#123, or a number" : "PR number — e.g. 38849"}
+            placeholder="PR URL, owner/name#123, or a number"
             value={pr}
             onChange={(e) => setPr(e.target.value)}
           />
@@ -57,7 +57,10 @@ function QaIndex({ me }: { me: Me }) {
             Open
           </button>
         </form>
-        <div className="hint">Enter a PR number to view its guide or generate a new one.</div>
+        <div className="hint">
+          Paste a PR URL, or type <code>owner/name#123</code> or a number, to view its guide
+          or generate a new one.
+        </div>
       </div>
       {guides.length > 0 ? (
         <>
@@ -87,7 +90,7 @@ function QaIndex({ me }: { me: Me }) {
         <div className="empty">
           <span className="ic">🧪</span>
           <b>No guides yet</b>
-          Enter a PR number above to build the first one.
+          Paste a PR URL or number above to build the first one.
         </div>
       )}
     </>

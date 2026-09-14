@@ -97,3 +97,20 @@ Do not open a public issue. Use GitHub's private security advisory — see
 [docs/SECURITY.md](docs/SECURITY.md#reporting-a-vulnerability).
 
 By contributing you agree your work is released under the [MIT License](LICENSE).
+
+## Spec-driven changes
+
+Anything larger than a bug fix goes through [OpenSpec](https://openspec.dev) so the
+reasoning lives in the repository rather than in someone's chat history.
+
+```sh
+npm install -g @fission-ai/openspec@latest
+```
+
+In Claude Code: `/opsx:explore` to map the problem, `/opsx:propose` to write the
+proposal, specs, design and task list under `openspec/changes/`, `/opsx:apply` to
+implement, then `/opsx:archive` once it has shipped. `openspec/config.yaml` carries the
+project context and the design properties a proposal may not break — read it first.
+
+Small fixes do not need a proposal. Use judgement: if a reviewer would ask "why is this
+shaped like this?", write the proposal.

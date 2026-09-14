@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  ReviewStage — a self-hosted, human-gated PR review assistant built on Claude Code.
+  A reviewer is asked for a review; ReviewStage drafts findings from the real diff on
+  that reviewer's own Claude subscription and stages them privately; the human picks,
+  edits and posts them under their own GitHub identity. Nothing reaches GitHub without
+  a click, and it never requests changes or blocks a merge.
+
+  Non-negotiable design properties — a proposal that breaks one of these is wrong:
+    - The review step has no GitHub write path at all. It only produces JSON on disk.
+    - Every comment and approval posts with the acting user's own token, never a bot.
+    - Reviews are click-to-run, never automatic; the poller and webhook only notify.
+    - Reviews run on the clicking user's connected Claude account, never a shared one.
+    - Each reviewer's run, state and decisions are independent of every other's.
+
+  Stack: Python standard library HTTP server (bin/server.py) with helper modules
+  bin/rs_*.py; bash job scripts (run-review.sh, run-qa.sh, profile-repo.sh, pr-watch.sh)
+  that shell out to the `claude` CLI and `gh`; a React 19 + TypeScript SPA built with
+  esbuild in dashboard-ui/; an Astro + Starlight site in website/. No database — state
+  is files under ~/.reviewstage. Docker Compose is the primary install.
+
+  Conventions: conventional commits with a prose body explaining what was wrong, what
+  changed and why. Python tests are `python3 -m unittest discover -s bin -p 'test_*.py'`;
+  frontend `pnpm test` and `pnpm test:browser` (Playwright against an offline fake-gh
+  fixture) in dashboard-ui. Docs must match the code exactly — every environment
+  variable and command named in docs has to exist.
+
+  History worth knowing: eleven bugs were found by live testing against real GitHub that
+  the automated suite missed entirely. They clustered into job-lifecycle races, real
+  GitHub API edge cases, missing async UI states, unvalidated copy, and outcome
+  presentation drift. Proposals should prefer fixing a whole class over an instance.
+
+rules:
+  proposal:
+    - State which of the non-negotiable design properties the change touches, or say none.
+    - Include a "How this is proven" section naming the real-GitHub scenario that would
+      have caught the bug, not just the unit test.
+  tasks:
+    - Every task names the files it touches, so parallel agents do not collide.

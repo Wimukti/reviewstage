@@ -1410,16 +1410,16 @@ def profile_status_text(repo):
 
 
 def profile_state(repo):
-    """'running' | 'failed' | 'stopped' | 'done' | 'none'."""
-    if profile_running(repo):
-        return "running"
-    s = profile_status_text(repo)
-    has = rs_profile.load_profile(repo) is not None
-    if s.startswith("failed") and not has:
-        return "failed"
-    if s == "stopped" and not has:
-        return "stopped"
-    return "done" if has else "none"
+    """('none' | 'running' | 'done' | 'failed' | 'stopped', failure text or "")."""
+    return rs_profile.job_state(profile_running(repo), profile_status_text(repo),
+                                rs_profile.load_profile(repo) is not None)
+
+
+def profile_log_tail(repo):
+    """The last lines of the failed run's log — agent.log when the model was reached, else
+    run.log (the script's own progress lines, including a `die` before the first status)."""
+    d = rs_profile.profile_dir(repo)
+    return rs_profile.log_tail(d / "agent.log") or rs_profile.log_tail(d / "run.log")
 
 
 def stop_profile(repo):
@@ -1474,7 +1474,7 @@ def profile_view(repo, user):
     exp, sig = mint("profile", user, ACTION_TTL)
     d = rs_profile.profile_dir(repo)
     prof = rs_profile.load_profile(repo)
-    st = profile_state(repo)
+    st, failure = profile_state(repo)
     out = {"repo": repo, "state": st, "token": {"exp": exp, "sig": sig},
            "connected": claude_connected(user), "isAdmin": is_admin(user),
            "autoProfile": auto_profile_map().get(P.repo_slug(repo), False),
@@ -1503,10 +1503,13 @@ def profile_view(repo, user):
                2 if ("model" in s or "queued" in s) else 3)
         out["running"] = {"phases": PROFILE_PHASES, "cur": cur, "queued": "queued" in s,
                           "text": profile_status_text(repo)}
-    elif st == "failed":
-        out["failed"] = profile_status_text(repo)
     elif st == "stopped":
         out["stopped"] = True
+    # A failed run is reported whether or not an older profile survives it (state stays "done"
+    # then, so the editor keeps working), with the log tail so the page can show why.
+    if failure:
+        out["failed"] = failure
+        out["logTail"] = profile_log_tail(repo)
     return out
 
 
@@ -3512,8 +3515,16 @@ class Handler(BaseHTTPRequestHandler):
             if not claude_connected(user):
                 return self.api_json({"error": "Connect your Claude account in Integrations "
                                                "to profile a repository."}, 400)
-            return self.api_json({"ok": True, "started": self._spawn_profile(repo, user),
-                                  **profile_view(repo, user)})
+            # The flock in profile-repo.sh already makes a double start a no-op; say so rather
+            # than answering started:true to a click that changed nothing.
+            if profile_running(repo):
+                return self.api_json({"ok": True, "started": False, "reason": "already running",
+                                      **profile_view(repo, user)})
+            started = self._spawn_profile(repo, user)
+            out = {"ok": True, "started": started, **profile_view(repo, user)}
+            if not started:
+                out["reason"] = "already running" if profile_running(repo) else "not started"
+            return self.api_json(out)
         if route == "/api/profile/stop":
             return self.api_json({"ok": True, "confirmed": stop_profile(repo),
                                   **profile_view(repo, user)})

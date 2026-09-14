@@ -569,6 +569,45 @@ def from_markdown(md):
     return prof
 
 
+# --- job state ------------------------------------------------------------------------------
+TERMINAL_STATUS = ("done", "stopped", "")
+LOG_TAIL_LINES = 20
+
+
+def job_state(running, status, has_profile):
+    """(state, failure) for one profile job from what is on disk. `state` is exactly one of
+    none | running | done | failed | stopped; `failure` is the text to show when the last run
+    failed, else "". A run that is not holding the lock but whose status is still a progress
+    line died without reporting (killed, OOM, a `die` before its first status) — that is a
+    failure too, not "never run". An existing profile keeps state=done even after a failed
+    re-run, with the failure text alongside so the page can say so."""
+    status = (status or "").strip()
+    if running:
+        return "running", ""
+    if status.startswith("failed"):
+        failure = status
+    elif status not in TERMINAL_STATUS:
+        failure = f"failed: the profiler exited without reporting why (last status: {status})"
+    else:
+        failure = ""
+    if has_profile:
+        return "done", failure
+    if failure:
+        return "failed", failure
+    if status == "stopped":
+        return "stopped", ""
+    return "none", ""
+
+
+def log_tail(path, n=LOG_TAIL_LINES):
+    """The last `n` non-empty lines of a log file, or [] when there is none."""
+    try:
+        lines = Path(path).read_text(errors="replace").splitlines()
+    except OSError:
+        return []
+    return [ln.rstrip() for ln in lines if ln.strip()][-n:]
+
+
 # --- storage --------------------------------------------------------------------------------
 def load_profile(repo):
     try:

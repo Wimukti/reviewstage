@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { api, type Me } from "./api";
 
-const NEW_TOKEN =
+// Fine-grained PAT (recommended): Pull requests read/write, Contents read, Metadata read on
+// the repositories you review. A classic token with `repo` also works.
+const NEW_TOKEN = "https://github.com/settings/personal-access-tokens/new";
+const NEW_CLASSIC_TOKEN =
   "https://github.com/settings/tokens/new?" +
   new URLSearchParams({ scopes: "repo", description: "ReviewStage — PR reviews" }).toString();
 
@@ -57,7 +60,8 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
         <input
           className="in"
           type="password"
-          placeholder="ghp_…"
+          placeholder="github_pat_… or ghp_…"
+          disabled={busy}
           aria-label="GitHub personal access token"
           autoComplete="off"
           spellCheck={false}
@@ -65,13 +69,29 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
           onChange={(e) => setPat(e.target.value)}
         />
       </div>
-      <button className={"btn block " + (me.oauth ? "soft" : "primary")} type="submit" disabled={busy}>
-        {busy ? "Signing in…" : "Sign in with token"}
+      <button
+        className={"btn block " + (me.oauth ? "soft" : "primary")}
+        type="submit"
+        disabled={busy || !pat.trim()}
+        aria-busy={busy}
+      >
+        {busy && <span className="spin" aria-hidden="true" />} {busy ? "Verifying with GitHub…" : "Sign in with token"}
       </button>
       <p className="authfine">
-        Need a token? <a href={NEW_TOKEN} target="_blank" rel="noopener">Create one</a> with the{" "}
-        <code>repo</code> scope, then paste it above. It is stored encrypted and used only for the
-        comments and approvals you click.
+        Need a token?{" "}
+        <a href={NEW_TOKEN} target="_blank" rel="noopener">
+          Create a fine-grained token
+        </a>{" "}
+        for the repositories you review with <b>Pull requests: Read and write</b>,{" "}
+        <b>Contents: Read</b> and <b>Metadata: Read</b>, then paste it above. It is stored
+        encrypted and used only for the comments and approvals you click.
+      </p>
+      <p className="authfine">
+        A{" "}
+        <a href={NEW_CLASSIC_TOKEN} target="_blank" rel="noopener">
+          classic token
+        </a>{" "}
+        with the <code>repo</code> scope also works.
       </p>
     </form>
   );

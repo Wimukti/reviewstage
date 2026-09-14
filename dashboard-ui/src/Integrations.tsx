@@ -202,6 +202,9 @@ function ClaudeCtl({
 }) {
   const [reveal, setReveal] = useState(false);
   const [code, setCode] = useState("");
+  // Verifying takes several seconds (a round-trip to Anthropic, then a `claude` call): say so.
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState("");
   if (d.claude.connected)
     return (
       <>
@@ -239,11 +242,26 @@ function ClaudeCtl({
       {reveal && (
         <div style={{ marginTop: 12 }}>
           <form
+            aria-busy={pending}
             onSubmit={async (e) => {
               e.preventDefault();
-              const r = await api.claudeCode(d.token, code.trim());
-              setCode("");
-              onDone(r.bannerHtml);
+              if (!code.trim() || pending) return;
+              setPending(true);
+              setErr("");
+              try {
+                const r = await api.claudeCode(d.token, code.trim());
+                if (r.connected) {
+                  setCode("");
+                  onDone(r.bannerHtml);
+                } else {
+                  // The server's banner carries the reason; keep it next to the form.
+                  setErr(r.bannerHtml || "Claude did not accept that code. Try again.");
+                }
+              } catch (x) {
+                setErr(x instanceof Error ? x.message : "Could not reach the server.");
+              } finally {
+                setPending(false);
+              }
             }}
           >
             <div className="inrow">
@@ -255,12 +273,28 @@ function ClaudeCtl({
                 autoComplete="off"
                 spellCheck={false}
                 value={code}
+                disabled={pending}
                 onChange={(e) => setCode(e.target.value)}
               />
-              <button className="btn primary" type="submit">
-                Connect
+              <button className="btn primary" type="submit" disabled={pending || !code.trim()}>
+                {pending && <span className="spin" aria-hidden="true" />} {pending ? "Verifying…" : "Connect"}
               </button>
             </div>
+            {pending && (
+              <div className="hint" role="status">
+                Verifying your Claude account… this takes a few seconds.
+              </div>
+            )}
+            {err && !pending && (
+              err.trimStart().startsWith("<") ? (
+                <div role="alert" dangerouslySetInnerHTML={{ __html: err }} />
+              ) : (
+                <div className="banner err" role="alert">
+                  <span>🚫</span>
+                  <div>{err}</div>
+                </div>
+              )
+            )}
           </form>
         </div>
       )}

@@ -132,7 +132,83 @@ class AnchorMap(unittest.TestCase):
         self.assertEqual([(c["path"], c["line"]) for c in inline],
                          [("public/biology-2026.html", 3), ("a.py", 2)])
         self.assertEqual([c["body"] for c in orphans], ["past the end", "removed file"])
-        self.assertIn("2 finding(s) that could not be anchored", D.orphan_block(orphans))
+
+
+class NotInThePrAtAll(unittest.TestCase):
+    """A finding on a file the PR never touches is off-diff by definition — and answering that
+    must not cost a full `gh pr diff` fetch."""
+
+    FILES = [{"filename": "a.py", "status": "modified", "patch": PATCH},
+             {"filename": "big.js", "status": "modified", "additions": 1}]  # patchless: pending
+
+    def _anchors(self, calls):
+        return D.Anchors(self.FILES, fetch_diff=lambda: (calls.append(1), FULL_DIFF)[1])
+
+    def test_unknown_path_never_fetches_the_full_diff(self):
+        calls = []
+        a = self._anchors(calls)
+        self.assertFalse(a.can_anchor("src/features/EditProfileScreen.tsx", 268))
+        self.assertFalse(a.can_anchor("src/validation/schemas.test.ts", 67))
+        self.assertEqual(calls, [])                      # not in the PR: settled for free
+
+    def test_known_patched_file_never_fetches_either(self):
+        calls = []
+        a = self._anchors(calls)
+        self.assertTrue(a.can_anchor("a.py", 2))
+        self.assertFalse(a.can_anchor("a.py", 999))      # in the PR, but not a changed line
+        self.assertEqual(calls, [])
+
+    def test_patchless_file_in_the_pr_is_worth_the_fetch(self):
+        calls = []
+        a = self._anchors(calls)
+        self.assertTrue(a.can_anchor("big.js", 2))
+        self.assertEqual(calls, [1])
+        self.assertTrue(a.can_anchor("big.js", 3))
+        self.assertEqual(calls, [1])                     # fetched at most once
+
+    def test_split_leaves_unknown_paths_as_orphans_without_fetching(self):
+        calls = []
+        a = self._anchors(calls)
+        comments = [{"path": "nowhere/near.ts", "line": 4, "body": "off-diff"},
+                    {"path": "a.py", "line": 1, "body": "inline"}]
+        inline, orphans = D.split_anchorable(comments, a)
+        self.assertEqual([c["path"] for c in inline], ["a.py"])
+        self.assertEqual([c["path"] for c in orphans], ["nowhere/near.ts"])
+        self.assertEqual(calls, [])
+
+    def test_bad_line_shapes(self):
+        a = D.Anchors(self.FILES)
+        self.assertFalse(a.can_anchor("a.py", None))
+        self.assertFalse(a.can_anchor("a.py", "2"))
+        self.assertFalse(a.can_anchor("", 2))
+
+
+class SuggestionRouting(unittest.TestCase):
+    """A suggestion only becomes a ```suggestion fence when it lands inside the diff."""
+
+    ANCHORS = {"a.py": {2}}
+
+    def test_inline_gets_the_fence(self):
+        inline, orphans = D.split_anchorable(
+            [{"path": "a.py", "line": 2, "body": "fix", "suggestion": "x = 1"}], self.ANCHORS)
+        self.assertEqual(orphans, [])
+        self.assertIn("```suggestion\nx = 1\n```", inline[0]["body"])
+
+    def test_offdiff_keeps_it_in_its_own_field(self):
+        c = {"path": "other.py", "line": 9, "body": "fix", "suggestion": "x = 1"}
+        inline, orphans = D.split_anchorable([c], self.ANCHORS)
+        self.assertEqual(inline, [])
+        self.assertEqual(orphans[0]["suggestion"], "x = 1")
+        self.assertNotIn("suggestion", orphans[0]["body"])
+
+    def test_suggestion_only_finding_is_not_dropped(self):
+        inline, _ = D.split_anchorable(
+            [{"path": "a.py", "line": 2, "body": "", "suggestion": "x = 1"}], self.ANCHORS)
+        self.assertEqual(inline[0]["body"], "```suggestion\nx = 1\n```")
+
+    def test_empty_finding_is_dropped(self):
+        self.assertEqual(D.split_anchorable([{"path": "a.py", "line": 2, "body": "  "}],
+                                            self.ANCHORS), ([], []))
 
 
 if __name__ == "__main__":

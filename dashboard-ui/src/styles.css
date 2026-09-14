@@ -651,6 +651,10 @@ margin-bottom:14px}
 .linkbtn{background:none;border:0;color:var(--blue);cursor:pointer;font:inherit;padding:0;
 text-decoration:underline}
 
+/* A finding outside the diff — posts in the review body, not as an inline comment. */
+.offdiff{font-size:.72rem;padding:2px 8px;border-radius:20px;white-space:nowrap;font-weight:600;
+background:var(--panel2);color:var(--dim);border:1px solid var(--line2);cursor:help}
+
 /* Phase 3 — convergence tags */
 .agree{font-size:.72rem;padding:2px 8px;border-radius:20px;white-space:nowrap;font-weight:600}
 .agree.ok{background:rgba(52,168,110,.14);color:#2f9e63;border:1px solid rgba(52,168,110,.3)}

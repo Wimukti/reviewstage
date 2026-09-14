@@ -174,6 +174,9 @@ export interface Finding {
   impact: string;
   structured: boolean;
   criticalPath?: string; // the profile glob this finding concerns, "" when none
+  // false when the line is outside the PR's diff: GitHub takes no inline comment there, so the
+  // finding goes into the review body. Absent when GitHub would not tell us.
+  anchorable?: boolean;
   agreement?: { confirmed: boolean; n: number; by: string[]; differ: string } | null;
 }
 

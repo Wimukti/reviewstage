@@ -311,6 +311,10 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
   );
 }
 
+const OFFDIFF_HINT =
+  "This line is not part of the PR's diff, so GitHub cannot take an inline comment. " +
+  "It will appear in the review body with a link to the line.";
+
 function FindingCard({
   f,
   checked,
@@ -355,6 +359,11 @@ function FindingCard({
         {f.criticalPath && (
           <span className="cpbadge" title={`Concerns a profiled critical path: ${f.criticalPath}`}>
             critical path
+          </span>
+        )}
+        {f.anchorable === false && (
+          <span className="offdiff" title={OFFDIFF_HINT}>
+            in summary
           </span>
         )}
         {f.agreement?.confirmed ? (
@@ -478,6 +487,9 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
       return n;
     });
 
+  // Where the selected findings will land — GitHub only takes an inline comment on a changed line.
+  const selInline = rev.findings.filter((f) => selected.has(f.i) && f.anchorable !== false).length;
+  const selOff = selected.size - selInline;
   const shown = rev.findings.filter((f) => !f.low);
   const maybe = rev.findings.filter((f) => f.low);
 
@@ -623,7 +635,15 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
             <div className="bar">
               <div className="inner">
                 <span className="muted sm">
-                  <b>{selected.size}</b> selected ·{" "}
+                  <b>{selected.size}</b> selected
+                  {selOff > 0 && (
+                    <>
+                      {" · "}
+                      {selInline} inline ·{" "}
+                      <span title={OFFDIFF_HINT}>{selOff} in the summary</span>
+                    </>
+                  )}{" "}
+                  ·{" "}
                   {requestChanges ? "requests changes — can block the PR until updated" : "posts as plain comments"}
                 </span>
                 <span className="spacer" />

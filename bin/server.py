@@ -53,6 +53,7 @@ import rs_learn
 import rs_md
 import rs_paths as P
 import rs_profile
+import rs_review_body as RB
 import rs_rollup
 import rs_settings
 import rs_state
@@ -1863,6 +1864,33 @@ def fetch_pr_diff(repo, pr):
     return r.stdout if r.returncode == 0 and r.stdout else None
 
 
+_ANCHOR_CACHE = {}                      # (repo, pr, head) -> rs_diff.Anchors
+_ANCHOR_LOCK = threading.Lock()
+
+
+def pr_anchors(repo, pr, head):
+    """Anchors for one PR at one head SHA, or (None, error) when GitHub would not say.
+
+    Both the dashboard render and the post path ask this question, and a render asks it once per
+    finding, so the answer is cached per (repo, pr, head) — a new commit is a new key, which is
+    exactly when the answer changes.
+    """
+    key = (repo, str(pr), head or "")
+    with _ANCHOR_LOCK:
+        hit = _ANCHOR_CACHE.get(key)
+    if hit is not None:
+        return hit, None
+    files, err = fetch_pr_files(repo, pr)
+    if err is not None:
+        return None, err
+    a = rs_diff.Anchors(files, fetch_diff=lambda: fetch_pr_diff(repo, pr))
+    with _ANCHOR_LOCK:
+        if len(_ANCHOR_CACHE) > 64:     # bounded: this is a convenience, not a store
+            _ANCHOR_CACHE.clear()
+        _ANCHOR_CACHE[key] = a
+    return a, None
+
+
 def gist(body, limit=120):
     """One-line plain-text gist of a finding, for the approval checklist."""
     t = re.sub(r"```.*?```", "", body or "", flags=re.S)
@@ -2663,6 +2691,10 @@ class Handler(BaseHTTPRequestHandler):
         cs = sev_counts(comments)
         head = pr_meta(repo, pr)[0].get("head", "")
         conv_tags, conv_rate, conv_n = convergence(repo, pr, head, user)   # Phase 3
+        # Anchorability at RENDER time, so the reviewer sees where each finding will land before
+        # they post. If GitHub won't answer, say nothing rather than warn wrongly.
+        anchors, _ = pr_anchors(repo, pr, head)
+        can = (lambda p_, l_: anchors.can_anchor(p_, l_)) if anchors else (lambda p_, l_: True)
         findings = []
         for i, c in enumerate(comments):
             findings.append({"i": i, "severity": c.get("severity", "nit"),
@@ -2677,7 +2709,8 @@ class Handler(BaseHTTPRequestHandler):
                              "criticalPath": (c.get("critical_path") or "").strip(),
                              "structured": bool((c.get("title") or "").strip()
                                                 and (c.get("impact") or "").strip()),
-                             "agreement": conv_tags.get(rs_agree._cid(c))})
+                             "agreement": conv_tags.get(rs_agree._cid(c)),
+                             "anchorable": can(c.get("path"), c.get("line"))})
         data = {
             "event": ev, "summary": self._as_markdown(rev.get("summary")),
             "keyPoints": [str(x).strip() for x in (rev.get("keyPoints") or []) if str(x).strip()][:6],
@@ -3644,19 +3677,19 @@ class Handler(BaseHTTPRequestHandler):
             body = one(f"body_{i}").strip()
             # A suggested change becomes a GitHub ```suggestion block appended to the comment,
             # which GitHub renders with a one-click "Apply" for the author on the anchored line.
+            # The suggestion stays in its own field: inline it becomes a ```suggestion fence,
+            # off-diff a plain "Suggested change:" block, since GitHub cannot apply one there.
             sugg = one(f"sugg_{i}").rstrip("\n")
-            if sugg.strip():
-                body = f"{body}\n\n```suggestion\n{sugg}\n```"
             # A selected finding whose text was cleared would be silently dropped downstream
             # (empty-body comments are skipped), so it never reaches GitHub and never folds into
             # the summary — the reviewer thinks they posted it. Catch it and refuse instead.
-            if not body.strip():
+            if not body.strip() and not sugg.strip():
                 loc = one(f"path_{i}") + (f":{line}" if line.isdigit() else "")
                 blank.append(loc or f"finding {i + 1}")
             chosen.append({"path": one(f"path_{i}"),
                            "line": int(line) if line.isdigit() else None,
                            "severity": one(f"sev_{i}"),
-                           "body": body})
+                           "body": body, "suggestion": sugg})
         if blank:
             items = ", ".join(f"<code>{html.escape(b)}</code>" for b in blank)
             return ("<div class='banner warn'><span>⚠️</span><div>These selected "
@@ -3687,17 +3720,22 @@ class Handler(BaseHTTPRequestHandler):
                 f"<a href='https://www.githubstatus.com' target=_blank rel=noopener>"
                 f"githubstatus.com</a> and retry.<br>"
                 f"<code>{html.escape(err)}</code></div></div>")
-        anchors = rs_diff.anchor_map(files, fetch_diff=lambda: fetch_pr_diff(repo, pr))
+        anchors = rs_diff.Anchors(files, fetch_diff=lambda: fetch_pr_diff(repo, pr))
         inline, orphans = rs_diff.split_anchorable(chosen, anchors)
+        # Permalinks point at the commit the review actually ran against, not at whatever HEAD
+        # is now — the run's own head marker, falling back to the PR's current head.
+        hf = upath(repo, pr, user, "head")
+        head = (hf.read_text().strip() if hf.exists() else "") or pr_meta(repo, pr)[0].get("head", "")
         # No bot signature: this posts under the reviewer's own account, so GitHub already
         # attributes it. A trailing "Reviewed by @x" only restates the byline.
-        body = (rev.get("summary") or "").strip() + rs_diff.orphan_block(orphans)
+        body = ((rev.get("summary") or "").strip()
+                + RB.offdiff_block(orphans, repo=repo, head=head))
         # A COMMENT review with an empty body and no inline comments is a half-built post — refuse
         # it. (Can happen if the review has no summary and every selected finding failed to anchor.)
         if not body.strip() and not inline:
             return ("<div class='banner warn'><span>⚠️</span><div>Nothing to post — the "
-                    "review has no summary and none of the selected findings could be anchored to "
-                    "the current diff.</div></div>")
+                    "review has no summary and none of the selected findings sit on a line this "
+                    "PR changes.</div></div>")
         # Default is a plain COMMENT review. The reviewer can deliberately choose REQUEST_CHANGES
         # from the post bar (never the agent's call) — a human-only, blocking action.
         event = "REQUEST_CHANGES" if form.get("request_changes") else "COMMENT"
@@ -3709,10 +3747,10 @@ class Handler(BaseHTTPRequestHandler):
         if DRY_RUN:
             return (
                 f"<div class='banner warn'><span>🧪</span><div><b>DRY RUN — nothing was sent "
-                f"to GitHub.</b><br>Would post {len(inline)} inline comment(s)"
-                + (f", {len(orphans)} folded into the summary" if orphans else "")
-                + f", as <code>{event}</code>. Set <code>DRY_RUN=0</code> and restart "
-                  f"the <code>reviewstage</code> service to post for real.</div></div>")
+                f"to GitHub.</b><br>Your review would post as <code>{event}</code> — "
+                f"{html.escape(RB.outcome(len(inline), len(orphans)))} Set "
+                f"<code>DRY_RUN=0</code> and restart the <code>reviewstage</code> service to "
+                f"post for real.</div></div>")
 
         tok = user_pat(user)
         if not tok:
@@ -3726,11 +3764,10 @@ class Handler(BaseHTTPRequestHandler):
                     f"{html.escape(r.stderr[:400])}</code></div></div>")
         (ud / "posted.json").write_text(
             json.dumps({"at": int(time.time()), "inline": len(inline), "event": event}))
-        return (
-            f"<div class='banner ok'><span>✓</span><div>Posted {len(inline)} comment(s) as "
-            f"<code>{event}</code> under <code>{html.escape(user)}</code>."
-            + (f" {len(orphans)} could not be anchored and went into the summary."
-               if orphans else "") + "</div></div>")
+        msg = RB.posted_message(f"<code>{html.escape(user)}</code>", len(inline), len(orphans))
+        return (f"<div class='banner ok'><span>✓</span><div>{msg}"
+                + (f" Submitted as <code>{event}</code>." if event != "COMMENT" else "")
+                + "</div></div>")
 
     def _approve_result(self, repo, pr, user, form):
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731

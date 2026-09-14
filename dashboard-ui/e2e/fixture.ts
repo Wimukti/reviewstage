@@ -42,6 +42,7 @@ export function buildFixture() {
       "DRY_RUN=1",
       "PUBLIC_URL=https://reviewstage.example.com",
       "GITHUB_PAT=ghp_e2e_dummy_never_used",
+      "GH_DEVICE_FLOW=0", // the device-flow specs stub /api/auth/device/* and rewrite /api/me
     ].join("\n") + "\n",
   );
 

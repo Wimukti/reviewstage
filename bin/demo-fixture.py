@@ -66,6 +66,7 @@ def main():
         "DRY_RUN=1",
         f"PUBLIC_URL=http://localhost:{port}",
         "GITHUB_PAT=ghp_demo_dummy_never_used",
+        "GH_DEVICE_FLOW=0",  # the demo never reaches GitHub
     ]) + "\n")
     env_f.chmod(0o600)
 

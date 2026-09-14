@@ -4,6 +4,16 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+## v1.0.0-rc.9 — 09/14/26
+
+Sign in with GitHub out of the box via device flow.
+
+- **Sign in with GitHub works on every install with zero admin setup.** The login page's primary button now uses GitHub's OAuth device flow with a shared public client ID (`Ov23liHjtjxcPNwXC6Y5`): a short code to enter at github.com/login/device, a Copy button, a live "Waiting for GitHub…" status, and the page signs you in by itself. No OAuth App to register, no callback URL, no secret — the token goes from GitHub straight to your server. `GH_DEVICE_FLOW=0` turns it off; `GH_DEVICE_CLIENT_ID` uses your own device-flow-enabled app.
+- New endpoints `POST /api/auth/device/start` and `POST /api/auth/device/poll` (`bin/rs_device_flow.py`); the browser never sees GitHub's `device_code`, polls faster than GitHub's interval get `429`, pending sign-ins are capped at 50 and purged. Device-flow users are `login_via: "oauth"` and post/approve through `user_pat()` unchanged. `/api/me` reports `device_flow`.
+- The redirect flow (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`) stays for teams that want one click or their own app identity, and is preferred when configured. Its button reads **Sign in with GitHub** (was *Continue with GitHub*). The "Running this server?" hint only shows when both GitHub flows are off. A sign-in completed on `/login` now lands on `?next=` (or the queue) instead of the SPA's Not found page.
+- Docs: Install, Setup, Security, Configuration, First review and the README describe the device flow and why the scope is `repo`; the demo fixture sets `GH_DEVICE_FLOW=0` so it stays offline.
+- Tests: `bin/test_rs_device_flow.py` (fake GitHub: pending, slow_down, expired, denied, ok, interval guard, cap/purge) and Playwright `e2e/device-flow.spec.ts` (code shown, poll resolves, app loads; denied; expired; device pairing).
+
 ## v1.0.0-rc.5 — 09/14/26
 
 First-run fixes from live testing (Docker install, one repo, one reviewer).

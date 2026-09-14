@@ -24,7 +24,7 @@ Priorities, not promises. Open an issue to argue for reordering.
 - Notifications: Slack via webhook or bot token, Discord embeds, generic signed webhook, or none; per-reviewer mentions; once-per-PR dedup.
 - Runtime settings page (poller on/off, interval, backends, PR filters) — `settings.json`, no restart.
 - Per-user Claude account via the genuine `claude setup-token` flow; encrypted at rest.
-- GitHub OAuth App / GitHub App sign-in with server-side refresh; **Continue with GitHub** is the primary login when configured and the OAuth token is the working token.
+- GitHub OAuth App / GitHub App sign-in with server-side refresh; **Sign in with GitHub** is the primary login when configured and the OAuth token is the working token.
 - Device tokens: `POST /api/device-token` from a web session, bearer accepted on every `/api/*` route, Settings → Devices to list and revoke, 180-day sliding expiry, `/login?device=1` pairing page for mobile and CLI clients.
 - Docker Compose install with `team` and `demo` profiles; `bin/doctor.sh`.
 - Guided first-run tour; command palette.

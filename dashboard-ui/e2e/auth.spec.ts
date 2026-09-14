@@ -8,7 +8,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 test.describe("login page", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("with OAuth configured: Continue with GitHub is primary, the token form is behind a disclosure", async ({ page }) => {
+  test("with OAuth configured: Sign in with GitHub is primary, the token form is behind a disclosure", async ({ page }) => {
     await page.route("**/api/me", async (route) => {
       const r = await route.fetch();
       const body = await r.json();
@@ -16,7 +16,7 @@ test.describe("login page", () => {
     });
     await page.goto("/login");
     await expect(page.getByText("Stage your PR review. Post it as yourself.")).toBeVisible();
-    const gh = page.getByRole("link", { name: "Continue with GitHub" });
+    const gh = page.getByRole("link", { name: "Sign in with GitHub" });
     await expect(gh).toBeVisible();
     await expect(gh).toHaveAttribute("href", "/oauth/start");
     const patInput = page.getByLabel("GitHub personal access token");
@@ -26,21 +26,33 @@ test.describe("login page", () => {
     await expect(page.getByRole("button", { name: "Sign in with token" })).toBeVisible();
   });
 
+  test("redirect flow wins over device flow when both are configured", async ({ page }) => {
+    await page.route("**/api/me", async (route) => {
+      const r = await route.fetch();
+      await route.fulfill({ response: r, json: { ...(await r.json()), oauth: true, device_flow: true } });
+    });
+    await page.goto("/login");
+    await expect(page.getByRole("link", { name: "Sign in with GitHub" })).toHaveAttribute("href", "/oauth/start");
+    await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toHaveCount(0);
+  });
+
   test("device pairing carries ?device=1 into the OAuth start link", async ({ page }) => {
     await page.route("**/api/me", async (route) => {
       const r = await route.fetch();
       await route.fulfill({ response: r, json: { ...(await r.json()), oauth: true } });
     });
     await page.goto("/login?device=1&name=Pixel");
-    const href = await page.getByRole("link", { name: "Continue with GitHub" }).getAttribute("href");
+    const href = await page.getByRole("link", { name: "Sign in with GitHub" }).getAttribute("href");
     expect(href).toBe(`/oauth/start?next=${encodeURIComponent("/device?name=Pixel")}`);
   });
 
-  test("without OAuth: the token form is the sign-in and the admin hint names the callback URL", async ({ page }) => {
+  test("with both flows off: the token form is the sign-in and the admin hint names the callback URL", async ({ page }) => {
+    // The fixture runs with GH_DEVICE_FLOW=0 and no GH_CLIENT_ID, so this is the real /api/me.
     await page.goto("/login");
     await expect(page.getByLabel("GitHub personal access token")).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in with token" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Continue with GitHub" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Sign in with GitHub" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toHaveCount(0);
     await expect(page.getByText("Running this server?")).toBeVisible();
     await expect(page.getByText("https://reviewstage.example.com/oauth/callback")).toBeVisible();
     await expect(page.getByRole("link", { name: "the install guide" })).toHaveAttribute(

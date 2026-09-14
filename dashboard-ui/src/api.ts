@@ -72,11 +72,30 @@ export interface Me {
   brand: string;
   oauth: boolean;
   oauth_blocked?: boolean; // GitHub sign-in worked but the org has not approved the app yet
+  device_flow?: boolean; // "Sign in with GitHub" via device flow (shared public client ID)
   public_url?: string;
   logo?: string;
   webhooks_configured?: boolean; // GITHUB_WEBHOOK_SECRET is set on the server
   auth?: "cookie" | "bearer"; // how this request was authenticated
   login_via?: "oauth" | "pat"; // how the stored GitHub token was obtained
+}
+
+// GitHub device flow (Login). The server keeps GitHub's device_code; the browser gets only
+// the code the person types at github.com/login/device and an opaque session to poll with.
+export interface DeviceStart {
+  session: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number; // seconds between polls
+}
+export interface DevicePoll {
+  status: "pending" | "ok" | "expired" | "denied" | "error";
+  interval?: number; // pending: GitHub asked us to slow down to this many seconds
+  retry_after?: number; // pending (429): we polled too early
+  login?: string; // ok
+  welcome?: boolean; // ok: first sign-in, no Slack ID yet
+  error?: string; // error
 }
 
 // Settings → Devices (docs/MOBILE.md). Never carries the token or its hash.
@@ -507,6 +526,20 @@ export const api = {
   queue: (tab: string, sort: string) =>
     get<QueueData>(`/queue?tab=${encodeURIComponent(tab)}&sort=${encodeURIComponent(sort)}`),
   login: (pat: string) => post<{ ok: boolean; login: string }>("/login", { pat }),
+  deviceStart: () => post<DeviceStart>("/auth/device/start"),
+  // A 429 (polled faster than GitHub's interval) is a normal "pending" answer, not an error.
+  devicePoll: async (session: string): Promise<DevicePoll> => {
+    const r = await fetch(`${BASE}/auth/device/poll`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session }),
+    });
+    const data = (await r.json().catch(() => ({}))) as DevicePoll & { error?: string };
+    if (r.status === 429) return { status: "pending", interval: data.retry_after };
+    if (!r.ok) throw new ApiError(data?.error || `/auth/device/poll → ${r.status}`, data as unknown as Record<string, unknown>);
+    return data;
+  },
   logout: () => post<{ ok: boolean }>("/logout"),
   devices: () => get<DevicesData>("/devices"),
   mintDevice: (name: string) => post<MintedDevice>("/device-token", { name }),

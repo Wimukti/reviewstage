@@ -7,6 +7,8 @@ sidebar:
 
 Keep `DRY_RUN=1` for this. Everything works except the final write to GitHub, which is exactly what you want while you decide whether the output is good enough to carry your name.
 
+You are signed in — **Sign in with GitHub** works out of the box on every install (a short code at github.com/login/device; see [Install → GitHub sign-in](/reviewstage/start/install/#github-sign-in)) — and have connected Claude from the welcome checklist.
+
 ## 1. Open a PR
 
 Paste a PR URL or number into **Review a PR** in the sidebar. If the poller is running (team profile) the PR may already be in your **To review** tab.

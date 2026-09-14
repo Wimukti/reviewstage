@@ -78,6 +78,9 @@ fi
 ensure_key GH_CLIENT_ID ""
 ensure_key GH_CLIENT_SECRET ""
 ensure_key GH_OAUTH_SCOPES ""
+# Device flow: "Sign in with GitHub" with no app registration (shared public client ID).
+ensure_key GH_DEVICE_FLOW 1
+ensure_key GH_DEVICE_CLIENT_ID ""
 ensure_key DRY_RUN 1
 ensure_key SKIP_BOT_PRS 0
 ensure_key RS_MAX_PR_AGE_DAYS 45

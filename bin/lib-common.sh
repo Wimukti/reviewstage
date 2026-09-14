@@ -113,6 +113,20 @@ have_free_mem() {
   return 0
 }
 
+# --- skill files -----------------------------------------------------------------------------
+# skill_body <file>: the file with a leading YAML front-matter block (a `---` … `---` header)
+# removed. Every SKILL.md starts with one; embedded verbatim in a prompt it would put `---` on the
+# first line, and if that prompt ever reaches a CLI as an argument it is parsed as an option
+# (`error: unknown option '---'`). An unterminated header is printed as-is rather than eaten.
+skill_body() {
+  awk '
+    NR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+    fm == 1 { if (/^---[[:space:]]*$/) { fm = 2 } else { buf[++n] = $0 }; next }
+    { print }
+    END { if (fm == 1) { print "---"; for (i = 1; i <= n; i++) print buf[i] } }
+  ' "$1"
+}
+
 mkdir -p "$WT" "$STATE" "$REPOS_DIR"; touch "$SEEN" "$USED"
 
 # gh + git both authenticate as $REVIEWER via the PAT, so every comment, review,

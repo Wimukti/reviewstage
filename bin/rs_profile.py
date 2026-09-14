@@ -300,13 +300,26 @@ OUTPUT_CONTRACT = (
     "[A-Za-z0-9_-] only.")
 
 
+def strip_front_matter(text):
+    """`text` without a leading YAML front-matter block (`---` … `---`). Mirrors skill_body in
+    lib-common.sh: an unterminated header is returned untouched."""
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return "".join(lines[i + 1:])
+    return text
+
+
 def build_prompt(signals, skill_text):
     """The single model call's prompt: the repo-profile skill, then the signals, then the
-    contract. Bounded JSON so the call stays one Sonnet-sized turn."""
+    contract. Bounded JSON so the call stays one Sonnet-sized turn. The skill's front-matter is
+    dropped so the prompt never starts with `---`."""
     sig = dict(signals)
     sig.pop("gathered_at", None)
     sig.pop("duration_ms", None)
-    return (f"{skill_text.strip()}\n\n"
+    return (f"{strip_front_matter(skill_text).strip()}\n\n"
             f"## Signals gathered from {signals.get('repo') or 'the repository'} "
             f"(deterministic, from git — no guessing needed)\n\n"
             f"```json\n{json.dumps(sig, indent=1)}\n```\n\n{OUTPUT_CONTRACT}")

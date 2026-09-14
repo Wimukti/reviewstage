@@ -67,8 +67,9 @@ following the skill's structure and its 'write for a tester' rules:
 Keep every line traceable to the diff, review threads or code, and usable by a tester who has
 never opened the repo. Do not post anything to GitHub."
 
-(cd "$wt" && timeout 25m claude -p "$PROMPT" \
-  --allowedTools "Bash Read Glob Grep Write" < /dev/null) >"$DIR/qa.log" 2>&1
+# Prompt on stdin, not argv — see run-review.sh.
+(cd "$wt" && printf '%s' "$PROMPT" | timeout 25m claude -p \
+  --allowedTools "Bash Read Glob Grep Write") >"$DIR/qa.log" 2>&1
 
 [ -s "$wt/qa.md" ] || fail "the agent produced no qa.md (see qa.log)"
 cp "$wt/qa.md" "$DIR/qa.md"

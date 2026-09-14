@@ -20,9 +20,22 @@ A backend that fails — a dead URL, a 4xx from the provider — logs a `WARN` l
 | Kind | Fires when | Mentions |
 | --- | --- | --- |
 | `review_requested` | A new review request for a signed-in user — from a GitHub webhook the moment it happens, or from the poller on its next pass (once per PR per person; new commits never re-ping). Suppressed for PRs older than *max PR age* and, if enabled, for bot-authored PRs. | The requested reviewer |
-| `review_ready` | A review run you started finished; the card carries the verdict, the finding/blocker counts and the agent's summary. Nothing has been posted to GitHub yet. | Only the person who started the run |
+| `review_ready` | A review run you started finished; the card carries the verdict, the finding count and the agent's summary. Nothing has been posted to GitHub yet. | Only the person who started the run |
 | `review_stopped` | A run was force-stopped from the dashboard (with confirmation that the agent is gone), or failed to produce a review. | The person who stopped / started it |
 | `qa_ready` | A QA guide finished building. | The person who asked for it |
+
+### The verdict on a review-ready card
+
+The colour bar and the header of a `review_ready` card come from the **verdict**, never from how the review would be posted (`COMMENT` / `REQUEST_CHANGES` is an implementation detail and is not shown). The thresholds are the ones the dashboard's verdict banner uses:
+
+| Verdict | When | Colour | Header |
+| --- | --- | --- | --- |
+| `blocked` | at least one `blocker` finding, or the agent asked for changes | red | 🔴 Not LGTM — 1 blocker · 3 findings |
+| `attention` | no blockers, at least one `should-fix` | amber | 🟡 Needs attention — 2 to fix · 2 findings |
+| `minor` | only nits / questions | blue | 🔵 Minor notes — 1 · 1 finding |
+| `lgtm` | no findings at all | green | 🟢 LGTM — nothing to fix · 0 findings |
+
+`review_requested` and `qa_ready` cards are neutral (brand colour); `review_stopped` is red when the run failed and grey when someone stopped it. Slack paints the colour as the attachment bar, Discord as the embed's left border.
 
 ### From GitHub webhooks
 
@@ -103,9 +116,11 @@ For Microsoft Teams (via a workflow), Zapier, n8n, Make, or your own service. Ev
   "slack_id": "U0TEST",
   "discord_id": "",
   "extra": {
-    "event": "COMMENT",
+    "verdict": "attention",
     "findings": 2,
     "blockers": 0,
+    "should_fix": 1,
+    "event": "COMMENT",
     "summary": "Adds a lead-time badge. Logic is sound; two small things.",
     "detail": "https://reviews.example.com/pr?pr=38849&exp=…&sig=…"
   }
@@ -117,7 +132,7 @@ For Microsoft Teams (via a workflow), Zapier, n8n, Make, or your own service. Ev
 | Kind | `extra` |
 | --- | --- |
 | `review_requested` | `additions`, `deletions`, `files` (numbers), `detail` (dashboard PR link), `board` (dashboard index link) |
-| `review_ready` | `event` (`COMMENT` or `REQUEST_CHANGES`), `findings`, `blockers`, `summary`, `detail` |
+| `review_ready` | `verdict` (`lgtm`, `minor`, `attention` or `blocked` — see [the verdict](#the-verdict-on-a-review-ready-card)), `findings`, `blockers`, `should_fix` (numbers), `event` (`COMMENT` or `REQUEST_CHANGES` — how the review would be posted; kept for machines, not shown on cards), `summary`, `detail` |
 | `review_stopped` | `status` (`stopped` or `failed`), `message` (failed only), `job` (`Review` or `QA guide`), `confirmed` (the agent is verifiably gone), `runner` (whose Claude account it ran on), `text` (the Slack-formatted line) |
 | `qa_ready` | `detail` (dashboard QA link) |
 

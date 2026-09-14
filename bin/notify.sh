@@ -29,6 +29,40 @@ notify_backends() {
   echo "$list" | tr ',' '\n' | tr -d ' ' | grep -v '^$' | sort -u
 }
 
+# --- colours ---------------------------------------------------------------------------------
+# Neutral cards (review_requested, qa_ready) wear the brand colour; a stop is grey, a failure
+# red. Slack takes the hex, Discord the same colour as an integer.
+NOTIFY_BRAND_HEX="#5865f2"; NOTIFY_BRAND_INT=5793266
+NOTIFY_RED_HEX="#ed4245";   NOTIFY_RED_INT=15548997
+NOTIFY_GREY_HEX="#95a5a6";  NOTIFY_GREY_INT=9807270
+
+# --- verdict --------------------------------------------------------------------------------
+# A review_ready card is coloured and labelled by the VERDICT, never by the review event
+# (COMMENT / REQUEST_CHANGES is how the review would be posted, which means nothing to a reader).
+# Same thresholds as the dashboard's verdict banner (PrPage.tsx `verdict`): any blocker — or an
+# agent that asked for changes — is red; otherwise a should-fix is amber; other findings (nits,
+# questions) are blue; nothing at all is green. Also written back into `extra` (verdict,
+# blockers, should_fix) so the generic payload carries the same reading machines can key on.
+#
+# Adds to the payload: .verdict ∈ lgtm|minor|attention|blocked, .label ("Not LGTM — 2 blockers"),
+# .dot (🔴 🟡 🔵 🟢), .hex ("#ed4245"), .color (the same colour as a Discord integer) and
+# .header — the one-line "<dot> <label> · N findings" every backend prints.
+NOTIFY_VERDICT_JQ='
+  def plural($n; $one): ($n | tostring) + " " + $one + (if $n == 1 then "" else "s" end);
+  (.extra.findings // 0) as $n | (.extra.blockers // 0) as $b | (.extra.should_fix // 0) as $f |
+  (if $b > 0 or .extra.event == "REQUEST_CHANGES" then
+     {verdict:"blocked", dot:"🔴", hex:"#ed4245", color:15548997,
+      label:(if $b > 0 then "Not LGTM — " + plural($b; "blocker") else "Not LGTM — changes requested" end)}
+   elif $f > 0 then
+     {verdict:"attention", dot:"🟡", hex:"#f0b232", color:15774258, label:("Needs attention — " + ($f|tostring) + " to fix")}
+   elif $n > 0 then
+     {verdict:"minor", dot:"🔵", hex:"#3498db", color:3447003, label:("Minor notes — " + ($n|tostring))}
+   else
+     {verdict:"lgtm", dot:"🟢", hex:"#57f287", color:5763719, label:"LGTM — nothing to fix"}
+   end) as $v |
+  . + $v + {header:($v.dot + " " + $v.label + " · " + plural($n; "finding")),
+            extra:(.extra + {verdict:$v.verdict, findings:$n, blockers:$b, should_fix:$f})}'
+
 # notify_card <kind> <json>
 notify_card() {
   local kind="${1:?notify_card <kind> <json>}" payload="${2:-}" b
@@ -42,6 +76,7 @@ notify_card() {
     '{kind:$k, ts:$t, repo:(.repo // $r), pr:(.pr // "" | tostring), title:(.title // ""),
       author:(.author // ""), url:(.url // ""), login:(.login // ""),
       slack_id:(.slack_id // ""), discord_id:(.discord_id // ""), extra:(.extra // {})}')
+  if [ "$kind" = review_ready ]; then payload=$(echo "$payload" | jq -c "$NOTIFY_VERDICT_JQ"); fi
   local sent=0
   for b in $(notify_backends); do
     case "$b" in
@@ -109,9 +144,9 @@ _notify_slack() {
   case "$kind" in
     review_requested)
       # <@U…> pings the person; a bare @login is a visible label that pings nobody.
-      blocks=$(echo "$p" | jq '
+      blocks=$(echo "$p" | jq --arg c "$NOTIFY_BRAND_HEX" '
         (if .slack_id != "" then "<@" + .slack_id + "> " else "@" + .login + " " end) as $w |
-        {blocks: [
+        {attachments: [{color: $c, blocks: [
           {type:"section", text:{type:"mrkdwn",
             text:($w + "review requested\n*<" + .url + "|" + .ref + " — " + .title + ">*\n`@"
                   + .author + "`  ·  +" + (.extra.additions // 0 | tostring) + " −"
@@ -121,46 +156,47 @@ _notify_slack() {
             {type:"button", text:{type:"plain_text", text:"🔍 Open review"},
              style:"primary", url:(.extra.detail // .url)},
             {type:"button", text:{type:"plain_text", text:"Dashboard"}, url:(.extra.board // .url)},
-            {type:"button", text:{type:"plain_text", text:"Open PR"}, url:.url}]}]}')
+            {type:"button", text:{type:"plain_text", text:"Open PR"}, url:.url}]}]}]}')
       echo "$blocks" | slack_post "$repo" "$pr" root "$login";;
     review_ready)
       # Ping ONLY the person who triggered the run; no Slack ID => no ping, no label.
+      # Bar colour + header come from the verdict (NOTIFY_VERDICT_JQ), not the review event.
       blocks=$(echo "$p" | jq '
         (if .slack_id != "" then "<@" + .slack_id + "> " else "" end) as $w |
-        (if .extra.event == "REQUEST_CHANGES" then "🔴" else "🟢" end) as $i |
-        {blocks:[
+        {attachments:[{color: .hex, blocks:[
           {type:"section", text:{type:"mrkdwn",
-            text:($w + $i + " Review ready — *<" + .url + "|" + .ref + " — " + .title + ">*\n*"
-                  + (.extra.event // "COMMENT") + "* · " + (.extra.findings // 0 | tostring)
-                  + " finding(s), " + (.extra.blockers // 0 | tostring) + " blocker(s)")}},
+            text:($w + "Review ready — *<" + .url + "|" + .ref + " — " + .title + ">*\n"
+                  + .header)}},
           {type:"section", text:{type:"mrkdwn", text:(.extra.summary // "")}},
           {type:"actions", elements:[
             {type:"button", text:{type:"plain_text", text:"📋 Open dashboard"},
              style:"primary", url:(.extra.detail // .url)},
             {type:"button", text:{type:"plain_text", text:"Open PR"}, url:.url}]},
           {type:"context", elements:[{type:"mrkdwn",
-            text:"Nothing posted yet — select, edit and post from the dashboard."}]}]}')
+            text:"Nothing posted yet — select, edit and post from the dashboard."}]}]}]}')
       echo "$blocks" | slack_post "$repo" "$pr" reply "$login";;
     review_stopped)
       # extra.text is pre-rendered mrkdwn (the server's stop confirmation); a failed run from
-      # run-review.sh carries extra.status=failed + extra.message instead.
-      blocks=$(echo "$p" | jq '
+      # run-review.sh carries extra.status=failed + extra.message instead. Red bar for a
+      # failure, grey for a deliberate stop.
+      blocks=$(echo "$p" | jq --arg red "$NOTIFY_RED_HEX" --arg grey "$NOTIFY_GREY_HEX" '
         (if (.extra.text // "") != "" then .extra.text
          elif .extra.status == "failed" then
            "⚠️ Review of *<" + .url + "|" + .ref + ">* failed: " + (.extra.message // "")
          else "🛑 Review of *<" + .url + "|" + .ref + " — " + .title + ">* was stopped." end) as $t |
-        {blocks:[{type:"section", text:{type:"mrkdwn", text:$t}}]}')
+        {attachments:[{color:(if .extra.status == "failed" then $red else $grey end),
+          blocks:[{type:"section", text:{type:"mrkdwn", text:$t}}]}]}')
       echo "$blocks" | slack_post "$repo" "$pr" reply "$login";;
     qa_ready)
-      blocks=$(echo "$p" | jq '
+      blocks=$(echo "$p" | jq --arg c "$NOTIFY_BRAND_HEX" '
         (if .slack_id != "" then "<@" + .slack_id + "> " else "" end) as $w |
-        {blocks:[
+        {attachments:[{color: $c, blocks:[
           {type:"section", text:{type:"mrkdwn",
             text:($w + "📋 QA guide ready — *<" + .url + "|" + .ref + " — " + .title + ">*")}},
           {type:"actions", elements:[
             {type:"button", text:{type:"plain_text", text:"Open QA guide"},
              style:"primary", url:(.extra.detail // .url)},
-            {type:"button", text:{type:"plain_text", text:"Open PR"}, url:.url}]}]}')
+            {type:"button", text:{type:"plain_text", text:"Open PR"}, url:.url}]}]}]}')
       echo "$blocks" | slack_post "$repo" "$pr" reply "$login";;
   esac
 }
@@ -171,24 +207,23 @@ _notify_slack() {
 _notify_discord() {
   local p="$1" body
   [ -n "${DISCORD_WEBHOOK:-}" ] || { echo "WARN: notify: discord enabled but DISCORD_WEBHOOK is empty" >&2; return 0; }
-  body=$(echo "$p" | jq -c '
+  body=$(echo "$p" | jq -c --argjson brand "$NOTIFY_BRAND_INT" --argjson red "$NOTIFY_RED_INT" \
+                            --argjson grey "$NOTIFY_GREY_INT" '
     (if .discord_id != "" then "<@" + .discord_id + ">" else "" end) as $m |
     (if .kind == "review_requested" then
-       {c: 5793266, d: ("**Review requested** — `@" + .author + "`  ·  +"
+       {c: $brand, d: ("**Review requested** — `@" + .author + "`  ·  +"
             + (.extra.additions // 0 | tostring) + " −" + (.extra.deletions // 0 | tostring)
             + "  ·  " + (.extra.files // 0 | tostring) + " files"),
         l: ("[🔍 Open review](" + (.extra.detail // .url) + ") · [Dashboard]("
             + (.extra.board // .url) + ") · [Open PR](" + .url + ")")}
      elif .kind == "review_ready" then
-       {c: (if .extra.event == "REQUEST_CHANGES" then 15548997 else 5763719 end),
-        d: ((if .extra.event == "REQUEST_CHANGES" then "🔴" else "🟢" end)
-            + " **Review ready** — **" + (.extra.event // "COMMENT") + "** · "
-            + (.extra.findings // 0 | tostring) + " finding(s), "
-            + (.extra.blockers // 0 | tostring) + " blocker(s)\n" + (.extra.summary // "")
+       # colour + header come from the verdict (NOTIFY_VERDICT_JQ), not the review event
+       {c: .color,
+        d: ("**Review ready** — " + .header + "\n" + (.extra.summary // "")
             + "\n\n_Nothing posted yet — select, edit and post from the dashboard._"),
         l: ("[📋 Open dashboard](" + (.extra.detail // .url) + ") · [Open PR](" + .url + ")")}
      elif .kind == "review_stopped" then
-       {c: 15105570,
+       {c: (if .extra.status == "failed" then $red else $grey end),
         d: (if .extra.status == "failed" then "⚠️ **Review failed:** " + (.extra.message // "")
             else "🛑 **" + (.extra.job // "Review") + " stopped** by "
               + (if $m != "" then $m else "`@" + .login + "`" end)
@@ -199,7 +234,7 @@ _notify_discord() {
                  then " It was running on `" + .extra.runner + "`\u0027s Claude account." else "" end) end),
         l: ("[Open PR](" + .url + ")")}
      else
-       {c: 5793266, d: "📋 **QA guide ready**",
+       {c: $brand, d: "📋 **QA guide ready**",
         l: ("[Open QA guide](" + (.extra.detail // .url) + ") · [Open PR](" + .url + ")")}
      end) as $r |
     {content: $m, allowed_mentions: {parse: [], users: (if .discord_id != "" then [.discord_id] else [] end)},

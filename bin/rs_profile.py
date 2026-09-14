@@ -30,11 +30,13 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from pathlib import Path
 
 import rs_paths as P
+import rs_state
 
 ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 PROFILES = ROOT / "profiles"
@@ -573,14 +575,64 @@ def from_markdown(md):
 TERMINAL_STATUS = ("done", "stopped", "")
 LOG_TAIL_LINES = 20
 
+# Serialises probe-then-spawn across the server's request threads: two clicks in the same
+# instant must never both pass the liveness check and start two builds.
+_START_LOCK = threading.Lock()
+
+
+def read_status(pdir):
+    try:
+        return (Path(pdir) / "status").read_text().strip()
+    except OSError:
+        return ""
+
+
+def probe(pdir, now=None):
+    """Every liveness signal for one profile job (rs_state.probe over the same marker names:
+    .lock, pid, status) and the verdict for a run whose status is still a progress line."""
+    return rs_state.probe(Path(pdir), now)
+
+
+def job_alive(pdir, status=None, now=None):
+    """Is a profile build genuinely in flight? The flock is exact once profile-repo.sh is past
+    its first lines, but the server writes `status` and spawns before the child exists, so a
+    free lock proves nothing on its own — the pid and the status file's age count too, exactly
+    as rs_state does for reviews. A run whose status is terminal (done / stopped / failed…)
+    is only alive while the lock is held (a re-run that has not written its first line yet)."""
+    p = probe(pdir, now)
+    if p["lock_held"]:
+        return True
+    status = (read_status(pdir) if status is None else status).strip()
+    if status.startswith("failed") or status in TERMINAL_STATUS:
+        return False
+    return p["state"] == rs_state.REVIEWING
+
+
+def start_job(pdir, spawn):
+    """Start one build unless one is alive. `spawn()` launches profile-repo.sh and returns its
+    pid. Returns (started, reason) — reason is "already running" when nothing was spawned. The
+    status and pid markers are written only by the spawner; a live run's are never touched."""
+    pdir = Path(pdir)
+    pdir.mkdir(parents=True, exist_ok=True)
+    with _START_LOCK:
+        if job_alive(pdir):
+            return False, "already running"
+        (pdir / "status").write_text("queued")
+        pid = spawn()
+        if pid:
+            (pdir / "pid").write_text(str(pid))
+    return True, ""
+
 
 def job_state(running, status, has_profile):
     """(state, failure) for one profile job from what is on disk. `state` is exactly one of
     none | running | done | failed | stopped; `failure` is the text to show when the last run
     failed, else "". A run that is not holding the lock but whose status is still a progress
     line died without reporting (killed, OOM, a `die` before its first status) — that is a
-    failure too, not "never run". An existing profile keeps state=done even after a failed
-    re-run, with the failure text alongside so the page can say so."""
+    failure too, not "never run". `running` must come from job_alive(): lock OR live pid OR a
+    status younger than the startup grace — a free lock alone is not death. An existing
+    profile keeps state=done even after a failed re-run, with the failure text alongside so
+    the page can say so."""
     status = (status or "").strip()
     if running:
         return "running", ""

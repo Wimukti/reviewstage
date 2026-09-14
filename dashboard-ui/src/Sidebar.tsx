@@ -3,6 +3,7 @@ import type { Me } from "./api";
 import { openPalette } from "./CommandPalette";
 import { NavIcon } from "./icons";
 import { Link, useLocation } from "./router";
+import { useRunning } from "./running";
 import { startTour } from "./Tour";
 
 // Two groups: WORK (what you do day to day) and SETUP (configure once). "How it works" is no
@@ -37,6 +38,26 @@ function activeKey(path: string): string {
   if (path.startsWith("/settings")) return "settings";
   if (path.startsWith("/pr") || path.startsWith("/stack")) return "queue";
   return "";
+}
+
+// "1 review running" under the Review-a-PR button: the one place every page can say that a job
+// is still going. One job links straight to it; several link to the queue filtered to running.
+function RunningPill() {
+  const jobs = useRunning();
+  if (jobs.length === 0) return null;
+  const one = jobs.length === 1 ? jobs[0] : null;
+  const kind = one?.kind === "qa" ? "QA guide" : "review";
+  return (
+    <Link
+      className="runpill"
+      data-testid="running-pill"
+      to={one ? one.href : "/?tab=all&running=1"}
+      title={one ? `${one.repo} #${one.num} — ${one.status}` : "Jump to what's running"}
+    >
+      <span className="rundot" aria-hidden="true" />
+      {one ? `1 ${kind} running` : `${jobs.length} jobs running`}
+    </Link>
+  );
 }
 
 function HelpMenu() {
@@ -92,6 +113,7 @@ export function Sidebar({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
         <span className="rb-label">Review a PR</span>
         <kbd className="rb-kbd">⌘K</kbd>
       </button>
+      <RunningPill />
 
       <nav className="nav">
         {GROUPS.map((g) => (

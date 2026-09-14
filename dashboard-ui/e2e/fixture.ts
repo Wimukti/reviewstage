@@ -5,7 +5,7 @@
 // server always boots against a ready fixture regardless of Playwright's setup/webServer order.
 // A FIXED (non-secret) test secret keeps the server's .env and the minted cookie in agreement.
 import { createHmac } from "node:crypto";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +20,11 @@ export const REPO3 = "acme/billing"; // its profile run failed — the Skills pa
 export const PR = "38849"; // in REPO
 export const PR2 = "38850"; // in REPO — dedicated archive-test target — no other test touches it
 export const PR3 = "7"; // in REPO2
+export const PR4 = "38851"; // in REPO — a review of this one is permanently "in flight"
+// The stack: PR (#38849) is the parent of PR2 (#38850). PR3 lives in REPO2, whose fake gh
+// answers nothing, so it is the un-stacked case.
+export const BRANCH = "lead-time-badge";
+export const BRANCH2 = "cache-lead-times";
 export const PORT = 8988;
 
 const slug = (repo: string) => repo.replace("/", "__");
@@ -92,6 +97,22 @@ export function buildFixture() {
         updatedAt: "2026-05-04T10:00:00Z",
       },
       {
+        repo: REPO,
+        number: Number(PR4),
+        title: "Retry the vendor sync on a 502",
+        url: `https://github.com/${REPO}/pull/${PR4}`,
+        additions: 20,
+        deletions: 2,
+        changedFiles: 1,
+        requested: [USER],
+        author: "teammate",
+        isBot: false,
+        isDraft: false,
+        head: "abadcafe1234",
+        createdAt: "2026-05-07T10:00:00Z",
+        updatedAt: "2026-05-08T10:00:00Z",
+      },
+      {
         repo: REPO2,
         number: Number(PR3),
         title: "Rate-limit the lead-time endpoint",
@@ -109,6 +130,15 @@ export function buildFixture() {
       },
     ]),
   );
+
+  // A review of PR4 that never finishes: a status line the server reads as in-progress and
+  // no lock or pid. rs_state calls such a run live while its status file is younger than
+  // STARTUP_GRACE (90 s) — so the mtime is stamped an hour ahead and it stays "reviewing" for
+  // the whole Playwright run instead of aging into "stalled" mid-suite.
+  const running = join(FIXTURE, "state", slug(REPO), PR4, "users", USER, "status");
+  write(running, "reviewing the diff");
+  const ahead = new Date(Date.now() + 3600_000);
+  utimesSync(running, ahead, ahead);
 
   write(join(FIXTURE, "state", slug(REPO2), PR3, "status"), "done");
   write(
@@ -288,6 +318,15 @@ export function buildFixture() {
       },
     ],
   ];
+  // The open PRs of REPO, as `gh pr list --json number,title,baseRefName,headRefName,url`
+  // answers them: #38849 (main <- lead-time-badge) is the parent of #38850. REPO2 answers
+  // nothing, so its PRs are the un-stacked case.
+  const openPrs = [
+    { number: Number(PR), title: "Add lead-time badge to product cards", baseRefName: "main",
+      headRefName: BRANCH, url: `https://github.com/${REPO}/pull/${PR}` },
+    { number: Number(PR2), title: "Cache vendor lead times", baseRefName: BRANCH,
+      headRefName: BRANCH2, url: `https://github.com/${REPO}/pull/${PR2}` },
+  ];
   const gh = join(FIXTURE, "fakebin", "gh");
   write(
     gh,
@@ -297,6 +336,10 @@ export function buildFixture() {
       `  *"pulls/${PR}/files"*) cat <<'RSJSON'`,
       JSON.stringify(files),
       "RSJSON",
+      "  exit 0;;",
+      `  *"pr list"*"--repo ${REPO}"*baseRefName*) cat <<'RSSTACK'`,
+      JSON.stringify(openPrs),
+      "RSSTACK",
       "  exit 0;;",
       "esac",
       "exit 1",

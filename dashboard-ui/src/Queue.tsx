@@ -3,6 +3,7 @@ import { api, type Me, type QueueData, type QueueRow } from "./api";
 import { parsePrRef, prUrl } from "./pr";
 import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
 import { Link, navigate, useLocation } from "./router";
+import { runningFor, useRunning } from "./running";
 
 const SORTS: [string, string][] = [
   ["newest", "Newest"],
@@ -20,7 +21,17 @@ const EMPTY: Record<string, [string, string, string]> = {
 };
 
 
-function Row({ row, onChange, showRepo }: { row: QueueRow; onChange: () => void; showRepo: boolean }) {
+function Row({
+  row,
+  onChange,
+  showRepo,
+  status,
+}: {
+  row: QueueRow;
+  onChange: () => void;
+  showRepo: boolean;
+  status: string; // non-empty while a review of this PR is in flight for you
+}) {
   const [busy, setBusy] = useState(false);
   const ref = { repo: row.repo, num: row.num };
   async function toggleArchive(e: React.MouseEvent) {
@@ -37,13 +48,22 @@ function Row({ row, onChange, showRepo }: { row: QueueRow; onChange: () => void;
     }
   }
   return (
-    <div className="row">
+    <div className={"row" + (status ? " running" : "")}>
       <Link className="rowlink" to={prUrl(ref)}>
         <div className="rowtop">
           {showRepo && <span className="repochip" title={row.repo}>{row.repo}</span>}
           <span className="num">#{row.num}</span>
           <span className="ttl">{row.title}</span>
         </div>
+        {status ? (
+          // A run in flight replaces the meta line: the findings and timings it would show
+          // are not written yet, and what the reviewer wants is "still going, and where".
+          <div className="rowrun" data-testid="row-running">
+            <span className="rundot" aria-hidden="true" />
+            <span>{status}</span>
+            <span className="runback">— open to watch</span>
+          </div>
+        ) : (
         <div className="muted sm rowsub">
           {row.author && <span>{row.author}</span>}
           {row.size && <span>{row.size}</span>}
@@ -60,9 +80,10 @@ function Row({ row, onChange, showRepo }: { row: QueueRow; onChange: () => void;
             </span>
           )}
         </div>
+        )}
       </Link>
       <div className="rowmeta">
-        <span className={"pill " + row.state}>{row.state}</span>
+        <span className={"pill " + row.state}>{status ? "reviewing" : row.state}</span>
         <button
           type="button"
           className="rowact"
@@ -84,6 +105,9 @@ export function Queue({ me }: { me: Me }) {
   const { search } = useLocation();
   const tab = search.get("tab") || "todo";
   const sort = search.get("sort") || "newest";
+  // ?running=1 — where the sidebar pill points when several jobs are in flight.
+  const onlyRunning = search.get("running") === "1";
+  const jobs = useRunning();
   const [data, setData] = useState<QueueData | null>(null);
   const [q, setQ] = useState("");
   const [rv, setRv] = useState("");
@@ -97,13 +121,15 @@ export function Queue({ me }: { me: Me }) {
     return () => window.removeEventListener(REPO_FILTER_EVENT, on);
   }, []);
 
+  const runKey = jobs.map((j) => `${j.kind}:${j.repo}#${j.num}`).join(",");
   useEffect(() => {
     let live = true;
     api.queue(tab, sort).then((d) => live && setData(d));
     return () => {
       live = false;
     };
-  }, [tab, sort, nonce]);
+    // runKey: a job appearing or finishing changes what these rows should say.
+  }, [tab, sort, nonce, runKey]);
 
   // Every repo we know of: configured + anything in the rows (org-discovered).
   const repos = useMemo(() => {
@@ -115,15 +141,20 @@ export function Queue({ me }: { me: Me }) {
   // A remembered filter for a repo that no longer exists falls back to "all".
   const activeFilter = repoFilter && repos.includes(repoFilter) ? repoFilter : "";
 
+  const statusOf = (r: QueueRow) =>
+    runningFor(jobs, "review", r.repo, r.num)?.status || (r.running ? r.status || "reviewing" : "");
+
   const filtered = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
     return data.rows.filter((r) => {
+      if (onlyRunning && !statusOf(r)) return false;
       if (activeFilter && r.repo !== activeFilter) return false;
       if (!needle) return true;
       return `${r.repo} ${r.repo}#${r.num} #${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle);
     });
-  }, [data, q, activeFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, q, activeFilter, onlyRunning, runKey]);
 
   const parsed = parsePrRef(rv, repos);
   const needsPick = !!parsed && !parsed.repo && multi;
@@ -272,8 +303,20 @@ export function Queue({ me }: { me: Me }) {
       {filtered.length > 0 ? (
         <div className="list" id="qlist" data-tour="queuelist">
           {filtered.map((r) => (
-            <Row key={`${r.repo}#${r.num}`} row={r} showRepo={multi} onChange={() => setNonce((n) => n + 1)} />
+            <Row
+              key={`${r.repo}#${r.num}`}
+              row={r}
+              showRepo={multi}
+              status={statusOf(r)}
+              onChange={() => setNonce((n) => n + 1)}
+            />
           ))}
+        </div>
+      ) : onlyRunning ? (
+        <div className="empty">
+          <span className="ic">✅</span>
+          <b>Nothing running</b>
+          Every review you started has finished.
         </div>
       ) : q || activeFilter ? (
         <div className="empty">

@@ -15,6 +15,7 @@ import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
 import { Tour } from "./Tour";
 import { useLocation } from "./router";
+import { setRunning } from "./running";
 
 function NotFound() {
   return (
@@ -44,7 +45,16 @@ function Routed({ me }: { me: Me }) {
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
-  const load = useCallback(() => api.me().then(setMe), []);
+  // /api/me carries this user's in-flight jobs; hand them to the store so the sidebar has
+  // them from the first paint and the poller only starts when there is something to watch.
+  const load = useCallback(
+    () =>
+      api.me().then((m) => {
+        setMe(m);
+        setRunning(m.running);
+      }),
+    [],
+  );
 
   useEffect(() => {
     load();

@@ -90,7 +90,11 @@ The body is pre-filled with `LGTM` plus a checklist of blocker and should-fix fi
 
 ## Stacked PRs
 
-If the PR is part of a chain where each base branch is the previous head (Graphite or ghstack style), **Stacked review** lists the whole chain top to bottom and lets you run them at one effort from one page.
+If the PR is part of a chain where each base branch is the previous head (Graphite or ghstack style), the PR page offers **Stacked review (N PRs)** in its Actions card: it lists the whole chain top to bottom and lets you run them at one effort from one page. On a PR that is not in a chain the action is not shown at all.
+
+## While a review is running
+
+A review takes minutes, and you do not have to sit on the PR page waiting for it. Wherever you go, the sidebar shows a **1 review running** pill under *Review a PR* — click it to jump back (with several in flight it shows the count and opens the queue filtered to them). In your queue the PR's row shows a pulsing dot and the live progress phrase ("reviewing the diff") in place of its usual meta line, and clicking it returns you to the progress panel.
 
 ## Other actions
 

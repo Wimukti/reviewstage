@@ -3,18 +3,22 @@ import { api, type Me, type PrRef, type QaDetail, type QaGuide } from "./api";
 import { Md } from "./Md";
 import { parsePrRef, prLabel, prUrl } from "./pr";
 import { Link, navigate, useLocation } from "./router";
+import { pokeRunning, runningFor, useRunning } from "./running";
 
 function QaIndex({ me }: { me: Me }) {
   const [guides, setGuides] = useState<QaGuide[]>([]);
   const [repos, setRepos] = useState<string[]>(me.repos || []);
   const [pr, setPr] = useState("");
   const [pickRepo, setPickRepo] = useState("");
+  const jobs = useRunning();
+  const runKey = jobs.map((j) => `${j.kind}:${j.repo}#${j.num}`).join(",");
   useEffect(() => {
     api.qaIndex().then((d) => {
       setGuides(d.guides);
       if (d.repos?.length) setRepos(d.repos);
     });
-  }, []);
+    // A guide starting or finishing changes this list — re-read it then, no timer of our own.
+  }, [runKey]);
   const multi = repos.length > 1;
   const parsed = parsePrRef(pr, repos);
   const needsPick = !!parsed && !parsed.repo && multi;
@@ -66,16 +70,26 @@ function QaIndex({ me }: { me: Me }) {
         <>
           <h2>Recent guides</h2>
           <div className="list">
-            {guides.map((g) => (
-              <div className="row" key={g.num}>
+            {guides.map((g) => {
+              const status = runningFor(jobs, "qa", g.repo, g.num)?.status || (g.running ? g.status || "building" : "");
+              return (
+              <div className={"row" + (status ? " running" : "")} key={`${g.repo}#${g.num}`}>
                 <Link className="rowlink" to={prUrl({ repo: g.repo, num: g.num }, "/qa")}>
                   <div className="rowtop">
                     <span className="num">#{g.num}</span>
                     <span className="ttl">{g.title}</span>
                   </div>
-                  <div className="muted sm rowsub">
-                    <span>guide ready · {g.when}</span>
-                  </div>
+                  {status ? (
+                    <div className="rowrun" data-testid="row-running">
+                      <span className="rundot" aria-hidden="true" />
+                      <span>{status}</span>
+                      <span className="runback">— open to watch</span>
+                    </div>
+                  ) : (
+                    <div className="muted sm rowsub">
+                      <span>guide ready · {g.when}</span>
+                    </div>
+                  )}
                 </Link>
                 <div className="rowmeta">
                   <Link className="chev" to={prUrl({ repo: g.repo, num: g.num }, "/qa")} aria-hidden="true">
@@ -83,7 +97,8 @@ function QaIndex({ me }: { me: Me }) {
                   </Link>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       ) : (
@@ -156,6 +171,7 @@ function QaDetailView({ pr }: { pr: PrRef }) {
   async function gen() {
     if (!d) return;
     await api.qaGen({ repo: d.repo, num: pr.num }, d.genToken);
+    pokeRunning();
     load();
   }
   async function stop() {

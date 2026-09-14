@@ -56,6 +56,16 @@ export function put<T>(path: string, body: unknown = {}): Promise<T> {
 
 // ---- shapes -------------------------------------------------------------------------------
 
+// One review or QA guide this user has in flight right now (see running.ts).
+export interface RunningJob {
+  kind: "review" | "qa";
+  repo: string;
+  num: string;
+  title: string;
+  status: string; // "reviewing the diff", "queued", …
+  href: string; // the page that shows its progress
+}
+
 export interface Me {
   authed: boolean;
   login?: string;
@@ -76,6 +86,7 @@ export interface Me {
   public_url?: string;
   logo?: string;
   webhooks_configured?: boolean; // GITHUB_WEBHOOK_SECRET is set on the server
+  running?: RunningJob[]; // reviews / QA guides in flight for this user
   auth?: "cookie" | "bearer"; // how this request was authenticated
   login_via?: "oauth" | "pat"; // how the stored GitHub token was obtained
 }
@@ -140,6 +151,8 @@ export interface QueueRow {
   when: string[];
   sev: SevChip[];
   archived: boolean;
+  running: boolean; // a review of this PR is in flight for you right now
+  status: string; // its progress phrase, when running
   archiveToken: Token;
 }
 
@@ -306,7 +319,14 @@ export interface BannerResult {
   bannerHtml: string;
 }
 
-export interface QaGuide { repo: string; num: string; title: string; when: string }
+export interface QaGuide {
+  repo: string;
+  num: string;
+  title: string;
+  when: string;
+  running?: boolean;
+  status?: string;
+}
 export interface QaIndex { repos: string[]; guides: QaGuide[] }
 export interface QaDetail {
   repo: string;

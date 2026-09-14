@@ -4,6 +4,7 @@
 // before booting the Python server, and global-setup runs it before the workers start, so the
 // server always boots against a ready fixture regardless of Playwright's setup/webServer order.
 // A FIXED (non-secret) test secret keeps the server's .env and the minted cookie in agreement.
+import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -273,6 +274,58 @@ export function buildFixture() {
   write(
     join(FIXTURE, "profiles", slug(REPO3), "agent.log"),
     ["error: unknown option '---'", "", "(Did you mean --add-dir?)", ""].join("\n"),
+  );
+
+  // Learnings: four drops of the same complaint across three PRs — enough evidence for one
+  // rule suggestion on the Skills page. The proposal is pre-cached (keyed by the cluster
+  // signature rs_learn computes, asked for here rather than hard-coded) so the page renders a
+  // drafted sentence with no Claude account and no model call.
+  const drops = [
+    ["38849", "Prefer const over let for this binding"],
+    ["38850", "Use const rather than let here — the binding is never reassigned"],
+    ["38851", "Prefer a const binding over let in the badge component"],
+    ["38851", "This let is never reassigned; a const binding would be preferable"],
+  ];
+  write(
+    join(FIXTURE, "learnings.jsonl"),
+    drops
+      .map(([pr, gist], i) =>
+        JSON.stringify({
+          at: 1778000000 + i,
+          repo: REPO,
+          pr,
+          user: USER,
+          skill: "global",
+          path: "src/javascripts/Badge.tsx",
+          line: 10 + i,
+          severity: "nit",
+          gist,
+          outcome: "dropped",
+        }),
+      )
+      .join("\n") + "\n",
+  );
+  const sig = execFileSync(
+    "python3",
+    ["-c", "import rs_learn; print(rs_learn.clusters('dropped')[0]['signature'])"],
+    { cwd: join(HERE, "..", "..", "bin"), env: { ...process.env, ROOT: FIXTURE } },
+  )
+    .toString()
+    .trim();
+  write(
+    join(FIXTURE, "rule_proposals.json"),
+    JSON.stringify(
+      {
+        [sig]: {
+          rule: "Do not raise const-over-let style nits; the linter owns that.",
+          rationale: "Dropped four times across three PRs — the team has never wanted it.",
+          at: 1778000100,
+          model: "haiku",
+        },
+      },
+      null,
+      1,
+    ) + "\n",
   );
 
   // Fake gh: every call fails, so gh_json() returns its defaults and the server renders from

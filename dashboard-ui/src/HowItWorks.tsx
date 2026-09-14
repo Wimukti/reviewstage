@@ -21,7 +21,7 @@ const STEPS: Step[] = [
     txt: (
       <>
         You click through to the PR. ReviewStage checks out the branch and runs the{" "}
-        <code>pr-review</code> skill against the real diff — about 10–15 minutes for a 25-file PR.
+        <code>pr-review</code> skill against the real diff — a few minutes for a typical PR on Opus, longer for Deep.
         Nothing is posted to GitHub in this step.
       </>
     ),

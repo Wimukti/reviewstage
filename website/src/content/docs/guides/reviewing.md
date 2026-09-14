@@ -17,7 +17,7 @@ Starting a review is a small form, not a link, because a review is a real agent 
 
 | Field | What it does |
 | --- | --- |
-| **Effort** | *Quick* / *Standard* / *Deep*. Pre-selected from the diff size. Sets the time budget (about 12, 25 or 40 minutes) and a depth instruction. *Deep* tells the agent to search the whole repository for impact before judging. |
+| **Effort** | *Quick* / *Standard* / *Deep*. Pre-selected from the diff size. Sets a depth instruction and a timeout ceiling. Typical durations are about 2–5, 3–10 and 8–25 minutes; once your install has three or more runs at a level the form shows that install's own median instead ("typically ~N min here"). *Deep* tells the agent to search the whole repository for impact before judging. |
 | **Model** | Your plan's default, or *Opus* (deepest), *Sonnet* (balanced), *Haiku* (light PRs). Validated server-side. |
 | **Focus** | Free text appended to the prompt on top of the skill. Use it to steer at *this* PR: "the retry path", "anything touching money". |
 

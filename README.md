@@ -43,7 +43,7 @@ Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped 
 
 **Accountability has to sit with a person.** A wrong nit costs a reply; a wrong approval ships a bug. So ReviewStage never requests changes, never blocks a merge, and never approves on its own. The agent's verdict is shown to you as an assessment. Posting and approving are two different buttons, and the agent can press neither: the script that runs the review has no GitHub write path at all.
 
-**It runs on your plan, so it runs when you click.** Each reviewer connects their own Claude account in the browser; a review is a real agent run against a real diff — 10 to 15 minutes for a 25-file PR — billed to whoever started it. That is why it is click-to-run rather than on every push, and why the run form asks for an effort level before it starts.
+**It runs on your plan, so it runs when you click.** Each reviewer connects their own Claude account in the browser; a review is a real agent run against a real diff — a few minutes for a typical PR on Opus, longer for Deep — billed to whoever started it. That is why it is click-to-run rather than on every push, and why the run form asks for an effort level before it starts.
 
 ## Highlights
 

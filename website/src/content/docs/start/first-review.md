@@ -15,7 +15,7 @@ Paste a PR URL or number into **Review a PR** in the sidebar. If the poller is r
 
 The run form asks three things:
 
-- **Effort** — *Quick*, *Standard* or *Deep*. One is pre-selected from the diff size. It changes the agent's time budget (roughly 12, 25 or 40 minutes) and how far it reads; *Deep* searches the whole repository for impact before judging.
+- **Effort** — *Quick*, *Standard* or *Deep*. One is pre-selected from the diff size. It changes how far the agent reads (typically 2–5, 3–10 or 8–25 minutes; the form shows your install's own median once it has enough runs); *Deep* searches the whole repository for impact before judging.
 - **Model** — your plan's default, or Opus, Sonnet or Haiku for this run.
 - **Focus** (optional) — a sentence like *"pay attention to the cut-off maths"*, folded into the prompt on top of the skill.
 

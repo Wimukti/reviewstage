@@ -197,12 +197,21 @@ export interface OtherRun {
   skillKey: string;
   when: string;
 }
+// How long a level tends to take: a static range until this install has ≥3 runs at it, then
+// the median of those runs ("typically ~N min here").
+export interface EffortEstimate {
+  label: string;
+  source: "static" | "measured";
+  samples: number;
+  medianMs?: number;
+}
 export interface RunFormData {
   suggested: string;
   levels: EffortLevel[];
   models: EffortLevel[];
   skillLabel: string;
   othersOnHead: OtherRun[];
+  estimates?: Record<string, EffortEstimate>;
 }
 export interface Risk { icon: string; title: string; note: string }
 export interface HistoryRun {
@@ -221,6 +230,7 @@ export interface Usage {
   cacheCreationTokens: number;
   realTokens: number;
   costUsd: number;
+  durationMs?: number;
 }
 
 export interface PrData {

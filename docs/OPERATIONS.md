@@ -54,8 +54,8 @@ Check the reviewer's `agent.log` (path above). Common causes:
 - **`claude` not on PATH** — the native installer puts it in `~/.local/bin`, which is not on
   systemd's default PATH. The unit sets it explicitly; re-run `bootstrap.sh` if the unit is
   stale.
-- **The timeout hit** (12 / 25 / 40 minutes by effort). Very large PRs do this. Re-run at a
-  lower effort, or by hand and watch the log.
+- **The timeout hit** (the per-effort ceiling in `run-review.sh`; a normal run finishes in
+  minutes). Very large PRs do this. Re-run at a lower effort, or by hand and watch the log.
 - **The server ran out of memory.** Reviews refuse to start below `MIN_FREE_MB` (default 800),
   but a review already in flight can still be OOM-killed if the machine is shared with other
   workloads.
@@ -95,7 +95,7 @@ Everything else rebuilds itself. Nothing needs to be restored from a backup.
   dashboard and lives in `~/.reviewstage/skills/_global.md`.)
 - **Team review requests are not polled.** `review-requested:<you>` matches direct requests
   only; a request routed through a team handle never fires.
-- **Reviews cost tokens.** Roughly 10–15 minutes of agent time on a 25-file PR, against a
+- **Reviews cost tokens.** A few minutes of agent time for a typical PR on Opus (longer for Deep), against a
   Claude subscription. That is what click-to-run is for.
 - **One repository per instance.** `REPO` is a single `owner/name`; run a second instance for
   a second repository.

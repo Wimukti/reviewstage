@@ -32,9 +32,91 @@ def commentable_lines(patch):
     return lines
 
 
-def anchor_map(files):
-    """{filename: {commentable line numbers}} from the PR files API payload."""
-    return {f["filename"]: commentable_lines(f.get("patch")) for f in files}
+# `gh api pulls/{n}/files` omits `patch` for binary files and for files past GitHub's per-file
+# size cutoff (a 344-line brand-new HTML page hit it). The shape tells us most of the answer.
+UNKNOWN = None   # sentinel: this file needs the full PR diff to decide
+
+
+def file_lines(entry):
+    """Commentable RIGHT-side lines for one files-API entry, or UNKNOWN.
+
+    Rule: a `patch` is authoritative. Without one — `added` → every line 1..additions is on the
+    RIGHT side (the whole file is new); `removed` → nothing (no RIGHT side exists); anything
+    else (modified/renamed/copied) → UNKNOWN, resolved from the full `gh pr diff` by the caller.
+    """
+    patch = entry.get("patch")
+    if patch:
+        return commentable_lines(patch)
+    status = entry.get("status") or ""
+    if status == "added":
+        try:
+            n = int(entry.get("additions") or 0)
+        except (TypeError, ValueError):
+            n = 0
+        return set(range(1, n + 1))
+    if status == "removed":
+        return set()
+    return UNKNOWN
+
+
+DIFF_HEADER = re.compile(r"^diff --git a/(.*) b/(.*)$")
+NEW_PATH = re.compile(r"^\+\+\+ (?:b/(.*)|/dev/null)$")
+
+
+def parse_full_diff(text):
+    """{new-side filename: commentable lines} from a whole-PR unified diff (`gh pr diff`).
+
+    Files with no hunks (binary, pure renames/mode changes) still appear with an empty set so a
+    lookup distinguishes "seen, nothing commentable" from "not in the diff".
+    """
+    out, cur, body = {}, None, []
+
+    def flush():
+        if cur is not None:
+            out[cur] = commentable_lines("\n".join(body))
+
+    for raw in (text or "").split("\n"):
+        m = DIFF_HEADER.match(raw)
+        if m:
+            flush()
+            cur, body = m.group(2), []
+            continue
+        if cur is None:
+            continue
+        m = NEW_PATH.match(raw)
+        if m:
+            if m.group(1):          # `+++ b/<path>` is the authoritative new-side name
+                cur = m.group(1)
+            continue
+        if raw.startswith(("--- ", "index ", "old mode", "new mode", "similarity",
+                           "rename ", "copy ", "new file", "deleted file", "Binary files")):
+            continue
+        body.append(raw)
+    flush()
+    return out
+
+
+def anchor_map(files, fetch_diff=None):
+    """{filename: {commentable line numbers}} from the PR files API payload.
+
+    `fetch_diff` is a zero-arg callable returning the full PR diff text (or None on failure).
+    It is invoked at most once, and only when some entry lacks a patch and its status alone
+    can't settle the question.
+    """
+    out, pending = {}, []
+    for f in files:
+        lines = file_lines(f)
+        if lines is UNKNOWN:
+            pending.append(f["filename"])
+            out[f["filename"]] = set()
+        else:
+            out[f["filename"]] = lines
+    if pending and fetch_diff is not None:
+        parsed = parse_full_diff(fetch_diff() or "")
+        for name in pending:
+            if name in parsed:
+                out[name] = parsed[name]
+    return out
 
 
 def split_anchorable(comments, anchors):

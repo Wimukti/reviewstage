@@ -143,7 +143,7 @@ review requests it prints nothing and that is correct — ask a teammate to add 
 reviewer on something, or add yourself to any open PR to test.
 
 Click **Open review** on the card. The first visit starts the review; the page reports
-`reviewing` and Slack pings you again in 10–15 minutes when it is ready.
+`reviewing` and Slack pings you again a few minutes later when it is ready.
 
 ## Team pilot
 

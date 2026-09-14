@@ -218,3 +218,67 @@ def compute(state, root, now=None, repo=None):
         "cycle": {"medianReviewToPostSec": _median(cycle), "n": len(cycle)},
         "series": series,
     }
+
+
+# --- effort duration estimates ---------------------------------------------------------------
+# The run form's "how long will this take" hint. Static ranges until an install has enough of
+# its own runs; then the median wall-clock of those runs, which reflects this team's PRs, plan
+# and model mix far better than any global number could.
+MIN_SAMPLES = 3
+
+
+def _usage_dirs(state):
+    """Every per-run dir that may hold usage.json + effort: the live run and its history."""
+    for _, prd in _prdirs(state):
+        ud = prd / "users"
+        if not ud.is_dir():
+            continue
+        for d in ud.iterdir():
+            if not d.is_dir():
+                continue
+            yield d
+            hd = d / "history"
+            if hd.is_dir():
+                for h in hd.iterdir():
+                    if h.is_dir() and h.name.isdigit():
+                        yield h
+
+
+def duration_samples(state):
+    """{effort: [duration_ms, ...]} from every usage.json with an effort marker beside it."""
+    out = {}
+    for d in _usage_dirs(Path(state)):
+        u = _load(d / "usage.json")
+        if not isinstance(u, dict):
+            continue
+        try:
+            ms = int(u.get("duration_ms") or 0)
+            eff = (d / "effort").read_text().strip()
+        except (OSError, TypeError, ValueError):
+            continue
+        if ms > 0 and eff:
+            out.setdefault(eff, []).append(ms)
+    return out
+
+
+def estimate_label(median_ms):
+    mins = max(1, round(median_ms / 60000))
+    return f"typically ~{mins} min here"
+
+
+def duration_estimates(state, static, min_samples=MIN_SAMPLES):
+    """{effort: {label, source, samples}} for every key in `static` ({effort: range text}).
+
+    source is "measured" (label from this install's median) once ≥ min_samples runs exist for
+    that effort, else "static" with the given range. Pure fn over the state dir.
+    """
+    samples = duration_samples(state)
+    out = {}
+    for eff, rng in static.items():
+        xs = samples.get(eff, [])
+        if len(xs) >= min_samples:
+            out[eff] = {"label": estimate_label(_median(xs)), "source": "measured",
+                        "samples": len(xs), "medianMs": _median(xs)}
+        else:
+            out[eff] = {"label": rng, "source": "static", "samples": len(xs)}
+    return out

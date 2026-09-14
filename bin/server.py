@@ -840,10 +840,17 @@ def review_cache_key(login, repo, head, effort, focus, model):
 # --- review effort ---------------------------------------------------------------------------
 # How deep a review goes. The dashboard auto-sizes from the diff and lets the reviewer override;
 # run-review.sh maps the key to a timeout + a depth instruction. Order is low → high.
+# Static time hints are honest ranges from real runs (a Standard pass on Opus over an 18-file
+# +2,450 PR took 3m 24s), not the run-review.sh timeouts — those are ceilings. Once an install
+# has ≥3 runs at a level, the run form shows that install's median instead (rs_rollup).
+EFFORT_TIME = {"quick": "2–5 min", "standard": "3–10 min", "deep": "8–25 min"}
+EFFORT_SCOPE = {"quick": "diff only", "standard": "changed files", "deep": "whole-repo trace"}
 EFFORT = {
-    "quick":    ("Quick",    "diff only · ~10 min", "fast pass over just the changed lines"),
-    "standard": ("Standard", "changed files · ~25 min", "the changed files and their context"),
-    "deep":     ("Deep",     "whole-repo trace · ~40 min",
+    "quick":    ("Quick",    f"diff only · {EFFORT_TIME['quick']}",
+                 "fast pass over just the changed lines"),
+    "standard": ("Standard", f"changed files · {EFFORT_TIME['standard']}",
+                 "the changed files and their context"),
+    "deep":     ("Deep",     f"whole-repo trace · {EFFORT_TIME['deep']}",
                  "traces impact across the repo — best for risky or large PRs"),
 }
 EFFORT_ORDER = ["quick", "standard", "deep"]
@@ -983,7 +990,8 @@ def review_usage(repo, pr, login):
             "cacheReadTokens": cache_read,
             "cacheCreationTokens": cache_create,
             "realTokens": fresh_in + out,
-            "costUsd": float(u.get("cost_usd") or 0)}
+            "costUsd": float(u.get("cost_usd") or 0),
+            "durationMs": int(u.get("duration_ms") or 0)}
 
 
 RISK_LABEL = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
@@ -1005,7 +1013,8 @@ def risk_banner(label):
 
 
 # Files that describe one review run — copied into history/<ts>/ when a re-run replaces it.
-RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status")
+RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status",
+             "usage.json")
 
 
 def review_focus(repo, pr, login):
@@ -1844,6 +1853,17 @@ def fetch_pr_files(repo, pr):
     return None, last
 
 
+def fetch_pr_diff(repo, pr):
+    """The whole PR as one unified diff, or None. Only needed when the files API withheld a
+    `patch` for a modified file (binary or past GitHub's size cutoff); large PRs take a while,
+    hence the longer timeout."""
+    try:
+        r = gh(["pr", "diff", str(pr), "-R", repo], timeout=120)
+    except subprocess.TimeoutExpired:
+        return None
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
+
 def gist(body, limit=120):
     """One-line plain-text gist of a finding, for the approval checklist."""
     t = re.sub(r"```.*?```", "", body or "", flags=re.S)
@@ -2494,9 +2514,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _run_form_data(self, user, meta, repo="", pr=None):
         _, skill_label = effective_skill(user, repo)
+        est = rs_rollup.duration_estimates(STATE, EFFORT_TIME)
         return {"suggested": autosize_effort(meta),
-                "levels": [{"key": k, "name": EFFORT[k][0], "sub": EFFORT[k][1]}
+                "levels": [{"key": k, "name": EFFORT[k][0],
+                            "sub": f"{EFFORT_SCOPE[k]} · {est[k]['label']}"}
                            for k in EFFORT_ORDER],
+                "estimates": est,
                 "models": [{"key": k, "name": n, "sub": sub} for k, n, sub in MODELS],
                 "skillLabel": skill_label,
                 "othersOnHead": (others_on_head(repo, pr, user) if pr else [])}
@@ -3606,7 +3629,8 @@ class Handler(BaseHTTPRequestHandler):
                 f"<a href='https://www.githubstatus.com' target=_blank rel=noopener>"
                 f"githubstatus.com</a> and retry.<br>"
                 f"<code>{html.escape(err)}</code></div></div>")
-        inline, orphans = rs_diff.split_anchorable(chosen, rs_diff.anchor_map(files))
+        anchors = rs_diff.anchor_map(files, fetch_diff=lambda: fetch_pr_diff(repo, pr))
+        inline, orphans = rs_diff.split_anchorable(chosen, anchors)
         # No bot signature: this posts under the reviewer's own account, so GitHub already
         # attributes it. A trailing "Reviewed by @x" only restates the byline.
         body = (rev.get("summary") or "").strip() + rs_diff.orphan_block(orphans)

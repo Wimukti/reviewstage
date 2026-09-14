@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parsePrRef, prLabel, prUrl, prnum } from "./pr";
+import { fmtDuration, parsePrRef, prLabel, prUrl, prnum } from "./pr";
 
 const ONE = ["acme/widgets"];
 const TWO = ["acme/widgets", "acme/api"];
@@ -38,4 +38,13 @@ test("prUrl encodes the repo and keeps the legacy form without one", () => {
 test("prLabel", () => {
   assert.equal(prLabel({ repo: "acme/api", num: "7" }), "acme/api #7");
   assert.equal(prLabel({ repo: "", num: "7" }), "#7");
+});
+
+test("fmtDuration: the real 3m 24s run", () => assert.equal(fmtDuration(204264), "3m 24s"));
+test("fmtDuration: under a minute", () => assert.equal(fmtDuration(48000), "48s"));
+test("fmtDuration: pads seconds", () => assert.equal(fmtDuration(65000), "1m 05s"));
+test("fmtDuration: hours", () => assert.equal(fmtDuration(3_720_000), "1h 02m"));
+test("fmtDuration: nothing recorded", () => {
+  assert.equal(fmtDuration(0), "");
+  assert.equal(fmtDuration(undefined), "");
 });

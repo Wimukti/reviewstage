@@ -47,7 +47,7 @@ docker compose up -d demo   # seeds sample runs so you can explore the UI
 
 ### The first sign-in
 
-1. Open http://localhost:8899. With [GitHub sign-in](#github-sign-in) configured the page shows **Continue with GitHub**; without it, a token form. For a solo install the token form is fine: *Create one* opens GitHub with the token name and scope pre-filled. Pick an expiry (90 days is a good default). This token acts as **you**; it is what makes every comment attributable to a person.
+1. Open http://localhost:8899. With [GitHub sign-in](#github-sign-in) configured the page shows **Continue with GitHub**; without it, a token form. For a solo install the token form is fine: *Create a fine-grained token* opens GitHub's fine-grained token page — pick the repositories you review and grant **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read** (a classic token with the `repo` scope also works). Pick an expiry (90 days is a good default). This token acts as **you**; it is what makes every comment attributable to a person.
 2. Paste the token. It is verified against GitHub, stored encrypted, and used only for the posts and approvals you click.
 3. On the welcome checklist, **Connect Claude**: a link opens Claude in a new tab, you authorise with your own account and paste the code back. This runs the genuine `claude setup-token` flow inside the container, so your reviews bill to your plan.
 

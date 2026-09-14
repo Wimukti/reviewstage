@@ -204,11 +204,34 @@ function RunForm({
         <span className="hint" style={{ flex: 1 }}>
           Runs with {form.skillLabel} · deeper reviews cost more of your weekly usage.
         </span>
-        <button className="btn primary" type="submit" disabled={busy}>
-          {busy ? "Starting…" : label}
+        <button className="btn primary" type="submit" disabled={busy} aria-busy={busy}>
+          {busy && <span className="spin" aria-hidden="true" />} {busy ? "Starting…" : label}
         </button>
       </div>
+      <div className="hint" style={{ marginTop: 6 }}>
+        Times are estimates — they depend on the PR’s size and your plan.
+      </div>
     </form>
+  );
+}
+
+// The stalled banner's Stop: only rendered when the server says the run's process group is
+// still alive (bash gone, the agent it started still burning tokens).
+function StopStalled({ pr, token, onDone }: { pr: PrRef; token: Token; onDone: () => void }) {
+  const [stopping, setStopping] = useState(false);
+  return (
+    <button
+      className="btn soft"
+      type="button"
+      disabled={stopping}
+      onClick={async () => {
+        setStopping(true);
+        await api.stop(pr, token);
+        onDone();
+      }}
+    >
+      {stopping ? "Stopping…" : "Stop it"}
+    </button>
   );
 }
 
@@ -1019,10 +1042,17 @@ export function PrPage({ me }: { me: Me }) {
       )}
       {data.stalled && (
         <>
-          <div className="banner err">
+          <div className="banner err" data-testid="stalled-banner">
             <span>🔴</span>
             <div>
               <b>The review stopped before it finished.</b> It was at <code>{data.stalled.was}</code>. Re-run below.
+              {data.stalled.pidAlive && (
+                <>
+                  {" "}
+                  A process from that run is still alive.{" "}
+                  <StopStalled pr={pr} token={data.tokens.stop} onDone={load} />
+                </>
+              )}
             </div>
           </div>
           <div className="card top">

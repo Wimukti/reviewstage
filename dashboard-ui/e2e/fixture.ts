@@ -269,25 +269,33 @@ export function buildFixture() {
   chmodSync(gh, 0o755);
 }
 
-export function mintAuthState() {
+export const ORIGIN = `http://127.0.0.1:${PORT}`;
+export const TOUR_KEY = "reviewstage_tour";
+
+// The signed session cookie for USER, the shape Playwright's storageState wants.
+export function sessionCookie() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
   const sig = createHmac("sha256", SECRET).update(`session:${USER}:${exp}`).digest("hex");
+  return {
+    name: "rs_session",
+    value: `${USER}:${exp}:${sig}`,
+    domain: "127.0.0.1",
+    path: "/",
+    expires: exp,
+    httpOnly: true,
+    secure: false,
+    sameSite: "Lax" as const,
+  };
+}
+
+// The default storage state: signed in AND the guided tour already dismissed, so it does not
+// cover the page in every test. The first-run spec opts out with a fresh localStorage.
+export function mintAuthState() {
   writeFileSync(
     AUTH_STATE,
     JSON.stringify({
-      cookies: [
-        {
-          name: "rs_session",
-          value: `${USER}:${exp}:${sig}`,
-          domain: "127.0.0.1",
-          path: "/",
-          expires: exp,
-          httpOnly: true,
-          secure: false,
-          sameSite: "Lax",
-        },
-      ],
-      origins: [],
+      cookies: [sessionCookie()],
+      origins: [{ origin: ORIGIN, localStorage: [{ name: TOUR_KEY, value: "done" }] }],
     }),
   );
 }

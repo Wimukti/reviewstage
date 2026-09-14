@@ -22,12 +22,17 @@ Decide the hostname now, e.g. `https://reviews.example.com`. You will be asked f
 
 ### A GitHub PAT
 
-A **classic** PAT with the `repo` scope, on your own account:
-GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic).
+A **fine-grained** PAT on your own account, scoped to the repositories you review
+(<https://github.com/settings/personal-access-tokens/new>) with these permissions:
 
-Do **not** add `read:org`. The only call that ever needed it was
-`gh pr view --json reviewRequests`, which resolves through GraphQL; the REST endpoints carry
-the same data under `repo` alone.
+- **Pull requests: Read and write** — post comments and approvals
+- **Contents: Read** — clone and diff
+- **Metadata: Read** — added automatically
+
+A **classic** PAT with the `repo` scope (Settings → Developer settings → Personal access
+tokens → Tokens (classic)) also works; it is simply broader. Do **not** add `read:org`. The
+only call that ever needed it was `gh pr view --json reviewRequests`, which resolves through
+GraphQL; the REST endpoints carry the same data under `repo` alone.
 
 This token acts as **you**. That is the point — it is what makes every comment the bot posts
 attributable to a human rather than a bot account.
@@ -279,7 +284,7 @@ Everything lives in `~/.reviewstage/.env` (chmod 600).
 
 | Key                  | Set by      | Notes                                                          |
 | -------------------- | ----------- | -------------------------------------------------------------- |
-| `GITHUB_PAT`         | you         | Classic PAT, `repo` scope. Acts as **you**                     |
+| `GITHUB_PAT`         | you         | Fine-grained PAT (PRs r/w, Contents r, Metadata r) or classic `repo`. Acts as **you** |
 | `SLACK_WEBHOOK`      | you         | Private channel. Optional                                      |
 | `REPO`               | prompt      | The repository to review, `owner/name`. **Required**           |
 | `REVIEWER`           | prompt      | Your GitHub login. Must match the PAT's account                |

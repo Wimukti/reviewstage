@@ -256,7 +256,7 @@ export interface PrData {
     focus: string;
   };
   stopped?: { halted: boolean };
-  stalled?: { was: string; tail: string };
+  stalled?: { was: string; tail: string; pidAlive?: boolean };
   notReviewed?: boolean;
   failed?: string;
   approved?: ApprovedData;

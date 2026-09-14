@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { PR, PR2, PR3, REPO, REPO2 } from "./fixture";
+import { PR, PR2, PR3, REPO, REPO2, TOUR_KEY, sessionCookie } from "./fixture";
 
 const enc = (r: string) => encodeURIComponent(r);
 
@@ -12,6 +12,56 @@ test.describe("signed out", () => {
     await expect(page.getByRole("button", { name: /sign in|connect|log in/i }).first()).toBeVisible();
     await expect(page.locator("input")).toBeVisible();
   });
+
+  test("the token form recommends a fine-grained PAT and still accepts a classic one", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByPlaceholder(/github_pat_… or ghp_…/)).toBeVisible();
+    await expect(page.getByRole("link", { name: /create a fine-grained token/i })).toHaveAttribute(
+      "href",
+      "https://github.com/settings/personal-access-tokens/new",
+    );
+    await expect(page.getByText(/pull requests: read and write/i)).toBeVisible();
+    await expect(page.getByText(/classic token/i)).toBeVisible();
+    // Nothing typed yet: the button waits.
+    await expect(page.getByRole("button", { name: /sign in with token/i })).toBeDisabled();
+  });
+});
+
+// First sign-in: the guided tour must open on the Queue page once the queue has rendered —
+// the queue mounts after its fetch, so a mount-time check would miss it. Fresh localStorage.
+test.describe("first run", () => {
+  test.use({ storageState: { cookies: [sessionCookie()], origins: [] } });
+
+  test("the tour opens on the first Queue load and stays away once dismissed", async ({ page }) => {
+    await page.goto("/");
+    const tour = page.getByTestId("tour");
+    await expect(tour).toBeVisible({ timeout: 8_000 });
+    await expect(tour).toContainText(/welcome to reviewstage/i);
+    // Walk to the queue step: it targets the queue card even with an empty To-do list.
+    await tour.getByRole("button", { name: "Next" }).click();
+    await tour.getByRole("button", { name: "Next" }).click();
+    await tour.getByRole("button", { name: "Next" }).click();
+    await expect(tour).toContainText(/your review queue/i);
+    await tour.getByRole("button", { name: "Skip" }).click();
+    await expect(tour).toHaveCount(0);
+    expect(await page.evaluate((k) => localStorage.getItem(k), TOUR_KEY)).toBe("done");
+    // Dismissed: a reload does not bring it back.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
+    await page.waitForTimeout(1200);
+    await expect(tour).toHaveCount(0);
+  });
+
+  test("Take a tour reopens it on demand", async ({ page }) => {
+    await page.goto("/");
+    const tour = page.getByTestId("tour");
+    await expect(tour).toBeVisible({ timeout: 8_000 });
+    await tour.getByRole("button", { name: "Skip" }).click();
+    await expect(tour).toHaveCount(0);
+    await page.getByRole("button", { name: /help/i }).click();
+    await page.getByRole("button", { name: /take a tour/i }).click();
+    await expect(tour).toBeVisible();
+  });
 });
 
 // Authenticated via the injected session cookie (see global-setup / fixture).
@@ -21,6 +71,9 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     await expect(page.getByText(`#${PR}`)).toBeVisible();
     await expect(page.getByText(/lead-time badge/i)).toBeVisible();
+    // The default storage state has the tour dismissed: it must not cover the page.
+    await page.waitForTimeout(800);
+    await expect(page.getByTestId("tour")).toHaveCount(0);
   });
 
   test("archive button works: moves a PR to Archived and restores it", async ({ page }) => {

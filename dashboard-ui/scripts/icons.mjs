@@ -1,34 +1,27 @@
-// Build step: PWA icons from assets/logo.png, then copy public/* next to app.js/app.css.
+// Build step: PWA icons from assets/logo-light.svg, then copy public/* next to app.js/app.css.
 // Runs as part of `pnpm build` (see package.json). Output lands in ../bin/static, which the
 // server serves at /static/*; the manifest, service worker, offline page and icons are also
 // reachable at the root so the SW can claim the whole origin as its scope.
-import { cp, mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, readFile, cp, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { tile } from "./tile.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ui = join(here, "..");
-const logo = join(ui, "..", "assets", "logo.png");
+const svg = await readFile(join(ui, "..", "assets", "logo-light.svg"), "utf8");
 const out = join(ui, "..", "bin", "static");
 const icons = join(out, "icons");
-// Same as --bg in src/styles.css: the maskable variants need an opaque ground because the
-// platform crops them into its own shape.
-const BG = "#0a0b12";
 
 await mkdir(icons, { recursive: true });
 
+// Plain icons: the mark on a rounded dark tile. Maskable: square tile, the mark inside the
+// platform safe zone (80% of the canvas) since the launcher crops it into its own shape.
 const plain = async (size, name) =>
-  sharp(logo).resize(size, size).png().toFile(join(icons, name));
-// Maskable: the logo sits inside the safe zone (80% of the canvas) on a solid background.
-const maskable = async (size, name) => {
-  const inner = Math.round(size * 0.72);
-  const glyph = await sharp(logo).resize(inner, inner).png().toBuffer();
-  await sharp({ create: { width: size, height: size, channels: 4, background: BG } })
-    .composite([{ input: glyph, gravity: "centre" }])
-    .png()
-    .toFile(join(icons, name));
-};
+  writeFile(join(icons, name), await tile(sharp, svg, size, { radius: Math.round(size * 0.2), inner: 0.78 }));
+const maskable = async (size, name) =>
+  writeFile(join(icons, name), await tile(sharp, svg, size, { radius: 0, inner: 0.62 }));
 
 await Promise.all([
   plain(192, "icon-192.png"),

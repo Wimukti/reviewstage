@@ -54,6 +54,7 @@ import rs_paths as P
 import rs_profile
 import rs_rollup
 import rs_settings
+import rs_state
 import rs_webhook
 
 BRAND = "ReviewStage"                    # product name shown beside the logo (see rs_assets)
@@ -1925,25 +1926,26 @@ def index_html():
 def is_running(repo, pr, login):
     """True while run-review.sh holds this user's per-PR flock.
 
-    Exact, unlike guessing from a timestamp: if we can take the lock, nothing is running.
-    A review killed mid-flight (systemd used to reap detached children on restart) otherwise
-    leaves `status` reading "reviewing" forever.
+    Exact once the script is past its first lines — but NOT a proof of absence: the server
+    writes `status` before the child exists, and bash needs a moment to reach `flock`. Callers
+    deciding "is anything alive?" should use run_probe(), which also checks the pid and the
+    status file's age.
     """
-    f = udir(repo, pr, login) / ".lock"
-    if not f.exists():
-        return False
-    try:
-        fd = os.open(f, os.O_RDWR)
-    except OSError:
-        return False
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        return False
-    except OSError:
+    return rs_state.flock_held(udir(repo, pr, login) / ".lock")
+
+
+def run_probe(repo, pr, login):
+    """Every liveness signal for one user's run (lock, pid, status age) and the verdict."""
+    return rs_state.probe(udir(repo, pr, login))
+
+
+def run_alive(repo, pr, login):
+    """Is a review for this user genuinely in flight (lock held OR its pid alive)? Used where
+    a false negative would spawn a duplicate that clobbers the live run's markers."""
+    p = udir(repo, pr, login)
+    if rs_state.flock_held(p / ".lock"):
         return True
-    finally:
-        os.close(fd)
+    return rs_state.pid_alive(rs_state.read_pid(p / "pid"))
 
 
 def udir(repo, pr, login):
@@ -1992,7 +1994,27 @@ def pr_state(repo, pr, login):
         return "stopped"
     if s.startswith(("done", "posted", "dry-run")):
         return "done"
-    return "reviewing" if is_running(repo, pr, login) else "stalled"
+    probe = run_probe(repo, pr, login)
+    if probe["state"] == "stalled":
+        _log_stalled(repo, pr, login, s, probe)
+    return probe["state"]
+
+
+_STALLED_LOGGED = {}
+_STALLED_LOG_EVERY = 60          # the queue re-asks every few seconds; one line a minute is plenty
+
+
+def _log_stalled(repo, pr, login, status, probe):
+    """One diagnosable line per stalled verdict (rate-limited per run) — `docker compose logs
+    app` then shows which signal was missing when the dashboard called a run dead."""
+    key = (repo, str(pr), login)
+    now = time.time()
+    if now - _STALLED_LOGGED.get(key, 0) < _STALLED_LOG_EVERY:
+        return
+    _STALLED_LOGGED[key] = now
+    print(f"stalled: {repo}#{pr} login={login} status={status!r} lock_free=True "
+          f"pid={probe['pid'] or 'none'} pid_alive={probe['pid_alive']} "
+          f"status_age={probe['status_age']}s grace={rs_state.STARTUP_GRACE}s", flush=True)
 
 
 def load_review(repo, pr, login):
@@ -2550,8 +2572,12 @@ class Handler(BaseHTTPRequestHandler):
             return out
         if st == "stalled":
             log = up("agent.log")
+            # bash is gone and the lock is free, but the agent it started may still be burning
+            # tokens in the same process group — offer Stop only then (the server decides).
+            pid = rs_state.read_pid(udir(repo, pr, user) / "pid")
             out["stalled"] = {"was": (up("status").read_text().strip() if up("status").exists() else ""),
-                              "tail": (log.read_text()[-400:].strip() if log.exists() else "")}
+                              "tail": (log.read_text()[-400:].strip() if log.exists() else ""),
+                              "pidAlive": bool(pid and rs_state.group_alive(pid))}
             return out
         rev = load_review(repo, pr, user)
         appr = marker(repo, pr, "approved", user)
@@ -3336,7 +3362,9 @@ class Handler(BaseHTTPRequestHandler):
         # run-review.sh takes a per-PR flock, so a genuine duplicate is impossible — only skip
         # when a review is ACTUALLY running. This lets a finished review be re-run and, crucially,
         # a stalled one (status stuck at "reviewing" but the process is gone) be recovered.
-        if is_running(repo, pr, user):
+        # The pid counts too: a child that is still booting has not taken the lock yet, and a
+        # second spawn now would overwrite its status/effort/pid markers.
+        if run_alive(repo, pr, user):
             return False
         meta, _ = pr_meta(repo, pr)
         eff = effort if effort in EFFORT else autosize_effort(meta)
@@ -3373,6 +3401,11 @@ class Handler(BaseHTTPRequestHandler):
         (d / "effort").write_text(eff)
         (d / "focus").write_text(focus)
         (d / "model").write_text(mdl)
+        # From here until the child holds its flock the only proof of life is ours: a fresh
+        # `started_at` and a just-written `status` keep pr_state() inside its startup grace, and
+        # `pid` (below) names the process. Nothing observable ever says "queued" without a signal.
+        (d / "pid").unlink(missing_ok=True)
+        (d / "started_at").write_text(str(int(time.time())))
         (d / "status").write_text("queued")
         choice, _ = effective_skill(user, repo)
         env = review_env(user)

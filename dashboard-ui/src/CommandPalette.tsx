@@ -174,7 +174,7 @@ export function CommandPalette({ me }: { me: Me }) {
             type="text"
             autoComplete="off"
             spellCheck={false}
-            placeholder={multi ? "Paste a PR URL, owner/name#123 or a number, or jump to…" : "Paste a PR number or URL, or jump to…"}
+            placeholder="PR URL, owner/name#123, or a number, or jump to…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
@@ -182,7 +182,7 @@ export function CommandPalette({ me }: { me: Me }) {
         </div>
         <div className="cmdk-list" ref={listRef}>
           {cmds.length === 0 && (
-            <div className="cmdk-empty">No matches — paste a PR number or URL to review it.</div>
+            <div className="cmdk-empty">No matches — paste a PR URL, owner/name#123, or a number to review it.</div>
           )}
           {cmds.map((c, i) => {
             const header = c.group !== lastGroup ? c.group : null;

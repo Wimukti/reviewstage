@@ -56,6 +56,7 @@ import rs_profile
 import rs_review_body as RB
 import rs_rollup
 import rs_settings
+import rs_stack
 import rs_state
 import rs_webhook
 
@@ -2219,6 +2220,81 @@ def _log_stalled(repo, pr, login, status, probe):
           f"status_age={probe['status_age']}s grace={rs_state.STARTUP_GRACE}s", flush=True)
 
 
+# --- in-flight jobs -----------------------------------------------------------------------
+# "Where did my review go?" — a run that is still going has to be visible from the queue and the
+# sidebar, not only from the PR page it was started on. Answering that means asking about every
+# PR at once, so it is deliberately cheap: ONE pass over the state dir reading status files (a
+# few bytes each), and only the handful whose text is non-terminal get the flock/pid probe that
+# pr_state() runs. The answer is then cached for RUNNING_TTL so the queue render, the sidebar
+# poll and /api/me in the same tick share one pass.
+RUNNING_TTL = 3
+_TERMINAL = ("done", "posted", "dry-run", "failed", "stopped")
+_RUNNING = {}                                   # login -> (computed_at, jobs)
+
+
+def status_phrase(s):
+    """The short phrase a running job shows in a list: "reviewing the diff", "queued".
+
+    The runners already write exactly that; only "queued" carries a trailing explanation.
+    """
+    head = (s or "").split("—")[0].strip().rstrip(".")
+    return {"fetching": "fetching the PR"}.get(head, head) or "working"
+
+
+def _live_status(f):
+    """The status text in `f` when it describes a job that has not finished, else ""."""
+    try:
+        s = f.read_text().strip()
+    except OSError:
+        return ""
+    return "" if not s or s.startswith(_TERMINAL) else s
+
+
+def _review_in_flight(repo, num, d, login):
+    """This user's status text for PR `num`, if their review looks unfinished. Mirrors upath():
+    the box owner's pre-multi-user runs left their status directly in the PR dir."""
+    s = _live_status(d / "users" / login / "status")
+    if not s and login == REVIEWER:
+        s = _live_status(d / "status")
+    return s
+
+
+def running_jobs(login, now=None):
+    """Every review and QA guide in flight for `login`, newest PR first.
+
+    Each entry: kind (review|qa), repo, num, title, status phrase and the page to return to.
+    """
+    now = time.time() if now is None else now
+    hit = _RUNNING.get(login)
+    if hit and now - hit[0] < RUNNING_TTL:
+        return hit[1]
+    jobs = []
+    for repo, num, d in P.iter_prdirs():
+        s = _review_in_flight(repo, num, d, login)
+        if s and pr_state(repo, num, login) == "reviewing":
+            jobs.append({"kind": "review", "repo": repo, "num": num,
+                         "status": status_phrase(s),
+                         "title": pr_meta(repo, num)[0].get("title", ""),
+                         "href": f"/pr?repo={quote(repo, safe='')}&pr={num}"})
+        # QA guides are per-PR, not per-user: whoever is watching should see one being built.
+        qs = _live_status(d / "qa.status")
+        if qs and qa_running(repo, num):
+            jobs.append({"kind": "qa", "repo": repo, "num": num,
+                         "status": status_phrase(qs),
+                         "title": qa_meta(repo, num).get("title", ""),
+                         "href": f"/qa?repo={quote(repo, safe='')}&pr={num}"})
+    jobs.sort(key=lambda j: (-int(j["num"]), j["kind"]))
+    if len(_RUNNING) > 64:                      # bounded: one entry per signed-in user
+        _RUNNING.clear()
+    _RUNNING[login] = (now, jobs)
+    return jobs
+
+
+def running_map(login):
+    """running_jobs() keyed by (kind, repo, pr) so a list render is a dict lookup per row."""
+    return {(j["kind"], j["repo"].lower(), j["num"]): j for j in running_jobs(login)}
+
+
 def load_review(repo, pr, login):
     f = upath(repo, pr, login, "review.json")
     if not f.exists():
@@ -2332,7 +2408,14 @@ def ghurl_of(repo, pr):
 # A "stack" is a chain of open PRs where each one's base branch is the previous one's head branch
 # (Graphite/ghstack style). We walk that chain from a given PR so a reviewer can review the whole
 # stack from one click instead of hunting down each PR.
+#
+# The walk itself is pure (rs_stack.chain) over one list of the repo's open PRs, and that list is
+# fetched once per repo per OPEN_PRS_TTL. So the PR page can ask "is this stacked?" for free:
+# a warm cache costs a dict walk over a few hundred rows, and the one `gh pr list` behind it is
+# shared by every PR page, every user and the stack page.
 _SFIELDS = "number,title,baseRefName,headRefName,url"
+OPEN_PRS_TTL = 300
+_OPEN_PRS = {}                          # repo -> (fetched_at, rows)
 
 
 def _pr_bh(repo, pr):
@@ -2340,31 +2423,39 @@ def _pr_bh(repo, pr):
     return d if isinstance(d, dict) and d.get("number") else None
 
 
-def _pr_first(repo, flag, branch):
-    rows = gh_json(["pr", "list", "--repo", repo, "--state", "open", flag, branch,
-                    "--json", _SFIELDS, "--limit", "5"], default=[])
-    return rows[0] if isinstance(rows, list) and rows else None
+def open_prs(repo):
+    """Every open PR in `repo` as {number, title, base, head, url}, cached for OPEN_PRS_TTL.
+
+    A failed `gh` call keeps the previous copy rather than reporting an empty repo: a transient
+    GitHub blip should not make a stacked PR look unstacked.
+    """
+    now = time.time()
+    hit = _OPEN_PRS.get(repo)
+    if hit and now - hit[0] < OPEN_PRS_TTL:
+        return hit[1]
+    rows = gh_json(["pr", "list", "--repo", repo, "--state", "open", "--json", _SFIELDS,
+                    "--limit", "300"], default=None)
+    if not isinstance(rows, list):
+        return hit[1] if hit else []
+    if len(_OPEN_PRS) > 32:             # bounded: this is a cache, not a store
+        _OPEN_PRS.clear()
+    _OPEN_PRS[repo] = (now, rows)
+    return rows
 
 
 def pr_stack(repo, pr):
     """Open PRs forming the stack that contains `pr`, ordered top (nearest mainline) → bottom.
-    Just [pr] if it isn't stacked. A few gh calls, so call it on demand, not on every page."""
-    info = _pr_bh(repo, pr)
-    if not info:
-        return []
-    chain, seen, cur = [info], {info["number"]}, info
-    for _ in range(15):                          # up: a PR whose head == cur's base is the parent
-        p = _pr_first(repo, "--head", cur["baseRefName"])
-        if not p or p["number"] in seen:
-            break
-        chain.insert(0, p); seen.add(p["number"]); cur = p
-    cur = info
-    for _ in range(15):                          # down: a PR whose base == cur's head is the child
-        c = _pr_first(repo, "--base", cur["headRefName"])
-        if not c or c["number"] in seen:
-            break
-        chain.append(c); seen.add(c["number"]); cur = c
-    return chain
+    Just [pr] if it isn't stacked, [] if we cannot see the PR at all."""
+    found = rs_stack.chain(open_prs(repo), pr)
+    if found:
+        return found
+    info = _pr_bh(repo, pr)             # closed, or past the cached page — ask about it directly
+    return [info] if info else []
+
+
+def stack_summary(repo, pr):
+    """{isStack, size} for a PR — the cheap half of pr_stack, for the PR page's side rail."""
+    return rs_stack.summary(open_prs(repo), pr)
 
 
 def pr_reviewers(repo, pr):
@@ -2749,6 +2840,9 @@ class Handler(BaseHTTPRequestHandler):
             "focus": foc,
             "stale": stale,
             "risk": [risk_banner(f) for f in review_risk(repo, pr, user)],
+            # Whether this PR sits in a stack, so the side rail can offer the stacked review
+            # only when there is one. Free on a warm open-PR cache (see stack_summary).
+            "stack": stack_summary(repo, pr),
             "timeline": self._timeline_data(repo, pr, user),
             "reviewers": (pr_reviewers(repo, pr) if st not in ("reviewing", "queued") else None),
             "claudeConnected": claude_connected(user),
@@ -2890,9 +2984,22 @@ class Handler(BaseHTTPRequestHandler):
         return data
 
     def api_qa_index(self, user):
-        return {"repos": all_repos(),
-                "guides": [{"repo": g["repo"], "num": g["num"], "title": g["title"],
-                            "when": f"{fmt_date(g['at'])} ({ago(g['at'])})"} for g in qa_list()]}
+        run = running_map(user)
+        guides = [{"repo": g["repo"], "num": g["num"], "title": g["title"], "running": False,
+                   "status": "", "when": f"{fmt_date(g['at'])} ({ago(g['at'])})"}
+                  for g in qa_list()]
+        seen = {(g["repo"].lower(), g["num"]) for g in guides}
+        for g in guides:                        # a guide being rebuilt over an existing one
+            job = run.get(("qa", g["repo"].lower(), g["num"]))
+            if job:
+                g["running"], g["status"] = True, job["status"]
+        # A first-ever guide has no qa.md yet, so qa_list() cannot see it. Without this the
+        # row appears only once the run finishes — exactly the "it vanished" bug.
+        first = [{"repo": j["repo"], "num": j["num"], "title": j["title"] or f"PR #{j['num']}",
+                  "running": True, "status": j["status"], "when": ""}
+                 for j in running_jobs(user)
+                 if j["kind"] == "qa" and (j["repo"].lower(), j["num"]) not in seen]
+        return {"repos": all_repos(), "guides": first + guides}
 
     def api_qa_detail(self, repo, pr, user):
         st = qa_state(repo, pr)
@@ -3088,6 +3195,9 @@ class Handler(BaseHTTPRequestHandler):
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
                 "brand": BRAND, "oauth": OAUTH_ENABLED, "device_flow": DEVICE_FLOW_ENABLED,
                 "public_url": PUBLIC_URL, "logo": rs_assets.LOGO,
+                # What this user has in flight, so the sidebar can say so from any page. The
+                # shell polls /api/me for it while anything is running (see running.ts).
+                "running": running_jobs(user),
                 "webhooks_configured": bool(GITHUB_WEBHOOK_SECRET)}
 
     # -- devices (docs/MOBILE.md) -----------------------------------------------------------
@@ -3136,6 +3246,7 @@ class Handler(BaseHTTPRequestHandler):
     def api_queue(self, user, tab, sort):
         if tab not in dict(TABS):
             tab = "todo"
+        run = running_map(user)                 # one pass over the state dir, not one per row
         entries = []
         for item, active in all_prs(user):
             num = str(item.get("number"))
@@ -3194,9 +3305,13 @@ class Handler(BaseHTTPRequestHandler):
             archived = e["st"] == "archived"
             aexp, asig = mint("unarchive" if archived else "archive", pr_subject(repo, num),
                               ACTION_TTL)
+            job = run.get(("review", repo.lower(), num))
             rows.append({"repo": repo, "num": num, "title": item.get("title", ""),
                          "author": item.get("author", ""), "state": e["st"], "size": size,
                          "when": when, "sev": sev, "archived": archived,
+                         # A review of this PR is in flight for this user right now; `status`
+                         # is the phrase it replaces the row's meta line with.
+                         "running": bool(job), "status": job["status"] if job else "",
                          "archiveToken": {"exp": aexp, "sig": asig}})
         return {"tab": tab, "sort": sort,
                 "tabs": [{"key": k, "label": lbl, "count": counts[k]} for k, lbl in TABS],

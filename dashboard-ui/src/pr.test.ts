@@ -21,6 +21,36 @@ test("owner/name#123 shorthand", () =>
   assert.deepEqual(parsePrRef("acme/api#42", TWO), { repo: "acme/api", number: "42" }));
 test("URL wins over trailing text", () =>
   assert.equal(parsePrRef("see https://github.com/acme/widgets/pull/42 please", TWO)?.number, "42"));
+// Single-repo mode: the input box used to promise "PR number — e.g. 38849". A full URL has
+// always worked here; these pin that down so the honest placeholder cannot drift back.
+test("single repo: a full github URL is accepted", () =>
+  assert.deepEqual(parsePrRef("https://github.com/acme/widgets/pull/38849", ONE), {
+    repo: "acme/widgets",
+    number: "38849",
+  }));
+test("single repo: a URL deep-linked to a file or a comment still parses", () => {
+  assert.equal(parsePrRef("https://github.com/acme/widgets/pull/38849/files", ONE)?.number, "38849");
+  assert.equal(
+    parsePrRef("https://github.com/acme/widgets/pull/38849#issuecomment-12345", ONE)?.number,
+    "38849",
+  );
+  assert.equal(
+    parsePrRef("https://github.com/acme/widgets/pull/38849/files#diff-abc", ONE)?.number,
+    "38849",
+  );
+});
+test("single repo: owner/name#123 shorthand is accepted", () =>
+  assert.deepEqual(parsePrRef("acme/widgets#42", ONE), { repo: "acme/widgets", number: "42" }));
+test("single repo: a URL for another repo keeps that repo, not the configured one", () =>
+  assert.deepEqual(parsePrRef("https://github.com/acme/api/pull/7", ONE), { repo: "acme/api", number: "7" }));
+test("single repo: the URL repo is canonicalised to the configured spelling", () =>
+  assert.equal(parsePrRef("https://GitHub.com/ACME/Widgets/pull/9", ONE)?.repo, "acme/widgets"));
+test("no repos configured: a URL still parses", () =>
+  assert.deepEqual(parsePrRef("https://github.com/acme/widgets/pull/1", []), {
+    repo: "acme/widgets",
+    number: "1",
+  }));
+
 test("non-numeric is null", () => assert.equal(parsePrRef("hello", TWO), null));
 test("empty string is null", () => assert.equal(parsePrRef("", TWO), null));
 test("too long is null", () => assert.equal(parsePrRef("12345678", TWO), null));

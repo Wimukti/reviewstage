@@ -16,6 +16,7 @@ import { MdEditor } from "./MdEditor";
 import { fmtDuration, prLabel, prUrl } from "./pr";
 import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
+import { pokeRunning } from "./running";
 
 const refOf = (d: PrData): PrRef => ({ repo: d.repo, num: d.pr });
 
@@ -122,6 +123,7 @@ function RunForm({
           );
           return;
         }
+        pokeRunning(); // so the sidebar says so the moment the reviewer leaves this page
         onStarted();
       }}
     >
@@ -272,7 +274,7 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
   const r = data.reviewing!;
   const [stopping, setStopping] = useState(false);
   return (
-    <div className="card top">
+    <div className="card top" data-testid="progress-panel">
       <div className="prog-hd">
         Drafting review for <b>{prLabel(pr)}</b> · <span className="muted sm">{r.effortLabel} effort</span>
       </div>
@@ -843,9 +845,11 @@ function PrSidebar({ data }: { data: PrData }) {
         <Link className="sideact" to={prUrl(refOf(data), "/qa")}>
           <span className="sideact-ico">🧪</span> QA guide
         </Link>
-        <Link className="sideact" to={prUrl(refOf(data), "/stack")}>
-          <span className="sideact-ico">🔗</span> Stacked review
-        </Link>
+        {data.stack?.isStack && (
+          <Link className="sideact" to={prUrl(refOf(data), "/stack")}>
+            <span className="sideact-ico">🔗</span> Stacked review ({data.stack.size} PRs)
+          </Link>
+        )}
       </div>
 
       <div className="sidecard">

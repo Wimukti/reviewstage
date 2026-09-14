@@ -60,9 +60,11 @@ tokens → **Fine-grained tokens** → *Generate new token*.
 own token still read review threads; nothing in the service path ever writes with it. For an
 org with *fine-grained token approval* enabled an org owner has to approve the token once.
 
-The same fine-grained shape works for the token each **reviewer** pastes at sign-in. The login
-page's *Create token on GitHub* link pre-fills a classic token with the `repo` scope instead;
-either kind works — the fine-grained one is simply narrower.
+The same fine-grained shape is what the login page recommends for the token each **reviewer**
+pastes at sign-in: *Pull requests: Read and write*, *Contents: Read*, *Metadata: Read* on the
+repositories they review (`github_pat_…`). Its *Create a fine-grained token* link opens that
+page; a classic token with the `repo` scope (`ghp_…`) also works — the fine-grained one is
+simply narrower.
 
 Then:
 

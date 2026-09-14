@@ -4,6 +4,15 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+## v1.0.0-rc.5 — 09/14/26
+
+First-run fixes from live testing (Docker install, one repo, one reviewer).
+
+- The PR page no longer flashes "The review stopped before it finished" while a review is starting: liveness comes from the per-PR flock **or** a live pid **or** a status written in the last 90 s (`bin/rs_state.py`, tested in `bin/test_rs_state.py`); every stalled verdict logs one diagnosable line. The banner offers Stop when the run's process group is still alive.
+- The guided tour actually appears on a first sign-in: it waits for the queue card (empty state included) instead of checking once at mount.
+- Connect (Claude) and Sign in with token show a spinner and disabled inputs while verifying; a failed Claude code is reported inline.
+- Login recommends a fine-grained PAT (Pull requests r/w, Contents r, Metadata r) and still accepts a classic `repo` token; docs and the install page agree.
+
 - **Breaking:** internal identifiers renamed (`PRBOT_*` → `RS_*`, `~/.claude-pr-bot` → `~/.reviewstage`, `/prbot` prefix removed, OAuth callback now `/oauth/callback`, cookie `rs_session`). No migration; delete old state or move the directory by hand. The server file is `bin/server.py`, the helpers `bin/rs_*.py`, the systemd unit `reviewstage.service`, the Apache vhost `reviewstage.conf`, and the Docker volume mounts at `/home/reviewstage/.reviewstage`.
 
 ## v1.0.0-rc.3 — 09/13/26

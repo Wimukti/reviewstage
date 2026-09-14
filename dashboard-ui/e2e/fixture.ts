@@ -276,9 +276,33 @@ export function buildFixture() {
   );
 
   // Fake gh: every call fails, so gh_json() returns its defaults and the server renders from
-  // the on-disk fixture. Placed on PATH ahead of any real gh by the webServer command.
+  // the on-disk fixture — except the files API for PR, which answers a one-file diff so the
+  // server can work out which findings can be anchored inline. Product.php:42 is inside the
+  // hunk; Badge.tsx is not in the PR at all, so its finding is an "in summary" one.
+  const files = [
+    [
+      {
+        filename: "app/models/Product.php",
+        status: "modified",
+        patch: "@@ -40,3 +40,4 @@\n ctx\n+$leadTime = $vendor->leadTime();\n ctx2\n ctx3\n",
+      },
+    ],
+  ];
   const gh = join(FIXTURE, "fakebin", "gh");
-  write(gh, "#!/bin/sh\nexit 1\n");
+  write(
+    gh,
+    [
+      "#!/bin/sh",
+      `case "$*" in`,
+      `  *"pulls/${PR}/files"*) cat <<'RSJSON'`,
+      JSON.stringify(files),
+      "RSJSON",
+      "  exit 0;;",
+      "esac",
+      "exit 1",
+      "",
+    ].join("\n"),
+  );
   chmodSync(gh, 0o755);
 }
 

@@ -143,6 +143,26 @@ test.describe("signed in", () => {
     await expect(page.getByText(/the badge logic is sound/i)).toBeVisible();
   });
 
+  test("a finding outside the diff is chipped and counted into the summary", async ({ page }) => {
+    await page.goto(`/pr?repo=${enc(REPO)}&pr=${PR}`);
+    const cards = page.locator(".finding");
+    // Product.php:42 sits inside the fixture's hunk; Badge.tsx is not in the PR at all.
+    const inline = cards.filter({ hasText: "app/models/Product.php" });
+    const off = cards.filter({ hasText: "src/javascripts/Badge.tsx" });
+    await expect(inline.locator(".offdiff")).toHaveCount(0);
+    await expect(off.locator(".offdiff")).toHaveText("in summary");
+    await expect(off.locator(".offdiff")).toHaveAttribute("title", /not part of the PR's diff/);
+    // Both are selected by default, so the post bar splits them.
+    const bar = page.locator(".bar .inner .muted");
+    await expect(bar).toContainText("2 selected");
+    await expect(bar).toContainText("1 inline");
+    await expect(bar).toContainText("1 in the summary");
+    // Unselecting the off-diff one drops the split entirely.
+    await off.locator("input.fsel").uncheck();
+    await expect(bar).toContainText("1 selected");
+    await expect(bar).not.toContainText("in the summary");
+  });
+
   test("a legacy /pr?pr=N link resolves when the number is unique across repos", async ({ page }) => {
     await page.goto(`/pr?pr=${PR3}`);
     await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);

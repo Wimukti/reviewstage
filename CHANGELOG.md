@@ -4,6 +4,13 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+- **Findings outside the diff are now the headline, not a footnote.** The repository profile sends a review past the diff — callers, consumers, tests — so on a small PR the best findings often point at lines it never changed, where GitHub accepts no inline comment. Those used to be folded into a collapsed `<details>` titled "could not be anchored", which hid blockers, and the banner opened with "Posted 0 comment(s)". Now they render expanded under `## Findings outside the diff`, ordered blocker → should-fix → nit → question, each heading linking at the exact line on the reviewed head SHA (`blob/<sha>/<path>#L<line>`, which works for unchanged files). Only a tail of more than three nits/questions collapses; a blocker never does.
+- A **suggestion** on an off-diff finding renders as a plain `Suggested change:` block instead of a ```` ```suggestion ```` fence, since GitHub's Apply cannot work there.
+- Result banners lead with what succeeded: *"Posted your review as `you` — 2 inline, 3 in the summary."*, or *"…— all 3 findings are in the summary, because they point at lines this PR does not change (GitHub only allows inline comments on changed lines)."* Never "Posted 0".
+- The PR page warns **before** you post: an **in summary** chip on each affected finding card, and a post bar that reads `3 selected · 1 inline · 2 in the summary`. `/api/pr` findings carry `anchorable`, computed at render time with the same diff logic the post path uses and cached per (repo, PR, head).
+- Anchoring got cheaper: a finding whose path is not in the PR's file list at all is off-diff for free — the full `gh pr diff` fetch now happens only for a file that IS in the PR but arrived without a patch.
+- Tests: new `bin/test_rs_review_body.py` (heading, permalink shape, ordering, no-`<details>`-for-a-blocker, `Suggested change:`, the banner strings), extra `bin/test_rs_diff.py` coverage for the not-in-the-PR case and suggestion routing, and a Playwright case for the chip and the post-bar split.
+
 ## v1.0.0-rc.9 — 09/14/26
 
 Sign in with GitHub out of the box via device flow.

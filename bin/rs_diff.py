@@ -99,52 +99,95 @@ def parse_full_diff(text):
 def anchor_map(files, fetch_diff=None):
     """{filename: {commentable line numbers}} from the PR files API payload.
 
-    `fetch_diff` is a zero-arg callable returning the full PR diff text (or None on failure).
-    It is invoked at most once, and only when some entry lacks a patch and its status alone
-    can't settle the question.
+    Eager form, kept for callers that want the whole map. `fetch_diff` is a zero-arg callable
+    returning the full PR diff text (or None on failure); it is invoked at most once, and only
+    when some entry lacks a patch and its status alone can't settle the question.
     """
-    out, pending = {}, []
-    for f in files:
-        lines = file_lines(f)
-        if lines is UNKNOWN:
-            pending.append(f["filename"])
-            out[f["filename"]] = set()
-        else:
-            out[f["filename"]] = lines
-    if pending and fetch_diff is not None:
-        parsed = parse_full_diff(fetch_diff() or "")
-        for name in pending:
+    a = Anchors(files, fetch_diff=fetch_diff)
+    a.resolve_all()
+    return dict(a.lines)
+
+
+class Anchors:
+    """Lazy anchor lookup: answers "can a comment sit on <path>:<line>?" for one PR.
+
+    The full-diff fetch (`gh pr diff`) is slow on a large PR, so it is deferred until a finding
+    actually points at a file that IS in the PR but arrived without a patch. A finding whose
+    path is not in the PR's file list at all is off-diff by definition and never triggers it.
+    """
+
+    def __init__(self, files, fetch_diff=None):
+        self.fetch_diff = fetch_diff
+        self.lines, self.pending = {}, set()
+        for f in files or []:
+            name = f.get("filename")
+            if not name:
+                continue
+            got = file_lines(f)
+            if got is UNKNOWN:
+                self.pending.add(name)
+                self.lines[name] = set()
+            else:
+                self.lines[name] = got
+        self.fetched = False
+
+    def resolve_all(self):
+        """Pull the full diff once, if anything is still unresolved."""
+        if self.fetched:
+            return
+        self.fetched = True
+        if not self.pending or self.fetch_diff is None:
+            self.pending = set()
+            return
+        parsed = parse_full_diff(self.fetch_diff() or "")
+        for name in self.pending:
             if name in parsed:
-                out[name] = parsed[name]
-    return out
+                self.lines[name] = parsed[name]
+        self.pending = set()
+
+    def can_anchor(self, path, line):
+        if not path or not isinstance(line, int):
+            return False
+        if path not in self.lines:      # not in the PR at all — cheap no, no diff fetch
+            return False
+        if line in self.lines[path]:
+            return True
+        if path in self.pending:        # in the PR but patchless: now the fetch is worth it
+            self.resolve_all()
+            return line in self.lines.get(path, set())
+        return False
+
+
+def _checker(anchors):
+    """Accept either an Anchors instance or a plain {path: {lines}} dict."""
+    if hasattr(anchors, "can_anchor"):
+        return anchors.can_anchor
+    return lambda p, l: bool(p) and isinstance(l, int) and l in (anchors.get(p) or set())
+
+
+def suggestion_fence(sugg):
+    """GitHub's one-click-apply block. Only valid on a line inside the diff."""
+    return "```suggestion\n" + sugg.rstrip("\n") + "\n```"
 
 
 def split_anchorable(comments, anchors):
-    """Partition comments into (anchorable, orphans) against the current diff."""
+    """Partition comments into (anchorable, orphans) against the current diff.
+
+    An anchorable comment carries its suggestion as a ```suggestion fence; an orphan keeps the
+    suggestion in its own field, because a fence GitHub cannot apply is worse than no fence.
+    """
     inline, orphans = [], []
+    can = _checker(anchors)
     for c in comments:
         path, line = c.get("path"), c.get("line")
         body = (c.get("body") or "").strip()
-        if not body:
+        sugg = (c.get("suggestion") or "").strip()
+        if not body and not sugg:
             continue
-        if path and isinstance(line, int) and line in anchors.get(path, set()):
+        if can(path, line):
+            if sugg:
+                body = (body + "\n\n" if body else "") + suggestion_fence(sugg)
             inline.append({"path": path, "line": line, "side": "RIGHT", "body": body})
         else:
             orphans.append(c)
     return inline, orphans
-
-
-def orphan_block(orphans):
-    """Fold un-anchorable findings into the summary body so they still reach the human."""
-    if not orphans:
-        return ""
-    rows = []
-    for c in orphans:
-        line, path = c.get("line"), c.get("path") or "?"
-        loc = f"{path}:{line}" if isinstance(line, int) else path
-        sev = c.get("severity")
-        prefix = f"**{sev}** — " if sev else ""
-        rows.append(f"- **`{loc}`** — {prefix}{(c.get('body') or '').strip()}")
-    return ("\n\n<details><summary>"
-            f"{len(orphans)} finding(s) that could not be anchored to a diff line"
-            "</summary>\n\n" + "\n".join(rows) + "\n\n</details>")

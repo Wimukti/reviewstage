@@ -13,8 +13,8 @@ COPY dashboard-ui/package.json dashboard-ui/pnpm-lock.yaml dashboard-ui/pnpm-wor
 # pnpm-workspace.yaml carries dangerouslyAllowAllBuilds so esbuild's postinstall may run.
 RUN pnpm install --frozen-lockfile
 COPY dashboard-ui/ ./
-# scripts/icons.mjs (the tail of "build") renders the PWA icons from ../assets/logo.png.
-COPY assets/logo.png /build/assets/logo.png
+# scripts/icons.mjs (the tail of "build") renders the PWA icons from ../assets/logo-light.svg.
+COPY assets/logo-light.svg /build/assets/logo-light.svg
 # esbuild writes app.js / app.css to ../bin/static (see package.json "build").
 RUN pnpm build && ls -1 /build/bin/static
 

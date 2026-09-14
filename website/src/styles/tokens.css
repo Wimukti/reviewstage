@@ -24,6 +24,9 @@
   --shadow-elevated: 0 1px 0 0 var(--hairline), 0 2rem 5rem -1.5rem oklch(0 0 0 / 0.55);
   --glow-primary: 0 0 0 1px color-mix(in oklab, var(--primary) 32%, transparent),
     0 1.5rem 4rem -1rem color-mix(in oklab, var(--primary) 35%, transparent);
+  /* Brand mark inks (assets/logo-light.svg on dark, logo-dark.svg on light). */
+  --logo-panel: #e8e9f0;
+  --logo-bar: #3947ff;
 }
 
 :root[data-theme="light"] {
@@ -49,6 +52,8 @@
   --shadow-elevated: 0 1px 0 0 var(--hairline), 0 2rem 5rem -1.75rem oklch(0.35 0.03 90 / 0.28);
   --glow-primary: 0 0 0 1px color-mix(in oklab, var(--primary) 22%, transparent),
     0 1.5rem 4rem -1rem color-mix(in oklab, var(--primary) 24%, transparent);
+  --logo-panel: #171922;
+  --logo-bar: #3947ff;
 }
 
 :root {

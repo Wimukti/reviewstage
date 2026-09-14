@@ -4,6 +4,10 @@
   <a href="https://wimukti.github.io/reviewstage/"><img alt="GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f"></a>
 </p>
 
+<p align="center">
+  <img alt="ReviewStage" src="assets/logo-wordmark.svg" width="420">
+</p>
+
 <h1 align="center">ReviewStage</h1>
 
 <p align="center"><strong>Stage your PR review. Post it as yourself.</strong></p>

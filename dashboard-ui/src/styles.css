@@ -827,6 +827,10 @@ border-radius:999px;background:var(--warnbg);color:#f6cd8a;border:1px solid var(
 .profstat .dot.run{background:#f7c26b;animation:pulse 1.2s ease-in-out infinite}
 .profstat .dot.ok{background:#6fe6b2}.profstat .dot.bad{background:#ff8ca0}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.proferr{margin:2px 0 12px;padding:10px 12px;border-radius:9px;font-size:.85rem;color:#ffb3c1;background:rgba(229,101,138,.07);border:1px solid rgba(229,101,138,.28)}
+.proferr-text{white-space:pre-wrap;word-break:break-word}
+.proferr-log{margin-top:8px;color:var(--dim)}.proferr-log summary{cursor:pointer;font-size:.8rem}
+.proferr-log pre{margin:8px 0 0;max-height:260px;overflow:auto;font-size:.72rem;line-height:1.45;white-space:pre-wrap;word-break:break-all}
 .profcounts{font-family:var(--mono);font-size:.74rem;color:var(--faint);margin:6px 0 10px}
 .profauto{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:.85rem;color:var(--dim)}
 .profauto input{margin-top:3px}

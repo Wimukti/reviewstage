@@ -439,10 +439,12 @@ export interface ProfileData {
   json: ProfileJson | null;
   last: ProfileLast | null;
   running?: { phases: string[]; cur: number; queued: boolean; text: string };
-  failed?: string;
+  failed?: string; // the "failed: …" status line of the last run (also set when an older profile survives it)
+  logTail?: string[]; // last lines of agent.log (or run.log) for that failed run
   stopped?: boolean;
   bannerHtml?: string;
   started?: boolean;
+  reason?: string; // why started is false, e.g. "already running"
   confirmed?: boolean;
 }
 

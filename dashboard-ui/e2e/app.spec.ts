@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { PR, PR2, PR3, REPO, REPO2, TOUR_KEY, sessionCookie } from "./fixture";
+import { PR, PR2, PR3, REPO, REPO2, REPO3, TOUR_KEY, sessionCookie } from "./fixture";
 
 const enc = (r: string) => encodeURIComponent(r);
 
@@ -159,14 +159,14 @@ test.describe("signed in", () => {
 
   test("skills page offers a team default per repository", async ({ page }) => {
     await page.goto("/skills");
-    await expect(page.getByTestId("repo-skill")).toHaveCount(2);
+    await expect(page.getByTestId("repo-skill")).toHaveCount(3);
     await expect(page.getByTestId("repo-skill").first()).toContainText(REPO);
   });
 
   test("skills page shows a repository profile per repo with status and counts", async ({ page }) => {
     await page.goto("/skills");
     const profiles = page.getByTestId("repo-profile");
-    await expect(profiles).toHaveCount(2);
+    await expect(profiles).toHaveCount(3);
     const first = profiles.filter({ hasText: REPO }).first();
     await first.locator("summary").click();
     await expect(first).toContainText(/profiled/i);
@@ -178,6 +178,31 @@ test.describe("signed in", () => {
     const second = profiles.filter({ hasText: REPO2 }).first();
     await second.locator("summary").click();
     await expect(second.getByTestId("profile-status")).toContainText(/never run/i);
+    await expect(second.getByTestId("profile-error")).toHaveCount(0);
+  });
+
+  test("a failed profile run shows the error, its log tail and an enabled Retry", async ({ page }) => {
+    await page.goto("/skills");
+    const card = page.getByTestId("repo-profile").filter({ hasText: REPO3 }).first();
+    await expect(card).toContainText(/failed/i);
+    await card.locator("> summary").click(); // the card's own summary, not the log tail's
+    await expect(card.getByTestId("profile-status")).toContainText(/last run failed/i);
+    const err = card.getByTestId("profile-error");
+    await expect(err).toContainText(/failed: the model produced no result/);
+    const log = card.getByTestId("profile-log");
+    await expect(log.locator("summary")).toContainText(/lines of the log/i);
+    await expect(log.locator("pre")).toBeHidden(); // collapsed until opened
+    await log.locator("summary").click();
+    await expect(log.locator("pre")).toContainText("error: unknown option '---'");
+    const retry = card.getByTestId("profile-run");
+    await expect(retry).toHaveText(/retry/i);
+    // The fixture user has no Claude account connected, so Retry is gated on that — not on the
+    // failed state. Confirm the gate is the only thing holding it.
+    await expect(retry).toHaveAttribute("title", /connect your claude account/i);
+    await expect(retry).not.toHaveAttribute("aria-busy", "true");
+    const done = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
+    await done.locator("summary").click();
+    await expect(done.getByTestId("profile-error")).toHaveCount(0);
   });
 
   test("repository profile editor round-trips an edit", async ({ page }) => {

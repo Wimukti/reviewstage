@@ -1844,6 +1844,17 @@ def fetch_pr_files(repo, pr):
     return None, last
 
 
+def fetch_pr_diff(repo, pr):
+    """The whole PR as one unified diff, or None. Only needed when the files API withheld a
+    `patch` for a modified file (binary or past GitHub's size cutoff); large PRs take a while,
+    hence the longer timeout."""
+    try:
+        r = gh(["pr", "diff", str(pr), "-R", repo], timeout=120)
+    except subprocess.TimeoutExpired:
+        return None
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
+
 def gist(body, limit=120):
     """One-line plain-text gist of a finding, for the approval checklist."""
     t = re.sub(r"```.*?```", "", body or "", flags=re.S)
@@ -3606,7 +3617,8 @@ class Handler(BaseHTTPRequestHandler):
                 f"<a href='https://www.githubstatus.com' target=_blank rel=noopener>"
                 f"githubstatus.com</a> and retry.<br>"
                 f"<code>{html.escape(err)}</code></div></div>")
-        inline, orphans = rs_diff.split_anchorable(chosen, rs_diff.anchor_map(files))
+        anchors = rs_diff.anchor_map(files, fetch_diff=lambda: fetch_pr_diff(repo, pr))
+        inline, orphans = rs_diff.split_anchorable(chosen, anchors)
         # No bot signature: this posts under the reviewer's own account, so GitHub already
         # attributes it. A trailing "Reviewed by @x" only restates the byline.
         body = (rev.get("summary") or "").strip() + rs_diff.orphan_block(orphans)

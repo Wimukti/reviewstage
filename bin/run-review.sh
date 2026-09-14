@@ -298,6 +298,7 @@ fi
 event=$(jq -r '.event // "COMMENT"' "$DIR/review.json")
 n=$(jq '.comments | length' "$DIR/review.json")
 blockers=$(jq '[.comments[]? | select(.severity == "blocker")] | length' "$DIR/review.json")
+should_fix=$(jq '[.comments[]? | select(.severity == "should-fix")] | length' "$DIR/review.json")
 summary=$(jq -r '.summary // ""' "$DIR/review.json" | head -c 2500)
 detail=$(signed_link pr "$REPO" "$PR" 604800)
 author=$(echo "$meta" | jq -r '.author.login // ""')
@@ -305,6 +306,6 @@ status "done ($n findings)"
 
 notify_card review_ready "$(jq -n --arg repo "$REPO" --arg t "$title" --arg u "$url" --arg p "$PR" \
       --arg s "$summary" --arg e "$event" --argjson n "$n" --argjson b "$blockers" --arg l "$detail" \
-      --arg a "$author" --arg login "$ACTOR" --arg sid "$sid" --arg did "$did" '
+      --argjson f "$should_fix" --arg a "$author" --arg login "$ACTOR" --arg sid "$sid" --arg did "$did" '
   {repo:$repo, pr:$p, title:$t, author:$a, url:$u, login:$login, slack_id:$sid, discord_id:$did,
-   extra:{event:$e, findings:$n, blockers:$b, summary:$s, detail:$l}}')"
+   extra:{event:$e, findings:$n, blockers:$b, should_fix:$f, summary:$s, detail:$l}}')"

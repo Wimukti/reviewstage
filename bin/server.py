@@ -45,6 +45,7 @@ from urllib.request import Request, urlopen
 
 import rs_agree
 import rs_assets
+import rs_device_flow
 import rs_devices as rs_dev
 import rs_diff
 import rs_howimg
@@ -329,6 +330,16 @@ def public_url(env):
 
 PUBLIC_URL = public_url(ENV)
 OAUTH_ENABLED = bool(GH_CLIENT_ID and GH_CLIENT_SECRET)
+
+# Device flow (rs_device_flow.py): sign in with GitHub on any install, no app registration. The
+# client ID is a shared PUBLIC one — device flow has no secret and no callback, and the token
+# GitHub issues goes straight to this server, never through the project. GH_DEVICE_FLOW=0
+# turns it off; GH_DEVICE_CLIENT_ID swaps in your own device-flow-enabled app. Independent of
+# the redirect flow above, which teams keep for one-click sign-in under their own app identity.
+GH_DEVICE_CLIENT_ID = ("" if ENV.get("GH_DEVICE_FLOW", "1") == "0"
+                       else ENV.get("GH_DEVICE_CLIENT_ID") or rs_device_flow.DEFAULT_CLIENT_ID)
+DEVICE_FLOW = rs_device_flow.DeviceFlow(GH_DEVICE_CLIENT_ID, GH_OAUTH_SCOPES or "repo")
+DEVICE_FLOW_ENABLED = DEVICE_FLOW.enabled
 
 
 def oauth_state(nxt):
@@ -2837,6 +2848,7 @@ class Handler(BaseHTTPRequestHandler):
             return {"authed": False, "brand": BRAND, "repo": SINGLE_REPO, "repos": REPOS,
                     "allowOrg": ALLOW_ORG, "dry_run": DRY_RUN,
                     "oauth": OAUTH_ENABLED, "oauth_blocked": oauth_blocked(),
+                    "device_flow": DEVICE_FLOW_ENABLED,
                     "public_url": PUBLIC_URL, "logo": rs_assets.LOGO}
         u = load_users().get(user) or {}
         choice, skill_label = effective_skill(user)
@@ -2848,8 +2860,8 @@ class Handler(BaseHTTPRequestHandler):
                 "auth": auth or "cookie",
                 "login_via": "oauth" if u.get("gh_token_enc") else "pat",
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
-                "brand": BRAND, "oauth": OAUTH_ENABLED, "public_url": PUBLIC_URL,
-                "logo": rs_assets.LOGO,
+                "brand": BRAND, "oauth": OAUTH_ENABLED, "device_flow": DEVICE_FLOW_ENABLED,
+                "public_url": PUBLIC_URL, "logo": rs_assets.LOGO,
                 "webhooks_configured": bool(GITHUB_WEBHOOK_SECRET)}
 
     # -- devices (docs/MOBILE.md) -----------------------------------------------------------
@@ -2987,6 +2999,19 @@ class Handler(BaseHTTPRequestHandler):
             print(f"login (api): {login}", flush=True)
             return self.api_json({"ok": True, "login": login},
                                  cookie=session_cookie(login, self.headers.get("Host", "")))
+        if route == "/api/auth/device/start":
+            if not DEVICE_FLOW_ENABLED:
+                return self.api_json({"error": "Device flow is not enabled on this server."},
+                                     404)
+            payload, err = DEVICE_FLOW.start()
+            if err:
+                return self.api_json({"error": err}, 502)
+            return self.api_json(payload)
+        if route == "/api/auth/device/poll":
+            if not DEVICE_FLOW_ENABLED:
+                return self.api_json({"error": "Device flow is not enabled on this server."},
+                                     404)
+            return self.device_poll(str(body.get("session") or ""))
         cookie_user = session_user(self.headers)
         user = cookie_user or bearer_user(self.headers)
         # Pre-session: the profile module answers /api/profile/auto itself.
@@ -3210,6 +3235,41 @@ class Handler(BaseHTTPRequestHandler):
         if not prev.get("slack_id") and not nxt.startswith("/device"):
             nxt = "/integrations?welcome=1&next=" + quote(nxt, safe="")
         return self.redirect(nxt, cookie=session_cookie(login, self.headers.get("Host", "")))
+
+    def device_poll(self, session):
+        """POST /api/auth/device/poll. Same landing as oauth_callback once GitHub hands over a
+        token: verify it can see a repo, store it encrypted, set the session cookie."""
+        res, d = DEVICE_FLOW.poll(session)
+        st = res["status"]
+        if st == "too_fast":
+            self.send_response(429)
+            self.send_header("Retry-After", str(res["retry_after"]))
+            raw = json.dumps({"status": "pending", "retry_after": res["retry_after"]}).encode()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return None
+        if st == "unknown":
+            return self.api_json({"status": "expired",
+                                  "error": "That sign-in has expired \u2014 start again."})
+        if st != "ok":
+            return self.api_json(res)
+        login, name, err = verify_pat(d["access_token"])
+        if err:
+            OAUTH_BLOCKED.write_text(str(int(time.time())))
+            return self.api_json({
+                "status": "error",
+                "error": f"GitHub signed you in, but the token cannot see {', '.join(REPOS)}. "
+                         "An org owner needs to approve this app once under Third-party "
+                         "access. Until then, sign in with a token."})
+        OAUTH_BLOCKED.unlink(missing_ok=True)
+        prev = load_users().get(login) or {}
+        oauth_store(login, d, name, prev)
+        print(f"login (github device): {login}", flush=True)
+        return self.api_json({"status": "ok", "login": login,
+                              "welcome": not prev.get("slack_id")},
+                             cookie=session_cookie(login, self.headers.get("Host", "")))
 
     def _claude_result(self, user, step, form):
         """Claude connect steps (cancel/disconnect/code) → banner HTML. Settings token assumed

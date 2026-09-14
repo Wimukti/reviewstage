@@ -64,6 +64,8 @@ write_env() {
   set_key GH_CLIENT_ID ""
   set_key GH_CLIENT_SECRET ""
   set_key GH_OAUTH_SCOPES ""
+  set_key GH_DEVICE_FLOW 1
+  set_key GH_DEVICE_CLIENT_ID ""
   set_key SKIP_BOT_PRS 0
   set_key RS_MAX_PR_AGE_DAYS 45
   set_key MIN_FREE_MB 800

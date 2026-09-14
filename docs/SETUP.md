@@ -149,13 +149,24 @@ Click **Open review** on the card. The first visit starts the review; the page r
 
 One server, many reviewers. The owner does steps 1–5 above once; everyone else does this:
 
-### GitHub login — one click instead of a token (recommended)
+### GitHub login
 
-Create an app, paste two values into `.env`, restart. Teammates then see **Continue with
-GitHub** as the login page's one visible action (the token form moves behind *Use a personal
-access token instead*) and never touch a token. The token GitHub issues is stored encrypted
-and used exactly like a pasted PAT — an OAuth user never needs one. Optional for a solo box;
-recommended for a team. Two kinds of app; start with the first:
+**Sign in with GitHub works out of the box.** The login page's primary button uses GitHub's
+OAuth *device flow* with a shared public client ID: click it, enter the short code it shows at
+<https://github.com/login/device>, authorise, and the page signs you in by itself. Nothing to
+register, no callback URL, no secret — device flow has none, and the token GitHub issues goes
+straight from GitHub to *your* server (the ReviewStage project never sees it). The token is
+stored encrypted and used exactly like a pasted PAT; a device-flow user never needs one. Scope
+is `repo` because OAuth Apps cannot request fine-grained permissions (see
+[SECURITY.md](SECURITY.md#sign-in-options)). `GH_DEVICE_FLOW=0` turns it off;
+`GH_DEVICE_CLIENT_ID=<id>` swaps in your own device-flow-enabled app. The PAT form stays under
+*Use a personal access token instead* for air-gapped or policy-restricted orgs.
+
+**Optional: one-click redirect sign-in under your own app identity.** Teams that would rather
+have GitHub's *Authorize* screen and a redirect back (no code to type), or want the app to be
+theirs (their name and logo on the consent screen, revocation under their org), register an
+app and set two values in `.env`. When `GH_CLIENT_ID`/`GH_CLIENT_SECRET` are set the redirect
+flow is preferred over the device flow. Two kinds of app; start with the first:
 
 **Option A — OAuth App (no org installation needed).** github.com → Settings → Developer
 settings → OAuth Apps → *New OAuth App*:
@@ -180,7 +191,7 @@ sudo systemctl restart reviewstage
 repository — OAuth Apps cannot request fine-grained, per-repository permissions; only GitHub
 Apps can (Option B). `public_repo` is enough if every repository is public.
 
-Teammates click *Continue with GitHub* → GitHub's *Authorize* screen → back to the dashboard,
+Teammates click *Sign in with GitHub* → GitHub's *Authorize* screen → back to the dashboard,
 landing on Settings the first time so they add their Slack member ID. The token GitHub issues
 acts as them (comments carry their name), lasts 8 hours and is refreshed server-side before
 it lapses, and they can revoke the app any time at github.com/settings/applications.
@@ -201,7 +212,9 @@ Option A is the way to be live today.
 ### Teammate — under two minutes
 
 1. Open `<PUBLIC_URL>/login` (the owner sends you the link).
-2. **Continue with GitHub** if the button is there. Otherwise (or under *Use a personal access
+2. **Sign in with GitHub**: either GitHub's *Authorize* screen (the owner registered an app)
+   or a short code to enter at github.com/login/device — the page signs you in on its own once
+   you have. If you would rather not (or under *Use a personal access
    token instead*) the token path is two clicks: *Create one* opens GitHub with the scope and
    name already filled in — pick an expiry, *Generate token*, copy — then paste it. The page tells you as you paste whether
    it looks right, and checks it with GitHub on submit. The token is stored encrypted and used

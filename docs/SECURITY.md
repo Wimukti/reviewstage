@@ -16,7 +16,7 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
 
 - **Pages need a signed-in session.** Signing in means proving a GitHub token is real (`/user`)
   and can see the repo — either the token GitHub issues through **Sign in with GitHub**
-  (the default when `GH_CLIENT_ID` is set) or a pasted PAT — then receiving an HMAC-signed,
+  (the device flow by default, the redirect flow when `GH_CLIENT_ID` is set) or a pasted PAT — then receiving an HMAC-signed,
   HttpOnly, Secure, SameSite cookie valid for 30 days. Unauthenticated requests — including
   POSTs — bounce to the login page. Deleting a user from `users.json` invalidates their session
   and every device token on the next request.
@@ -78,8 +78,16 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
 
 | Option | Who should use it | What the server ends up holding |
 | --- | --- | --- |
-| **Sign in with GitHub** (OAuth App; `GH_CLIENT_ID` + `GH_CLIENT_SECRET`) | Teams — nobody creates or pastes a token | GitHub's user token for the app, encrypted, refreshed server-side before expiry when *Expire user access tokens* is on |
-| **Personal access token** (behind "Use a personal access token instead", or the only form when OAuth is not configured) | Solo installs; an org that has not yet approved the app | The PAT, encrypted |
+| **Sign in with GitHub — device flow** (default; `GH_DEVICE_FLOW=0` turns it off) | Everyone — a short code at github.com/login/device, nothing registered | GitHub's user token, encrypted |
+| **Sign in with GitHub — redirect** (OAuth App; `GH_CLIENT_ID` + `GH_CLIENT_SECRET`, preferred when set) | Teams wanting one click / their own app identity | GitHub's user token for the app, encrypted, refreshed server-side before expiry when *Expire user access tokens* is on |
+| **Personal access token** (behind "Use a personal access token instead", or the only form when both flows are off) | Air-gapped or policy-restricted orgs; an org that has not yet approved the app | The PAT, encrypted |
+
+**Device flow, plainly.** The shared client ID (`Ov23liHjtjxcPNwXC6Y5`, `bin/rs_device_flow.py`)
+is public by design — device flow has no client secret and no callback URL. The browser only
+ever sees the short user code; GitHub's `device_code` stays in server memory under an opaque
+session id, and the token GitHub issues goes straight to *your* server: the ReviewStage project
+never sees it. The server polls GitHub on the person's behalf, refuses polls faster than
+GitHub's interval (429), caps pending sign-ins at 50 and purges expired ones.
 
 Either way the stored token is **the working token**: `user_pat()` prefers the OAuth token and
 falls back to a PAT, and post / approve / review-state reads all go through it. An OAuth user

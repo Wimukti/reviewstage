@@ -35,7 +35,7 @@ docker compose up -d
 bin/doctor.sh                 # checks Docker, .env, and that the service is healthy
 ```
 
-Open **http://localhost:8899**, sign in with a fine-grained GitHub token scoped to the repository, connect your Claude account, and paste a PR URL. `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://wimukti.github.io/reviewstage/start/first-review/).
+Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the box: GitHub's device flow with a shared public client ID — enter a short code at github.com/login/device, nothing to register; a fine-grained token also works), connect your Claude account, and paste a PR URL. Teams that want one-click redirect sign-in under their own app identity can still register an OAuth App (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`). `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://wimukti.github.io/reviewstage/start/first-review/).
 
 ## Why not an auto-review bot?
 

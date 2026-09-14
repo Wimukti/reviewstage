@@ -47,15 +47,22 @@ docker compose up -d demo   # seeds sample runs so you can explore the UI
 
 ### The first sign-in
 
-1. Open http://localhost:8899. With [GitHub sign-in](#github-sign-in) configured the page shows **Continue with GitHub**; without it, a token form. For a solo install the token form is fine: *Create a fine-grained token* opens GitHub's fine-grained token page — pick the repositories you review and grant **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read** (a classic token with the `repo` scope also works). Pick an expiry (90 days is a good default). This token acts as **you**; it is what makes every comment attributable to a person.
-2. Paste the token. It is verified against GitHub, stored encrypted, and used only for the posts and approvals you click.
+1. Open http://localhost:8899 and click **Sign in with GitHub**. It works out of the box through GitHub's device flow (see [GitHub sign-in](#github-sign-in)): the page shows a short code, you enter it at github.com/login/device and authorise, and the page signs you in by itself. If you would rather use a token, open *Use a personal access token instead*: *Create a fine-grained token* opens GitHub's fine-grained token page — pick the repositories you review and grant **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read** (a classic token with the `repo` scope also works). Pick an expiry (90 days is a good default). This token acts as **you**; it is what makes every comment attributable to a person.
+2. Either way the token is verified against GitHub, stored encrypted, and used only for the posts and approvals you click.
 3. On the welcome checklist, **Connect Claude**: a link opens Claude in a new tab, you authorise with your own account and paste the code back. This runs the genuine `claude setup-token` flow inside the container, so your reviews bill to your plan.
 
 You are ready for your [first review](/reviewstage/start/first-review/).
 
 ### GitHub sign-in
 
-**Optional for a solo Docker install; recommended for a team.** With it, nobody creates or pastes a token: the login page's one visible action is **Continue with GitHub**, and the token GitHub issues is stored encrypted and used exactly like a pasted PAT — for the comments and approvals that person clicks, under their own name. Teammates can still open *Use a personal access token instead*.
+**Sign in with GitHub works out of the box — nothing to register.** The login page's primary button uses GitHub's OAuth **device flow** with a shared public client ID (`Ov23liHjtjxcPNwXC6Y5`; public by design — device flow has no client secret and no callback URL). Click it, enter the short code at [github.com/login/device](https://github.com/login/device), authorise, and the page signs you in on its own. The token GitHub issues goes straight from GitHub to *your* server — the ReviewStage project never sees it — and is stored encrypted and used exactly like a pasted PAT, for the comments and approvals that person clicks, under their own name. Scope is `repo` because OAuth Apps cannot request fine-grained permissions ([Security → Signing in](/reviewstage/security/#signing-in)).
+
+- `GH_DEVICE_FLOW=0` turns the device flow off (token sign-in only, or your own app below).
+- `GH_DEVICE_CLIENT_ID=<client id>` uses your own OAuth App for the device flow instead (tick *Enable Device Flow* on it); still no secret.
+
+*Use a personal access token instead* stays on the page for air-gapped or policy-restricted organisations.
+
+**Optional: one-click redirect sign-in under your own app.** Teams that prefer GitHub's *Authorize* screen with a redirect back (no code to type), or want the consent screen to carry their own app's name, register an OAuth App and set `GH_CLIENT_ID` / `GH_CLIENT_SECRET`; when they are set the redirect flow takes priority over the device flow.
 
 1. On github.com go to **Settings → Developer settings → OAuth Apps → New OAuth App** (or under your organisation's settings if the app should belong to the org).
 2. Fill in:
@@ -78,7 +85,7 @@ You are ready for your [first review](/reviewstage/start/first-review/).
    ```
 
    `repo` is the smallest classic scope that can comment on and approve a pull request in a private repository; OAuth Apps cannot request fine-grained permissions (see [Security](/reviewstage/security/#signing-in)). Public repositories only? `public_repo` is enough.
-6. Restart (`docker compose up -d` again, or `systemctl restart reviewstage`). The login page now shows **Continue with GitHub**.
+6. Restart (`docker compose up -d` again, or `systemctl restart reviewstage`). **Sign in with GitHub** now goes through GitHub's *Authorize* screen instead of a code.
 
 <Aside type="note" title="Organisation approval">
 If a sign-in comes back with *"the token cannot see owner/name"*, the organisation restricts third-party OAuth apps. An org owner approves the app once under **Organization settings → Third-party access**, and it works for everyone from then on. The login page demotes the GitHub button and opens the token form while that is pending.

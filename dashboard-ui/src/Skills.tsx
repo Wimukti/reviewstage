@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type ProfileData, type SkillsData, type Token } from "./api";
+import { api, type ProfileData, type RuleSuggestion, type SkillsData, type Token } from "./api";
 import { MdEditor } from "./MdEditor";
 
 function Banner({ html }: { html: string }) {
@@ -449,6 +449,160 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
   );
 }
 
+// Suggested rules — the durable half of the learnings loop. A complaint the team has dropped
+// enough times, drafted into one sentence in the house style and waiting on a click. Nothing
+// here reaches a skill until someone presses Accept.
+function Suggestion({
+  s,
+  token,
+  onDone,
+}: {
+  s: RuleSuggestion;
+  token: Token;
+  onDone: (d: SkillsData, banner: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const act = async (action: "accept" | "dismiss" | "undismiss") => {
+    setBusy(true);
+    try {
+      const r = await api.skillSuggestion(token, s.signature, action);
+      onDone(r, r.bannerHtml);
+    } catch (e) {
+      onDone(
+        null as unknown as SkillsData,
+        `<div class='banner err'><span>🚫</span><div>${(e as Error).message || "That didn't work."}</div></div>`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const verb = s.outcome === "dropped" ? "you dropped" : "you reworded";
+  const evidence = `from ${s.count} finding${s.count === 1 ? "" : "s"} ${verb} across ${s.prs} PR${
+    s.prs === 1 ? "" : "s"
+  }`;
+
+  return (
+    <div className="row" data-testid="rule-suggestion">
+      <div className="rowlink">
+        <div className="rowtop">
+          <span className="pill blocker">Suggested rule</span>
+          <span className={"pill " + s.severity} />
+          {s.repos.length === 1 && <span className="repochip">{s.repos[0]}</span>}
+          <span className="muted sm">{evidence}</span>
+        </div>
+        {s.rule ? (
+          <div className="suggrule" data-testid="rule-sentence">
+            {s.rule}
+          </div>
+        ) : (
+          <div className="muted sm" style={{ marginTop: 6 }} data-testid="rule-pending">
+            {s.connected
+              ? "Drafting the rule on your Claude account — reload in a moment."
+              : "Connect your Claude account in Integrations and ReviewStage will draft the rule."}{" "}
+            The complaint: <i>{s.gist}</i>
+          </div>
+        )}
+        {s.rationale && (
+          <div className="muted sm" style={{ marginTop: 4 }}>
+            {s.rationale}
+          </div>
+        )}
+        <details className="suggev">
+          <summary>Show the {s.count} findings behind it</summary>
+          <ul>
+            {s.findings.map((f, i) => (
+              <li key={i}>
+                <a href={`https://github.com/${f.repo}/pull/${f.pr}`} target="_blank" rel="noreferrer">
+                  {f.repo}#{f.pr}
+                </a>{" "}
+                <span className="loc">
+                  {f.path}
+                  {f.line ? `:${f.line}` : ""}
+                </span>{" "}
+                — {f.gist}
+              </li>
+            ))}
+          </ul>
+        </details>
+        <div className="inrow" style={{ marginTop: 10 }}>
+          {s.dismissed ? (
+            <button className="btn soft" type="button" disabled={busy} onClick={() => act("undismiss")}>
+              Undo dismiss
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={busy || !s.rule}
+                title={s.rule ? "" : "Nothing drafted to accept yet"}
+                onClick={() => act("accept")}
+              >
+                Accept — add to {s.targetLabel}
+              </button>
+              <button className="btn soft" type="button" disabled={busy} onClick={() => act("dismiss")}>
+                Dismiss
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SuggestedRules({
+  d,
+  onDone,
+}: {
+  d: SkillsData;
+  onDone: (d: SkillsData, banner: string) => void;
+}) {
+  const [showDismissed, setShowDismissed] = useState(false);
+  const live = d.suggestions.filter((s) => !s.dismissed);
+  const dismissed = d.suggestions.filter((s) => s.dismissed);
+  if (live.length === 0 && dismissed.length === 0) return null;
+
+  return (
+    <div data-testid="suggested-rules">
+      <h2>Suggested rules</h2>
+      <p className="muted sm">
+        A finding the team drops once is a preference; one dropped {d.suggestMin} times across
+        different PRs is a standard nobody has written down. These are drafted from your own
+        rejections — nothing is added to a skill until you accept it.
+      </p>
+      <div className="list">
+        {live.map((s) => (
+          <Suggestion key={s.signature} s={s} token={d.token} onDone={onDone} />
+        ))}
+      </div>
+      {live.length === 0 && (
+        <div className="muted sm">Nothing pending — every suggestion has been accepted or dismissed.</div>
+      )}
+      {dismissed.length > 0 && (
+        <>
+          <button
+            className="btn soft"
+            type="button"
+            style={{ marginTop: 10 }}
+            data-testid="show-dismissed"
+            onClick={() => setShowDismissed((v) => !v)}
+          >
+            {showDismissed ? "Hide dismissed" : `Show dismissed (${dismissed.length})`}
+          </button>
+          {showDismissed && (
+            <div className="list" style={{ marginTop: 10 }} data-testid="dismissed-list">
+              {dismissed.map((s) => (
+                <Suggestion key={s.signature} s={s} token={d.token} onDone={onDone} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Skills() {
   const [d, setD] = useState<SkillsData | null>(null);
   const [banner, setBanner] = useState("");
@@ -517,6 +671,15 @@ export function Skills() {
           )}
         </div>
       </div>
+
+      <SuggestedRules
+        d={d}
+        onDone={(fresh, b) => {
+          setBanner(b);
+          if (fresh) setD(fresh);
+          else load();
+        }}
+      />
 
       <h2>The skill</h2>
       <details className="skilled">

@@ -167,6 +167,13 @@ def compute(state, root, now=None, repo=None):
                                          {"kept": 0, "edited": 0, "dropped": 0})
                 kd[o] += 1
 
+    # rules the team promoted from repeated rejections (rs_learn's rule_promotions.json)
+    promoted = 0
+    for rec in (_load(root / "rule_promotions.json") or {}).values():
+        if isinstance(rec, dict) and not (repo and rec.get("repo")
+                                          and rec["repo"].lower() != repo.lower()):
+            promoted += 1
+
     # agreement (forward-looking)
     multi, confirmed, rates = 0, 0, []
     if state.is_dir():
@@ -213,6 +220,7 @@ def compute(state, root, now=None, repo=None):
         "severity": severity,
         "models": sorted(([{"model": k, **v} for k, v in models.items()]),
                          key=lambda m: -m["runs"]),
+        "promotedRules": promoted,
         "agreement": {"multiReviewerPRs": multi, "confirmedFindings": confirmed,
                       "avgRate": (round(sum(rates) / len(rates), 1) if rates else None)},
         "cycle": {"medianReviewToPostSec": _median(cycle), "n": len(cycle)},

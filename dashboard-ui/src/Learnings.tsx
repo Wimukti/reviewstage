@@ -33,7 +33,51 @@ export function Learnings({ me }: { me: Me }) {
           <div className="k">{d.counts.kept.toLocaleString()}</div>
           <div className="l">Kept as-is</div>
         </a>
+        <a className="stat">
+          <div className="k">{d.promoted.toLocaleString()}</div>
+          <div className="l">Promoted to rules</div>
+        </a>
       </div>
+
+      {d.clusters.length > 0 && (
+        <>
+          <h2>What is hardening into a rule</h2>
+          <p className="muted sm">
+            The same complaint, rejected again and again. While it is a <b>rolling preference</b> it
+            only lives in the last 40 decisions {me.brand} reads before a review; once you promote it
+            on the Skills page it becomes a Team rule and leaves that window for good.
+          </p>
+          <div className="list" data-testid="learning-clusters">
+            {d.clusters.map((c) => (
+              <div className="row" key={c.signature}>
+                <div className="rowlink">
+                  <div className="rowtop">
+                    <span className={"pill " + (c.status === "promoted" ? "posted" : "archived")}>
+                      {c.status === "promoted"
+                        ? "Promoted to a rule"
+                        : c.status === "dismissed"
+                        ? "Dismissed"
+                        : "Rolling preference"}
+                    </span>
+                    <Pill kind={c.severity} />
+                    <span className="muted sm">
+                      {c.count} {c.outcome === "dropped" ? "drops" : "rewordings"} across {c.prs} PRs
+                    </span>
+                  </div>
+                  <div className="muted sm" style={{ marginTop: 5 }}>
+                    {c.gist}
+                  </div>
+                  {c.rule && (
+                    <div className="suggrule" style={{ marginTop: 6 }}>
+                      {c.rule}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       {d.rows.length === 0 ? (
         <div className="empty">
           <span className="ic">🧠</span>

@@ -213,6 +213,8 @@ export function Rollup() {
              sub={`${pct(d.keep.allTime.rate)} all-time`} />
         <Kpi label="PRs · reviewers" value={`${num(d.prs)} · ${num(d.reviewers.length)}`}
              sub="distinct PRs · people" />
+        <Kpi label="Rules promoted from evidence" value={num(d.promotedRules ?? 0)}
+             sub="repeated rejections accepted as Team rules" />
         <Kpi label="Kept on critical paths" value={pct(d.keep.criticalPath?.rate ?? null)}
              sub={`${num((d.keep.criticalPath?.kept ?? 0) + (d.keep.criticalPath?.edited ?? 0) + (d.keep.criticalPath?.dropped ?? 0))} findings on profiled paths · all-time`} />
       </div>

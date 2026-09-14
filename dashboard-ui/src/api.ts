@@ -331,6 +331,36 @@ export interface SkillStat {
   label: string;
 }
 export interface RepoSkill { repo: string; content: string; has: boolean }
+
+// One complaint the team keeps dropping, offered as a rule nobody has accepted yet.
+export interface SuggestionFinding {
+  repo: string;
+  pr: string;
+  path: string;
+  line: number | null;
+  severity: string;
+  at: number;
+  gist: string;
+}
+export interface RuleSuggestion {
+  signature: string;
+  outcome: "dropped" | "edited";
+  severity: string;
+  dir: string;
+  count: number;
+  prs: number;
+  repos: string[];
+  gist: string;
+  findings: SuggestionFinding[];
+  target: string; // "team" | "repo:<owner/name>"
+  targetLabel: string;
+  rule: string;
+  rationale: string;
+  dismissed: boolean;
+  dismissedBy: string;
+  connected: boolean;
+  pending?: boolean;
+}
 export interface DepthInfo { name: string; meta: string; content: string; edited: boolean }
 export interface SkillsData {
   token: Token;
@@ -345,6 +375,8 @@ export interface SkillsData {
   repoSkills: RepoSkill[];
   stats: SkillStat[];
   teamHistory: { hash: string; author: string; at: number; msg: string }[];
+  suggestions: RuleSuggestion[];
+  suggestMin: number;
 }
 
 
@@ -413,9 +445,21 @@ export interface LearningRow {
   repo: string;
   editedGist: string;
 }
+export interface LearningCluster {
+  signature: string;
+  gist: string;
+  severity: string;
+  count: number;
+  prs: number;
+  outcome: "dropped" | "edited";
+  status: "promoted" | "dismissed" | "rolling";
+  rule: string;
+}
 export interface LearningsData {
   counts: { dropped: number; edited: number; kept: number };
   repos: string[];
+  clusters: LearningCluster[];
+  promoted: number;
   rows: LearningRow[];
 }
 
@@ -519,6 +563,7 @@ export interface RollupData {
   severity: { blocker: number; "should-fix": number; nit: number; question: number };
   models: { model: string; runs: number; tokens: number }[];
   agreement: { multiReviewerPRs: number; confirmedFindings: number; avgRate: number | null };
+  promotedRules: number;
   cycle: { medianReviewToPostSec: number | null; n: number };
   series: RollupSeriesPoint[];
 }
@@ -570,6 +615,8 @@ export const api = {
   qaGen: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/qa/gen", { ...prBody(ref), ...t }),
   qaStop: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/qa/stop", { ...prBody(ref), ...t }),
   skills: () => get<SkillsData>("/skills"),
+  skillSuggestion: (t: Token, signature: string, action: "accept" | "dismiss" | "undismiss") =>
+    post<SkillsData & BannerResult>("/skills/suggestion", { ...t, signature, action }),
   skillAction: (step: string, payload: Record<string, unknown>) =>
     post<BannerResult>(`/skill/${step}`, payload),
   integrations: () => get<IntegrationsData>("/integrations"),

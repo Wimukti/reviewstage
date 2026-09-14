@@ -115,7 +115,7 @@ check "seen has $REPO:$PR:$USER_LOGIN" grep -qxF "$REPO:$PR:$USER_LOGIN" "$ROOT/
 check "queue.json row has the requested login + head" \
   [ "$(jq -r --argjson n "$PR" '.[] | select(.number==$n) | "\(.requested|join(","))/\(.head)"' "$ROOT/queue.json")" = "$USER_LOGIN/aaaa1111" ]
 check "requested_at marker written" test -f "$ROOT/state/acme__widgets/$PR/users/$USER_LOGIN/requested_at"
-check "webhooks.json counts the event" count_is 1
+check "webhooks.json counts the event" wait_for 3 count_is 1
 check "/api/settings exposes webhooks.configured=true" \
   [ "$(curl -s -b "$COOKIE" "$BASE/api/settings" | jq -r .webhooks.configured)" = true ]
 check "/api/me exposes webhooks_configured=true" \

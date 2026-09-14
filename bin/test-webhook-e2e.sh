@@ -111,10 +111,10 @@ check "webhooks.json.last_ping stamped" [ "$(jq -r '.last_ping // 0' "$ROOT/webh
 # 3. review_requested
 code=$(post pull_request "$body"); check "review_requested → 202 (got $code)" [ "$code" = 202 ]
 check "row appears in /api/queue" wait_for 5 rows_is 1
-check "seen has $REPO:$PR:$USER_LOGIN" grep -qxF "$REPO:$PR:$USER_LOGIN" "$ROOT/seen"
-check "queue.json row has the requested login + head" \
-  [ "$(jq -r --argjson n "$PR" '.[] | select(.number==$n) | "\(.requested|join(","))/\(.head)"' "$ROOT/queue.json")" = "$USER_LOGIN/aaaa1111" ]
-check "requested_at marker written" test -f "$ROOT/state/acme__widgets/$PR/users/$USER_LOGIN/requested_at"
+check "seen has $REPO:$PR:$USER_LOGIN" wait_for 5 grep -qxF "$REPO:$PR:$USER_LOGIN" "$ROOT/seen"
+row_is() { [ "$(jq -r --argjson n "$PR" '.[] | select(.number==$n) | "\(.requested|join(","))/\(.head)"' "$ROOT/queue.json")" = "$1" ]; }
+check "queue.json row has the requested login + head" wait_for 5 row_is "$USER_LOGIN/aaaa1111"
+check "requested_at marker written" wait_for 5 test -f "$ROOT/state/acme__widgets/$PR/users/$USER_LOGIN/requested_at"
 check "webhooks.json counts the event" wait_for 3 count_is 1
 check "/api/settings exposes webhooks.configured=true" \
   [ "$(curl -s -b "$COOKIE" "$BASE/api/settings" | jq -r .webhooks.configured)" = true ]
@@ -126,21 +126,21 @@ code=$(post pull_request "$body"); check "redelivery → 202 (got $code)" [ "$co
 check "second event counted" wait_for 3 count_is 2
 check "still exactly one queue row" file_rows_is 1
 check "still exactly one seen line" [ "$(grep -cxF "$REPO:$PR:$USER_LOGIN" "$ROOT/seen")" = 1 ]
-check "server log says already seen" grep -q "already seen" "$ROOT/server.log"
+check "server log says already seen" wait_for 5 grep -q "already seen" "$ROOT/server.log"
 
 # 5. synchronize → stale. Pretend a review ran against the first head.
 ud="$ROOT/state/acme__widgets/$PR/users/$USER_LOGIN"; mkdir -p "$ud"
 echo aaaa1111 > "$ud/head"; echo 'done' > "$ud/status"; echo '{"event":"COMMENT","summary":"ok","comments":[]}' > "$ud/review.json"
 code=$(post pull_request "$(pr_json synchronize bbbb2222)"); check "synchronize → 202 (got $code)" [ "$code" = 202 ]
 check "queue row head flipped to bbbb2222" wait_for 5 head_is bbbb2222
-check "/api/pr reports the review as stale" \
-  [ "$(curl -s -b "$COOKIE" "$BASE/api/pr?repo=acme%2Fwidgets&pr=$PR" | jq -r .stale)" = true ]
+stale_is() { [ "$(curl -s -b "$COOKIE" "$BASE/api/pr?repo=acme%2Fwidgets&pr=$PR" | jq -r .stale)" = "$1" ]; }
+check "/api/pr reports the review as stale" wait_for 5 stale_is true
 check "no second seen line after push" [ "$(grep -cxF "$REPO:$PR:$USER_LOGIN" "$ROOT/seen")" = 1 ]
 
 # 6. closed
 code=$(post pull_request "$(pr_json closed bbbb2222)"); check "closed → 202 (got $code)" [ "$code" = 202 ]
 check "row left queue.json" wait_for 5 file_rows_is 0
-check "unposted review archived for $USER_LOGIN" test -f "$ud/archived"
+check "unposted review archived for $USER_LOGIN" wait_for 5 test -f "$ud/archived"
 
 # 7. a repository outside REPOS
 code=$(post pull_request "$(pr_json review_requested cccc3333 evil/corp)"); check "foreign repo → 202 (got $code)" [ "$code" = 202 ]

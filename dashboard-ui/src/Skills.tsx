@@ -269,6 +269,13 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
       setD(r);
       setMd(r.md);
       if (r.bannerHtml) onBanner(r.bannerHtml);
+      // A click while a build is alive is "already running" — the card keeps its Profiling
+      // view (r.state is "running"); only a click that started nothing for another reason is
+      // an error.
+      else if (r.started === false && r.state === "running")
+        onBanner(
+          `<div class='banner warn'><span>⏳</span><div>Already profiling this repository — that click did not start a second build.</div></div>`
+        );
       else if (r.started === false && r.reason)
         onBanner(`<div class='banner err'><span>⏳</span><div>Not started: ${r.reason}.</div></div>`);
     } catch (e) {

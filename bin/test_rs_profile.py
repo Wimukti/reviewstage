@@ -3,16 +3,19 @@ markdown round-trip and the signals stage on a throwaway git repo.
 
     python3 -m unittest discover -s bin -p 'test_*.py'
 """
+import fcntl
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rs_profile as PF  # noqa: E402
+import rs_state as S  # noqa: E402
 
 TREE = ["app/auth/login.py", "app/auth/session.py", "app/payments/charge.py",
         "app/payments/refund.py", "app/models/product.py", "api/routes.py", "README.md",
@@ -217,6 +220,126 @@ class JobState(unittest.TestCase):
             self.assertEqual(tail[-1], "line 59")
             self.assertNotIn("", tail)
             self.assertEqual(PF.log_tail(Path(tmp, "missing.log")), [])
+
+
+class Liveness(unittest.TestCase):
+    """job_alive / start_job — the three liveness signals a profile build has, mirrored on
+    rs_state: the flock, the pid file and the status file's age."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.pdir = Path(self._tmp.name, "profiles", "acme__shop")
+        self.pdir.mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _status(self, text, age):
+        f = self.pdir / "status"
+        f.write_text(text)
+        then = time.time() - age
+        os.utime(f, (then, then))
+
+    def _dead_pid(self):
+        p = subprocess.Popen(["true"])
+        p.wait()
+        (self.pdir / "pid").write_text(str(p.pid))
+        return p.pid
+
+    def _hold_lock(self):
+        fd = os.open(self.pdir / ".lock", os.O_RDWR | os.O_CREAT)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        self.addCleanup(os.close, fd)
+        self.addCleanup(fcntl.flock, fd, fcntl.LOCK_UN)
+        return fd
+
+    def test_lock_held_is_running_even_with_a_dead_pid_and_an_old_status(self):
+        self._dead_pid()
+        self._status("queued — waiting for another job to finish", 10_000)
+        self._hold_lock()
+        self.assertTrue(PF.job_alive(self.pdir))
+        self.assertEqual(PF.job_state(PF.job_alive(self.pdir), PF.read_status(self.pdir), False),
+                         ("running", ""))
+
+    def test_fresh_queued_status_with_a_free_lock_is_running_not_failed(self):
+        # The server writes "queued" and spawns; bash needs a moment to reach `flock`.
+        self._dead_pid()
+        self._status("queued", 2)
+        self.assertTrue(PF.job_alive(self.pdir))
+        st, why = PF.job_state(PF.job_alive(self.pdir), "queued", False)
+        self.assertEqual(st, "running")
+        self.assertEqual(why, "")
+
+    def test_live_pid_with_a_free_lock_is_running(self):
+        p = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(p.wait)
+        self.addCleanup(p.kill)
+        (self.pdir / "pid").write_text(str(p.pid))
+        self._status("queued", 10_000)
+        self.assertTrue(PF.job_alive(self.pdir))
+
+    def test_failed_only_when_everything_is_dead_and_the_status_is_stale(self):
+        self._dead_pid()
+        self._status("queued", S.STARTUP_GRACE + 30)
+        self.assertFalse(PF.job_alive(self.pdir))
+        st, why = PF.job_state(PF.job_alive(self.pdir), PF.read_status(self.pdir), False)
+        self.assertEqual(st, "failed")
+        self.assertIn("exited without reporting why (last status: queued)", why)
+
+    def test_failed_status_is_failed_however_fresh(self):
+        self._dead_pid()
+        self._status("failed: the model produced no result", 0)
+        self.assertFalse(PF.job_alive(self.pdir))
+        st, why = PF.job_state(PF.job_alive(self.pdir), PF.read_status(self.pdir), False)
+        self.assertEqual((st, why), ("failed", "failed: the model produced no result"))
+
+    def test_terminal_status_is_not_alive_by_grace(self):
+        self._dead_pid()
+        for status, want in (("done", "done"), ("stopped", "stopped")):
+            self._status(status, 0)
+            self.assertFalse(PF.job_alive(self.pdir), status)
+            self.assertEqual(PF.job_state(False, status, status == "done")[0], want)
+
+    def test_no_markers_at_all_is_not_alive(self):
+        self.assertFalse(PF.job_alive(self.pdir))
+        self.assertEqual(PF.job_state(False, "", False), ("none", ""))
+
+    def test_duplicate_start_while_alive_does_not_spawn_or_touch_pid(self):
+        (self.pdir / "pid").write_text("4242")
+        self._status("queued — waiting for another job to finish", 10_000)
+        self._hold_lock()
+        calls = []
+        started, reason = PF.start_job(self.pdir, lambda: calls.append(1) or 99)
+        self.assertEqual((started, reason), (False, "already running"))
+        self.assertEqual(calls, [])
+        self.assertEqual((self.pdir / "pid").read_text(), "4242")
+        self.assertEqual(PF.read_status(self.pdir), "queued — waiting for another job to finish")
+
+    def test_duplicate_start_during_startup_grace_does_not_spawn(self):
+        self._dead_pid()
+        self._status("queued", 1)
+        started, reason = PF.start_job(self.pdir, lambda: self.fail("spawned a duplicate"))
+        self.assertEqual((started, reason), (False, "already running"))
+
+    def test_start_after_a_dead_run_spawns_and_writes_the_markers(self):
+        self._dead_pid()
+        self._status("gathering signals", S.STARTUP_GRACE + 30)
+        started, reason = PF.start_job(self.pdir, lambda: 777)
+        self.assertEqual((started, reason), (True, ""))
+        self.assertEqual((self.pdir / "pid").read_text(), "777")
+        self.assertEqual(PF.read_status(self.pdir), "queued")
+
+    def test_the_script_takes_the_lock_before_writing_any_marker(self):
+        """profile-repo.sh: the flock is the first action after PDIR; pid/runner/model/status
+        writes all come after it, and the losing duplicate speaks to stderr only."""
+        src = Path(__file__).with_name("profile-repo.sh").read_text().splitlines()
+        lock_at = next(i for i, ln in enumerate(src) if ln.startswith("flock -n 9"))
+        pdir_at = next(i for i, ln in enumerate(src) if ln.startswith("PDIR="))
+        between = [ln for ln in src[pdir_at + 1:lock_at]
+                   if ln.strip() and not ln.lstrip().startswith("#")]
+        self.assertEqual(between, ['mkdir -p "$PDIR"', 'exec 9>"$PDIR/.lock"'])
+        self.assertIn(">&2; exit 0; }", src[lock_at])
+        for marker in ('> "$PDIR/pid"', '> "$PDIR/runner"', '> "$PDIR/model"', '> "$PDIR/status"'):
+            first = next(i for i, ln in enumerate(src) if marker in ln)
+            self.assertGreater(first, lock_at, marker)
 
 
 class Storage(unittest.TestCase):

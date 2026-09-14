@@ -1380,26 +1380,11 @@ PROFILE_PHASES = ["Fetching the repository", "Gathering signals", "Asking the mo
                   "Validating paths"]
 
 
-def _flock_held(f):
-    """True while some process holds an exclusive flock on `f` (the job is running)."""
-    if not f.exists():
-        return False
-    try:
-        fd = os.open(f, os.O_RDWR)
-    except OSError:
-        return False
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        return False
-    except OSError:
-        return True
-    finally:
-        os.close(fd)
-
-
 def profile_running(repo):
-    return _flock_held(rs_profile.profile_dir(repo) / ".lock")
+    """Is a profile build alive for `repo`? Lock held OR live pid OR a status written within
+    the startup grace — the flock alone said "dead" for the seconds between the server's
+    spawn and the script taking its lock, and the page rendered that as a failed run."""
+    return rs_profile.job_alive(rs_profile.profile_dir(repo))
 
 
 def profile_status_text(repo):
@@ -3472,17 +3457,21 @@ class Handler(BaseHTTPRequestHandler):
         if not claude_connected(user):
             return False
         d = rs_profile.profile_dir(repo)
-        d.mkdir(parents=True, exist_ok=True)
-        if profile_running(repo):
-            return False
-        (d / "status").write_text("queued")
         env = review_env(user)
-        with open(d / "run.log", "ab") as log:
-            proc = subprocess.Popen([str(BIN / "profile-repo.sh"), repo], stdout=log,
-                                    stderr=subprocess.STDOUT, start_new_session=True, env=env)
-        (d / "pid").write_text(str(proc.pid))
-        print(f"profile started for {repo} by {user}", flush=True)
-        return True
+
+        def spawn():
+            with open(d / "run.log", "ab") as log:
+                proc = subprocess.Popen([str(BIN / "profile-repo.sh"), repo], stdout=log,
+                                        stderr=subprocess.STDOUT, start_new_session=True,
+                                        env=env)
+            return proc.pid
+
+        # Liveness is decided (under a lock) BEFORE spawning: a duplicate would append to the
+        # live run's run.log and, had it won the pid write, make it look dead.
+        started, _ = rs_profile.start_job(d, spawn)
+        if started:
+            print(f"profile started for {repo} by {user}", flush=True)
+        return started
 
     def api_profile_get(self, q, user):
         repo, err = resolve_repo((q.get("repo") or [""])[0])
@@ -3515,15 +3504,13 @@ class Handler(BaseHTTPRequestHandler):
             if not claude_connected(user):
                 return self.api_json({"error": "Connect your Claude account in Integrations "
                                                "to profile a repository."}, 400)
-            # The flock in profile-repo.sh already makes a double start a no-op; say so rather
-            # than answering started:true to a click that changed nothing.
-            if profile_running(repo):
-                return self.api_json({"ok": True, "started": False, "reason": "already running",
-                                      **profile_view(repo, user)})
+            # A click while a build is alive changes nothing: say so with the running view,
+            # never as a failure. _spawn_profile makes the same check under a lock, so two
+            # simultaneous clicks cannot both spawn.
             started = self._spawn_profile(repo, user)
             out = {"ok": True, "started": started, **profile_view(repo, user)}
             if not started:
-                out["reason"] = "already running" if profile_running(repo) else "not started"
+                out["reason"] = "already running" if out["state"] == "running" else "not started"
             return self.api_json(out)
         if route == "/api/profile/stop":
             return self.api_json({"ok": True, "confirmed": stop_profile(repo),

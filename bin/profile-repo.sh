@@ -27,9 +27,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 BASE=$(base_dir "$REPO")
 PDIR="$ROOT/profiles/$(repo_slug "$REPO")"
 mkdir -p "$PDIR"
-# Its own lock: a profile build must never block, or be blocked by, a review of the same repo.
+# The lock comes first — before any marker is written. Its own lock: a profile build must never
+# block, or be blocked by, a review of the same repo. A duplicate that loses this race must not
+# touch pid, status, runner, model or run.log of the live run: one line to stderr, exit 0.
 exec 9>"$PDIR/.lock"
-flock -n 9 || { echo "profile for $REPO already running"; exit 0; }
+flock -n 9 || { echo "[profile $REPO] already running — not starting a second build" >&2; exit 0; }
+# Holding the lock: this process (bash, the group leader under setsid) owns the run's markers.
+echo $$ > "$PDIR/pid"
 
 # In --signals-only mode stdout is the JSON, so progress goes to stderr there.
 status() {

@@ -443,7 +443,7 @@ export interface ProfileData {
   logTail?: string[]; // last lines of agent.log (or run.log) for that failed run
   stopped?: boolean;
   bannerHtml?: string;
-  started?: boolean;
+  started?: boolean; // POST /profile/run: false with state "running" means "already running", not a failure
   reason?: string; // why started is false, e.g. "already running"
   confirmed?: boolean;
 }

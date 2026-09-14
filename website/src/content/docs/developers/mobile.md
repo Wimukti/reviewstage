@@ -29,7 +29,7 @@ needs native widgets, and a second codebase would immediately lag the web dashbo
 ## Phase 1 (now): installable PWA
 
 **What ships.** `dashboard-ui/public/manifest.webmanifest` (standalone display, the app's dark
-palette, 192/512 + maskable icons generated from `assets/logo.png` by
+palette, 192/512 + maskable icons generated from `assets/logo-light.svg` by
 `dashboard-ui/scripts/icons.mjs`), `public/sw.js` served from the origin root at `/sw.js`, an
 `offline.html` fallback, and `src/mobile.css`, a sheet of media queries for phone widths. The
 server exposes `/manifest.webmanifest`, `/sw.js`, `/offline.html` and `/icons/*` at the root;

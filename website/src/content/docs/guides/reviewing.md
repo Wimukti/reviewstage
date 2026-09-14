@@ -52,7 +52,7 @@ Each finding is a card:
 
 - **Checkbox** — selected for posting.
 - **Severity** — `blocker`, `should-fix`, `nit`, `question`. Rendered from a field, so the body never repeats it.
-- **`file:line`** — in the new version of the file. Only lines the PR changed can carry an inline comment; anything else is demoted into the summary body at post time.
+- **`file:line`** — in the new version of the file. Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)).
 - **Reply vs New** — when an existing thread on the PR already covers this, the finding is marked as a reply and opens with an acknowledgement, so it reads as a continuation rather than a re-raise.
 - **Agreement** — `✓ N independent` when other reviewers' runs with a different configuration raised it too; `only your run` otherwise.
 - **Body** — editable, with a markdown preview. GitHub-flavoured: backticked symbols, fenced code, and optionally a **suggestion** (an exact one-line replacement that becomes a ```` ```suggestion ```` block the author can apply in one click).
@@ -60,11 +60,21 @@ Each finding is a card:
 
 Editing a finding keeps the original alongside it. On post, each original is scored *kept*, *edited* or *dropped* for the [learnings loop](/reviewstage/guides/skills-and-learnings/).
 
+## Findings outside the diff
+
+A review is not confined to the diff. The [repository profile](/reviewstage/guides/skills-and-learnings/) tells it to trace the callers, the consumers and the tests of whatever changed, so the most valuable finding on a two-line PR is frequently a test that now asserts the wrong thing, or a screen that still passes the old shape. Those lines are not in the diff, and **GitHub only accepts an inline review comment on a line the PR changed** — there is nowhere to hang it.
+
+So they go into the review body, in a `## Findings outside the diff` section: expanded, blocker first, each heading a link to the exact line on the commit the review ran against. Nothing is lost and nothing is hidden — a long tail of more than three nits or questions is the only thing that collapses.
+
+A **suggestion** on such a finding renders as a plain `Suggested change:` code block rather than a ```` ```suggestion ```` block, because GitHub's one-click Apply cannot work off the diff and an Apply button that does nothing is worse than none.
+
+On the PR page each affected card carries a small **in summary** chip before you post, and the post bar splits the count — `3 selected · 1 inline · 2 in the summary` — so where everything will land is never a surprise. A review whose findings are all in the summary posted correctly; it is the common shape on a small PR, not a failure.
+
 ## Posting
 
 **Post to GitHub** sends the selected findings as one review with event `COMMENT`. Before the call:
 
-1. Every anchor is validated against the actual diff, so GitHub cannot reject the whole review because one `path:line` is outside it.
+1. Every anchor is re-validated against the diff as it stands now — the PR may have gained commits while the review sat here — so GitHub cannot reject the whole review because one `path:line` is outside it. Anything that no longer anchors moves into the body section above.
 2. The GitHub reads it depends on are checked for shape and retried once; on anything odd it refuses rather than posting a degraded review.
 3. The exact payload is saved with the PR so you can see what went out.
 

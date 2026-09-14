@@ -205,6 +205,69 @@ test.describe("signed in", () => {
     await expect(done.getByTestId("profile-error")).toHaveCount(0);
   });
 
+  test("a second Retry while the build is alive keeps the Profiling view (started:false is not a failure)", async ({ page }) => {
+    // The live-test sequence: Retry on a failed profile, the page briefly re-shows FAILED (a
+    // stale verdict from the poll), Retry again ~2 s later while the first run is queued on the
+    // review lock. The server answers the second click with started:false + state "running";
+    // the card must read that as "already running" and stay in Profiling — never FAILED.
+    const running = {
+      state: "running",
+      running: { phases: ["Fetching the repository", "Gathering signals", "Asking the model", "Validating paths"], cur: 2, queued: true, text: "queued — waiting for another job to finish" },
+    };
+    let polls = 0;
+    await page.route(`**/api/profile?repo=${enc(REPO3)}`, async (route) => {
+      const r = await route.fetch();
+      const body = await r.json();
+      polls += 1;
+      // 1st GET: the failed card with a connected account, so Retry is enabled. 2nd GET (the
+      // poll after the first click): the stale "failed" verdict that re-enables Retry. After
+      // that: the truth — running.
+      const patch = polls <= 2 ? { connected: true } : { ...running, connected: true, failed: undefined, logTail: undefined };
+      await route.fulfill({ response: r, json: { ...body, ...patch } });
+    });
+    const runs: string[] = [];
+    await page.route("**/api/profile/run", async (route) => {
+      const body = route.request().postDataJSON() as { repo: string };
+      runs.push(body.repo);
+      const base = { ok: true, repo: REPO3, token: { exp: "9", sig: "x" }, connected: true, isAdmin: true, autoProfile: false, counts: null, versions: [], md: "", json: null, last: null };
+      const json =
+        runs.length === 1
+          ? { ...base, ...running, started: true }
+          : { ...base, ...running, started: false, reason: "already running" };
+      await route.fulfill({ status: 200, contentType: "application/json", json });
+    });
+
+    await page.goto("/skills");
+    const card = page.getByTestId("repo-profile").filter({ hasText: REPO3 }).first();
+    await card.locator("> summary").click();
+    const retry = card.getByTestId("profile-run");
+    await expect(retry).toHaveText(/retry/i);
+    await expect(retry).toBeEnabled();
+
+    await retry.click(); // 1st click → started:true, the card shows Profiling
+    await expect(card.locator("> summary")).toContainText(/profiling/i);
+    await expect(card.getByTestId("profile-status")).toContainText(/queued — waiting for another job/i);
+    // The poll comes back with the stale failed verdict; Retry is enabled again (the live bug's
+    // pre-condition — the server no longer produces this, but the UI must survive it).
+    await expect(retry).toHaveText(/retry/i, { timeout: 15_000 });
+    await expect(retry).toBeEnabled();
+
+    await retry.click(); // 2nd click → started:false, state running
+    await expect.poll(() => runs.length).toBe(2);
+    await expect(card.locator("> summary")).toContainText(/profiling/i);
+    await expect(card.locator("> summary")).not.toContainText(/failed/i);
+    await expect(card.getByTestId("profile-status")).toContainText(/queued — waiting for another job/i);
+    await expect(card.getByTestId("profile-error")).toHaveCount(0);
+    await expect(page.locator(".banner.err")).toHaveCount(0);
+    await expect(page.locator(".banner.warn")).toContainText(/already profiling/i);
+    await expect(retry).toHaveAttribute("aria-busy", "true");
+    await expect(retry).toBeDisabled();
+    // Still Profiling after the next poll — nothing flips it back to FAILED.
+    await expect.poll(() => polls, { timeout: 15_000 }).toBeGreaterThanOrEqual(4);
+    await expect(card.locator("> summary")).toContainText(/profiling/i);
+    expect(runs).toEqual([REPO3, REPO3]);
+  });
+
   test("repository profile editor round-trips an edit", async ({ page }) => {
     await page.goto("/skills");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();

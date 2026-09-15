@@ -578,6 +578,9 @@ export interface LearningRow {
   severity: string;
   gist: string;
   repo: string;
+  // The post this decision came from was a DRY_RUN: a real human judgement that never reached
+  // GitHub. It teaches the reviewer's skill but is excluded from every published rate.
+  dry?: boolean;
   editedGist: string;
 }
 export interface LearningCluster {
@@ -594,7 +597,9 @@ export interface LearningsData {
   // How many of each outcome a review actually reads back (rs_learn caps them separately).
   // Absent on servers that do not report it — the UI then uses the shipped defaults.
   windows?: { dropped: number; edited: number };
-  counts: { dropped: number; edited: number; kept: number };
+  // `dry` is the count of decisions recorded while DRY_RUN=1. Deliberately not part of the
+  // three outcome counts — no rate may be computed from posts that never happened.
+  counts: { dropped: number; edited: number; kept: number; dry?: number };
   // The cap on the detail log the recent rows come from (the counts above are uncapped).
   findingsCap?: number;
   repos: string[];
@@ -776,6 +781,9 @@ export interface RollupData {
     totalFindings?: number;
   };
   promotedRules: number;
+  // Decisions made on DRY_RUN posts — outside every rate and total above, reported so a pilot
+  // install can see that its judgements were recorded rather than looking empty.
+  dryDecisions?: number;
   cycle: {
     medianReviewToPostSec: number | null;
     n: number;

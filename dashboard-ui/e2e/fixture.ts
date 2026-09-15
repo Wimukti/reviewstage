@@ -468,10 +468,17 @@ export function buildFixture() {
     ["38851", "Prefer a const binding over let in the badge component"],
     ["38851", "This let is never reassigned; a const binding would be preferable"],
   ];
+  // Two decisions taken while DRY_RUN=1: real judgements that never reached GitHub. They are
+  // in no published rate, which is exactly why both pages have to say they exist — otherwise a
+  // pilot install reads as one where nobody has decided anything.
+  const dryRows = [
+    ["38849", "blocker", "Guards the refund path against a negative amount", "kept"],
+    ["38850", "should-fix", "Timeout here should come from the config", "kept"],
+  ];
   write(
     join(FIXTURE, "learnings.jsonl"),
-    drops
-      .map(([pr, gist], i) =>
+    [
+      ...drops.map(([pr, gist], i) =>
         JSON.stringify({
           at: 1778000000 + i,
           repo: REPO,
@@ -484,8 +491,23 @@ export function buildFixture() {
           gist,
           outcome: "dropped",
         }),
-      )
-      .join("\n") + "\n",
+      ),
+      ...dryRows.map(([pr, severity, gist, outcome], i) =>
+        JSON.stringify({
+          at: 1778000100 + i,
+          repo: REPO,
+          pr,
+          user: USER,
+          skill: "global",
+          path: "app/payments/refund.py",
+          line: 40 + i,
+          severity,
+          gist,
+          outcome,
+          dry: true,
+        }),
+      ),
+    ].join("\n") + "\n",
   );
   const sig = execFileSync(
     "python3",

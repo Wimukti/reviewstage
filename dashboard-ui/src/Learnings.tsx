@@ -26,6 +26,9 @@ export function Learnings({ me }: { me: Me }) {
   // and it states them to the reader — a copy of them here would silently go stale the day
   // rs_learn changed either one, which is exactly how the old "last 40 decisions" got there.
   const win = d.windows;
+  // Decisions recorded while DRY_RUN=1. They are real judgements and they do shape the next
+  // review, but nothing was posted, so no rate may be computed from them.
+  const dry = d.counts.dry ?? 0;
 
   return (
     <>
@@ -52,7 +55,26 @@ export function Learnings({ me }: { me: Me }) {
           <div className="k">{d.promoted.toLocaleString()}</div>
           <div className="l">Promoted to rules</div>
         </a>
+        {dry > 0 && (
+          <a className="stat" data-testid="dry-count">
+            <div className="k">{dry.toLocaleString()}</div>
+            <div className="l">Made in dry run</div>
+          </a>
+        )}
       </div>
+      {dry > 0 && (
+        <div className="banner info" data-testid="dry-banner">
+          <span>🧪</span>
+          <div>
+            <b>
+              {dry.toLocaleString()} of these decisions were made while <code>DRY_RUN=1</code>.
+            </b>{" "}
+            Nothing was posted to GitHub, so they are in none of the keep rates here or on
+            Insights — but {me.brand} still reads them before every review, so they teach the
+            reviewer exactly as a live decision does. They are marked <b>dry run</b> below.
+          </div>
+        </div>
+      )}
 
       {d.clusters.length > 0 && (
         <>
@@ -119,6 +141,15 @@ export function Learnings({ me }: { me: Me }) {
                     {r.repo && d.repos.length > 1 && <span className="repochip">{r.repo}</span>}
                     <span className="loc">{r.loc}</span>
                     <Pill kind={r.severity} />
+                    {r.dry && (
+                      <span
+                        className="pill dry"
+                        data-testid="dry-row"
+                        title="Decided while DRY_RUN=1 — never posted to GitHub, and in no rate. It still teaches the reviewer."
+                      >
+                        dry run
+                      </span>
+                    )}
                   </div>
                   <div className="muted sm" style={{ marginTop: 5 }}>
                     {r.gist}
@@ -136,7 +167,7 @@ export function Learnings({ me }: { me: Me }) {
             {d.findingsCap
               ? `This list is the detail log, which keeps only the most recent ${d.findingsCap.toLocaleString(
                   "en-US",
-                )} decisions — the four totals above are counted separately and are never truncated. `
+                )} decisions — the totals above are counted separately and are never truncated. `
               : ""}
             One log for the whole install: every repository, every reviewer. {me.brand} weighs
             decisions from the repository under review first, but nothing here is scoped to a

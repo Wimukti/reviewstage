@@ -179,6 +179,30 @@ test.describe("a merged pull request", () => {
   });
 });
 
+test.describe("decisions taken in dry run", () => {
+  test("the learnings page marks them and says they are in no rate", async ({ page }) => {
+    await page.goto("/learnings");
+    await expect(page.getByTestId("dry-count")).toContainText("2");
+    await expect(page.getByTestId("dry-banner")).toContainText(/DRY_RUN=1/);
+    await expect(page.getByTestId("dry-banner")).toContainText(/none of the keep rates/i);
+    await expect(page.getByTestId("dry-row").first()).toBeVisible();
+  });
+
+  test("insights accounts for them rather than reading as an empty install", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page.getByTestId("dry-banner")).toContainText(/DRY_RUN=1/);
+    await expect(page.getByTestId("dry-donut-note")).toContainText(/2 decision/);
+  });
+
+  test("the chart marks today's bar as the part-day it is", async ({ page }) => {
+    // partialLast compared the server's %m/%d/%y string against an ISO date, so it was never
+    // true and the hatch could not render.
+    await page.goto("/dashboard");
+    await expect(page.getByText(/hatched bar is today/i)).toBeVisible();
+    await expect(page.locator('rect[fill="url(#rs-partial)"]')).toHaveCount(1);
+  });
+});
+
 test.describe("the queue filters on the server", () => {
   test("every tab and tile counts the filtered set, not the whole install", async ({ page }) => {
     await page.goto("/?tab=all");

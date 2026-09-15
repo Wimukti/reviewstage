@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, errMessage, type KeepBlock, type RollupData, type RollupSeriesPoint } from "./api";
+import { Link } from "./router";
 
 // Insights — ReviewStage's activity, precision and agreement, aggregated from files it already writes.
 // All charts are hand-rolled SVG (no chart dependency), matching ReviewStage's no-framework style.
@@ -235,12 +236,14 @@ export function Rollup() {
   // page computes itself so the two cannot disagree about what "too few" means.
   const floor = kt.minSample ?? FLOOR;
   // The last bucket is today only when the series really reaches today — a stale rollup file
-  // must not hatch a bar that is in fact complete.
-  // Compare on the point's `ts`, the server's UTC-midnight bucket key: `date` is a display
-  // string (%m/%d/%y) and never matched.
+  // must not hatch a bar that is in fact complete. Compare on the point's `ts`, the server's
+  // UTC-midnight bucket key: `date` is a display string (%m/%d/%y) and never matched.
   const last = period.pts[period.pts.length - 1];
   const todayTs = Math.floor(Date.now() / 86400000) * 86400;
   const partialLast = !!last && last.ts === todayTs;
+  // Decisions recorded while DRY_RUN=1. Excluded from every rate on this page — nothing was
+  // posted — so without saying so a pilot install reads as one where nobody decided anything.
+  const dry = d.dryDecisions ?? 0;
   return (
     <>
       <div className="insights-head">
@@ -275,6 +278,22 @@ export function Rollup() {
               {r}
             </button>
           ))}
+        </div>
+      )}
+
+      {dry > 0 && (
+        <div className="banner info" data-testid="dry-banner">
+          <span>🧪</span>
+          <div>
+            <b>
+              {num(dry)} finding decision(s) were made while <code>DRY_RUN=1</code>
+              {allDecided === 0 ? " — and none outside it yet" : ""}.
+            </b>{" "}
+            Nothing was posted to GitHub, so they are in none of the keep rates or charts below;
+            that is why those can read as empty on a pilot. They are not lost —{" "}
+            <Link to="/learnings">What has been learned</Link> lists them, and every review
+            weighs them. Turn <code>DRY_RUN</code> off to start rating.
+          </div>
         </div>
       )}
 
@@ -319,6 +338,11 @@ export function Rollup() {
               { label: "Dropped", value: period.dropped, color: C.red },
             ]}
           />
+          {dry > 0 && (
+            <div className="muted sm" data-testid="dry-donut-note">
+              Excludes {num(dry)} decision(s) made in dry run, which never reached GitHub.
+            </div>
+          )}
         </div>
         <div className="panel">
           <div className="panel-h">

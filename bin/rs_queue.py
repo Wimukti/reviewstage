@@ -17,10 +17,12 @@ with `jq > tmp && mv`, outside the lock, which both lost concurrent webhook deli
 erased every row only a webhook could know about (a team review request).
 """
 import calendar
+import contextlib
 import fcntl
 import hmac
 import json
 import os
+import shutil
 import subprocess
 import time
 from hashlib import sha256
@@ -660,12 +662,22 @@ def notify_requested(bin_dir, row, login, public_url, secret, env=None, users=No
 # once-a-day block.
 SWEEP_LOGS = ("watch.log", "clone.log")
 LOG_MAX_BYTES = 8 * 1024 * 1024
+# How many archived runs survive the age cutoff, per (PR, reviewer). The sweep used to remove a
+# history/<ts>/ directory only when it was ALREADY empty — which it never is, since it holds the
+# run snapshot (review.json, usage.json, the post markers) — so the aged .log files went and the
+# bulk of what grows stayed for ever. Sweeping them by age alone would empty the "view an earlier
+# run" list on any PR nobody touched for a month, so the newest few are kept regardless of age.
+HISTORY_KEEP = 5
 
 
 def retention_sweep(root=None, days=30, now=None, log=print):
     """Truncate the big append-only logs and delete per-run artefacts older than `days`.
-    Returns {"truncated": [...], "removed": n}. Never touches review.json / posted.json /
-    approved — a reviewer's own decisions are not disposable."""
+
+    Returns {"truncated": [...], "removed": n}. Never touches the LIVE review.json / posted.json
+    / approved — a reviewer's own decisions are not disposable — and always keeps the most
+    recent HISTORY_KEEP archived runs per (PR, reviewer), however old they are, so the timeline
+    can still open an earlier run.
+    """
     root = Path(root or ROOT)
     now = now or time.time()
     cutoff = now - max(int(days or 0), 1) * 86400
@@ -685,15 +697,44 @@ def retention_sweep(root=None, days=30, now=None, log=print):
                 if f.is_file() and f.stat().st_mtime < cutoff:
                     f.unlink()
                     out["removed"] += 1
-                elif f.is_dir() and f.stat().st_mtime < cutoff and not any(f.iterdir()):
-                    f.rmdir()
-                    out["removed"] += 1
             except OSError:
                 pass
+    out["removed"] += _sweep_history(root, cutoff)
     if out["truncated"] or out["removed"]:
         log(f"==> retention: truncated {out['truncated'] or 'nothing'}, "
-            f"removed {out['removed']} file(s) older than {days}d")
+            f"removed {out['removed']} file(s) older than {days}d "
+            f"(keeping the newest {HISTORY_KEEP} runs per PR per reviewer)")
     return out
+
+
+def _sweep_history(root, cutoff):
+    """Delete whole archived-run directories older than `cutoff`, newest HISTORY_KEEP kept.
+
+    A history entry is named for the time the run finished, so the name is the age — mtime is
+    not, since a later sweep of the .log inside it would touch the directory and keep resetting
+    its clock. Returns how many were removed."""
+    removed = 0
+    for ud in root.glob("state/*/*/users/*"):
+        hd = ud / "history"
+        if not hd.is_dir():
+            continue
+        runs = sorted((int(d.name), d) for d in hd.iterdir()
+                      if d.is_dir() and d.name.isdigit())
+        for ts, d in runs[:max(len(runs) - HISTORY_KEEP, 0)]:
+            if ts >= cutoff:
+                continue
+            try:
+                shutil.rmtree(d)
+                removed += 1
+            except OSError:
+                pass
+        # Anything left that is not a numbered run dir (an empty leftover) goes when empty.
+        for d in hd.iterdir() if hd.is_dir() else ():
+            with contextlib.suppress(OSError):
+                if d.is_dir() and not d.name.isdigit() and not any(d.iterdir()):
+                    d.rmdir()
+                    removed += 1
+    return removed
 
 
 # --- CLI (pr-watch.sh drives the queue through this, so it takes the same lock) ------------------

@@ -1537,6 +1537,13 @@ def risk_banner(label):
 # refused only when THIS run has already been posted, and a re-run archives the list with the run
 # it belongs to. Nothing the webhook writes can close the gate.
 POSTED_RUNS = "posted_runs.json"
+# How many posts the gate remembers per (repo, PR, reviewer). The list is cleared by a re-run,
+# and a second post of the SAME run is already refused, so it only grows when the author pushes
+# again and the reviewer posts against the new head without re-running — twenty of those on one
+# PR is already implausible. It is still a cap on a security-relevant gate, so an eviction is
+# logged rather than swallowed: the run that drops off the end could, in principle, be posted a
+# second time, and whoever reads the log should be able to see that the window reopened.
+POSTED_RUNS_CAP = 20
 
 # Files that describe one review run — copied into history/<ts>/ when a re-run replaces it.
 RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status",
@@ -1641,8 +1648,13 @@ def record_posted_run(repo, pr, login, key, head, inline, event):
     at = int(time.time())
     rows = posted_runs(repo, pr, login)
     rows.append({"reviewKey": key, "head": head, "at": at, "inline": inline, "event": event})
+    evicted, rows = rows[:-POSTED_RUNS_CAP], rows[-POSTED_RUNS_CAP:]
+    for r in evicted:
+        print(f"[post] {repo}#{pr} {login}: posting gate full ({POSTED_RUNS_CAP} entries) — "
+              f"forgetting the post of run {r.get('reviewKey', '?')} at "
+              f"{str(r.get('head', ''))[:7]}; that run could be posted again", flush=True)
     try:
-        (d / POSTED_RUNS).write_text(json.dumps(rows[-20:]))
+        (d / POSTED_RUNS).write_text(json.dumps(rows))
     except OSError:
         pass
     (d / "posted.json").write_text(json.dumps(
@@ -4323,6 +4335,9 @@ class Handler(BaseHTTPRequestHandler):
                     "loc": r.get("path", "") + (f":{r['line']}" if r.get("line") else ""),
                     "severity": r.get("severity", "nit"), "gist": r.get("gist", ""),
                     "repo": r.get("repo", ""),
+                    # True when the post it came from was a DRY_RUN: a real decision that never
+                    # reached GitHub. Counted in `counts.dry`, excluded from every rate.
+                    "dry": bool(r.get("dry")),
                     "editedGist": r.get("edited_gist", "") if o == "edited" else ""}
         return {"counts": rs_learn.counts(), "repos": all_repos(),
                 # How many rows of each outcome a review actually reads back. The page states
@@ -5439,7 +5454,8 @@ class Handler(BaseHTTPRequestHandler):
         skill = skill_f.read_text().strip() if skill_f.exists() else "global"
         # Learnings are recorded ONCE, at the end, and only down a path that actually reached
         # GitHub or was an explicit dry run — see _learn() below.
-        learn = lambda: self._learn(repo, pr, user, originals, form, skill, key)  # noqa: E731
+        learn = lambda dry=False: self._learn(repo, pr, user, originals, form, skill, key,  # noqa: E731
+                                              dry=dry)
         if not chosen:
             # Nothing ticked is not "the reviewer dropped every finding": it is a click with an
             # empty selection, and logging a full set of drops for it inflated the drop rate and
@@ -5505,7 +5521,10 @@ class Handler(BaseHTTPRequestHandler):
                       "rather than risk a 422 that would lose the whole review.")
 
         if DRY_RUN:
-            learn()
+            # Recorded, but flagged: the reviewer's judgement is real signal for the prompt block
+            # and the rule clusters, while nothing reached GitHub, so no published rate may
+            # count it. See rs_learn.record().
+            learn(dry=True)
             return _banner("warn", "\U0001f9ea",
                            "<b>DRY RUN — nothing was sent to GitHub.</b><br>Your review would "
                            f"post as <code>{event}</code> — "
@@ -5531,9 +5550,9 @@ class Handler(BaseHTTPRequestHandler):
                        + caveat)
 
     @staticmethod
-    def _learn(repo, pr, user, originals, form, skill, run_key):
+    def _learn(repo, pr, user, originals, form, skill, run_key, dry=False):
         """Record what the reviewer kept, edited and dropped — once, for a post that actually
-        happened.
+        happened, or for an explicit dry run (`dry=True`, which keeps the row out of every rate).
 
         It used to fire before the anchor fetch, before the dry-run branch and before the POST,
         with no per-run dedupe: a GitHub outage plus three retries logged every finding four
@@ -5541,7 +5560,7 @@ class Handler(BaseHTTPRequestHandler):
         rate and can trip the rule-suggestion threshold off one bad afternoon. `run_key` makes a
         retry REPLACE its predecessor instead of appending.
         """
-        rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key)
+        rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key, dry=dry)
 
     def _approve_result(self, repo, pr, user, form):
         """Approve as the user. Serialised on the same lock the post path takes, so two tabs

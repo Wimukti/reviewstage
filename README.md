@@ -36,7 +36,8 @@ ReviewStage is an open-source, self-hosted PR review assistant built on [Claude 
 git clone https://github.com/Wimukti/reviewstage && cd reviewstage
 cp .env.example .env               # set REPOS and GITHUB_PAT (the service token)
 docker compose up -d
-docker compose exec app doctor     # diagnostics from inside the container
+bin/doctor.sh                      # diagnostics — re-execs inside the container
+                                   # (or: docker compose exec app doctor)
                                    # (RS_HOST_PORT=9000 in .env moves the host port)
 ```
 

@@ -106,18 +106,18 @@ def review(state, repo_slug, pr, login, comments, at, hist=None, model="claude-o
     return d
 
 
-def learning(root, outcome, at, repo="acme/widgets", critical=False):
+def learning(root, outcome, at, repo="acme/widgets", critical=False, dry=False):
     row = {"at": at, "repo": repo, "pr": "1", "user": "ann", "skill": "global",
            "path": "app/x.php", "line": 1, "severity": "nit", "gist": "g", "outcome": outcome}
     if critical:
         row["critical_path"] = "app/**"
+    if dry:
+        row["dry"] = True
     with open(Path(root) / "learnings.jsonl", "a") as fh:
         fh.write(json.dumps(row) + "\n")
 
 
-class Compute(unittest.TestCase):
-    """compute() had no test coverage at all, and it is what the whole Insights page renders."""
-
+class ComputeBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -130,6 +130,10 @@ class Compute(unittest.TestCase):
 
     def out(self, **kw):
         return R.compute(self.state, self.root, now=self.now, **kw)
+
+
+class Compute(ComputeBase):
+    """compute() had no test coverage at all, and it is what the whole Insights page renders."""
 
     def test_history_runs_are_counted_and_bucketed_by_their_own_finish_time(self):
         blocker = [{"severity": "blocker"}, {"severity": "nit"}]
@@ -219,6 +223,30 @@ class Compute(unittest.TestCase):
         self.assertEqual(k["decided"], 1)
         self.assertFalse(k["ratable"])
         self.assertEqual(k["minSample"], rs_learn.MIN_RATE_SAMPLE)
+
+
+class DryRunIsNotAMetric(ComputeBase):
+    """Regression: a pilot on the default DRY_RUN=1 posts nothing to GitHub, and Insights
+    reported a keep rate computed entirely from those hypothetical posts."""
+
+    def test_dry_decisions_are_out_of_the_keep_totals_and_reported_separately(self):
+        totals = {"version": rs_learn.TOTALS_VERSION, "cap": rs_learn.CAP, "complete": True,
+                  "outcomes": {"kept": 8, "edited": 1, "dropped": 1}, "dryDecisions": 120,
+                  "criticalPath": {}, "repos": {}, "repoCriticalPath": {}, "skills": {},
+                  "days": {}}
+        (self.root / "learnings_totals.json").write_text(json.dumps(totals))
+        out = self.out()
+        self.assertEqual(out["keep"]["allTime"]["decided"], 10)
+        self.assertEqual(out["dryDecisions"], 120)
+
+    def test_a_dry_row_is_not_in_the_per_day_keep_series(self):
+        learning(self.root, "kept", self.now)
+        learning(self.root, "kept", self.now, dry=True)
+        today = next(d for d in self.out()["series"] if d["ts"] == R._daystart(self.now))
+        self.assertEqual(today["kept"], 1)
+
+    def test_an_install_with_no_dry_posts_reports_zero(self):
+        self.assertEqual(self.out()["dryDecisions"], 0)
 
 
 class DayBuckets(unittest.TestCase):

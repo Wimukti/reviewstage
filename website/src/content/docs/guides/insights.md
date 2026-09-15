@@ -45,6 +45,13 @@ different populations.
   after the post actually reached GitHub. A review you read and never posted contributes
   nothing, in either direction; a post retried through an outage is recorded once, not four
   times.
+- **A dry run is not a post.** On the default `DRY_RUN=1` nothing is written to GitHub, so
+  clicking Post decides nothing on the pull request. Those decisions *are* recorded — they are
+  a real human judgement, and the learnings loop and the rule suggestions use them — but they
+  are flagged `dry` and excluded from the keep rate, the verbatim rate, the per-skill scores,
+  every outcome total and the per-day series. They are reported separately as `dryDecisions`.
+  A two-week pilot on the shipped default therefore shows no keep rate rather than a keep rate
+  about reviews that never happened.
 - **Minimum sample.** Below **20** scored decisions no rate is shown at all — one kept finding
   is not "100%". The same floor governs the Insights tile and the per-skill table, and the API
   publishes it, so no surface invents its own.

@@ -15,7 +15,9 @@ on the code as it was.
 
 Run: python3 -m unittest bin/test_rs_post.py
 """
+import contextlib
 import importlib
+import io
 import json
 import os
 import shutil
@@ -192,6 +194,76 @@ class PostingTwiceOnOnePr(PostCase):
     def test_run_files_carry_the_post_markers(self):
         self.assertIn("posted.json", self.srv.RUN_FILES)
         self.assertIn(self.srv.POSTED_RUNS, self.srv.RUN_FILES)
+
+
+# --- a dry run is a real decision, but never a metric ------------------------------------------
+class DryRunIsRecordedButNotRated(PostCase):
+    """The original audit's concern: a two-week pilot on the default DRY_RUN=1 posts nothing to
+    GitHub, yet Insights reported a keep rate computed from those entirely hypothetical posts.
+    The decision is still worth learning from — it just has to be flagged."""
+
+    def setUp(self):
+        super().setUp()
+        self.srv = load_server(self.root, extra="DRY_RUN=1\n")   # last line wins in .env
+        self.srv.save_users({USER: {"name": "Alice"}})
+
+    def test_nothing_is_sent_and_the_decision_is_flagged_dry(self):
+        calls = self.fake_github()
+        importlib.reload(self.srv.rs_learn)   # fake_github stubs record(); these tests want it
+        out = self.handler()._post_result(REPO, PR, USER, self.form())
+        self.assertIn("DRY RUN", out)
+        self.assertEqual(calls, [], "a dry run must not reach GitHub")
+        rows = self.srv.rs_learn._read()
+        self.assertTrue(rows, "the decision is still recorded")
+        self.assertTrue(all(r.get("dry") for r in rows))
+
+    def test_the_hypothetical_post_is_in_no_rate_and_counted_on_its_own(self):
+        self.fake_github()
+        importlib.reload(self.srv.rs_learn)   # fake_github stubs record(); these tests want it
+        self.handler()._post_result(REPO, PR, USER, self.form())
+        c = self.srv.rs_learn.counts()
+        self.assertEqual((c["kept"], c["edited"], c["dropped"]), (0, 0, 0))
+        self.assertEqual(c["dry"], len(REVIEW["comments"]))
+        self.assertIsNone(self.srv.rs_learn.keep_rates(c)["keepRate"])
+
+    def test_a_dry_run_still_does_not_close_the_posting_gate(self):
+        self.fake_github()
+        self.assertIn("DRY RUN", self.handler()._post_result(REPO, PR, USER, self.form()))
+        self.assertIn("DRY RUN", self.handler()._post_result(REPO, PR, USER, self.form()))
+
+
+# --- the posting gate has a cap; an eviction must not be silent --------------------------------
+class ThePostingGateSaysWhenItForgets(PostCase):
+    """posted_runs.json keeps the last POSTED_RUNS_CAP posts. Dropping the oldest reopens the
+    window on that run, so the drop is logged instead of happening silently."""
+
+    def record(self, n):
+        for i in range(n):
+            self.srv.record_posted_run(REPO, PR, USER, f"rk1:{i:024d}", HEAD_A, 1, "COMMENT")
+
+    def test_the_gate_stays_capped(self):
+        self.record(self.srv.POSTED_RUNS_CAP + 5)
+        self.assertEqual(len(self.srv.posted_runs(REPO, PR, USER)), self.srv.POSTED_RUNS_CAP)
+
+    def test_the_newest_entries_are_the_ones_kept(self):
+        self.record(self.srv.POSTED_RUNS_CAP + 2)
+        keys = [r["reviewKey"] for r in self.srv.posted_runs(REPO, PR, USER)]
+        self.assertEqual(keys[-1], f"rk1:{self.srv.POSTED_RUNS_CAP + 1:024d}")
+        self.assertNotIn("rk1:" + "0" * 24, keys)
+
+    def test_an_eviction_is_logged(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.record(self.srv.POSTED_RUNS_CAP + 1)
+        out = buf.getvalue()
+        self.assertIn("posting gate full", out)
+        self.assertIn("rk1:" + "0" * 24, out)
+
+    def test_nothing_is_logged_below_the_cap(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.record(self.srv.POSTED_RUNS_CAP)
+        self.assertNotIn("posting gate full", buf.getvalue())
 
 
 # --- blocker 2: a review left on github.com must not strand the staged draft -------------------

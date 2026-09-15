@@ -49,24 +49,42 @@ docker compose exec app pr-watch.sh                 # poll now instead of waitin
 docker compose exec app run-review.sh <owner/name> <pr>
 ```
 
-### Run the doctor the way that works
+### Run the doctor
 
 ```bash
-docker compose exec app doctor
+docker compose exec app doctor      # or just: bin/doctor.sh
 ```
 
 `bin/doctor.sh` is a diagnostic for the environment the **server** runs in: it reads
 `ROOT/.env`, looks for `git`, `gh`, `claude`, `jq`, `flock`, `openssl` and `curl` on `PATH`,
 checks the service token against each configured repository, checks free disk and free RAM,
 probes `/health`, and lists the installed skills and signed-in users. On a Docker install
-every one of those lives inside the `app` container, so running the script on the host checks
-the wrong machine: it reads the host's `~/.reviewstage/.env` rather than the `.env` you just
-filled in, finds no `claude`, and reports FAILs against a perfectly healthy install. On macOS
-it can never pass, because the host has no `/proc/meminfo`.
+every one of those lives inside the `app` container — none of them are on the host.
 
-`docker compose exec app doctor` runs the same script inside the container, against the real
-config, the real binaries and the real data volume. `docker compose run --rm app doctor` does
-the same in a throwaway container sharing the volume, which works when `app` will not start.
+So the script finds the container for you. Run from a directory holding this project's
+`docker-compose.yml` with the `app` service up, it re-execs itself inside the container and
+says so on its first line:
+
+```
+Compose project detected — running the checks inside the app container (docker compose exec app doctor).
+```
+
+Everything after that line is about the real install: the `.env` you filled in, the real
+binaries, the real data volume. The two explicit forms still work and are unchanged —
+`docker compose exec app doctor` runs the checks where it is, and
+`docker compose run --rm app doctor` uses a throwaway container sharing the volume, which is
+the one to reach for when `app` will not start.
+
+When `app` is **not** running, the doctor says so and falls back to checking the host, with a
+WARN naming what it is really looking at:
+
+```
+WARN  this is a ReviewStage Compose project but its 'app' service is not running, so the
+      checks below are about THIS HOST, not the install.
+```
+
+Treat those results with that in mind — on a Docker install the host has no `.env`, no
+`claude`, and on macOS no `/proc/meminfo`, so they will FAIL whatever state the install is in.
 
 It never checks Docker itself — `docker compose ps` is that check.
 
@@ -204,7 +222,7 @@ is safe to delete is the most common reason to need one.
 | `learnings.jsonl` | The detail log of kept / reworded / dropped findings, capped at the **most recent 300 rows** across the whole install. Feeds the prompt block and the Learnings page. | No — it steers every future review. |
 | `learnings_totals.json` | The never-truncated tally behind that capped log: outcomes by repository, by skill, by critical path and by UTC day. Every "all-time" number on Insights and Skills is read from here. | No. It self-heals by rebuilding from `learnings.jsonl`, but the rebuild is marked incomplete and anything older than the surviving 300 rows is gone for good. |
 | `rule_proposals.json`, `rule_dismissals.json`, `rule_promotions.json` | Which repeated rejections were drafted as team rules, which the team dismissed, and which were accepted. | No — deleting the dismissals re-offers rules people already said no to. |
-| `profiles/<owner>__<name>/` | `profile.json` (machine copy, with a schema version and generation metadata), `profile.md` (the human copy), `profile.<ts>.json` for every earlier version, and the `tree.*` fingerprints auto-reprofiling compares. | No — regenerating costs a model call and loses the hand edits. |
+| `profiles/<owner>__<name>/` | `profile.json` (machine copy, with a schema version and generation metadata), `profile.md` (the human copy), `profile.<ts>.json` for the ten most recent earlier versions (older ones are deleted as each new version is written), and the `tree.*` fingerprints auto-reprofiling compares. | No — regenerating costs a model call and loses the hand edits. |
 | `queue.json` (+ `.queue.lock`) | The live "who owes a review on what" queue, merged under a lock by the poller and the webhook. | Yes — the next poll rebuilds it. |
 | `seen` | Notification dedup, one line per `<repo>:<pr>:<login>`. See below: a line here means a card was **sent**. | Yes, at the cost of re-announcing the backlog. Prune it with the recipe below instead. |
 | `suppressed` | PR/reviewer pairs deliberately not pinged *yet* — draft, bot-authored with `SKIP_BOT_PRS=1`, or older than `RS_MAX_PR_AGE_DAYS` — with the reason and when. Re-evaluated every cycle. | Yes. Everything in it is re-derived on the next poll. |
@@ -234,11 +252,11 @@ Inside `users/<login>/`:
 | `status`, `pid`, `.lock`, `started_at`, `run.log`, `agent.log` | The job's lifecycle and logs. |
 | `usage.json`, `cached` | Model, tokens and cost — or, for a cache hit, the marker that zeroes them so a replay is not billed twice. |
 | `posted.json` | The shared fact "this reviewer has a review on this PR". Read by the queue, the timeline and the webhook. It is **not** the posting gate. |
-| `posted_runs.json` | The posting gate: one entry per post this dashboard actually made, each naming the head SHA and a content hash of the run. Capped at the last 20. |
+| `posted_runs.json` | The posting gate: one entry per post this dashboard actually made, each naming the head SHA and a content hash of the run. Capped at the last 20; an eviction is logged (`posting gate full`) because the run that drops off could in principle be posted a second time. A re-run clears the file, and the same run is refused twice, so entries only build up when the author keeps pushing and the reviewer keeps posting without re-running. |
 | `approved` | The approval, with the head it was given against. |
 | `requested_at` | When GitHub recorded the review request — the start of the cycle-time clock. |
 | `archived`, `archived.auto` | Hidden from this person's tabs. The `.auto` sibling marks an archive *ReviewStage* made (the PR closed, or a new user's clean slate); a returning review request clears both and the `seen` line with them. An archive the person clicked has no `.auto` sibling and is never undone automatically. |
-| `history/<ts>/` | Earlier runs, kept whole. |
+| `history/<ts>/` | Earlier runs, kept whole. Swept by age past the newest five (see [Retention](#retention)). |
 
 Deleting a reviewer's `posted_runs.json` reopens the gate: clicking Post again would send the
 same review to GitHub a second time. Deleting `archived.auto` while leaving `archived` makes an
@@ -252,12 +270,17 @@ The poller runs a housekeeping block **once a calendar day** (guarded by `daily-
 - Prunes expired device-token hashes.
 - Prunes `seen` lines for PRs that are now closed.
 - Sweeps with `RS_RETENTION_DAYS` (default 30): every `*.log` under a PR or a reviewer
-  directory older than that is deleted, and a `history/<ts>` directory is removed only if it is
-  already empty — so the runs themselves are kept and it is their logs that age out.
+  directory older than that is deleted, and so is each whole `history/<ts>` run snapshot older
+  than that — **except** the newest five per PR per reviewer, which are kept however old they
+  are so the timeline can still open an earlier run. A run's age is its directory name, the
+  time it finished, not its mtime.
 - Truncates `watch.log` and `clone.log` to their last 4 MiB once either passes 8 MiB.
 
-It never touches `review.json`, `posted.json` or `approved`. On Docker, the container's own
-stdout is capped separately by the compose file (3 × 10 MB per service).
+It never touches the live `review.json`, `posted.json` or `approved`. On Docker, the
+container's own stdout is capped separately by the compose file (3 × 10 MB per service).
+
+Profile versions are capped at their own write rather than by this sweep: `save_profile()`
+keeps the newest **ten** `profile.<ts>.json` per repository and deletes the rest.
 
 ---
 

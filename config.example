@@ -127,13 +127,14 @@ RS_MAX_PR_AGE_DAYS=45
 MIN_FREE_MB=800
 
 # Refuse to start a review, a QA guide or a profiling run below this much free disk on ROOT, in
-# MB. Note that bin/doctor.sh reads the same key but defaults it to 1024, so with the key unset
-# the doctor FAILs at a level the job guard still allows. Set it explicitly and both agree.
+# MB. bin/doctor.sh reads the same default, from bin/lib-limits.sh, so a passing disk check in
+# the doctor means the jobs will start.
 MIN_FREE_DISK_MB=500
 
-# How many days of per-run .log files the poller's once-a-day sweep keeps. The same sweep
-# truncates watch.log and clone.log once either passes 8 MiB. It never deletes review.json,
-# posted.json or approved.
+# How many days the poller's once-a-day sweep keeps per-run .log files AND whole archived run
+# snapshots (history/<ts>/). The newest 5 runs per PR per reviewer are kept however old they
+# are. The same sweep truncates watch.log and clone.log once either passes 8 MiB. It never
+# deletes the live review.json, posted.json or approved.
 RS_RETENTION_DAYS=30
 
 # The QA-guide agent's wall-clock budget, as a `timeout` duration. Unset, it is sized from the

@@ -307,8 +307,8 @@ Everything lives in `~/.reviewstage/.env` (chmod 600).
 | `DRY_RUN`            | default 1   | `1` = dashboard works fully but refuses to write to GitHub     |
 | `SKIP_BOT_PRS`       | default 0   | `1` ignores PRs authored by bots                               |
 | `MIN_FREE_MB`        | default 800 | Refuse to start a review below this much available RAM         |
-| `MIN_FREE_DISK_MB`   | default 500 | Refuse to start a review, QA guide or profiling run below this much free disk on `ROOT` (`bin/doctor.sh` reads the same key but defaults it to 1024) |
-| `RS_RETENTION_DAYS`  | default 30  | How long per-run logs are kept before the once-a-day sweep     |
+| `MIN_FREE_DISK_MB`   | default 500 | Refuse to start a review, QA guide or profiling run below this much free disk on `ROOT`. `bin/doctor.sh` reads the same floor, from `bin/lib-limits.sh` |
+| `RS_RETENTION_DAYS`  | default 30  | How long per-run logs and archived run snapshots are kept before the once-a-day sweep (the newest 5 runs per PR per reviewer are always kept) |
 | `RS_PORT`            | default 8899 | The port the server binds. From source this is the whole story |
 | `RISK_PATHS`         | default ""  | `label:pattern` rules for the risk-area banner. Empty = off    |
 | `RS_HOST_ALIASES` | default ""  | Extra hostnames that are this instance (cross-host SSO)        |

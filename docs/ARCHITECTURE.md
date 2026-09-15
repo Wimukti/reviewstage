@@ -14,6 +14,7 @@ review queue on a small server.
 | `rs_diff.py`   | imported                  | Diff-anchor validation, so GitHub can't 422 the whole review    |
 | `rs_md.py`     | imported                  | Dependency-free markdown → HTML (headings, tables, code, lists) |
 | `lib-common.sh`   | sourced                   | Config, repo helpers, HMAC signing, Slack posting               |
+| `lib-limits.sh`   | sourced                   | The free-memory and free-disk floors, so the jobs and the doctor read one definition |
 | `rs_paths.py`  | imported                  | The one place that knows the on-disk layout + the legacy migration |
 | `rs_queue.py`  | imported                  | queue.json / seen writers shared by pr-watch.sh and the webhook |
 | `rs_webhook.py`| imported                  | `POST /webhooks/github`: HMAC check, event → queue, webhooks.json |
@@ -171,7 +172,9 @@ The worktree is removed as soon as `review.json` is copied out.
   kept and appended to `learnings.jsonl` (short gists, capped at 300 rows, tagged with the
   repo) — after the post reaches GitHub, keyed by the run so a retry replaces its rows rather
   than appending a second set. A never-truncated tally in `learnings_totals.json` carries the
-  all-time counts the detail cap would otherwise lose.
+  all-time counts the detail cap would otherwise lose. A `DRY_RUN` post records its decisions
+  too, flagged `dry`: they steer the prompt and the rule clusters like any other row, and are
+  excluded from every published rate and total, counted separately as `dryDecisions`.
   `render(repo)` folds recent dropped (24) and edited (12) rows — same-repo first, then the rest — into the
   next review prompt so the agent stops re-raising rejected noise; the `/learnings` page shows
   it. Attributed per user. Not ML — in-context
@@ -184,7 +187,9 @@ The worktree is removed as soon as `review.json` is copied out.
   depth instructions are editable per team on the Skills page (`_effort_<level>.md`).
 - **Re-run history**: `start_review` calls `archive_review`, which copies the current run's files
   into `history/<ts>/` and clears the live `review.json` so the re-run starts clean. The
-  detail page lists earlier runs; `/pr?pr=N&v=<ts>` renders one read-only.
+  detail page lists earlier runs; `/pr?pr=N&v=<ts>` renders one read-only. The daily retention
+  sweep removes whole run directories older than `RS_RETENTION_DAYS`, always keeping the newest
+  five per PR per reviewer so this list is never emptied.
 - **Stop**: `start_review` records the run's pid (`pid`, a session leader via
   `start_new_session`); `POST /stop` kills the process group and writes a `stopped` status.
 - **Active skill choice** (`state/skills/<login>.use`): one selector on `/skills` sets whether a
@@ -219,7 +224,8 @@ The worktree is removed as soon as `review.json` is copied out.
   without auto-re-running. The same SHA keys the re-run cache and the anchor cache, neither of
   which will now take a hit without one.
 - **Posting gate** (`posted_runs.json`): one entry per post this dashboard made, naming the head
-  and a content hash of the run. A post is refused only when *that run* already reached GitHub,
+  and a content hash of the run, capped at the last 20 with an eviction logged rather than
+  silent. A post is refused only when *that run* already reached GitHub,
   so a second round after the author pushes posts normally. The shared `posted.json` fact the
   queue, the timeline and the webhook read is written alongside it and never blocks. Approving
   compares the reviewed head with GitHub's current one and needs a typed confirmation when they

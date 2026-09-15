@@ -70,8 +70,6 @@ if [ "$(cat "$ROOT/daily-done" 2>/dev/null)" != "$(date +%F)" ]; then
     && [ "${pruned:-0}" != 0 ] && echo "==> pruned $pruned seen line(s) for closed PRs"
   ROOT="$ROOT" python3 "$HERE/rs_queue.py" retention "$RETENTION_DAYS" || true
   date +%F > "$ROOT/daily-done"
-  # Pre-rename marker: an upgraded box must not re-run yesterday's device prune twice.
-  date +%F > "$ROOT/devices-pruned"
 fi
 
 # mark_seen <repo> <pr> <login> — through rs_queue so the append takes the same fcntl lock a

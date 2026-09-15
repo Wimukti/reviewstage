@@ -22,7 +22,7 @@ docker compose exec app cat $R/status          # fetching / reviewing / done / f
 docker compose exec app cat $R/review.json     # the raw agent output
 ```
 
-Run the doctor **inside the container**: it reads the server's `.env` and looks for `claude`, `gh` and the data volume, all of which live there. On the host it reads a different `.env`, finds none of the CLIs, and FAILs against a healthy install — on macOS it cannot pass at all. Use `docker compose run --rm app doctor` when `app` will not start. It does not check Docker itself; `docker compose ps` is that check.
+The doctor checks the environment the **server** runs in — the `.env` it reads, `claude`, `gh`, the data volume — and on a Docker install all of that lives inside the container, not on the host. Run from a directory holding this project's `docker-compose.yml` with `app` up, `bin/doctor.sh` re-execs itself inside the container and says so on its first line, so the host form and the `docker compose exec app doctor` form reach the same place. When `app` is **not** up it warns that the checks below are about the host rather than the install, and those will FAIL whatever state the install is in (no `.env`, no `claude`, and on macOS no `/proc/meminfo`); use `docker compose run --rm app doctor` in that case. It does not check Docker itself; `docker compose ps` is that check.
 
 ## Everyday commands — from source
 
@@ -62,7 +62,7 @@ A job whose process is gone is no longer left spinning: the status is resolved f
 
 The file-by-file map — every top-level store, every per-run artefact, which of them regenerate and which do not — is in [OPERATIONS.md → What is on disk](https://github.com/Wimukti/reviewstage/blob/main/docs/OPERATIONS.md#what-is-on-disk). The short version: `users.json`, `skills/`, `profiles/`, `learnings.jsonl` and `learnings_totals.json` and the `rule_*.json` stores never regenerate; `queue.json`, `suppressed`, `deliveries`, `notify-fails.json`, `daily-done`, the base clones and the worktrees all do.
 
-The poller sweeps once a calendar day: per-run `*.log` files older than `RS_RETENTION_DAYS` (default 30) are deleted, `watch.log` and `clone.log` are truncated to their last 4 MiB once either passes 8 MiB, closed PRs' `seen` lines are pruned and expired device tokens go. `review.json`, `posted.json` and `approved` are never swept. On Docker the container's own stdout is capped separately at 3 × 10 MB per service.
+The poller sweeps once a calendar day: per-run `*.log` files older than `RS_RETENTION_DAYS` (default 30) are deleted, and so are whole `history/<ts>` run snapshots older than that — except the **newest five per PR per reviewer**, which are kept however old they are so "view an earlier run" still has something to open. `watch.log` and `clone.log` are truncated to their last 4 MiB once either passes 8 MiB, closed PRs' `seen` lines are pruned and expired device tokens go. The live `review.json`, `posted.json` and `approved` are never swept. Profile versions are capped where they are written rather than here: the newest **ten** `profile.<ts>.json` per repository survive. On Docker the container's own stdout is capped separately at 3 × 10 MB per service.
 
 ## Re-notifying stale cards
 
@@ -90,7 +90,7 @@ The fine-grained token was not granted on that repository, or the organisation r
 - **Slack replies are threaded only with a bot token.** Webhooks are send-only.
 - **Reviews cost tokens.** A few minutes of agent time for a typical PR on Opus (longer for Deep), on the clicker's plan. That is what click-to-run is for.
 - **Runs serialise.** One heavy job (review or QA guide) at a time per server.
-- **Reviews need memory and disk.** `MIN_FREE_MB` defaults to 800 MB *available*, so a 1 GB host cannot start one; give it at least 2 GB. A job also refuses to start below `MIN_FREE_DISK_MB` (500 MB free).
+- **Reviews need memory and disk.** `MIN_FREE_MB` defaults to 800 MB *available*, so a 1 GB host cannot start one; give it at least 2 GB. A job also refuses to start below `MIN_FREE_DISK_MB` (500 MB free), the same floor the doctor checks.
 - **Skill revision history can have gaps, but not silent ones.** A save whose git commit fails still saves the skill — the failure is now reported in the banner and the server log rather than hidden.
 
 ## Backup and restore

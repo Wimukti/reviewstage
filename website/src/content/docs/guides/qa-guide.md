@@ -11,6 +11,12 @@ The **QA guides** page builds a manual test guide for a PR: what to set up, what
 
 Enter a PR number on the QA page and click **Generate**. It needs your Claude account connected: the guide runs on your subscription, in its own worktree, and never writes to GitHub. Guides share the server's one-heavy-job-at-a-time lock with reviews, so it may show *waiting for another job to finish first*. You can **Stop** it.
 
+**A QA build is a full agent run and now says what it cost.** The model, the tokens and the duration are captured from the run and shown beside the guide, exactly as they are for a review — a guide that quietly burned an hour of someone's subscription used to leave no trace anywhere. The usage line is written before the completeness checks below, so a run that timed out still accounts for what it spent.
+
+**The budget is sized from the diff.** At most 5 changed files and 200 additions gets 25 minutes; at most 40 files and 2,000 additions gets 40; anything larger gets 60. `RS_QA_TIMEOUT` overrides it. A guide is heavier than a Deep review — it reads the diff, the review history *and* the surrounding code, then writes a long document — and the old hardcoded 25 minutes truncated large PRs.
+
+**A truncated guide is never published.** The agent's exit code is checked, a timeout fails with its own message, and the output must carry the end-of-guide marker, all three tier sections, at least one test case and the known-non-defects section before it is copied out. It used to be enough for the file to be non-empty, so a run killed at 60% arrived as *"Guide ready — hand it to QA"*. A failed build also sends the same notification card a failed review does, and its agent log is readable from the page.
+
 ## What it reads
 
 The guide is derived from evidence, not the PR description:
@@ -19,6 +25,8 @@ The guide is derived from evidence, not the PR description:
 - the PR conversation and inline review threads, which become the risk map;
 - the branch's commit history, since late fix-after-review commits mark the least-exercised paths;
 - how a tester actually triggers the change in the target environment, including scheduled jobs and environment traps.
+
+The agent has no network and no `gh`, so everything in that list that lives on GitHub is gathered by ReviewStage **before** the agent starts and written into the worktree as `.rs-pr-context.md`, which the prompt tells it to read first. This was previously a claim the code did not support: only the branch name, head SHA, title, URL and author were fetched, and the agent was left to improvise the rest.
 
 ## Structure
 
@@ -52,22 +60,24 @@ Cases are numbered continuously across P0, P1 and P2 (1…N) so a bug report can
 Every case is a `- [ ]` checkbox item carrying the data it needs, ordered steps, and an explicit
 pass and fail.
 
-:::caution[What is actually guaranteed today]
-The eleven parts above are what the `pr-qa-guide` skill specifies. The prompt `bin/run-qa.sh`
-sends asks for five of them by name — the what-this-is line, *Before you start*, the surface
-matrix, the numbered P0/P1/P2 cases, and *Known — please don't file these* — and leaves the rest
-to the skill. In practice that means the domain primer, *What changes on screen*, continuous
-numbering across tiers and the branch-head footer are **not reliably produced**, because nothing
-in the prompt asks for them.
+:::note[What the prompt guarantees, and what it leaves to the skill]
+The skill's body is now **inlined into the prompt** — it used to be named only, while
+`--allowedTools` did not include `Skill`, so the agent never saw a word of the method and
+improvised. On top of the method, `bin/run-qa.sh` states an explicit output contract naming
+items **1, 4, 5, 6, 7, 8, 9, 10 and 11**, including the continuous numbering across tiers and
+the branch-head line in the footer.
 
-A parallel change is aligning the skill and the prompt so the prompt defers to the skill's
-structure. Until that lands, treat items 2, 3, 11 and the continuous numbering as
-best-effort — and if a guide you generate is missing one, that is why, not a bug in your PR.
+What the contract does **not** name is the **domain primer** and **What changes on screen**
+(items 2 and 3). Both are in the skill and both are conditional there — most PRs do not get a
+primer — so treat them as the skill's judgement rather than a guarantee. Everything else is
+checked before a guide is published: the three tier sections, at least one test case, the
+known-non-defects section and the end marker.
 :::
 
 Headless note: the skill's own publishing step does not apply here. `run-qa.sh` runs the agent
 with no Artifact tool and tells it to write GitHub-flavoured markdown to `qa.md` instead, which
-is what the QA page renders.
+is what the QA page renders. The skill itself has been rewritten so the markdown guide is the
+deliverable and the Artifact path is an optional appendix for interactive use.
 
 ## Output
 

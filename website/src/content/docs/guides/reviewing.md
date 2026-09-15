@@ -29,6 +29,8 @@ An identical run (same commit, effort, focus, model, skill) is served from cache
 
 Status moves through `fetching` → `reviewing` → `done (N findings)` or `failed: …`. Runs serialise one at a time per server; a waiting run shows `queued`. **Stop** kills the run's whole process group and records `stopped`.
 
+A run whose process has died no longer sits on `reviewing` for ever: the state is resolved from the lock, a live pid, or a short startup grace, and a progress status with nothing behind it reads `failed` with the log tail attached. Starting a run takes the same lock across the check and the spawn, so two quick clicks cannot both start an agent and leave **Stop** killing the wrong one.
+
 ## The result
 
 - **Assessment.** Two to four sentences: is it safe to merge, and the minimum change set. Shown to you only; never becomes a GitHub state.
@@ -42,7 +44,7 @@ Status moves through `fetching` → `reviewing` → `done (N findings)` or `fail
 
 | Banner | Meaning |
 | --- | --- |
-| **Stale** | The PR's head moved since this review. Nothing re-runs automatically. |
+| **Stale** | The PR's head moved since this review. Nothing re-runs automatically. It fires reliably now: the reviewed head SHA is written into the run's metadata, which it was not before — which also meant the re-run cache served the *previous* commit's findings under a banner claiming they were current. |
 | **Focus** | The focus note this run used. |
 | **Risk** | The PR touches paths configured as sensitive. Context only; it never gates or routes. |
 
@@ -52,7 +54,7 @@ Each finding is a card:
 
 - **Checkbox** — selected for posting.
 - **Severity** — `blocker`, `should-fix`, `nit`, `question`. Rendered from a field, so the body never repeats it.
-- **`file:line`** — in the new version of the file. Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)).
+- **`file:line`** — in the new version of the file. Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)). Anchorability is a tri-state: when the check genuinely could not run — a failed `gh pr diff`, a binary file, a file past GitHub's size cutoff — the page says so and retries, rather than reporting every finding as pointing at lines the PR does not change.
 - **Reply vs New** — when an existing thread on the PR already covers this, the finding is marked as a reply and opens with an acknowledgement, so it reads as a continuation rather than a re-raise.
 - **Agreement** — `✓ N independent` when other reviewers' runs with a different configuration raised it too; `only your run` otherwise.
 - **Body** — editable, with a markdown preview. GitHub-flavoured: backticked symbols, fenced code, and optionally a **suggestion** (an exact one-line replacement that becomes a ```` ```suggestion ```` block the author can apply in one click).
@@ -75,16 +77,32 @@ On the PR page each affected card carries a small **in summary** chip before you
 **Post to GitHub** sends the selected findings as one review with event `COMMENT`. Before the call:
 
 1. Every anchor is re-validated against the diff as it stands now — the PR may have gained commits while the review sat here — so GitHub cannot reject the whole review because one `path:line` is outside it. Anything that no longer anchors moves into the body section above.
-2. The GitHub reads it depends on are checked for shape and retried once; on anything odd it refuses rather than posting a degraded review.
-3. The exact payload is saved with the PR so you can see what went out.
+2. The GitHub reads it depends on are checked for shape and retried once; on anything odd it refuses rather than posting a degraded review. A file GitHub would not resolve is reported to you rather than silently demoted.
+3. The PR is confirmed still open, on the same trip that already fetches the files.
+4. The exact payload is saved with the PR so you can see what went out.
 
 Posting is per person. Someone else posting on the same PR is their post, in their tab.
 
 With `DRY_RUN=1` the button reports what it would have done and saves the payload, and nothing reaches GitHub.
 
+### Posting is scoped to the run, not the pull request
+
+The product's ordinary rhythm — review, post, the author pushes, review again, post again — now works. It did not before: a single per-(PR, reviewer) marker was set by the first post and cleared by nothing, so the second post was refused with *"Already posted to GitHub as your review"* and the post bar disappeared entirely. Worse, a review the reviewer left on GitHub's own Files tab wrote that same marker and stranded their whole staged draft.
+
+The gate is now one entry per post this dashboard actually made, each naming the head SHA and a content hash of the run it posted. So:
+
+- **A second round posts.** A new run on a new commit is a different run, and is never blocked.
+- **The same run does not post twice.** A double-click, a replayed action link, or two tabs racing each other get one review on GitHub and a clear message for the loser. The check, the POST and the write are held under one lock.
+- **A stale tab cannot post the wrong text.** The page echoes back the hash of the run it rendered. If a re-run from another device reordered the findings underneath it, the post is refused with a `409` instead of sending your edit against a different finding's file and line.
+- **Nothing GitHub tells us closes the gate.** The shared "this reviewer has reviewed this PR" fact the queue and timeline read is still written, including by the webhook; it just no longer blocks you.
+
+Two ceilings worth knowing: a review is refused above **50** comments in one all-or-nothing call, at most **25** are pre-ticked for you, and the page stops rendering beyond **250** findings.
+
 ## Approving
 
 A separate panel. Enabled only when the PR is **open**, **not a draft**, **not yours**, and has a review on this server. Deliberately *not* gated on "still a requested reviewer": GitHub clears the request the moment any review is submitted, which would make post-then-approve impossible.
+
+**Approval knows which commit you read.** The run records the head it reviewed. If the branch has moved since, approving is refused with the two short SHAs named — *"New commits have landed since this review ran"* — and goes through only when you tick the confirmation to approve the current commit anyway. Approving the same head twice is refused outright, because a second click would post a second approval; a new commit makes approving possible again.
 
 The body is pre-filled with `LGTM` plus a checklist of blocker and should-fix findings (nits omitted). Edit it, then **Approve**: it posts the comment and the approval, as you. Once approved, the panel is replaced by a card showing when and with what text.
 

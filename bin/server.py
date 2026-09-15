@@ -960,6 +960,9 @@ def ensure_skills_repo():
         _skills_git("init", "-q")
         _skills_git("config", "user.email", "reviewstage@reviewstage.local")
         _skills_git("config", "user.name", "ReviewStage")
+    gi = SKILLS_DIR / ".gitignore"
+    if not gi.exists():
+        gi.write_text("*.lock\n*.tmp\n*.use\n")   # lock sidecars are not part of the history
     # A global `commit.gpgsign=true` on the host is enough to make every commit here fail, and
     # nothing checked the return code — the audit trail was empty and the UI simply hid the
     # history panel. This repo is local bookkeeping; it is never signed.

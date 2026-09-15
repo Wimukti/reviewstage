@@ -127,6 +127,10 @@ export interface Me {
   // Whether the PR poller has ever completed a cycle on this install. Absent on servers that do
   // not report it yet — the Queue treats "absent" as "cannot tell" and says nothing.
   poller_ran?: boolean;
+  // Whether this person has already been shown the guided tour. Server-side (per user), not
+  // per browser. Absent on older servers — the shell then falls back to not showing it twice
+  // in one session rather than re-running it on every machine.
+  tour_seen?: boolean;
   running?: RunningJob[]; // reviews / QA guides in flight for this user
   auth?: "cookie" | "bearer"; // how this request was authenticated
   login_via?: "oauth" | "pat"; // how the stored GitHub token was obtained
@@ -146,7 +150,7 @@ export interface DevicePoll {
   interval?: number; // pending: GitHub asked us to slow down to this many seconds
   retry_after?: number; // pending (429): we polled too early
   login?: string; // ok
-  welcome?: boolean; // ok: first sign-in, no Slack ID yet
+  welcome?: boolean; // ok: this login had no user record before — a first-ever sign-in
   error?: string; // error
 }
 
@@ -194,6 +198,11 @@ export interface QueueRow {
   archived: boolean;
   running: boolean; // a review of this PR is in flight for you right now
   status: string; // its progress phrase, when running
+  // The PR's own state on GitHub ("open" | "closed" | "merged"), persisted when the closed
+  // webhook arrived. Absent on servers that do not report it — the row then says nothing.
+  prState?: string;
+  merged?: boolean;
+  canApprove?: boolean;
   archiveToken: Token;
 }
 
@@ -206,8 +215,15 @@ export interface QueueTab {
 export interface QueueData {
   tab: string;
   sort: string;
+  // The filters the server applied. Echoed back so the page can tell "the server filtered this"
+  // from "an older server ignored the parameters".
+  repo?: string;
+  q?: string;
   tabs: QueueTab[];
   stats: Record<string, number>;
+  // Per-repo tab counts under the SAME filter — every tab and tile can be rendered from one
+  // response. Absent on servers that do not compute it.
+  repoCounts?: Record<string, Record<string, number>>;
   tabDesc: string;
   rows: QueueRow[];
   repos: string[];
@@ -232,6 +248,9 @@ export interface Finding {
   // outside the PR's diff, so the finding goes into the review body instead. null/undefined:
   // GitHub would not answer, so where it lands is genuinely unknown — never claim either.
   anchorable?: boolean | null;
+  // Whether the server pre-ticked this finding. It caps the pre-selection so one click cannot
+  // attempt a review GitHub will reject whole; absent on older servers.
+  preselect?: boolean;
   agreement?: { confirmed: boolean; n: number; by: string[]; differ: string } | null;
 }
 
@@ -260,7 +279,25 @@ export interface ReviewData {
   postLabel: string;
   reused?: boolean;
   convergence?: { rate: number | null; confirmed: number; total: number; nRuns: number } | null;
-  approve?: { lgtm: boolean; blockers: number; defaultMsg: string };
+  // Findings past the render cap were not sent at all — the page must say so rather than
+  // present a truncated list as the whole review.
+  truncated?: { shown: number; total: number };
+  // More findings were worth pre-ticking than one review should carry.
+  preselectCapped?: { selected: number; eligible: number; max: number; note: string };
+  maxPerPost?: number;
+  // The anchor check could not run (or only partly ran): where the findings land is unknown,
+  // which is NOT the same as knowing they fall outside the diff.
+  anchorsUnknown?: boolean;
+  anchorError?: string;
+  approve?: {
+    lgtm: boolean;
+    blockers: number;
+    defaultMsg: string;
+    // The commit this verdict was written against, and where the branch is now. Sent back with
+    // the approval so approving head B while reading head A's "LGTM" is caught server-side.
+    reviewedHead?: string;
+    currentHead?: string;
+  };
   approved?: ApprovedData;
 }
 
@@ -386,6 +423,12 @@ export interface QaDetail {
   md?: string;
   failed?: string;
   stopped?: boolean;
+  // A failed or stopped run NEVER hides a guide already on disk: the state stays "done" and
+  // these say what went wrong with the last attempt.
+  lastRunFailed?: boolean;
+  lastRunStopped?: boolean;
+  logTail?: string[];
+  usage?: Usage | null;
   running?: { phases: string[]; cur: number; queued: boolean };
 }
 
@@ -428,6 +471,12 @@ export interface RuleSuggestion {
   dismissedBy: string;
   connected: boolean;
   pending?: boolean;
+  // Drafting is no longer automatic: it spends the acting user's Claude quota, so it happens on
+  // a click. `needsDraft` means there is no sentence yet, `drafting` that a draft is in flight
+  // on the server right now, and `draftError` the remembered reason the last attempt failed.
+  needsDraft?: boolean;
+  drafting?: boolean;
+  draftError?: string;
 }
 export interface DepthInfo { name: string; meta: string; content: string; edited: boolean }
 export interface SkillsData {
@@ -440,6 +489,9 @@ export interface SkillsData {
   // True only when the team skill differs from the shipped one. Absent on servers that do not
   // compute it; the UI then says "In use" rather than guessing "Edited".
   globalEdited?: boolean;
+  // Whether the shipped skill is on this box at all — without it "Restore built-in" has
+  // nothing to restore and globalEdited cannot be computed.
+  builtinAvailable?: boolean;
   teamSkill: string;
   mySkill: string;
   depths: Record<string, DepthInfo>;
@@ -531,6 +583,8 @@ export interface LearningsData {
   // Absent on servers that do not report it — the UI then uses the shipped defaults.
   windows?: { dropped: number; edited: number };
   counts: { dropped: number; edited: number; kept: number };
+  // The cap on the detail log the recent rows come from (the counts above are uncapped).
+  findingsCap?: number;
   repos: string[];
   clusters: LearningCluster[];
   promoted: number;
@@ -558,6 +612,19 @@ export interface ProfileLast {
   head: string;
 }
 export interface ProfileCriticalPath { path_glob: string; why: string; checks: string[] }
+// How far the saved profile has drifted from the base clone. Null when there is no clone on the
+// box, so nothing could be compared — never rendered as "fresh".
+export interface ProfileStale {
+  head: string;
+  currentHead: string;
+  stale: boolean;
+  commitsBehind: number | null;
+  unmatchedPaths: number;
+  criticalPaths: number;
+}
+// Per-section entry counts, keyed as the profile stores them.
+export type ProfileSections = Partial<Record<
+  "critical_paths" | "risk_paths" | "review_rules" | "do_not_flag" | "summary", number>>;
 export interface ProfileJson {
   summary: string;
   critical_paths: ProfileCriticalPath[];
@@ -586,6 +653,23 @@ export interface ProfileData {
   started?: boolean; // POST /profile/run: false with state "running" means "already running", not a failure
   reason?: string; // why started is false, e.g. "already running"
   confirmed?: boolean;
+  // How far this profile has drifted from the checkout; null/absent when nothing could be
+  // compared (no base clone).
+  stale?: ProfileStale | null;
+  // Whether path validation can run at all here. false means an edit is saved unchecked.
+  canValidate?: boolean;
+  sections?: ProfileSections | null;
+  // A profile.json on disk that failed its shape check: the reason, so it can be fixed.
+  invalid?: string;
+  // GET ?version=<ts> — an earlier profile, read-only until restored.
+  versionView?: boolean;
+  ts?: number;
+  // PUT /profile answers: what the save actually did.
+  unknownHeadings?: string[];
+  dropped?: string[];
+  validated?: boolean;
+  capped?: number;
+  needsConfirm?: boolean;
 }
 
 export interface StackItem {
@@ -622,6 +706,21 @@ export interface RollupSeriesPoint {
   dropped: number;
 }
 export interface RepoRollup { repo: string; runs: number; week: number; prs: number; tokens: number }
+// One keep bucket. `rate`/`verbatimRate` are kept-verbatim; `keepRate` is the product's single
+// keep rate (kept or reworded). `ratable` says whether the sample supports a percentage at all,
+// and `minSample` is the server's floor — never hardcode one beside it.
+export interface KeepBlock {
+  kept: number;
+  edited: number;
+  dropped: number;
+  rate: number | null;
+  verbatimRate?: number | null;
+  keepRate?: number | null;
+  decided?: number;
+  keptOrEdited?: number;
+  ratable?: boolean;
+  minSample?: number;
+}
 export interface RollupData {
   // How many finding decisions the keep/severity/agreement numbers were computed over, and the
   // cap on the log they come from. Absent on servers that do not report it.
@@ -633,25 +732,50 @@ export interface RollupData {
   prs: number;
   reviewers: { login: string; runs: number; week: number; tokens: number }[];
   tokens: { total: number; week: number };
-  keep: {
-    allTime: { kept: number; edited: number; dropped: number; rate: number | null };
-    criticalPath?: { kept: number; edited: number; dropped: number; rate: number | null };
-  };
+  keep: { allTime: KeepBlock; criticalPath?: KeepBlock };
   severity: { blocker: number; "should-fix": number; nit: number; question: number };
   models: { model: string; runs: number; tokens: number }[];
-  agreement: { multiReviewerPRs: number; confirmedFindings: number; avgRate: number | null };
+  agreement: {
+    multiReviewerPRs: number;
+    confirmedFindings: number;
+    avgRate: number | null;
+    // Pooled, not an unweighted mean of per-PR rates: confirmed and total are summed across
+    // every reviewed head. Absent on servers still computing the old mean.
+    pooled?: boolean;
+    heads?: number;
+    totalFindings?: number;
+  };
   promotedRules: number;
-  cycle: { medianReviewToPostSec: number | null; n: number };
+  cycle: {
+    medianReviewToPostSec: number | null;
+    n: number;
+    // What the median actually measures, in the server's own words, plus how many posted
+    // reviews fell outside the population (no review request to measure from).
+    measures?: string;
+    label?: string;
+    posts?: number;
+    measured?: number;
+    excluded?: number;
+  };
   series: RollupSeriesPoint[];
 }
 
 export const api = {
   rollup: (repo = "") => get<RollupData>(`/rollup${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`),
   me: () => get<Me>("/me"),
-  queue: (tab: string, sort: string) =>
-    get<QueueData>(`/queue?tab=${encodeURIComponent(tab)}&sort=${encodeURIComponent(sort)}`),
+  // `repo` and `q` filter EVERY tab, tile and count on the server — the client no longer
+  // filters rows it was handed, because it only ever receives the open tab's.
+  queue: (tab: string, sort: string, repo = "", q = "") =>
+    get<QueueData>(
+      `/queue?tab=${encodeURIComponent(tab)}&sort=${encodeURIComponent(sort)}` +
+        (repo ? `&repo=${encodeURIComponent(repo)}` : "") +
+        (q ? `&q=${encodeURIComponent(q)}` : ""),
+    ),
   login: (pat: string) => post<{ ok: boolean; login: string }>("/login", { pat }),
   deviceStart: () => post<DeviceStart>("/auth/device/start"),
+  // Hand the pending slot back when the person cancels, rather than parking it until GitHub's
+  // 15-minute code expiry. Best effort by nature — the caller may ignore a rejection.
+  deviceCancel: (session: string) => post<{ ok: boolean }>("/auth/device/cancel", { session }),
   // A 429 (polled faster than GitHub's interval) is a normal "pending" answer, not an error.
   devicePoll: async (session: string): Promise<DevicePoll> => {
     const r = await fetch(`${BASE}/auth/device/poll`, {
@@ -693,8 +817,12 @@ export const api = {
       review_key: string;
     }
   ) => post<BannerResult>("/post", { ...prBody(ref), ...t, ...payload }),
-  approve: (ref: PrRef, t: Token, body: string, ack: boolean) =>
-    post<BannerResult>("/approve", { ...prBody(ref), ...t, body, ack }),
+  // `reviewedHead` is the commit the verdict on screen was written against. The server refuses
+  // (or demands the confirmation) when the branch has moved since.
+  approve: (ref: PrRef, t: Token, body: string, ack: boolean, reviewedHead = "") =>
+    post<BannerResult>("/approve", {
+      ...prBody(ref), ...t, body, ack, reviewed_head: reviewedHead,
+    }),
   qaIndex: () => get<QaIndex>("/qa"),
   qaDetail: (ref: PrRef) => get<QaDetail>(`/qa?${prq(ref)}`),
   // `started` is false when nothing spawned (a run already holds the lock). Optional: older
@@ -705,10 +833,11 @@ export const api = {
   skills: () => get<SkillsData>("/skills"),
   // `rule` carries the reviewer's edit of the drafted sentence; the server already prefers it
   // over its own draft. Omitted for dismiss/undismiss.
+  // "draft" spends the acting user's Claude quota, so it only ever happens on a click.
   skillSuggestion: (
     t: Token,
     signature: string,
-    action: "accept" | "dismiss" | "undismiss",
+    action: "accept" | "dismiss" | "undismiss" | "draft",
     rule?: string,
   ) => post<SkillsData & BannerResult>("/skills/suggestion", { ...t, signature, action, rule }),
   skillAction: (step: string, payload: Record<string, unknown>) =>
@@ -726,6 +855,8 @@ export const api = {
   claudeCancel: (t: Token) =>
     post<BannerResult & { connected: boolean }>("/claude/cancel", { ...t }),
   learnings: () => get<LearningsData>("/learnings"),
+  // The tour's "seen" flag lives on the user record, not in this browser's localStorage.
+  tourSeen: (seen = true) => post<{ ok: boolean; tour_seen: boolean }>("/tour-seen", { seen }),
   stack: (ref: PrRef) => get<StackData>(`/stack?${prq(ref)}`),
   stackRun: (ref: PrRef, t: Token, effort: string, nums: string[]) =>
     post<{ ok: boolean; started: number }>("/stack/run", { ...prBody(ref), ...t, effort, nums }),
@@ -733,7 +864,13 @@ export const api = {
   profile: (repo: string) => get<ProfileData>(`/profile?repo=${encodeURIComponent(repo)}`),
   profileRun: (repo: string, t: Token) => post<ProfileData>("/profile/run", { repo, ...t }),
   profileStop: (repo: string, t: Token) => post<ProfileData>("/profile/stop", { repo, ...t }),
-  saveProfile: (repo: string, t: Token, md: string) => put<ProfileData>("/profile", { repo, ...t, md }),
+  saveProfile: (repo: string, t: Token, md: string, confirmEmpty = false) =>
+    put<ProfileData>("/profile", { repo, ...t, md, confirm_empty: confirmEmpty }),
+  // One of the earlier versions the page counts — readable, and restorable.
+  profileVersion: (repo: string, ts: number) =>
+    get<ProfileData>(`/profile?repo=${encodeURIComponent(repo)}&version=${ts}`),
+  restoreProfile: (repo: string, t: Token, ts: number) =>
+    put<ProfileData>("/profile", { repo, ...t, restore_version: String(ts) }),
   setAutoProfile: (repo: string, t: Token, on: boolean) =>
     put<ProfileData>("/profile", { repo, ...t, auto_profile: on }),
 };

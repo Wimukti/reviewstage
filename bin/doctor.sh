@@ -47,6 +47,19 @@ if [ -n "$repos" ]; then
 else
   fail "no repository configured (set REPOS=owner/name[,…] or REPO=owner/name)"
 fi
+# RS_SECRET: sessions, every signed link and the at-rest encryption key all derive from it.
+# Empty means HMAC with a key anyone can reproduce — a forged rs_session cookie is accepted as
+# any user, including an admin. The server refuses to start without one; say so here too.
+if [ -z "${RS_SECRET:-}" ]; then
+  fail "RS_SECRET is empty — session cookies and signed links would be forgeable by anyone (the server refuses to start)"
+  note "fix: RS_SECRET=\$(openssl rand -hex 32) in $ENV_FILE, then restart"
+elif [ "${#RS_SECRET}" -lt 32 ]; then
+  fail "RS_SECRET is ${#RS_SECRET} characters — it must be at least 32 (the server refuses to start)"
+  note "fix: RS_SECRET=\$(openssl rand -hex 32) in $ENV_FILE, then restart"
+else
+  pass "RS_SECRET set (${#RS_SECRET} characters)"
+fi
+
 [ -n "${REPO_ALLOW_ORG:-}" ] && note "REPO_ALLOW_ORG=$REPO_ALLOW_ORG — repos under that org are accepted on demand (the service token must see the org)"
 case "${DRY_RUN:-1}" in
   1) note "DRY_RUN=1 — nothing is written to GitHub";;

@@ -108,7 +108,25 @@ def load_env():
 
 
 ENV = load_env()
+# The one key everything else hangs off: session cookies, every signed action link, the OAuth
+# state, and the key stored tokens are encrypted under. An empty or short RS_SECRET is not a
+# degraded mode, it is no security at all — HMAC(b"", …) is a key anyone can reproduce, so a
+# forged `rs_session=<anyone>:<exp>:<sig>` cookie verifies and hands out an admin session. The
+# server refuses to start without a real one (see secret_problem / the __main__ block).
 SECRET = ENV.get("RS_SECRET", "")
+MIN_SECRET_LEN = 32
+
+
+def secret_problem(secret):
+    """Why `secret` is unusable as RS_SECRET, or None. Shared by startup and the tests."""
+    if not (secret or "").strip():
+        return ("RS_SECRET is empty — sessions and every signed link would be signed with a "
+                "key anyone can reproduce, so a forged session cookie would be accepted as "
+                "any user. Set it in .env: RS_SECRET=$(openssl rand -hex 32)")
+    if len(secret.strip()) < MIN_SECRET_LEN:
+        return (f"RS_SECRET is only {len(secret.strip())} characters — it must be at least "
+                f"{MIN_SECRET_LEN}. Set it in .env: RS_SECRET=$(openssl rand -hex 32)")
+    return None
 # The SERVICE token: reads (diffs, PR metadata, the poller's searches) and the base clone.
 # Never used to post or approve — those use the signed-in user's own PAT, see user_pat().
 PAT = ENV.get("GITHUB_PAT", "")
@@ -4119,6 +4137,11 @@ if __name__ == "__main__":
     port = int(os.environ.get("RS_PORT", "8899"))
     if USERS.exists():
         os.chmod(USERS, 0o600)
+    if problem := secret_problem(SECRET):
+        # Same treatment REPOS gets, for the same reason: without it the server is not merely
+        # less secure, it is open. An empty secret makes every session cookie forgeable.
+        print(f"FATAL: {problem}", flush=True)
+        raise SystemExit(1)
     if not REPOS:
         print("FATAL: no repository configured in .env — set REPOS=owner/name[,owner/name…] "
               "(or the single-entry alias REPO=owner/name)", flush=True)

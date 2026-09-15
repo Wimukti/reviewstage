@@ -6,6 +6,10 @@ tests — so the findings that matter most often land on lines the PR never touc
 not failures to be folded away; they go into the review body, expanded, each linking straight
 at the line on the head commit.
 """
+from urllib.parse import quote
+
+import rs_diff
+
 
 SEV_ORDER = {"blocker": 0, "should-fix": 1, "nit": 2, "question": 3}
 SEV_LABEL = {"blocker": "🚫 Blocker", "should-fix": "⚠️ Should fix",
@@ -18,17 +22,42 @@ LEDE = ("These point at lines this PR does not change, so GitHub cannot take the
         "comments. Each link opens the exact line on this PR's head commit.")
 
 
-def permalink(repo, head, path, line):
-    """A blob link at the reviewed commit — works for files the PR never touched."""
-    if not (repo and head and path):
+def safe_path(path):
+    """The finding's path as a repo-relative path, or "" if it is not one.
+
+    The path comes from the model, so it is untrusted: an absolute path, a `..` escape or a
+    backslash would build a link that points outside the repository (or, percent-decoded by
+    GitHub, somewhere else entirely). Anything that is not a plain relative path gets no link.
+    """
+    p = (path or "").strip().replace("\\", "/")
+    if not p or p.startswith("/") or p.startswith("//") or ":" in p.split("/")[0]:
         return ""
-    url = f"https://github.com/{repo}/blob/{head}/{path}"
-    return f"{url}#L{line}" if isinstance(line, int) else url
+    parts = [seg for seg in p.split("/") if seg not in ("", ".")]
+    if not parts or any(seg == ".." for seg in parts):
+        return ""
+    return "/".join(parts)
+
+
+def permalink(repo, head, path, line, deleted=()):
+    """A blob link at the reviewed commit — works for files the PR never touched.
+
+    Two things it refuses to link. A file this PR DELETED has no blob at the head commit, so
+    the link 404s; the reviewer gets the plain path instead. And a path that is not a plain
+    relative path (absolute, `..`, a scheme) is not linked at all. Everything else is
+    percent-encoded per segment, so a path with a space or a `#` still resolves.
+    """
+    rel = safe_path(path)
+    if not (repo and head and rel) or rel in set(deleted or ()):
+        return ""
+    enc = "/".join(quote(seg, safe="") for seg in rel.split("/"))
+    url = f"https://github.com/{repo}/blob/{head}/{enc}"
+    n = rs_diff.norm_line(line)
+    return f"{url}#L{n}" if n is not None else url
 
 
 def _loc(c):
-    line, path = c.get("line"), c.get("path") or "?"
-    return f"{path}:{line}" if isinstance(line, int) else path
+    n, path = rs_diff.norm_line(c.get("line")), c.get("path") or "?"
+    return f"{path}:{n}" if n is not None else path
 
 
 def _sev(c):
@@ -36,11 +65,11 @@ def _sev(c):
     return s if s in SEV_ORDER else ""
 
 
-def _finding_md(c, repo, head):
+def _finding_md(c, repo, head, deleted=()):
     """One expanded finding: a severity heading that links at the line, then the comment."""
     sev = _sev(c)
     label = SEV_LABEL.get(sev, "Finding")
-    loc, url = _loc(c), permalink(repo, head, c.get("path"), c.get("line"))
+    loc, url = _loc(c), permalink(repo, head, c.get("path"), c.get("line"), deleted)
     where = f"[`{loc}`]({url})" if url else f"`{loc}`"
     out = [f"### {label} — {where}", ""]
     body = (c.get("body") or "").strip()
@@ -54,7 +83,7 @@ def _finding_md(c, repo, head):
     return "\n".join(out).rstrip() + "\n"
 
 
-def offdiff_block(orphans, repo=None, head=None):
+def offdiff_block(orphans, repo=None, head=None, deleted=()):
     """The `## Findings outside the diff` section appended to the review body.
 
     Ordered blocker → should-fix → nit → question. Everything is expanded, except that a long
@@ -69,9 +98,9 @@ def offdiff_block(orphans, repo=None, head=None):
     loud = [c for c in items if _sev(c) not in QUIET]
     quiet = [c for c in items if _sev(c) in QUIET]
     parts = [HEADING, "", LEDE, ""]
-    parts += [_finding_md(c, repo, head) for c in loud]
+    parts += [_finding_md(c, repo, head, deleted) for c in loud]
     if quiet:
-        rendered = [_finding_md(c, repo, head) for c in quiet]
+        rendered = [_finding_md(c, repo, head, deleted) for c in quiet]
         if len(quiet) > QUIET_FOLD_OVER:
             parts += ["<details><summary>"
                       f"{len(quiet)} more nit(s) / question(s) outside the diff"

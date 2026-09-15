@@ -232,10 +232,35 @@ has never opened the repo. Do not post anything to GitHub."
 # this script's own stdout, and the old `> "$DIR/qa.log"` truncated it out from under the server
 # — which is why a failed guide's log was both unreachable and half missing.
 agent_env_args
+# stream-json, exactly as run-review.sh runs it: it is the only way to learn what the run cost.
+# A QA build is a full agent run on the clicker's own Claude account and it reported NOTHING —
+# no model, no tokens, no duration — so a guide that quietly burned an hour of someone's usage
+# left no trace on the page or in the rollup.
 (cd "$wt" && printf '%s' "$PROMPT" | "${AGENT_ENV[@]}" timeout "$QA_TIMEOUT" claude -p \
+  --output-format stream-json --verbose \
   --allowedTools "Bash Read Glob Grep Write" \
   --disallowedTools "$AGENT_DENY_TOOLS") >"$DIR/qa_agent.log" 2>&1
 rc=$?
+
+# Token usage + model. Best-effort: no qa_usage.json simply means the page omits the usage line.
+# Written BEFORE the completeness gates below, so a timed-out or truncated guide still accounts
+# for what it spent.
+qa_usage_line=$(grep -a '"type":"result"' "$DIR/qa_agent.log" | tail -1 || true)
+qa_init_line=$(grep -a '"subtype":"init"' "$DIR/qa_agent.log" | head -1 || true)
+if [ -n "$qa_usage_line" ]; then
+  qa_model=$(printf '%s' "$qa_init_line" | jq -r '.model // empty' 2>/dev/null || true)
+  [ -n "$qa_model" ] || qa_model=$(printf '%s' "$qa_usage_line" \
+      | jq -r '(.modelUsage // {}) | keys[0] // empty' 2>/dev/null || true)
+  printf '%s' "$qa_usage_line" | jq -c --arg model "${qa_model:-unknown}" '{
+      model: $model,
+      input_tokens: (.usage.input_tokens // 0),
+      output_tokens: (.usage.output_tokens // 0),
+      cache_read_input_tokens: (.usage.cache_read_input_tokens // 0),
+      cache_creation_input_tokens: (.usage.cache_creation_input_tokens // 0),
+      cost_usd: (.total_cost_usd // 0),
+      duration_ms: (.duration_ms // 0)
+    }' > "$DIR/qa_usage.json" 2>/dev/null || rm -f "$DIR/qa_usage.json"
+fi
 
 # The exit code used to be thrown away, and `[ -s qa.md ]` was the only gate — so a run killed by
 # `timeout` at 60% handed QA a guide that stopped mid-sentence, announced as "Guide ready".

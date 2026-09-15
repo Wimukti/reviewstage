@@ -10,6 +10,32 @@ import re
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
+def norm_line(v):
+    """One canonical answer to "which RIGHT-side line is this?" — an int, or None.
+
+    The model returns a line as an int, a string of digits, "?", null, and once as `true`.
+    Every site that asked `isinstance(line, int)` therefore disagreed with every site that
+    asked `line.isdigit()`, which is how a finding could be labelled "in summary" on the page
+    and still be sent to GitHub as an inline comment. bool is excluded deliberately:
+    `isinstance(True, int)` is True, and line 1 is not what the model meant.
+    """
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v if v > 0 else None
+    if isinstance(v, str):
+        t = v.strip()
+        if t.isdigit():
+            n = int(t)
+            return n if n > 0 else None
+    return None
+
+
+def is_line(v):
+    """True when `v` names a real line number (see norm_line)."""
+    return norm_line(v) is not None
+
+
 def commentable_lines(patch):
     """RIGHT-side line numbers a review comment can anchor to.
 
@@ -89,7 +115,12 @@ def parse_full_diff(text):
                 cur = m.group(1)
             continue
         if raw.startswith(("--- ", "index ", "old mode", "new mode", "similarity",
-                           "rename ", "copy ", "new file", "deleted file", "Binary files")):
+                           "rename ", "copy ", "new file", "deleted file", "Binary files",
+                           # A submodule bump has no hunk, but git prints two bare
+                           # "-/+Subproject commit <sha>" lines that look exactly like a
+                           # removed and an added line — counted, they invented a
+                           # commentable line 1 on a path with no diff at all.
+                           "Subproject commit", "-Subproject commit", "+Subproject commit")):
             continue
         body.append(raw)
     flush()
@@ -119,10 +150,13 @@ class Anchors:
     def __init__(self, files, fetch_diff=None):
         self.fetch_diff = fetch_diff
         self.lines, self.pending = {}, set()
+        self.deleted = set()
         for f in files or []:
             name = f.get("filename")
             if not name:
                 continue
+            if (f.get("status") or "") == "removed":
+                self.deleted.add(name)
             got = file_lines(f)
             if got is UNKNOWN:
                 self.pending.add(name)
@@ -130,39 +164,71 @@ class Anchors:
             else:
                 self.lines[name] = got
         self.fetched = False
+        self.error = None               # why the last full-diff fetch failed, or None
 
     def resolve_all(self):
-        """Pull the full diff once, if anything is still unresolved."""
-        if self.fetched:
+        """Pull the full diff once, if anything is still unresolved.
+
+        A FAILED fetch used to clear `pending` anyway, which silently downgraded every
+        patchless modified file to "seen, nothing commentable" — indistinguishable from a
+        file the PR really does not touch, and the reviewer was then told their findings
+        "point at lines this PR does not change", which was false. A failure now leaves the
+        files unresolved, records why, and can be retried.
+        """
+        if self.fetched or not self.pending:
             return
-        self.fetched = True
-        if not self.pending or self.fetch_diff is None:
-            self.pending = set()
+        if self.fetch_diff is None:
+            self.fetched = True
+            self.error = "no full-diff fetcher was supplied"
             return
-        parsed = parse_full_diff(self.fetch_diff() or "")
-        for name in self.pending:
+        try:
+            text = self.fetch_diff()
+        except Exception as e:          # noqa: BLE001 — a fetch failure is data, not a crash
+            text = None
+            self.error = f"{type(e).__name__}: {e}"
+        if not text:
+            self.error = self.error or ("GitHub would not return the full diff for this PR, "
+                                        "so some files could not be checked")
+            return                      # keep `pending`: the next call retries
+        parsed = parse_full_diff(text)
+        for name in list(self.pending):
             if name in parsed:
                 self.lines[name] = parsed[name]
         self.pending = set()
+        self.fetched, self.error = True, None
 
-    def can_anchor(self, path, line):
-        if not path or not isinstance(line, int):
+    def unresolved(self):
+        """Files still waiting on a full diff that could not be fetched."""
+        return set(self.pending)
+
+    def anchor_state(self, path, line):
+        """Tri-state: True (GitHub will take an inline comment here), False (it will not),
+        or None — the check genuinely could not run, so neither answer is honest."""
+        n = norm_line(line)
+        if not path or n is None:
             return False
         if path not in self.lines:      # not in the PR at all — cheap no, no diff fetch
             return False
-        if line in self.lines[path]:
+        if n in self.lines[path]:
             return True
         if path in self.pending:        # in the PR but patchless: now the fetch is worth it
             self.resolve_all()
-            return line in self.lines.get(path, set())
+            if path in self.pending:
+                return None             # the fetch failed — say "unknown", never "no"
+            return n in self.lines.get(path, set())
         return False
+
+    def can_anchor(self, path, line):
+        """The conservative boolean the POST path needs: unknown counts as not anchorable,
+        because one line GitHub rejects loses the entire review with a 422."""
+        return self.anchor_state(path, line) is True
 
 
 def _checker(anchors):
     """Accept either an Anchors instance or a plain {path: {lines}} dict."""
     if hasattr(anchors, "can_anchor"):
         return anchors.can_anchor
-    return lambda p, l: bool(p) and isinstance(l, int) and l in (anchors.get(p) or set())
+    return lambda p, l: bool(p) and is_line(l) and norm_line(l) in (anchors.get(p) or set())
 
 
 def suggestion_fence(sugg):
@@ -187,7 +253,8 @@ def split_anchorable(comments, anchors):
         if can(path, line):
             if sugg:
                 body = (body + "\n\n" if body else "") + suggestion_fence(sugg)
-            inline.append({"path": path, "line": line, "side": "RIGHT", "body": body})
+            inline.append({"path": path, "line": norm_line(line), "side": "RIGHT",
+                           "body": body})
         else:
             orphans.append(c)
     return inline, orphans

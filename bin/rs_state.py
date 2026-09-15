@@ -118,13 +118,24 @@ def decide(lock_held, alive, age, grace=STARTUP_GRACE):
     return STALLED
 
 
-def probe(udir, now=None, grace=STARTUP_GRACE):
-    """Inspect one user's run dir. Returns a dict with the verdict and every signal that fed it,
-    so the caller can log a diagnosable line when the answer is 'stalled'."""
-    pid = read_pid(udir / "pid")
-    lock = flock_held(udir / ".lock")
+# Terminal status texts: a run whose status says it finished is only alive while it still
+# holds the lock (a re-run that has not written its first line yet).
+TERMINAL = ("done", "posted", "dry-run", "failed", "stopped")
+
+
+def probe(udir, now=None, grace=STARTUP_GRACE, lock=".lock", pid="pid", status="status"):
+    """Inspect one run dir. Returns a dict with the verdict and every signal that fed it, so the
+    caller can log a diagnosable line when the answer is 'stalled'.
+
+    The three file names are parameters because not every job keeps its markers under the same
+    names: a review owns its user dir (.lock / pid / status), while the QA guide shares the PR
+    dir with the review and prefixes everything (qa.lock / qa.pid / qa.status). Both then get
+    the same three signals instead of the QA page trusting the flock alone.
+    """
+    pid = read_pid(udir / pid)
+    lock = flock_held(udir / lock)
     alive = pid_alive(pid) if pid else False
-    age = status_age(udir / "status", now)
+    age = status_age(udir / status, now)
     return {
         "state": decide(lock, alive, age, grace),
         "lock_held": lock,
@@ -132,3 +143,42 @@ def probe(udir, now=None, grace=STARTUP_GRACE):
         "pid_alive": alive,
         "status_age": None if age is None else round(age),
     }
+
+
+def job_alive(udir, status_text=None, now=None, grace=STARTUP_GRACE, **names):
+    """Is this job genuinely in flight? Lock held, OR a live pid, OR a status written inside the
+    startup grace — but never on the grace alone once the status says the run is over."""
+    p = probe(udir, now, grace, **names)
+    if p["lock_held"]:
+        return True
+    text = (status_text or "").strip()
+    if text.startswith("failed") or text in TERMINAL:
+        return p["pid_alive"]
+    return p["state"] == REVIEWING
+
+
+def job_state(alive, status_text, has_output):
+    """(state, failure) for one job, exactly as rs_profile.job_state does for a profile build.
+
+    A job that is not alive and whose status is still a progress line died without reporting
+    (OOM, the box rebooted, a `die` before the first status) — that is a failure, not "never
+    run" and not "still building". An existing artefact survives a failed re-run: the state
+    stays `done` and the failure text rides alongside, so a bad regenerate never hides a
+    perfectly good guide.
+    """
+    text = (status_text or "").strip()
+    if alive:
+        return "running", ""
+    if text.startswith("failed"):
+        failure = text
+    elif text and text not in TERMINAL:
+        failure = f"failed: the job exited without reporting why (last status: {text})"
+    else:
+        failure = ""
+    if has_output:
+        return "done", failure
+    if failure:
+        return "failed", failure
+    if text == "stopped":
+        return "stopped", ""
+    return "none", ""

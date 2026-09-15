@@ -1377,9 +1377,29 @@ def risk_banner(label):
                      "change end to end and consider looping in its owner.")}
 
 
+# --- the post marker: scoped to a RUN, never to the PR ------------------------------------------
+# `posted.json` records the fact that this reviewer has a review on this PR — the queue tab, the
+# timeline and the webhook all read it, and a review someone submits on github.com writes it too
+# (rs_queue.mark_posted, source "github").
+#
+# It must NOT be the thing that decides whether posting is allowed. It used to be, and nothing
+# ever cleared it: not a re-run, not archive_review (RUN_FILES omitted it), not the webhook. So
+# the product's ordinary rhythm — review, post, the author pushes, review again, post again —
+# was structurally impossible, and a reviewer who left a one-line comment on the Files tab had
+# their whole staged draft stranded behind "Already posted to GitHub as your review" with no way
+# out but deleting files on the box.
+#
+# The gate is POSTED_RUNS instead: a list this dashboard alone writes, one entry per post it
+# actually made, each naming the head SHA and the identity of the review run it posted. A post is
+# refused only when THIS run has already been posted, and a re-run archives the list with the run
+# it belongs to. Nothing the webhook writes can close the gate.
+POSTED_RUNS = "posted_runs.json"
+
 # Files that describe one review run — copied into history/<ts>/ when a re-run replaces it.
 RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status",
-             "usage.json")
+             "usage.json", "posted.json", POSTED_RUNS)
+# …and the ones a re-run must not inherit. The post markers belong to the run that was posted.
+RUN_CLEARED = ("review.json", "posted.json", POSTED_RUNS)
 
 
 def review_focus(repo, pr, login):
@@ -1389,22 +1409,102 @@ def review_focus(repo, pr, login):
         return ""
 
 
-def archive_review(repo, pr, login):
-    """Move the current review into history/<ts>/ so a re-run doesn't lose it. No-op if none."""
+def snapshot_review(repo, pr, login):
+    """The current run's files read into memory, or None when there is no run.
+
+    Taken BEFORE a re-run spawns so the archive can be written AFTER the replacement has
+    actually started — archiving first meant a spawn that failed (a NUL in the focus note, say)
+    had already deleted the live review.json and left the reviewer with nothing.
+    """
     d = udir(repo, pr, login)
     if not (d / "review.json").exists():
+        return None
+    snap = {}
+    for name in RUN_FILES:
+        f = d / name
+        try:
+            if f.exists():
+                snap[name] = f.read_bytes()
+        except OSError:
+            pass
+    return snap or None
+
+
+def archive_review(repo, pr, login, snap=None):
+    """Move the current review into history/<ts>/ so a re-run doesn't lose it. No-op if none.
+
+    `snap` is a snapshot_review() taken earlier; without one the files are read now.
+    """
+    d = udir(repo, pr, login)
+    snap = snapshot_review(repo, pr, login) if snap is None else snap
+    if not snap:
         return
     h = d / "history" / str(int(time.time()))
     h.mkdir(parents=True, exist_ok=True)
-    for name in RUN_FILES:
-        f = d / name
-        if f.exists():
-            try:
-                shutil.copy2(f, h / name)
-            except OSError:
-                pass
-    # Clear the live review so the re-run starts clean; the archived copy is the history entry.
-    (d / "review.json").unlink(missing_ok=True)
+    for name, blob in snap.items():
+        try:
+            (h / name).write_bytes(blob)
+        except OSError:
+            pass
+    # Clear the live review AND its post markers so the re-run starts clean and postable; the
+    # archived copies are the history entry.
+    for name in RUN_CLEARED:
+        (d / name).unlink(missing_ok=True)
+
+
+def review_key(rev, head=""):
+    """A stable identity for one review RUN: a content hash of what would be posted.
+
+    The client sends this back with a post, because findings are matched to the reviewer's edits
+    by array INDEX. A re-run from another device reorders them, and an open tab would then post
+    the old text against a new finding's file and line — a comment about the wrong code, under
+    the reviewer's own name. Content-addressed rather than a timestamp so two devices looking at
+    the same run agree, and so a replaced run never collides with its replacement.
+    """
+    if not rev:
+        return ""
+    def one(c):
+        return {"path": c.get("path", ""), "line": rs_diff.norm_line(c.get("line")),
+                "severity": c.get("severity", ""), "body": c.get("body", ""),
+                "suggestion": c.get("suggestion", "") or ""}
+    blob = json.dumps({"head": (head or "").strip(), "event": rev.get("event", "COMMENT"),
+                       "summary": rev.get("summary", ""),
+                       "comments": [one(c) for c in (rev.get("comments") or [])]},
+                      sort_keys=True, default=str)
+    return "rk1:" + sha256(blob.encode()).hexdigest()[:24]
+
+
+def posted_runs(repo, pr, login):
+    """Every post THIS dashboard made for the run currently on disk (see POSTED_RUNS)."""
+    try:
+        d = json.loads((udir(repo, pr, login) / POSTED_RUNS).read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [r for r in d if isinstance(r, dict)] if isinstance(d, list) else []
+
+
+def posted_this_run(repo, pr, login, key):
+    """The entry for a post of review `key`, or None. This is the posting gate."""
+    if not key:
+        return None
+    return next((r for r in posted_runs(repo, pr, login) if r.get("reviewKey") == key), None)
+
+
+def record_posted_run(repo, pr, login, key, head, inline, event):
+    """Remember that this exact run reached GitHub, and refresh the shared `posted.json` fact
+    the queue, the timeline and rs_queue read."""
+    d = udir(repo, pr, login)
+    d.mkdir(parents=True, exist_ok=True)
+    at = int(time.time())
+    rows = posted_runs(repo, pr, login)
+    rows.append({"reviewKey": key, "head": head, "at": at, "inline": inline, "event": event})
+    try:
+        (d / POSTED_RUNS).write_text(json.dumps(rows[-20:]))
+    except OSError:
+        pass
+    (d / "posted.json").write_text(json.dumps(
+        {"at": at, "inline": inline, "event": event, "head": head, "reviewKey": key,
+         "source": "dashboard"}))
 
 
 def others_on_head(repo, pr, exclude_login):
@@ -1491,6 +1591,45 @@ def convergence(repo, pr, head, viewer):
     return tags, ar, n
 
 
+# "Explain simply" runs a real agent, synchronously, inside the HTTP handler — and it was the one
+# agent on the box that answered to neither the one-at-a-time job lock nor the memory guard. A
+# reviewer holding the button down is twenty concurrent `claude` processes on a box sized for one,
+# which OOMs the review that is actually running. Two bounds: at most EXPLAIN_SLOTS across the
+# box, and at most EXPLAIN_PER_USER of those belonging to any one person, so one impatient tab
+# cannot take every slot.
+EXPLAIN_SLOTS = 2
+EXPLAIN_PER_USER = 1
+EXPLAIN_WAIT = 20                               # seconds to wait for a slot before saying no
+_explain_sem = threading.BoundedSemaphore(EXPLAIN_SLOTS)
+_explain_mine = {}
+_explain_guard = threading.Lock()
+EXPLAIN_BUSY = ("The box is already explaining as many findings as it can at once — try again "
+                "in a moment.")
+
+
+@contextlib.contextmanager
+def _explain_slot(user):
+    with _explain_guard:
+        mine = _explain_mine.get(user, 0)
+        if mine >= EXPLAIN_PER_USER:
+            yield False                         # this person already has one in flight
+            return
+        _explain_mine[user] = mine + 1
+    got = False
+    try:
+        got = _explain_sem.acquire(timeout=EXPLAIN_WAIT)
+        yield got
+    finally:
+        if got:
+            _explain_sem.release()
+        with _explain_guard:
+            n = _explain_mine.get(user, 1) - 1
+            if n > 0:
+                _explain_mine[user] = n
+            else:
+                _explain_mine.pop(user, None)
+
+
 def explain_finding(repo, pr, user, idx):
     """(markdown, error) — an on-demand plain-language explanation + how-to-verify for ONE finding,
     run on the user's own Claude account (haiku, one turn). Cached per finding-content so a repeat
@@ -1527,15 +1666,19 @@ def explain_finding(repo, pr, user, idx):
         "the finding is real: which file/function to open, what to look for, and what a broken vs. "
         "a fine case looks like.\n\n"
         "Be specific to THIS finding; do not restate it verbatim.\n\n---\n" + ctx)
-    try:
-        r = subprocess.run(["claude", "-p", prompt, "--max-turns", "1", "--model", "haiku"],
-                           capture_output=True, text=True, timeout=90,
-                           stdin=subprocess.DEVNULL,
-                           env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": tok})
-    except FileNotFoundError:
-        return None, "claude is not installed on this box."
-    except subprocess.TimeoutExpired:
-        return None, "Claude did not answer in time — try again."
+    # The prompt goes on STDIN, not argv. A finding body is reviewer-sized, not tweet-sized, and
+    # a long one pushed the argv past ARG_MAX — Python raised E2BIG and the handler 500'd.
+    with _explain_slot(user) as slot:
+        if not slot:
+            return None, EXPLAIN_BUSY
+        try:
+            r = subprocess.run(["claude", "-p", "--max-turns", "1", "--model", "haiku"],
+                               capture_output=True, text=True, timeout=90, input=prompt,
+                               env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": tok})
+        except FileNotFoundError:
+            return None, "claude is not installed on this box."
+        except subprocess.TimeoutExpired:
+            return None, "Claude did not answer in time — try again."
     if r.returncode != 0:
         tail = ((r.stderr or r.stdout or "error").strip().splitlines() or ["error"])[-1]
         return None, tail[:200]
@@ -1654,22 +1797,27 @@ def stop_review(repo, pr, user=""):
 # A QA guide is a separate, lighter job than a review: run the pr-qa-guide skill against a PR and
 # park the resulting markdown so it can be rendered and handed to QA. Its state keys are all
 # `qa.*` so a guide and a review can coexist for the same PR without colliding.
+# The QA job's markers, so rs_state can probe it the way it probes a review. The lock is
+# `.qa.lock`; the pid and status sit beside it in the shared PR dir.
+QA_MARKERS = {"lock": ".qa.lock", "pid": "qa.pid", "status": "qa.status"}
+
+
+def qa_probe(repo, pr):
+    """Every liveness signal for the QA job, not just its flock."""
+    return rs_state.probe(P.prdir(repo, pr), **QA_MARKERS)
+
+
 def qa_running(repo, pr):
-    f = P.prdir(repo, pr) / ".qa.lock"
-    if not f.exists():
-        return False
-    try:
-        fd = os.open(f, os.O_RDWR)
-    except OSError:
-        return False
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        return False
-    except OSError:
-        return True
-    finally:
-        os.close(fd)
+    """Is a QA guide genuinely being built? Lock held, OR a live pid, OR a status written inside
+    the startup grace.
+
+    The flock alone was the whole answer, which reproduced, on the QA page, every bug the review
+    page had already been fixed for: the server writes `qa.status` and spawns, and bash needs a
+    moment to reach `flock`, so the first click read as "not running" and the page never started
+    polling; and an OOM-killed run left the lock free with the status still saying "building", so
+    the guide was reported as `none` forever.
+    """
+    return rs_state.job_alive(P.prdir(repo, pr), qa_status_text(repo, pr), **QA_MARKERS)
 
 
 def qa_status_text(repo, pr):
@@ -1677,6 +1825,29 @@ def qa_status_text(repo, pr):
         return (P.prdir(repo, pr) / "qa.status").read_text().strip()
     except OSError:
         return ""
+
+
+def qa_log_tail(repo, pr):
+    """The last lines of the QA agent's own log, falling back to the script's progress log for a
+    run that died before the agent started (the same fallback profile_log_tail uses)."""
+    d = P.prdir(repo, pr)
+    return rs_profile.log_tail(d / "qa_agent.log") or rs_profile.log_tail(d / "qa.log")
+
+
+def qa_usage(repo, pr):
+    """Model + token totals for the last QA build, or None (qa_usage.json is best-effort)."""
+    try:
+        u = json.loads((P.prdir(repo, pr) / "qa_usage.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    fresh_in = int(u.get("input_tokens") or 0)
+    out = int(u.get("output_tokens") or 0)
+    return {"model": u.get("model") or "unknown",
+            "inputTokens": fresh_in, "outputTokens": out,
+            "cacheReadTokens": int(u.get("cache_read_input_tokens") or 0),
+            "realTokens": fresh_in + out,
+            "costUsd": float(u.get("cost_usd") or 0),
+            "durationMs": int(u.get("duration_ms") or 0)}
 
 
 def load_qa(repo, pr):
@@ -1698,15 +1869,15 @@ def qa_meta(repo, pr):
 
 
 def qa_state(repo, pr):
-    """'running' | 'failed' | 'stopped' | 'done' | 'none'."""
-    if qa_running(repo, pr):
-        return "running"
-    s = qa_status_text(repo, pr)
-    if s.startswith("failed"):
-        return "failed"
-    if s == "stopped" and not load_qa(repo, pr):
-        return "stopped"
-    return "done" if load_qa(repo, pr) else "none"
+    """('running' | 'failed' | 'stopped' | 'done' | 'none', failure text).
+
+    An existing guide always wins: a failed or stopped REGENERATE used to hide a perfectly good
+    guide behind an error page, because the status was checked before the markdown was. The
+    state now reports what the reader can actually have, and the failure rides alongside as a
+    warning. A dead job whose status is still a progress line is a failure, not "still building".
+    """
+    return rs_state.job_state(qa_running(repo, pr), qa_status_text(repo, pr),
+                              bool(load_qa(repo, pr)))
 
 
 def qa_list():
@@ -2230,12 +2401,21 @@ def mint(action, subject, ttl):
 
 def legacy_sig_ok(action, pr, exp, sig):
     """A pre-multi-repo signature (action:pr:exp), accepted only within the grace window that
-    started when this server first ran with repo-aware signing."""
-    if not pr or SIG_GRACE_DAYS <= 0:
+    started when this server first ran with repo-aware signing.
+
+    Only ever for a SINGLE-repo install. A bare PR number is, by construction, from the era
+    before this install had more than one repository; honouring it on a multi-repo install means
+    a link signed for `acme/widgets#7` also opens `acme/secrets#7`, which is the one thing the
+    repo dimension was added to prevent. And see the SIG_V2_SINCE block in __main__: a fresh
+    install has no pre-upgrade links to honour, so it gets no window at all.
+    """
+    if not pr or SIG_GRACE_DAYS <= 0 or not SINGLE_REPO:
         return False
     try:
         since = int(SIG_V2_SINCE.read_text().strip())
     except (OSError, ValueError):
+        return False
+    if since <= 0:                      # a fresh install: nothing predates repo-aware signing
         return False
     if time.time() > since + SIG_GRACE_DAYS * 86400:
         return False
@@ -2303,8 +2483,29 @@ def gh_json(args, default=None):
         return default
 
 
-def fetch_pr_files(repo, pr):
-    """(files, error). Never conflate a failed API call with an empty diff.
+def fetch_pr_info(repo, pr, token=None):
+    """(info, error) for one PR: state, draft, head, author. `info` is {} on failure."""
+    r = gh(["api", f"repos/{repo}/pulls/{pr}"], **({"token": token} if token else {}))
+    if r.returncode != 0:
+        return {}, (r.stderr or "gh failed").strip().splitlines()[-1][:300], r
+    try:
+        d = json.loads(r.stdout or "null") or {}
+    except json.JSONDecodeError:
+        return {}, "could not parse GitHub's response", r
+    return {"state": (d.get("state") or "").lower(),
+            "draft": bool(d.get("draft")),
+            "merged": bool(d.get("merged")),
+            "head": ((d.get("head") or {}).get("sha") or ""),
+            "author": ((d.get("user") or {}).get("login") or "")}, None, r
+
+
+def fetch_pr_files(repo, pr, with_pr=False):
+    """(files, error) — or (files, error, info) with `with_pr`. Never conflate a failed API call
+    with an empty diff.
+
+    `with_pr` adds the PR object to the same trip, because nothing used to check the PR was
+    still OPEN before posting (only before approving): a review submitted on a closed or merged
+    PR is noise nobody will read, and on a merged one it cannot be acted on at all.
 
     `--slurp` wraps whatever came back in an array, so a GitHub error object arrives looking
     like a page of results — flattening it yields no filenames and every comment then looks
@@ -2330,12 +2531,15 @@ def fetch_pr_files(repo, pr):
                     bad, last = True, f"unexpected response: {str(page)[:200]}"
                     break
             if not bad:
+                if with_pr:
+                    info, _, _ = fetch_pr_info(repo, pr)
+                    return files, None, info
                 return files, None
         else:
             last = (r.stderr or "gh failed").strip().splitlines()[-1][:300]
         if attempt == 0:
             time.sleep(1.5)
-    return None, last
+    return (None, last, {}) if with_pr else (None, last)
 
 
 def fetch_pr_diff(repo, pr):
@@ -2360,20 +2564,101 @@ def pr_anchors(repo, pr, head):
     finding, so the answer is cached per (repo, pr, head) — a new commit is a new key, which is
     exactly when the answer changes.
     """
-    key = (repo, str(pr), head or "")
-    with _ANCHOR_LOCK:
-        hit = _ANCHOR_CACHE.get(key)
-    if hit is not None:
-        return hit, None
+    head = (head or "").strip()
+    # No head, no cache. A new commit is a new key, which is exactly when the answer changes —
+    # so caching under "" pins one PR's answer for the server's lifetime and keeps serving it
+    # across every push. Compute the answer, hand it back, remember nothing.
+    key = (repo, str(pr), head) if head else None
+    if key:
+        with _ANCHOR_LOCK:
+            hit = _ANCHOR_CACHE.get(key)
+        if hit is not None:
+            return hit, None
     files, err = fetch_pr_files(repo, pr)
     if err is not None:
         return None, err
     a = rs_diff.Anchors(files, fetch_diff=lambda: fetch_pr_diff(repo, pr))
-    with _ANCHOR_LOCK:
-        if len(_ANCHOR_CACHE) > 64:     # bounded: this is a convenience, not a store
-            _ANCHOR_CACHE.clear()
-        _ANCHOR_CACHE[key] = a
+    if key:
+        with _ANCHOR_LOCK:
+            if len(_ANCHOR_CACHE) > 64:     # bounded: this is a convenience, not a store
+                _ANCHOR_CACHE.clear()
+            _ANCHOR_CACHE[key] = a
     return a, None
+
+
+# --- what GitHub actually said -----------------------------------------------------------------
+# Every write failure used to collapse into one banner of raw stderr: "GitHub rejected it:
+# <400 characters of gh>". A revoked token, an org that pulled access, a rate limit, a 422 from a
+# race and a 502 all looked identical, so the reviewer could not tell "press it again in a
+# minute" from "you have to re-authenticate" from "nothing you do will help".
+HTTP_STATUS = re.compile(r"\(?\bHTTP (\d{3})\b\)?")
+
+
+def gh_status(r):
+    """The HTTP status gh reported, or 0. `gh api` prints "(HTTP 422)"; some paths print the
+    status alone, and a transport failure prints neither."""
+    m = HTTP_STATUS.search((r.stderr or "") + " " + (r.stdout or ""))
+    return int(m.group(1)) if m else 0
+
+
+def _banner(kind, icon, html_body):
+    return f"<div class='banner {kind}'><span>{icon}</span><div>{html_body}</div></div>"
+
+
+def gh_write_failure(r, user, what="post your review", retry="Nothing was sent."):
+    """The banner for a failed GitHub WRITE, branched on what actually went wrong.
+
+    The auth cases go through reconnect_banner(), which already knows whether this person signed
+    in with a pasted token, the device flow or OAuth — telling a device-flow user to "paste it
+    again in settings" is advice they cannot follow.
+    """
+    code = gh_status(r)
+    raw = (r.stderr or r.stdout or "").strip()
+    tail = html.escape(raw.splitlines()[-1][:300]) if raw else "no output"
+    low = raw.lower()
+    if code == 401 or "bad credentials" in low:
+        return reconnect_banner(user)
+    if code == 403 and ("rate limit" in low or "abuse" in low or "secondary" in low):
+        return _banner("warn", "\u23f3",
+                       f"<b>GitHub is rate-limiting your account — could not {html.escape(what)}."
+                       f"</b><br>{html.escape(retry)} Wait a minute and press it again; nothing "
+                       f"is lost.<br><code>{tail}</code>")
+    if code == 403:
+        if _looks_org_blocked(raw):
+            return reconnect_banner(user) + _banner(
+                "warn", "\U0001f6ab",
+                "GitHub refused with a 403 that names the organization — an owner has to allow "
+                "this app on the repository (OAuth App: Third-party access; GitHub App: install "
+                f"it on the org).<br><code>{tail}</code>")
+        return _banner("err", "\U0001f6ab",
+                       f"<b>Your GitHub account is not allowed to {html.escape(what)} on this "
+                       f"repository.</b><br>{html.escape(retry)} Ask for write access, then try "
+                       f"again.<br><code>{tail}</code>")
+    if code == 404:
+        return _banner("err", "\U0001f6ab",
+                       f"<b>GitHub cannot see this pull request as you.</b><br>Either it was "
+                       f"deleted, or your token lost access to the repository. "
+                       f"{html.escape(retry)}<br><code>{tail}</code>")
+    if code in (409, 422):
+        return _banner("warn", "\u26a0\ufe0f",
+                       f"<b>GitHub refused the {html.escape(what)} as invalid (HTTP {code}).</b>"
+                       "<br>Almost always the PR moved under you — a new commit, or the review "
+                       "was already submitted. Reload the page to pick up the current diff, then "
+                       f"post again.<br><code>{tail}</code>")
+    if code >= 500:
+        return _banner("warn", "\U0001f501",
+                       f"<b>GitHub had a server error (HTTP {code}) — nothing was recorded.</b>"
+                       "<br>This is theirs, not yours: check <a href='https://www.githubstatus."
+                       "com' target=_blank rel=noopener>githubstatus.com</a> and press it again."
+                       f"<br><code>{tail}</code>")
+    if not code:
+        return _banner("warn", "\U0001f501",
+                       "<b>Could not reach GitHub.</b><br>" + html.escape(retry) +
+                       " The box may have lost its network. Try again in a moment."
+                       f"<br><code>{tail}</code>")
+    return _banner("err", "\U0001f534",
+                   f"<b>GitHub rejected it (HTTP {code}).</b><br>{html.escape(retry)}"
+                   f"<br><code>{tail}</code>")
 
 
 def gist(body, limit=120):
@@ -2400,36 +2685,47 @@ def default_approve_msg(rev):
     return "\n".join(lines)
 
 
-def can_approve(repo, pr, login):
-    """(ok, why) — may `login` approve this PR?
+def can_approve(repo, pr, login, reviewed_head="", confirmed=False):
+    """(ok, why, head) — may `login` approve this PR, at the commit they were reading?
 
     Deliberately NOT "is `login` a requested reviewer": GitHub clears the review request the
     moment any review is submitted, including a plain comment one. Gating on that made
     post-then-approve structurally impossible. What actually matters is that the PR is open,
     it is not the user's own PR (GitHub forbids self-approval), and this box genuinely
     reviewed it — which, combined with the signed session and action token, is the control.
+
+    Two things it also checks now, because it checked neither. STALENESS: `reviewed_head` is the
+    commit the "LGTM, no blockers" verdict on screen was written against; if HEAD has moved since,
+    approving would bless code nobody reviewed, so it takes the same typed confirmation an
+    approval over blockers takes. IDEMPOTENCY: a second click used to post a second approval —
+    refused now unless the head genuinely moved.
     """
     tok = user_pat(login)
     if not tok:
         return False, ("Your stored GitHub token could not be read — sign in again, then "
-                       "retry.")
-    r = gh(["api", f"repos/{repo}/pulls/{pr}"], token=tok)
-    if r.returncode != 0:
-        err = (r.stderr or "unknown error").strip().splitlines()[-1][:250]
-        return False, f"GitHub rejected the check: {err}"
-    try:
-        d = json.loads(r.stdout or "null") or {}
-    except json.JSONDecodeError:
-        return False, "Could not parse GitHub's response."
-    if (d.get("state") or "").lower() != "open":
-        return False, "That PR is no longer open."
-    if d.get("draft"):
-        return False, "That PR is still a draft."
-    if ((d.get("user") or {}).get("login")) == login:
-        return False, "GitHub does not allow approving your own PR."
+                       "retry."), ""
+    info, err, r = fetch_pr_info(repo, pr, token=tok)
+    if err:
+        return False, f"GitHub rejected the check: {err}", ""
+    head = info.get("head", "")
+    if info.get("state") != "open":
+        return False, "That PR is no longer open.", head
+    if info.get("draft"):
+        return False, "That PR is still a draft.", head
+    if info.get("author") == login:
+        return False, "GitHub does not allow approving your own PR.", head
     if not upath(repo, pr, login, "review.json").exists():
-        return False, "No review has been run for this PR on this box."
-    return True, ""
+        return False, "No review has been run for this PR on this box.", head
+    prev = marker(repo, pr, "approved", login)
+    if prev.get("at") and not prev.get("manual"):
+        if not head or prev.get("head", "") == head:
+            return False, ("You have already approved this commit — clicking again would post a "
+                           "second approval."), head
+    if reviewed_head and head and reviewed_head != head and not confirmed:
+        return False, (f"New commits have landed since this review ran (you read "
+                       f"{reviewed_head[:7]}, GitHub is now at {head[:7]}). Re-run the review, or "
+                       "tick the confirmation to approve the current commit anyway."), head
+    return True, "", head
 STATIC_DIR = BIN / "static"
 PWA_ROOT_FILES = ("/sw.js", "/manifest.webmanifest", "/offline.html")
 
@@ -2482,6 +2778,31 @@ def run_alive(repo, pr, login):
     if rs_state.flock_held(p / ".lock"):
         return True
     return rs_state.pid_alive(rs_state.read_pid(p / "pid"))
+
+
+# --- serialising check-then-act ----------------------------------------------------------------
+# Two tabs, or a browser and the mobile bearer token, both passed the post marker check and both
+# POSTed, landing two full reviews on the PR under the same name. And two clicks on Review both
+# passed run_alive() and both spawned run-review.sh — the loser's pid is what landed in the `pid`
+# file, so Stop killed a process that was already dead, reported success, and the real agent kept
+# burning the reviewer's Claude usage until the timeout.
+#
+# One named lock per (repo, pr, login), held across the whole check → act → write. In-process is
+# enough: every request is served by this one ThreadingHTTPServer, and the job scripts take their
+# own flock on top.
+_ACT_LOCKS = {}
+_ACT_LOCKS_GUARD = threading.Lock()
+
+
+def act_lock(*parts):
+    key = "\x00".join(str(p) for p in parts)
+    with _ACT_LOCKS_GUARD:
+        lk = _ACT_LOCKS.get(key)
+        if lk is None:
+            if len(_ACT_LOCKS) > 256:               # bounded; an idle lock holds nothing
+                _ACT_LOCKS.clear()
+            lk = _ACT_LOCKS[key] = threading.Lock()
+    return lk
 
 
 def udir(repo, pr, login):
@@ -2628,12 +2949,35 @@ def running_map(login):
     return {(j["kind"], j["repo"].lower(), j["num"]): j for j in running_jobs(login)}
 
 
+# How many findings one review may carry. GitHub takes a review all-or-nothing, so a runaway
+# run is not a long page, it is a click that fails entirely — and nothing capped either number.
+FINDING_RENDER_CAP = 250        # beyond this the page stops rendering (and posting) findings
+PRESELECT_CAP = 25              # beyond this the UI stops pre-ticking them for the reviewer
+POST_COMMENT_CAP = 50           # beyond this a post is refused with an explanation
+
+
+def normalize_review(rev):
+    """Give every finding ONE reading of `line`: an int, or None. Done once, here, at load.
+
+    The model returns a line as an int, a digit string, "?", null and occasionally `true`, and
+    the render path (isinstance(line, int)) and the post path (line.isdigit()) disagreed about
+    all of those — so a finding's chip said "in summary" while GitHub was handed an inline
+    comment on it.
+    """
+    if not isinstance(rev, dict):
+        return rev
+    for c in rev.get("comments") or []:
+        if isinstance(c, dict):
+            c["line"] = rs_diff.norm_line(c.get("line"))
+    return rev
+
+
 def load_review(repo, pr, login):
     f = upath(repo, pr, login, "review.json")
     if not f.exists():
         return None
     try:
-        return json.loads(f.read_text())
+        return normalize_review(json.loads(f.read_text()))
     except json.JSONDecodeError:
         return None
 
@@ -2744,6 +3088,25 @@ def pr_meta(repo, pr, fetch=True):
             return fetched, False
         note_meta_miss(repo, pr)
     return {"repo": repo, "number": pr, "title": f"PR #{pr}"}, False
+
+
+def pr_head(repo, pr, meta=None):
+    """This PR's current head SHA, refreshing the cached meta.json when it has none.
+
+    meta.json lost `headRefOid` for a while, so once a PR left the queue the stored head was
+    empty — and three safeguards died together. The re-run cache key hashes the head, so it was
+    identical before and after a force-push and served a cached "this exact commit" review for a
+    commit that no longer exists; the stale-on-push banner compares the run's head against this
+    one and could never fire; and pr_anchors cached its answer under an empty key for the rest of
+    the server's life. Everything that needs a head asks here, so an old or partial meta.json is
+    repaired on the next question instead of being trusted.
+    """
+    m = meta if meta is not None else pr_meta(repo, pr)[0]
+    head = (m.get("head") or "").strip()
+    if head:
+        return head
+    fresh = fetch_pr_meta(repo, pr)
+    return (fresh or {}).get("head", "").strip()
 
 
 def requested_of(item):
@@ -3337,7 +3700,10 @@ class Handler(BaseHTTPRequestHandler):
         foc = review_focus(repo, pr, user)
         runner = up("runner").read_text().strip() if up("runner").exists() else ""
         head_f = up("head")
-        cur_head = meta.get("head", "")
+        # pr_head(), not meta["head"]: once a PR left the queue the cached meta had no head at
+        # all, so this comparison was always against "" and the stale-on-push banner could
+        # never fire.
+        cur_head = pr_head(repo, pr, meta)
         stale = bool(head_f.exists() and cur_head and head_f.read_text().strip() != cur_head)
         out = {
             "repo": repo, "pr": pr, "title": meta.get("title", f"PR #{pr}"), "state": st,
@@ -3384,12 +3750,17 @@ class Handler(BaseHTTPRequestHandler):
             out["stopped"] = {"halted": not is_running(repo, pr, user)}
             return out
         if st == "stalled":
-            log = up("agent.log")
+            # A run that died before the agent ever started (a broken .env, a repo this install
+            # does not review) has no agent.log at all, so the card showed an empty tail and the
+            # reviewer had nothing to act on. Fall back to run.log — the script's own progress
+            # lines, including a `die` before the first status — exactly as profile_log_tail does.
+            tail = "\n".join(rs_profile.log_tail(up("agent.log")) or
+                             rs_profile.log_tail(up("run.log")))
             # bash is gone and the lock is free, but the agent it started may still be burning
             # tokens in the same process group — offer Stop only then (the server decides).
             pid = rs_state.read_pid(udir(repo, pr, user) / "pid")
             out["stalled"] = {"was": (up("status").read_text().strip() if up("status").exists() else ""),
-                              "tail": (log.read_text()[-400:].strip() if log.exists() else ""),
+                              "tail": tail[-1200:].strip(),
                               "pidAlive": bool(pid and rs_state.group_alive(pid))}
             return out
         rev = load_review(repo, pr, user)
@@ -3452,18 +3823,33 @@ class Handler(BaseHTTPRequestHandler):
         comments = sorted(rev.get("comments", []),
                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
         cs = sev_counts(comments)
-        head = pr_meta(repo, pr)[0].get("head", "")
+        head = pr_head(repo, pr)
         conv_tags, conv_rate, conv_n = convergence(repo, pr, head, user)   # Phase 3
         # Anchorability at RENDER time, so the reviewer sees where each finding will land before
-        # they post. If GitHub won't answer, say nothing rather than warn wrongly.
-        anchors, _ = pr_anchors(repo, pr, head)
-        can = (lambda p_, l_: anchors.can_anchor(p_, l_)) if anchors else (lambda p_, l_: True)
+        # they post. Tri-state, deliberately: on an anchor-lookup failure everything used to be
+        # reported anchorable (`else (lambda p_, l_: True)`), so the post bar promised inline
+        # comments it could not deliver. `null` means the check could not run — the UI says so.
+        anchors, anchor_err = pr_anchors(repo, pr, head)
+
+        def where(c):
+            if anchors is None:
+                return None
+            return anchors.anchor_state(c.get("path"), c.get("line"))
+
+        # Cap what a single click can attempt. GitHub takes a review all-or-nothing, so a runaway
+        # run that produced 200 findings — every non-low one pre-ticked by the UI — turned one
+        # click into a 200-comment review GitHub rejects outright, losing the lot.
+        shown = comments[:FINDING_RENDER_CAP]
+        preselectable = [i for i, c in enumerate(shown) if c.get("confidence") != "low"]
+        preselect = set(preselectable[:PRESELECT_CAP]) if len(preselectable) > PRESELECT_CAP \
+            else set(preselectable)
         findings = []
-        for i, c in enumerate(comments):
+        for i, c in enumerate(shown):
             findings.append({"i": i, "severity": c.get("severity", "nit"),
                              "sevLabel": SEV_LABEL.get(c.get("severity", "nit"),
                                                        c.get("severity", "nit")),
-                             "path": c.get("path", "?"), "line": c.get("line", "?"),
+                             "path": c.get("path", "?"),
+                             "line": rs_diff.norm_line(c.get("line")) or c.get("line", "?"),
                              "thread": (c["reply_to"] if c.get("reply_to") else None),
                              "body": c.get("body", ""), "suggestion": c.get("suggestion", "") or "",
                              "low": c.get("confidence") == "low",
@@ -3473,7 +3859,9 @@ class Handler(BaseHTTPRequestHandler):
                              "structured": bool((c.get("title") or "").strip()
                                                 and (c.get("impact") or "").strip()),
                              "agreement": conv_tags.get(rs_agree._cid(c)),
-                             "anchorable": can(c.get("path"), c.get("line"))})
+                             "preselect": i in preselect,
+                             "anchorable": where(c)})
+        key = review_key(rev, head)
         data = {
             "event": ev, "summary": self._as_markdown(rev.get("summary")),
             "keyPoints": [str(x).strip() for x in (rev.get("keyPoints") or []) if str(x).strip()][:6],
@@ -3482,19 +3870,45 @@ class Handler(BaseHTTPRequestHandler):
             "chips": [{"kind": k, "n": n, "label": SEV_LABEL.get(k, k)}
                       for k, n in sorted(cs.items(), key=lambda kv: SEV_ORDER.get(kv[0], 9))],
             "findings": findings, "count": len(comments),
-            "posted": upath(repo, pr, user, "posted.json").exists(),
+            # The identity of THIS run, echoed back with the post so a re-run from another
+            # device cannot have the open tab's edits applied to it by array index.
+            "reviewKey": key,
+            # Scoped to the run, not the PR: "have I posted THIS review?", so the ordinary
+            # rhythm — review, post, the author pushes, review again, post again — works, and a
+            # comment left on github.com cannot strand the draft staged here.
+            "posted": bool(posted_this_run(repo, pr, user, key)),
             "postLabel": "Post selected" + (" (dry run)" if DRY_RUN else " to GitHub"),
             "reused": upath(repo, pr, user, "cached").exists(),
+            "anchorsUnknown": bool(anchor_err) or anchors is None,
+            "anchorError": anchor_err or "",
             "convergence": ({"rate": conv_rate["rate"], "confirmed": conv_rate["confirmed"],
                              "total": conv_rate["total"], "nRuns": conv_n}
                             if conv_rate else None),
         }
+        if len(comments) > len(shown):
+            data["truncated"] = {"shown": len(shown), "total": len(comments)}
+        if len(preselectable) > len(preselect):
+            data["preselectCapped"] = {
+                "selected": len(preselect), "eligible": len(preselectable),
+                "max": POST_COMMENT_CAP,
+                "note": (f"This run produced {len(preselectable)} findings worth posting — far "
+                         "more than a single review should carry, and GitHub takes a review "
+                         f"all-or-nothing. Only the first {len(preselect)} are ticked; add "
+                         "others yourself, or post in batches.")}
+        data["maxPerPost"] = POST_COMMENT_CAP
         if appr.get("at"):
             data["approved"] = self._approved_data(appr, user)
         else:
             blockers = cs.get("blocker", 0)
             data["approve"] = {"lgtm": blockers == 0 and ev != "REQUEST_CHANGES",
-                               "blockers": blockers, "defaultMsg": default_approve_msg(rev)}
+                               "blockers": blockers, "defaultMsg": default_approve_msg(rev),
+                               # The head the verdict above was written against, sent back with
+                               # the approval so approving head B while reading head A's
+                               # "LGTM, no blockers" is caught server-side.
+                               "reviewedHead": (upath(repo, pr, user, "head").read_text().strip()
+                                                if upath(repo, pr, user, "head").exists()
+                                                else ""),
+                               "currentHead": head}
         return data
 
     def api_qa_index(self, user):
@@ -3516,26 +3930,41 @@ class Handler(BaseHTTPRequestHandler):
         return {"repos": all_repos(), "guides": first + guides}
 
     def api_qa_detail(self, repo, pr, user):
-        st = qa_state(repo, pr)
+        st, failure = qa_state(repo, pr)
+        status = qa_status_text(repo, pr)
+        md = load_qa(repo, pr)
         meta = qa_meta(repo, pr)
         out = {"repo": repo, "pr": pr, "title": meta.get("title", f"PR #{pr}"),
                "ghUrl": meta.get("url", f"https://github.com/{repo}/pull/{pr}"),
                "state": st, "connected": claude_connected(user),
-               "genToken": self._tok("qa", repo, pr, PAGE_TTL)}
+               "genToken": self._tok("qa", repo, pr, PAGE_TTL),
+               "usage": qa_usage(repo, pr) if st != "running" else None}
         if st == "running":
-            s = qa_status_text(repo, pr).lower()
+            low = status.lower()
             out["running"] = {"phases": ["Fetching the PR", "Checking out the branch",
                                          "Building the QA guide"],
-                              "cur": (0 if "fetch" in s else
-                                      1 if ("checking out" in s or "queued" in s) else 2),
-                              "queued": "queued" in s}
+                              "cur": (0 if "fetch" in low else
+                                      1 if ("checking out" in low or "queued" in low) else 2),
+                              "queued": "queued" in low}
             out["stopToken"] = self._tok("qastop", repo, pr)
-        elif st == "failed":
-            out["failed"] = qa_status_text(repo, pr)
-        elif st == "stopped":
+            return out
+        # The guide, whenever there is one — a failed or stopped REGENERATE must never hide the
+        # guide that is already on disk. What went wrong rides alongside as a warning instead.
+        if md:
+            out["md"] = md
+        if failure:
+            out["failed"] = failure
+            out["lastRunFailed"] = True
+        if status == "stopped":
             out["stopped"] = True
-        elif st == "done":
-            out["md"] = load_qa(repo, pr)
+            out["lastRunStopped"] = True
+        # The specific failure lines run-qa.sh now writes ("timed out after…", "the guide is
+        # incomplete — missing the P1 section") are only half the story; the agent's own last
+        # words are in qa_agent.log, and were unreachable from the page.
+        if failure or status == "stopped":
+            tail = qa_log_tail(repo, pr)
+            if tail:
+                out["logTail"] = tail
         return out
 
     def api_skills(self, user):
@@ -4035,8 +4464,15 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/qa/gen":
             if err := gate("qa"):
                 return self.api_json({"error": err}, 403)
-            self._spawn_qa(repo, pr, user)
-            return self.api_json({"ok": True})
+            # The review route was explicitly fixed to report this; the QA route still threw the
+            # answer away and always said {"ok": true}, so a click that spawned nothing (no
+            # connected Claude account, a build already running) looked like a run that began
+            # and never finished.
+            started, reason = self._spawn_qa(repo, pr, user)
+            out = {"ok": True, "started": started}
+            if not started:
+                out["reason"] = reason
+            return self.api_json(out)
         if route == "/api/qa/stop":
             if err := gate("qastop"):
                 return self.api_json({"error": err}, 403)
@@ -4088,11 +4524,26 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/post":
             if err := gate("post"):
                 return self.api_json({"error": err}, 403)
-            return self.api_json({"bannerHtml": self._post_result(repo, pr, user, self._post_form(repo, pr, user, body))})
+            # Findings are matched to the reviewer's edits by array INDEX. A re-run from another
+            # device reorders them, so an open tab would post its old text against a new
+            # finding's file and line — a comment about the wrong code, under the reviewer's own
+            # name. The client echoes the run it is looking at; a mismatch is a 409, never a post.
+            sent = str(body.get("review_key") or "")
+            rev = load_review(repo, pr, user) or {}
+            current = review_key(rev, pr_head(repo, pr))
+            if sent and current and sent != current:
+                return self.api_json(
+                    {"error": "This review has been re-run since you opened it, so your "
+                              "selection no longer lines up with the findings on the server — "
+                              "nothing was posted. Reload the page and pick again.",
+                     "reviewKey": current, "sentKey": sent}, 409)
+            form = self._post_form(repo, pr, user, body)
+            return self.api_json({"bannerHtml": self._post_result(repo, pr, user, form)})
         if route == "/api/approve":
             if err := gate("approve"):
                 return self.api_json({"error": err}, 403)
             form = {"pr": [pr], "ack": ["1"] if body.get("ack") else [],
+                    "reviewed_head": [str(body.get("reviewed_head") or "")],
                     "approve_body": [str(body.get("body") or "")]}
             return self.api_json({"bannerHtml": self._approve_result(repo, pr, user, form)})
         return self.api_json({"error": "not found"}, 404)
@@ -4102,8 +4553,10 @@ class Handler(BaseHTTPRequestHandler):
         come from the stored review (not the client) — only selection, body and suggestion are
         the reviewer's to change."""
         rev = load_review(repo, pr, user) or {}
+        # Exactly what _review_data rendered, in the same order and with the same cap — the
+        # client's indices address THAT list, so anything beyond the cap it never saw.
         originals = sorted(rev.get("comments", []),
-                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
+                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))[:FINDING_RENDER_CAP]
         sel = set(body.get("selected") or [])
         bodies = body.get("bodies") or {}
         suggs = body.get("suggs") or {}
@@ -4389,6 +4842,11 @@ class Handler(BaseHTTPRequestHandler):
         modify_users(apply)
         return "<div class='banner ok'><span>✓</span><div>Saved.</div></div>"
 
+    # Control characters in the focus note: a NUL cannot cross execve into the child's
+    # environment (Python raises), and a newline or an escape sequence is a prompt-injection
+    # seam in the instruction block the note is pasted into.
+    FOCUS_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
     def _spawn_review(self, repo, pr, user, effort="", focus="", model=""):
         """Queue one review (no redirect). Returns True if it actually spawned, False if a review
         was already running for that PR. Shared by start_review and the stack runner."""
@@ -4398,30 +4856,49 @@ class Handler(BaseHTTPRequestHandler):
         d = udir(repo, pr, user)                          # each reviewer's run + review live under here
         d.mkdir(parents=True, exist_ok=True)
         touch_user(repo, pr, user)
-        # run-review.sh takes a per-PR flock, so a genuine duplicate is impossible — only skip
-        # when a review is ACTUALLY running. This lets a finished review be re-run and, crucially,
-        # a stalled one (status stuck at "reviewing" but the process is gone) be recovered.
-        # The pid counts too: a child that is still booting has not taken the lock yet, and a
-        # second spawn now would overwrite its status/effort/pid markers.
-        if run_alive(repo, pr, user):
+        # VALIDATE BEFORE DESTROYING ANYTHING. archive_review() deletes the live review.json, and
+        # it used to run before the spawn could fail — so a focus note with a NUL in it wiped the
+        # existing review, raised inside Popen, and returned nothing at all.
+        focus = (focus or "").strip()[:2000]
+        if self.FOCUS_BAD.search(focus):
             return False
         meta, _ = pr_meta(repo, pr)
         eff = effort if effort in EFFORT else autosize_effort(meta)
-        focus = (focus or "").strip()[:2000]
-        archive_review(repo, pr, user)                    # keep the prior run in history/
         mdl = model if model in MODEL_KEYS else ""
-        head = (meta.get("head") or "").strip()
+        head = pr_head(repo, pr, meta)
+        # Probe → spawn → pid write, all under one lock. Two clicks (two tabs, or a browser and
+        # the mobile bearer) both passed run_alive() and both spawned; the loser's pid is what
+        # landed in `pid`, so Stop killed a process that was already dead, said "confirmed", and
+        # the real agent kept burning Claude usage until its timeout. rs_profile.start_job has
+        # taken the same lock for profile builds since that bug was found there.
+        with act_lock("review", repo, pr, user):
+            # run-review.sh takes a per-PR flock, so a genuine duplicate is impossible — only skip
+            # when a review is ACTUALLY running. This lets a finished review be re-run and,
+            # crucially, a stalled one (status stuck at "reviewing" but the process is gone) be
+            # recovered. The pid counts too: a child that is still booting has not taken the lock
+            # yet, and a second spawn now would overwrite its status/effort/pid markers.
+            if run_alive(repo, pr, user):
+                return False
+            return self._start_review_locked(repo, pr, user, d, meta, eff, focus, mdl, head)
+
+    def _start_review_locked(self, repo, pr, user, d, meta, eff, focus, mdl, head):
+        """The body of _spawn_review, run with this (repo, pr, user) held."""
+        # The prior run is read into memory now and written to history/ only once the
+        # replacement genuinely exists — see snapshot_review().
+        snap = snapshot_review(repo, pr, user)
         # Phase 1 — reuse YOUR own identical re-run on this commit: 0 tokens, no LLM call.
+        # With no head there is no "this commit": the key would be identical before and after a
+        # force-push and would serve a cached review of a commit that no longer exists. Run.
         key = review_cache_key(user, repo, head, eff, focus, mdl)
         cf = d / "cache" / f"{key}.json"
         cached = None
-        if cf.exists():
+        if head and cf.exists():
             try:
                 cached = json.loads(cf.read_text())
             except (OSError, json.JSONDecodeError):
                 cached = None
         if cached and cached.get("review"):
-            # (the current review was already archived to history/ just above)
+            archive_review(repo, pr, user, snap)
             (d / "review.json").write_text(json.dumps(cached["review"]))
             (d / "effort").write_text(eff)
             (d / "focus").write_text(focus)
@@ -4472,10 +4949,17 @@ class Handler(BaseHTTPRequestHandler):
                 "definitions, imports, migrations or setup that another PR in the stack provides; "
                 "do consider cross-PR dependencies and whether this PR is coherent on top of the "
                 "ones below it.\nStack (top \u2192 bottom):\n" + rows)
-        with open(d / "run.log", "ab") as log:
-            proc = subprocess.Popen([str(BIN / "run-review.sh"), repo, pr], stdout=log,
-                                    stderr=subprocess.STDOUT, start_new_session=True, env=env)
+        try:
+            with open(d / "run.log", "ab") as log:
+                proc = subprocess.Popen([str(BIN / "run-review.sh"), repo, pr], stdout=log,
+                                        stderr=subprocess.STDOUT, start_new_session=True,
+                                        env=env)
+        except (OSError, ValueError) as e:
+            # Nothing was archived and nothing was cleared — the existing review is still there.
+            (d / "status").write_text(f"failed: could not start run-review.sh ({e})")
+            return False
         (d / "pid").write_text(str(proc.pid))
+        archive_review(repo, pr, user, snap)     # only now is the old run genuinely replaced
         return True
 
     # --- repository profile ------------------------------------------------------------------
@@ -4573,36 +5057,60 @@ class Handler(BaseHTTPRequestHandler):
 
     # --- QA guides ---------------------------------------------------------------------------
     def _spawn_qa(self, repo, pr, user):
+        """(started, reason). Reason is the words the page shows when nothing spawned."""
         if not claude_connected(user):              # QA runs Claude too — needs their own account
-            return False
+            return False, ("Connect your Claude account in Integrations to build a QA guide.")
         d = P.prdir(repo, pr)
         d.mkdir(parents=True, exist_ok=True)
-        if qa_running(repo, pr):
-            return False
-        (d / "qa.status").write_text("queued")
-        env = review_env(user)                  # runs on the clicker's Claude account
-        with open(d / "qa.log", "ab") as log:
-            proc = subprocess.Popen([str(BIN / "run-qa.sh"), repo, pr], stdout=log,
-                                    stderr=subprocess.STDOUT, start_new_session=True, env=env)
-        (d / "qa.pid").write_text(str(proc.pid))
-        return True
+        # Probe → spawn → pid write under one lock, for the reason _spawn_review takes one.
+        with act_lock("qa", repo, pr):
+            if qa_running(repo, pr):
+                return False, "already running"
+            (d / "qa.status").write_text("queued")
+            env = review_env(user)              # runs on the clicker's Claude account
+            try:
+                with open(d / "qa.log", "ab") as log:
+                    proc = subprocess.Popen([str(BIN / "run-qa.sh"), repo, pr], stdout=log,
+                                            stderr=subprocess.STDOUT, start_new_session=True,
+                                            env=env)
+            except OSError as e:
+                (d / "qa.status").write_text(f"failed: could not start run-qa.sh ({e})")
+                return False, f"could not start the QA job: {e}"
+            (d / "qa.pid").write_text(str(proc.pid))
+        return True, ""
 
     def _post_result(self, repo, pr, user, form):
         """Post the selected comments; returns a banner HTML string (reused by the HTML page and
-        the JSON API)."""
+        the JSON API). The whole check → POST → write runs under one per-(repo, pr, user) lock:
+        two tabs, or a browser and the mobile bearer token, both used to pass the marker check
+        and both POST, landing two full reviews on the PR under the same name."""
+        with act_lock("post", repo, pr, user):
+            return self._post_locked(repo, pr, user, form)
+
+    def _post_locked(self, repo, pr, user, form):
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
         # Don't post a review that is still being (re)generated — the review.json on disk may be
         # the previous run's, and posting it produces a half-built comment on the real PR.
-        if is_running(repo, pr, user):
-            return ("<div class='banner warn'><span>⏳</span><div>A review is still running "
-                    "for this PR — wait for it to finish, then post.</div></div>")
-        # Idempotency: a successful real post writes posted.json. Refuse a second one — a
-        # double-click, or a replayed 30-min action token — so a reviewer never lands two
-        # reviews on the same PR. (Dry runs never write it, so they stay repeatable.)
-        if upath(repo, pr, user, "posted.json").exists():
-            return ("<div class='banner ok'><span>✓</span><div>Already posted to GitHub as your "
-                    "review — not posting again.</div></div>")
+        # run_alive(), not is_running(): the flock alone is not a proof of absence, and _spawn_
+        # review has used the stronger test since that was found.
+        if run_alive(repo, pr, user):
+            return _banner("warn", "\u23f3",
+                           "A review is still running for this PR — wait for it to finish, then "
+                           "post.")
         rev = load_review(repo, pr, user) or {}
+        head = pr_head(repo, pr)
+        key = review_key(rev, head)
+        # Idempotency, scoped to the RUN. A successful real post records this review's key; a
+        # second post of the SAME review — a double-click, a replayed 30-minute action token —
+        # is refused, while a post of a NEW review after the author pushed is exactly what the
+        # product is for. (Dry runs never record, so they stay repeatable.)
+        prev = posted_this_run(repo, pr, user, key)
+        if prev:
+            when = ago(prev.get("at", 0))
+            return _banner("ok", "\u2713",
+                           f"You already posted this review to GitHub{' ' + when if when else ''}"
+                           " — not posting it again. Re-run the review to draft a new one against "
+                           "the current commit.")
         chosen = []
         blank = []
         for i in range(int(one("count") or 0)):
@@ -4622,55 +5130,72 @@ class Handler(BaseHTTPRequestHandler):
                 loc = one(f"path_{i}") + (f":{line}" if line.isdigit() else "")
                 blank.append(loc or f"finding {i + 1}")
             chosen.append({"path": one(f"path_{i}"),
-                           "line": int(line) if line.isdigit() else None,
+                           "line": rs_diff.norm_line(line),
                            "severity": one(f"sev_{i}"),
                            "body": body, "suggestion": sugg})
         if blank:
             items = ", ".join(f"<code>{html.escape(b)}</code>" for b in blank)
-            return ("<div class='banner warn'><span>⚠️</span><div>These selected "
-                    f"finding(s) have no text: {items}. Add a comment or unselect them before "
-                    "posting.</div></div>")
-        # Learnings: capture what was dropped/edited/kept before posting — the same signal the
-        # dashboard used to discard. Sorted like review_body so form index i lines up. Done
-        # even when nothing is chosen (dropping every finding is the strongest signal), and
-        # before the dry-run branch so it learns during the pilot too.
+            return _banner("warn", "\u26a0\ufe0f",
+                           f"These selected finding(s) have no text: {items}. Add a comment or "
+                           "unselect them before posting.")
+        # The same list, in the same order and with the same cap, that _post_form indexed —
+        # a learning logged against the wrong finding is worse than no learning.
         originals = sorted(rev.get("comments", []),
-                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
+                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))[:FINDING_RENDER_CAP]
         skill_f = upath(repo, pr, user, "skill")
         skill = skill_f.read_text().strip() if skill_f.exists() else "global"
-        rs_learn.record(repo, pr, user, originals, form, skill=skill)
+        # Learnings are recorded ONCE, at the end, and only down a path that actually reached
+        # GitHub or was an explicit dry run — see _learn() below.
+        learn = lambda: self._learn(repo, pr, user, originals, form, skill, key)  # noqa: E731
         if not chosen:
-            return ("<div class='banner warn'><span>⚠️</span><div>"
-                    "Nothing selected — nothing sent.</div></div>")
+            # Nothing ticked is not "the reviewer dropped every finding": it is a click with an
+            # empty selection, and logging a full set of drops for it inflated the drop rate and
+            # could trip the rule-suggestion threshold off one stray click.
+            return _banner("warn", "\u26a0\ufe0f", "Nothing selected — nothing sent.")
+        if len(chosen) > POST_COMMENT_CAP:
+            return _banner("warn", "\u26a0\ufe0f",
+                           f"<b>{len(chosen)} findings selected — that is more than one review "
+                           f"should carry.</b><br>GitHub accepts a review all-or-nothing, and a "
+                           f"batch this size is likely to be rejected whole. Post at most "
+                           f"{POST_COMMENT_CAP} at a time.")
 
         # Re-validate anchors against the CURRENT diff: the PR may have gained commits while
-        # this review sat in the dashboard, and one stale line 422s the whole review.
-        files, err = fetch_pr_files(repo, pr)
+        # this review sat in the dashboard, and one stale line 422s the whole review. The same
+        # trip brings back the PR itself, because nothing used to check it was still open.
+        files, err, info = fetch_pr_files(repo, pr, with_pr=True)
         if err is not None:
-            return (
-                f"<div class='banner err'><span>🔴</span><div><b>Could not fetch the PR diff "
-                f"from GitHub — nothing was posted.</b><br>Without it every comment would be "
-                f"demoted out of the diff and posted as a plain summary, so this refuses "
-                f"rather than posting a degraded review. Check "
-                f"<a href='https://www.githubstatus.com' target=_blank rel=noopener>"
-                f"githubstatus.com</a> and retry.<br>"
-                f"<code>{html.escape(err)}</code></div></div>")
+            return _banner("err", "\U0001f534",
+                           "<b>Could not fetch the PR diff from GitHub — nothing was posted.</b>"
+                           "<br>Without it every comment would be demoted out of the diff and "
+                           "posted as a plain summary, so this refuses rather than posting a "
+                           "degraded review. Check <a href='https://www.githubstatus.com' "
+                           "target=_blank rel=noopener>githubstatus.com</a> and retry.<br>"
+                           f"<code>{html.escape(err)}</code>")
+        state = (info or {}).get("state", "")
+        if state and state != "open":
+            what = "merged" if (info or {}).get("merged") else state
+            return _banner("warn", "\u26a0\ufe0f",
+                           f"<b>This pull request is {html.escape(what)} — nothing was posted."
+                           "</b><br>A review on a closed PR is not actionable and, on a merged "
+                           "one, cannot be acted on at all. Open it on GitHub if you still want "
+                           "to leave the comments.")
         anchors = rs_diff.Anchors(files, fetch_diff=lambda: fetch_pr_diff(repo, pr))
         inline, orphans = rs_diff.split_anchorable(chosen, anchors)
+        unresolved = anchors.unresolved()
         # Permalinks point at the commit the review actually ran against, not at whatever HEAD
         # is now — the run's own head marker, falling back to the PR's current head.
         hf = upath(repo, pr, user, "head")
-        head = (hf.read_text().strip() if hf.exists() else "") or pr_meta(repo, pr)[0].get("head", "")
+        link_head = (hf.read_text().strip() if hf.exists() else "") or head
         # No bot signature: this posts under the reviewer's own account, so GitHub already
         # attributes it. A trailing "Reviewed by @x" only restates the byline.
         body = ((rev.get("summary") or "").strip()
-                + RB.offdiff_block(orphans, repo=repo, head=head))
+                + RB.offdiff_block(orphans, repo=repo, head=link_head, deleted=anchors.deleted))
         # A COMMENT review with an empty body and no inline comments is a half-built post — refuse
         # it. (Can happen if the review has no summary and every selected finding failed to anchor.)
         if not body.strip() and not inline:
-            return ("<div class='banner warn'><span>⚠️</span><div>Nothing to post — the "
-                    "review has no summary and none of the selected findings sit on a line this "
-                    "PR changes.</div></div>")
+            return _banner("warn", "\u26a0\ufe0f",
+                           "Nothing to post — the review has no summary and none of the selected "
+                           "findings sit on a line this PR changes.")
         # Default is a plain COMMENT review. The reviewer can deliberately choose REQUEST_CHANGES
         # from the post bar (never the agent's call) — a human-only, blocking action.
         event = "REQUEST_CHANGES" if form.get("request_changes") else "COMMENT"
@@ -4678,64 +5203,104 @@ class Handler(BaseHTTPRequestHandler):
         ud = udir(repo, pr, user)
         ud.mkdir(parents=True, exist_ok=True)
         (ud / "payload.json").write_text(json.dumps(payload))
+        # Honest about what could not be checked, rather than silently demoting it: a file the
+        # full-diff fetch never resolved is not proof the finding sits outside the diff.
+        caveat = ""
+        if unresolved:
+            caveat = ("<br>\u26a0\ufe0f GitHub would not return the full diff for "
+                      f"{len(unresolved)} file(s), so those findings went into the summary "
+                      "rather than risk a 422 that would lose the whole review.")
 
         if DRY_RUN:
-            return (
-                f"<div class='banner warn'><span>🧪</span><div><b>DRY RUN — nothing was sent "
-                f"to GitHub.</b><br>Your review would post as <code>{event}</code> — "
-                f"{html.escape(RB.outcome(len(inline), len(orphans)))} Set "
-                f"<code>DRY_RUN=0</code> and restart the <code>reviewstage</code> service to "
-                f"post for real.</div></div>")
+            learn()
+            return _banner("warn", "\U0001f9ea",
+                           "<b>DRY RUN — nothing was sent to GitHub.</b><br>Your review would "
+                           f"post as <code>{event}</code> — "
+                           f"{html.escape(RB.outcome(len(inline), len(orphans)))} Set "
+                           "<code>DRY_RUN=0</code> and restart the <code>reviewstage</code> "
+                           "service to post for real." + caveat)
 
         tok = user_pat(user)
         if not tok:
-            return ("<div class='banner err'><span>🚫</span><div>"
-                    "Your stored GitHub token could not be read — "
-                    "paste it again in <a href='/integrations'>settings</a>.</div></div>")
+            return reconnect_banner(user)
         r = gh(["api", "--method", "POST", f"repos/{repo}/pulls/{pr}/reviews",
                 "--input", str(ud / "payload.json")], token=tok)
         if r.returncode != 0:
-            return (f"<div class='banner err'><span>🔴</span><div>GitHub rejected it: <code>"
-                    f"{html.escape(r.stderr[:400])}</code></div></div>")
-        (ud / "posted.json").write_text(
-            json.dumps({"at": int(time.time()), "inline": len(inline), "event": event}))
+            # No learning recorded: this never reached GitHub, and three retries through an
+            # outage used to log every finding four times over.
+            return gh_write_failure(r, user, "post your review",
+                                    "Nothing was posted — your selection is still here.")
+        record_posted_run(repo, pr, user, key, head, len(inline), event)
+        learn()
         msg = RB.posted_message(f"<code>{html.escape(user)}</code>", len(inline), len(orphans))
-        return (f"<div class='banner ok'><span>✓</span><div>{msg}"
-                + (f" Submitted as <code>{event}</code>." if event != "COMMENT" else "")
-                + "</div></div>")
+        return _banner("ok", "\u2713", msg
+                       + (f" Submitted as <code>{event}</code>." if event != "COMMENT" else "")
+                       + caveat)
+
+    @staticmethod
+    def _learn(repo, pr, user, originals, form, skill, run_key):
+        """Record what the reviewer kept, edited and dropped — once, for a post that actually
+        happened.
+
+        It used to fire before the anchor fetch, before the dry-run branch and before the POST,
+        with no per-run dedupe: a GitHub outage plus three retries logged every finding four
+        times, and a click with nothing ticked logged a full set of drops. Both inflate the keep
+        rate and can trip the rule-suggestion threshold off one bad afternoon. `run_key` makes a
+        retry REPLACE its predecessor instead of appending.
+        """
+        try:
+            rs_learn.record(repo, pr, user, originals, form, skill=skill, run_key=run_key)
+        except TypeError:
+            # rs_learn has not learned the keyword yet (it is another lane's file). Recording
+            # once, at the right moment, is still the larger half of the fix.
+            rs_learn.record(repo, pr, user, originals, form, skill=skill)
 
     def _approve_result(self, repo, pr, user, form):
+        """Approve as the user. Serialised on the same lock the post path takes, so two tabs
+        cannot both get past the "already approved" check and post two approvals."""
+        with act_lock("post", repo, pr, user):
+            return self._approve_locked(repo, pr, user, form)
+
+    def _approve_locked(self, repo, pr, user, form):
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
         rev = load_review(repo, pr, user) or {}
+        ack = bool(one("ack"))
         blockers = sev_counts(rev.get("comments", [])).get("blocker", 0)
         lgtm = blockers == 0 and rev.get("event") != "REQUEST_CHANGES"
-        if not lgtm and not one("ack"):
-            return ("<div class='banner warn'><span>⚠️</span><div>This review is not LGTM — tick "
-                    "the confirmation to approve anyway.</div></div>")
+        if not lgtm and not ack:
+            return _banner("warn", "\u26a0\ufe0f",
+                           "This review is not LGTM — tick the confirmation to approve anyway.")
         msg = one("approve_body").strip() or "LGTM."
         tok = user_pat(user)
         if not tok:
-            return ("<div class='banner err'><span>🚫</span><div>Your stored GitHub token could "
-                    "not be read — paste it again in <a href='/integrations'>settings</a>."
-                    "</div></div>")
-        ok, why = can_approve(repo, pr, user)
+            return reconnect_banner(user)
+        # The commit the verdict on screen was written against. Without it a reviewer could read
+        # head A's "LGTM, no blockers" and approve head B.
+        hf = upath(repo, pr, user, "head")
+        reviewed_head = (one("reviewed_head").strip()
+                         or (hf.read_text().strip() if hf.exists() else ""))
+        ok, why, head = can_approve(repo, pr, user, reviewed_head=reviewed_head, confirmed=ack)
         if not ok:
-            return f"<div class='banner err'><span>🚫</span><div>{html.escape(why)}</div></div>"
+            return _banner("err", "\U0001f6ab", html.escape(why))
         if DRY_RUN:
-            return (
-                f"<div class='banner warn'><span>🧪</span><div><b>DRY RUN — not approved.</b>"
-                f"<br>Would submit an APPROVE review as <code>{html.escape(user)}</code> with "
-                f"body: <em>{html.escape(msg[:200])}</em></div></div>")
+            return _banner("warn", "\U0001f9ea",
+                           "<b>DRY RUN — not approved.</b><br>Would submit an APPROVE review as "
+                           f"<code>{html.escape(user)}</code> with body: "
+                           f"<em>{html.escape(msg[:200])}</em>")
         r = gh(["api", "--method", "POST", f"repos/{repo}/pulls/{pr}/reviews",
                 "-f", "event=APPROVE", "-f", f"body={msg}"], token=tok)
         if r.returncode != 0:
-            return (f"<div class='banner err'><span>🔴</span><div>GitHub rejected it: <code>"
-                    f"{html.escape(r.stderr[:400])}</code></div></div>")
+            return gh_write_failure(r, user, "approve this pull request",
+                                    "Nothing was approved.")
         ud = udir(repo, pr, user)
         ud.mkdir(parents=True, exist_ok=True)
-        (ud / "approved").write_text(json.dumps({"at": int(time.time()), "body": msg}))
-        return (f"<div class='banner ok'><span>✅</span><div>Approved {repo}#{pr} as "
-                f"<code>{html.escape(user)}</code>.</div></div>")
+        (ud / "approved").write_text(json.dumps({"at": int(time.time()), "body": msg,
+                                                 "head": head, "source": "dashboard"}))
+        note = ("" if not (reviewed_head and head and reviewed_head != head)
+                else f" (at <code>{html.escape(head[:7])}</code>, newer than the commit reviewed)")
+        return _banner("ok", "\u2705",
+                       f"Approved {html.escape(repo)}#{html.escape(str(pr))} as "
+                       f"<code>{html.escape(user)}</code>.{note}")
 
 
 if __name__ == "__main__":
@@ -4761,8 +5326,13 @@ if __name__ == "__main__":
     # Legacy single-repo layout ($ROOT/repo, $ROOT/state/<pr>) → per-repo layout, once. Exits
     # with an operator-facing message when the state cannot be attributed to one repo.
     P.migrate_legacy(REPOS, log=lambda m: print(m, flush=True))
-    if not SIG_V2_SINCE.exists():                  # starts the legacy-signature grace window
-        SIG_V2_SINCE.write_text(str(int(time.time())))
+    if not SIG_V2_SINCE.exists():
+        # The grace window exists for links that were already in someone's Slack when this box
+        # was upgraded. A FRESH install has none — it was stamping the file on first boot, so a
+        # brand-new multi-repo install spent its first week accepting bare-PR signatures it had
+        # never issued. No prior state, no window.
+        upgraded = USERS.exists() or any(True for _ in P.iter_prdirs())
+        SIG_V2_SINCE.write_text(str(int(time.time())) if upgraded else "0")
     if not PUBLIC_URL:
         print("WARN: PUBLIC_URL is not set in .env — OAuth sign-in and Slack links will not "
               "work until it is", flush=True)

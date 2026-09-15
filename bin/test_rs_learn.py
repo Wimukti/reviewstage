@@ -191,6 +191,116 @@ class Promotion(Base):
         self.assertIn("rolling", st.values())
 
 
+class PromotedLeavesTheWindowWithMixedOutcomes(Base):
+    """Regression: render() hands dropped AND edited rows to the promoted-row filter together.
+
+    The filter used to re-cluster that mixed list in one pass, and _same_group ignored the
+    outcome, so the merged cluster's signature never equalled the dropped-only signature the
+    rule was promoted from — nothing was skipped and the promoted complaint stayed in the
+    rolling window for ever. The old test passed only because its fixture was dropped-only."""
+
+    # The same complaint, dropped on four PRs and reworded on three others. The reworded gists
+    # carry enough of their own vocabulary that a cluster merging both outcomes hashes to a
+    # different signature than the dropped-only one the rule was promoted from.
+    EDITED = [
+        row("Prefer const over let: the immutable threshold configuration binding",
+            pr="10", outcome="edited"),
+        row("Prefer const over let for the immutable threshold configuration value",
+            pr="11", outcome="edited"),
+        row("Prefer const over let, immutable threshold configuration everywhere",
+            pr="12", outcome="edited"),
+    ]
+
+    def fixture(self):
+        return CONST + self.EDITED + OTHER
+
+    def test_a_promoted_dropped_cluster_leaves_the_window_even_when_edited_rows_exist(self):
+        self.write(self.fixture())
+        c = next(c for c in self.L.clusters("dropped") if "const" in c["gist"].lower())
+        self.L.promote(c["signature"], c, "acme-dev", "Never raise const-over-let nits.",
+                       "global")
+        after = self.L.render("acme/widgets")
+        dropped_block = after.split("kept but reworded")[0]
+        self.assertNotIn("Prefer const over let", dropped_block)
+        self.assertIn("magic", dropped_block)       # the unrelated complaint still rolls
+
+    def test_the_edited_cluster_is_its_own_complaint(self):
+        self.write(self.fixture())
+        drop = {c["signature"] for c in self.L.clusters("dropped", min_rows=2)}
+        edit = {c["signature"] for c in self.L.clusters("edited", min_rows=2)}
+        self.assertFalse(drop & edit)
+
+    def test_promoting_the_edited_cluster_does_not_silence_the_dropped_one(self):
+        self.write(self.fixture())
+        c = next(c for c in self.L.clusters("edited", min_rows=2) if "const" in c["gist"].lower())
+        self.L.promote(c["signature"], c, "acme-dev", "A rule.", "global")
+        self.assertIn("Prefer const over let", self.L.render("acme/widgets"))
+
+
+class AllTimeTotals(Base):
+    """Regression: every "all-time" number was really "the last CAP findings" and could fall."""
+
+    def post(self, n, pr, outcome="dropped", key="", skill="global", repo="acme/widgets"):
+        originals = [{"path": "app/models/Product.php", "line": 3, "severity": "nit",
+                      "body": f"finding {i} on pr {pr}"} for i in range(n)]
+        form = {}
+        if outcome != "dropped":
+            for i in range(n):
+                form[f"sel_{i}"] = ["1"]
+                form[f"body_{i}"] = [originals[i]["body"] if outcome == "kept" else "reworded"]
+        self.L.record(repo, pr, "acme-dev", originals, form, skill=skill, key=key)
+
+    def test_counts_survive_the_detail_log_rolling_over(self):
+        per = self.L.CAP // 2 + 10
+        self.post(per, "1")
+        self.post(per, "2")
+        self.assertEqual(len(self.L._read()), self.L.CAP)        # the log really did truncate
+        self.assertEqual(self.L.counts()["dropped"], 2 * per)    # the tally did not
+
+    def test_counts_never_go_down(self):
+        self.post(self.L.CAP, "1", outcome="kept")
+        first = self.L.counts()["kept"]
+        self.post(20, "2", outcome="kept")
+        self.assertEqual(self.L.counts()["kept"], first + 20)
+
+    def test_a_retry_of_the_same_post_replaces_its_rows(self):
+        k = self.L.post_key("acme/widgets", 7, "acme-dev", "abc123def456")
+        self.post(3, "7", key=k)
+        self.post(3, "7", key=k)                                 # the reviewer clicked again
+        self.assertEqual(self.L.counts()["dropped"], 3)
+        self.assertEqual(len(self.L._read()), 3)
+
+    def test_the_tally_survives_a_restart(self):
+        self.post(5, "1")
+        self.L = importlib.reload(self.L)
+        self.assertEqual(self.L.counts()["dropped"], 5)
+
+    def test_a_rate_under_the_floor_is_not_ratable(self):
+        self.post(3, "1", outcome="kept")
+        st = self.L.skill_stats()[0]
+        self.assertFalse(st["ratable"])
+        self.post(self.L.MIN_RATE_SAMPLE, "2", outcome="kept")
+        self.assertTrue(self.L.skill_stats()[0]["ratable"])
+
+
+class RuleSectionParsing(Base):
+    def test_parsing_stops_at_the_next_heading(self):
+        skill = ("## Team rules\n\n- Never raise const-over-let nits.\n\n"
+                 "## Examples\n\n- This bullet is prose, not a rule.\n")
+        self.assertEqual(self.L.parse_rules(skill), ["Never raise const-over-let nits."])
+
+
+class Config(Base):
+    def test_a_non_numeric_minimum_does_not_crash_the_import(self):
+        os.environ["RULE_SUGGEST_MIN"] = "three"
+        try:
+            L = importlib.reload(self.L)
+            self.assertEqual(L.RULE_SUGGEST_MIN, 3)
+        finally:
+            os.environ.pop("RULE_SUGGEST_MIN", None)
+            self.L = importlib.reload(self.L)
+
+
 class ProposalCache(Base):
     """The model itself is never called here: the drafter's only side effect is this cache."""
 

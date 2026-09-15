@@ -11,21 +11,41 @@ times becomes a *proposed* Team rule a human accepts or dismisses on the Skills 
 ever written to a skill without a click. A promoted cluster leaves the rolling prompt block —
 the rule carries it from then on, so the window is spent on new signal.
 
-Storage: $ROOT/learnings.jsonl (ROOT defaults to ~/.reviewstage, same as the server + shell).
+Storage: $ROOT/learnings.jsonl (ROOT defaults to ~/.reviewstage, same as the server + shell),
+capped at CAP rows, with a never-truncated tally in $ROOT/learnings_totals.json beside it —
+every "all-time" count comes from the tally, never from the capped log.
 Only short gists are stored — high signal, low bloat. Rows carry the repo they came from;
 render(repo) prefers same-repo rows and pads with the rest. Imported by server.py;
 run-review.sh calls render() via `python3 -c`.
 """
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import re
+import tempfile
 import time
 from pathlib import Path
 
 ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 FILE = ROOT / "learnings.jsonl"
-CAP = 300                          # keep only the most recent this many rows
+CAP = 300                          # the DETAIL log keeps only the most recent this many rows
+TOTALS = ROOT / "learnings_totals.json"   # never-truncated running tally beside the detail log
+
+# How many rows of each outcome render() actually puts in the prompt. Exported because the
+# dashboard states these numbers to the user and must not hardcode them.
+WINDOW_DROPPED = 24
+WINDOW_EDITED = 12
+
+
+def windows():
+    return {"dropped": WINDOW_DROPPED, "edited": WINDOW_EDITED}
+
+# No rate computed from fewer observations than this is presented as a rate: one kept finding
+# is not "100%". The same floor governs the Insights keep rate and the per-skill table, so the
+# product ships exactly one definition of "enough data to rate".
+MIN_RATE_SAMPLE = 20
 
 # Where the human decisions about proposed rules live. Small JSON objects keyed by cluster
 # signature; all three are best-effort and a missing file just means "nothing decided yet".
@@ -33,10 +53,61 @@ DISMISSALS = ROOT / "rule_dismissals.json"     # signature -> {at, by, gist, sev
 PROPOSALS = ROOT / "rule_proposals.json"       # signature -> {rule, rationale, at, model}
 PROMOTIONS = ROOT / "rule_promotions.json"     # signature -> {at, by, rule, target, repo}
 
+
+def _env_int(name, default, lo):
+    """An int from the environment, floored at `lo`. A typo must not stop the server booting."""
+    try:
+        v = int(os.environ.get(name) or default)
+    except (TypeError, ValueError):
+        print(f"{name}={os.environ.get(name)!r} is not a number — using {default}", flush=True)
+        v = default
+    return max(lo, v)
+
+
 # A cluster is only worth proposing once the team has said no this many times, across at least
 # this many distinct PRs (one noisy PR is a bad day, two is a pattern).
-RULE_SUGGEST_MIN = max(2, int(os.environ.get("RULE_SUGGEST_MIN") or 3))
+RULE_SUGGEST_MIN = _env_int("RULE_SUGGEST_MIN", 3, 2)
 MIN_PRS = 2
+
+
+# --- concurrency + atomic writes ---------------------------------------------------------------
+# Two reviewers posting at the same instant used to read the same JSON, each add their own row
+# and each write the whole file back — one of the two decisions vanished, and with a shared
+# `.tmp` path the two writers could even swap payloads. Every mutation now takes an exclusive
+# flock on a per-file sidecar and lands through a uniquely-named temp file.
+@contextlib.contextmanager
+def file_lock(path):
+    """Exclusive lock for one data file, held for the whole read-modify-write."""
+    lf = Path(str(path) + ".lock")
+    try:
+        lf.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(lf), os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError:
+        yield False                      # cannot lock (read-only ROOT) — proceed unserialised
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield True
+    finally:
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _atomic_write(path, text, mode=0o600):
+    """Replace `path` with `text` through a temp file unique to this writer."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def _gist(body, limit=120):
@@ -63,17 +134,38 @@ def _read():
     return rows
 
 
-def record(repo, pr, user, originals_sorted, form, skill="global"):
-    """Log the outcome of each original finding for one posted review.
+def post_key(repo, pr, user, head=""):
+    """The idempotency key for one posted review: re-recording it replaces its rows.
+
+    `posted.json` only exists once a post has succeeded, so it could never guard a retry of the
+    post that failed halfway. The key can: the second attempt at the same (repo, PR, reviewer,
+    head) overwrites the first attempt's rows instead of doubling every decision."""
+    return f"{(repo or '').lower()}#{pr}@{user}@{(head or '')[:12]}"
+
+
+def row_id(row):
+    """A stable id for one learning row — what a dismissal and a promotion are anchored to."""
+    key = "|".join(str(row.get(k, "")) for k in
+                   ("at", "repo", "pr", "user", "path", "line", "outcome", "gist"))
+    return hashlib.sha1(key.encode()).hexdigest()[:12]
+
+
+def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=None):
+    """Log the outcome of each original finding for one review that REACHED GitHub.
+
+    Call this AFTER the post succeeds — never before the dry-run branch and never before the
+    POST. A keep rate computed over findings that were never sent is a number about a
+    hypothetical review; during a DRY_RUN pilot it is entirely hypothetical.
 
     `originals_sorted` is review.json's comments sorted exactly as the dashboard renders them
     (by severity), so form index i lines up. `form` is the parsed POST body: sel_i present =>
     kept/edited, absent => dropped; body_i is the (possibly edited) text. `skill` is the id of
     the review skill that produced these findings ("global" or a user login), so we can score
-    which skills produce findings humans actually keep.
+    which skills produce findings humans actually keep. `key` (see post_key) makes the write
+    idempotent: rows already stored under the same key are replaced, not appended to.
     """
     one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
-    now = int(time.time())
+    now = int(at or time.time())
     out = []
     for i, orig in enumerate(originals_sorted):
         ob = orig.get("body", "")
@@ -93,19 +185,117 @@ def record(repo, pr, user, originals_sorted, form, skill="global"):
             row["critical_path"] = str(orig["critical_path"])[:200]
         if outcome == "edited":
             row["edited_gist"] = _gist(edited_body)
+        if key:
+            row["key"] = key
         out.append(row)
     if not out:
         return
     try:
         ROOT.mkdir(parents=True, exist_ok=True)
-        rows = _read() + out
-        rows = rows[-CAP:]
-        tmp = FILE.with_suffix(".tmp")
-        tmp.write_text("".join(json.dumps(r) + "\n" for r in rows))
-        os.chmod(tmp, 0o600)
-        tmp.replace(FILE)
+        with file_lock(FILE):
+            before = _read()
+            replaced = [r for r in before if key and r.get("key") == key]
+            rows = [r for r in before if r.get("key") != key] if replaced else list(before)
+            _atomic_write(FILE, "".join(json.dumps(r) + "\n" for r in (rows + out)[-CAP:]))
+            _bump_totals(out, undo=replaced, seed_rows=before)
     except OSError:
         pass                       # a learning we fail to store must never break a post
+
+
+# --- the running tally: the only honest "all-time" ----------------------------------------------
+# The detail log is capped at CAP rows so the prompt block and the /learnings page stay cheap.
+# Every total derived from that log is therefore "the last CAP decisions", which is not what
+# "all-time" means — and it can go DOWN as old rows fall off the end. The tally below is
+# incremented once per recorded decision and never truncated, so the headline counts are real.
+TOTALS_VERSION = 1
+
+
+def _blank():
+    return {"kept": 0, "edited": 0, "dropped": 0}
+
+
+def _tally_slot(t, path):
+    node = t
+    for seg in path[:-1]:
+        node = node.setdefault(seg, {})
+    return node.setdefault(path[-1], _blank())
+
+
+def _apply_row(t, row, sign):
+    o = row.get("outcome")
+    if o not in ("kept", "edited", "dropped"):
+        return
+    repo = (row.get("repo") or "").lower()
+    day = _utc_daystart(int(row.get("at") or 0))
+    for path in (("outcomes",), ("repos", repo or "-"), ("skills", row.get("skill") or "global"),
+                 ("days", str(day))):
+        _tally_slot(t, path)[o] += sign
+    if row.get("critical_path"):
+        for path in (("criticalPath",), ("repoCriticalPath", repo or "-")):
+            _tally_slot(t, path)[o] += sign
+
+
+def _utc_daystart(ts):
+    """Midnight UTC of `ts`. Day buckets are UTC on both the writing and the reading side so a
+    clock change never mints a key that no generated bucket can match."""
+    return int(ts) - (int(ts) % 86400)
+
+
+def rebuild_totals(rows):
+    """A tally built from whatever rows survive in the detail log — the best an install that
+    predates the tally can do. Flagged `complete: false` so nothing claims it is all-time."""
+    t = {"version": TOTALS_VERSION, "cap": CAP, "complete": False,
+         "outcomes": _blank(), "criticalPath": _blank(),
+         "repos": {}, "repoCriticalPath": {}, "skills": {}, "days": {}}
+    for r in rows:
+        _apply_row(t, r, 1)
+    return t
+
+
+def load_totals(root=None):
+    """The running tally, seeded from the detail log the first time it is asked for."""
+    p = (Path(root) / "learnings_totals.json") if root else TOTALS
+    try:
+        v = json.loads(p.read_text())
+        if isinstance(v, dict) and v.get("version") == TOTALS_VERSION:
+            v.setdefault("cap", CAP)
+            return v
+    except (OSError, ValueError):
+        pass
+    log = (Path(root) / "learnings.jsonl") if root else FILE
+    rows = []
+    try:
+        for line in log.read_text().splitlines():
+            with contextlib.suppress(json.JSONDecodeError):
+                rows.append(json.loads(line))
+    except OSError:
+        pass
+    return rebuild_totals(rows)
+
+
+def _bump_totals(added, undo=(), seed_rows=None):
+    """Fold one post's decisions into the tally (caller holds the log's lock).
+
+    `seed_rows` is the detail log as it stood BEFORE this post — the only thing an install
+    that predates the tally can be seeded from, and never including the rows being added."""
+    try:
+        t = None
+        try:
+            v = json.loads(TOTALS.read_text())
+            t = v if isinstance(v, dict) and v.get("version") == TOTALS_VERSION else None
+        except (OSError, ValueError):
+            t = None
+        if t is None:
+            t = rebuild_totals(seed_rows or [])
+            t["complete"] = not (seed_rows or [])   # nothing predates us: this really is all-time
+        for r in undo:
+            _apply_row(t, r, -1)
+        for r in added:
+            _apply_row(t, r, 1)
+        t["cap"] = CAP
+        _atomic_write(TOTALS, json.dumps(t, indent=1, sort_keys=True))
+    except (OSError, ValueError):
+        pass
 
 
 # --- clustering: when a rejection stops being a mood and becomes a standard -------------------
@@ -165,7 +355,14 @@ def _dirkey(path):
 
 
 def _same_group(a, b):
-    """Do two rows belong to the same complaint? Severity + directory + gist similarity."""
+    """Do two rows belong to the same complaint? Outcome + severity + directory + similarity.
+
+    Outcome is part of the identity: "the team keeps dropping this" and "the team keeps
+    rewording this" are different findings about the review, and a cluster that mixes them has
+    a different signature from the dropped-only cluster a rule was promoted from — which is
+    exactly how a promoted rule used to stay in the rolling prompt window for ever."""
+    if a.get("outcome") != b.get("outcome"):
+        return False
     if (a.get("severity") or "nit") != (b.get("severity") or "nit"):
         return False
     da, db = _dirkey(a.get("path", "")), _dirkey(b.get("path", ""))
@@ -223,9 +420,11 @@ def _cluster_info(members, outcome):
             "dir": _commonest(_dirkey(m.get("path", "")) for m in members),
             "count": len(members), "prs": len(prs), "repos": repos,
             "gist": longest.get("gist", ""),
+            "rowIds": [row_id(m) for m in members],
             "findings": [{"repo": m.get("repo", ""), "pr": str(m.get("pr", "")),
                           "path": m.get("path", ""), "line": m.get("line"),
                           "severity": m.get("severity", "nit"), "at": m.get("at", 0),
+                          "rid": row_id(m),
                           "gist": m.get("gist", "")} for m in members]}
 
 
@@ -242,11 +441,22 @@ def clusters(outcome="dropped", rows=None, min_rows=None):
 
 
 def parse_rules(skill_text, marker="## Team rules"):
-    """The sentences of a skill's managed Team-rules section — the rules already in force."""
+    """The sentences of a skill's managed Team-rules section — the rules already in force.
+
+    Parsing stops at the next heading. The section is not guaranteed to be last (a hand-edited
+    skill can have anything after it), and reading every later bullet in the document as a team
+    rule turned a skill's own prose into invented rules."""
     if not skill_text or marker not in skill_text:
         return []
     tail = skill_text.split(marker, 1)[1]
-    return [ln.strip()[2:].strip() for ln in tail.splitlines() if ln.strip().startswith("- ")]
+    out = []
+    for ln in tail.splitlines():
+        s = ln.strip()
+        if s.startswith("#"):
+            break
+        if s.startswith("- "):
+            out.append(s[2:].strip())
+    return out
 
 
 def covered_by_rule(cluster, rules):
@@ -271,10 +481,22 @@ def _load_json(path):
 def _save_json(path, data):
     try:
         ROOT.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=1, sort_keys=True))
-        os.chmod(tmp, 0o600)
-        tmp.replace(path)
+        _atomic_write(path, json.dumps(data, indent=1, sort_keys=True))
+        return True
+    except OSError:
+        return False
+
+
+def _update_json(path, fn):
+    """Read-modify-write one decision store under its own lock. Two accepts landing together
+    used to read the same store and write back one rule each — one was silently lost while
+    BOTH were marked promoted, so the lost one could never be suggested again."""
+    try:
+        ROOT.mkdir(parents=True, exist_ok=True)
+        with file_lock(path):
+            store = _load_json(path)
+            fn(store)
+            _atomic_write(path, json.dumps(store, indent=1, sort_keys=True))
         return True
     except OSError:
         return False
@@ -292,52 +514,67 @@ def proposals():
     return _load_json(PROPOSALS)
 
 
-def dismissed_match(cluster, store=None):
-    """The dismissal covering this cluster, if any.
+# A dismissal used to fall back to "same severity and 0.5 similarity against the remembered
+# gist" — and the remembered gist is the LONGEST member's, which drifts every time the cluster
+# grows. That both suppressed complaints the person never dismissed and, once the gist moved,
+# resurrected the one they did. Dismissals are anchored to the row ids they were made over;
+# the fallback exists only for a cluster that has since been rewritten wholesale, and is held
+# to a much higher bar plus the same directory.
+DISMISS_FALLBACK_SIM = 0.85
 
-    Signature first; then a vocabulary fallback against each dismissal's remembered gist, so a
-    cluster that grows a seventh member (and with it a slightly different top-six signature)
-    stays dismissed instead of popping back up."""
+
+def dismissed_match(cluster, store=None):
+    """The dismissal covering this cluster, if any."""
     store = dismissals() if store is None else store
     sig = cluster["signature"]
     if sig in store:
         return store[sig]
+    rids = set(cluster.get("rowIds") or [])
+    for rec in store.values():
+        if rids & set(rec.get("rowIds") or []):
+            return rec                     # the evidence dismissed is still in this cluster
     ct = _toks(cluster.get("gist", ""))
     for rec in store.values():
-        if rec.get("severity") == cluster.get("severity") and \
-                _sim(ct, _toks(rec.get("gist", ""))) >= SIM_THRESHOLD:
+        if rec.get("severity") == cluster.get("severity") \
+                and rec.get("outcome", cluster.get("outcome")) == cluster.get("outcome") \
+                and (rec.get("dir") or "") == (cluster.get("dir") or "") \
+                and _sim(ct, _toks(rec.get("gist", ""))) >= DISMISS_FALLBACK_SIM:
             return rec
     return None
 
 
 def dismiss(sig, cluster, by):
-    store = dismissals()
-    store[sig] = {"at": int(time.time()), "by": by, "gist": cluster.get("gist", ""),
-                  "severity": cluster.get("severity", "nit"), "dir": cluster.get("dir", ""),
-                  "count": cluster.get("count", 0)}
-    return _save_json(DISMISSALS, store)
+    rec = {"at": int(time.time()), "by": by, "gist": cluster.get("gist", ""),
+           "severity": cluster.get("severity", "nit"), "dir": cluster.get("dir", ""),
+           "outcome": cluster.get("outcome", "dropped"),
+           "rowIds": list(cluster.get("rowIds") or []),
+           "count": cluster.get("count", 0)}
+    return _update_json(DISMISSALS, lambda s: s.__setitem__(sig, rec))
 
 
 def undismiss(sig):
-    store = dismissals()
-    if store.pop(sig, None) is None:
+    if sig not in dismissals():
         return False
-    return _save_json(DISMISSALS, store)
+    return _update_json(DISMISSALS, lambda s: s.pop(sig, None))
 
 
 def promote(sig, cluster, by, rule, target):
-    store = promotions()
     repos = cluster.get("repos") or []
-    store[sig] = {"at": int(time.time()), "by": by, "rule": rule, "target": target,
-                  "repo": repos[0] if len(repos) == 1 else "",
-                  "count": cluster.get("count", 0), "gist": cluster.get("gist", "")}
-    return _save_json(PROMOTIONS, store)
+    rec = {"at": int(time.time()), "by": by, "rule": rule, "target": target,
+           "repo": repos[0] if len(repos) == 1 else "",
+           "outcome": cluster.get("outcome", "dropped"),
+           "rowIds": list(cluster.get("rowIds") or []),
+           "count": cluster.get("count", 0), "gist": cluster.get("gist", "")}
+    return _update_json(PROMOTIONS, lambda s: s.__setitem__(sig, rec))
 
 
-def save_proposal(sig, rule, rationale, model=""):
-    store = proposals()
-    store[sig] = {"rule": rule, "rationale": rationale, "at": int(time.time()), "model": model}
-    return _save_json(PROPOSALS, store)
+def save_proposal(sig, rule, rationale, model="", error=""):
+    """Cache one drafted rule — or the reason drafting failed, so the Skills page can show it
+    instead of spending the user's Claude quota on the same failing call every time it loads."""
+    rec = {"rule": rule, "rationale": rationale, "at": int(time.time()), "model": model}
+    if error:
+        rec["error"] = error[:300]
+    return _update_json(PROPOSALS, lambda s: s.__setitem__(sig, rec))
 
 
 def promoted_signatures():
@@ -355,14 +592,30 @@ def promoted_count(repo=""):
 
 
 def _promoted_rows(rows):
-    """The subset of `rows` belonging to a cluster that has already become a rule."""
-    sigs = promoted_signatures()
-    if not sigs:
+    """The subset of `rows` belonging to a cluster that has already become a rule.
+
+    Two independent handles on the same question, because the headline claim of the loop is
+    that a promoted rule LEAVES the rolling window: the row ids recorded when the rule was
+    accepted (exact, and immune to the cluster changing shape afterwards), plus a re-cluster
+    per outcome for rows that joined the complaint after the promotion. Re-clustering the
+    dropped and edited rows together — as this used to — produced merged clusters whose
+    signature never matched the dropped-only one that was promoted, so nothing was ever
+    skipped and every promoted complaint stayed in the prompt for ever."""
+    proms = promotions()
+    if not proms:
         return set()
-    out = set()
-    for members in cluster_rows(rows):
-        if signature(members) in sigs:
-            out.update(id(m) for m in members)
+    promoted_ids = set()
+    for rec in proms.values():
+        promoted_ids.update(rec.get("rowIds") or [])
+    sigs = set(proms)
+    out = {id(r) for r in rows if row_id(r) in promoted_ids}
+    by_outcome = {}
+    for r in rows:
+        by_outcome.setdefault(r.get("outcome"), []).append(r)
+    for group in by_outcome.values():
+        for members in cluster_rows(group):
+            if signature(members) in sigs:
+                out.update(id(m) for m in members)
     return out
 
 
@@ -415,13 +668,13 @@ def render(repo="", max_items=40):
     if dropped:
         lines.append("\nFindings the reviewer chose NOT to post (treat near-duplicates as noise "
                      "and omit them unless clearly higher-stakes here):")
-        for r in dropped[-24:]:
+        for r in dropped[-WINDOW_DROPPED:]:
             loc = f"{r.get('path', '')}" + (f":{r['line']}" if r.get("line") else "")
             lines.append(f"- [{r.get('severity', 'nit')}] {loc} — {r.get('gist', '')}")
     if edited:
         lines.append("\nFindings the reviewer kept but reworded (prefer this tighter phrasing "
                      "and level of detail):")
-        for r in edited[-12:]:
+        for r in edited[-WINDOW_EDITED:]:
             lines.append(f"- was: {r.get('gist', '')}\n  became: {r.get('edited_gist', '')}")
     lines.append("\nThese are preferences, not rules — still raise a genuine, higher-severity "
                  "issue even if it resembles a past drop.")
@@ -434,30 +687,42 @@ def recent(n=60):
 
 
 def counts():
-    c = {"dropped": 0, "edited": 0, "kept": 0}
-    for r in _read():
-        o = r.get("outcome")
-        if o in c:
-            c[o] += 1
-    return c
+    """All-time outcome counts, from the running tally — not from the capped detail log."""
+    t = load_totals()
+    c = dict(t.get("outcomes") or _blank())
+    return {"dropped": c.get("dropped", 0), "edited": c.get("edited", 0),
+            "kept": c.get("kept", 0)}
+
+
+# One definition of "keep rate" ships in this product: a finding was worth posting when the
+# reviewer kept it, verbatim or reworded. The stricter kept-verbatim measure is a different
+# number with a different name (`verbatimRate`), never called the keep rate.
+def keep_rates(d):
+    """{keepRate, verbatimRate, decided, keptOrEdited, ratable, minSample} for one bucket."""
+    kept, edited, dropped = d.get("kept", 0), d.get("edited", 0), d.get("dropped", 0)
+    total = kept + edited + dropped
+    ratable = total >= MIN_RATE_SAMPLE
+    pct = lambda n: round(100 * n / total, 1) if total else None  # noqa: E731
+    return {"kept": kept, "edited": edited, "dropped": dropped, "decided": total,
+            "keptOrEdited": kept + edited, "keepRate": pct(kept + edited),
+            "verbatimRate": pct(kept), "ratable": ratable, "minSample": MIN_RATE_SAMPLE}
 
 
 def skill_stats():
-    """Per-skill quality: kept / edited / dropped counts and a kept-rate, most-used first.
+    """Per-skill quality: kept / edited / dropped counts and the keep rate, most-used first.
 
     This is the performance signal — which review skill produces findings humans actually
-    keep — computed from real accept/reject decisions, keyed on the skill that produced them."""
+    keep — computed from real accept/reject decisions, keyed on the skill that produced them.
+    All-time from the running tally, so a skill's history does not evaporate with the log."""
     by = {}
-    for r in _read():
-        s = r.get("skill", "global")
-        d = by.setdefault(s, {"skill": s, "kept": 0, "edited": 0, "dropped": 0, "total": 0})
-        o = r.get("outcome")
-        if o in ("kept", "edited", "dropped"):
-            d[o] += 1
-            d["total"] += 1
-    for d in by.values():
-        # kept + edited both mean "worth posting"; dropped means "noise". Rate = worth/total.
-        d["rate"] = round(100 * (d["kept"] + d["edited"]) / d["total"]) if d["total"] else 0
+    for skill, d in (load_totals().get("skills") or {}).items():
+        r = keep_rates(d)
+        by[skill] = {"skill": skill, "kept": r["kept"], "edited": r["edited"],
+                     "dropped": r["dropped"], "total": r["decided"],
+                     "keptOrEdited": r["keptOrEdited"],
+                     "rate": r["keepRate"] if r["keepRate"] is not None else 0,
+                     "verbatimRate": r["verbatimRate"], "ratable": r["ratable"],
+                     "minSample": MIN_RATE_SAMPLE}
     return sorted(by.values(), key=lambda d: -d["total"])
 
 

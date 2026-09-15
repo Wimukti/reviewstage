@@ -109,6 +109,8 @@ test.describe("approving after the branch moved", () => {
     }));
     await page.goto(prPath(REPO2, PR3));
     await expect(page.getByTestId("head-moved")).toHaveCount(0);
+    await expect(page.getByTestId("pr-closed-banner")).toHaveCount(0);
+    await expect(page.getByTestId("no-approve")).toHaveCount(0);
     await expect(page.getByTestId("approve-panel").getByRole("button", { name: /approve/i })).toBeEnabled();
   });
 });
@@ -161,6 +163,19 @@ test.describe("a merged pull request", () => {
     await expect(row).toBeVisible();
     await expect(row.getByTestId("pr-state")).toHaveCount(0);
     await expect(row.getByTestId("no-approve")).toHaveCount(0);
+  });
+
+  test("its detail page says so too, before the click rather than after", async ({ page }) => {
+    // /api/pr used to carry no GitHub state at all, so this page offered a live Approve button
+    // on a merged PR and the server's refusal only arrived once it had been pressed.
+    await page.goto(prPath(REPO, PR5));
+    await expect(page.getByTestId("pr-closed-banner")).toContainText(/merged/i);
+    await expect(page.getByTestId("pr-state").first()).toHaveText("merged");
+  });
+
+  test("an open PR's detail page shows no such banner", async ({ page }) => {
+    await page.goto(prPath(REPO, PR));
+    await expect(page.getByTestId("pr-closed-banner")).toHaveCount(0);
   });
 });
 
@@ -349,6 +364,9 @@ test.describe("an older server that sends none of this", () => {
       void reviewKey; void truncated; void preselectCapped; void maxPerPost;
       void anchorsUnknown; void anchorError;
       return {
+        // The three PR-state fields are new too: an older server sends none of them, and the
+        // page must fall back to offering the approval rather than gating on `undefined`.
+        prState: undefined, merged: undefined, canApprove: undefined,
         review: {
           ...review,
           findings: review.findings.map((f: Record<string, unknown>) => {

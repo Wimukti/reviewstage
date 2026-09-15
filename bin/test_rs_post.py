@@ -348,6 +348,46 @@ class TheHeadIsNeverSilentlyEmpty(PostCase):
         self.assertTrue(data["stale"])
 
 
+class ThePrPageKnowsTheGithubState(PostCase):
+    """/api/pr carried no GitHub PR state, so the detail page showed a live Approve button on a
+    merged or closed PR and only the click revealed that the server would refuse."""
+
+    def close(self, state, merged):
+        f = self.srv.P.prdir(REPO, PR) / "meta.json"
+        m = json.loads(f.read_text())
+        f.write_text(json.dumps({**m, "state": state, "merged": merged}))
+
+    def data(self):
+        return self.handler().api_pr(REPO, PR, USER, "")
+
+    def test_an_open_pr_can_be_approved(self):
+        d = self.data()
+        self.assertEqual(d["prState"], "open")
+        self.assertFalse(d["merged"])
+        self.assertTrue(d["canApprove"])
+
+    def test_a_merged_pr_cannot(self):
+        self.close("merged", True)
+        d = self.data()
+        self.assertEqual(d["prState"], "merged")
+        self.assertTrue(d["merged"])
+        self.assertFalse(d["canApprove"])
+
+    def test_a_closed_pr_cannot(self):
+        self.close("closed", False)
+        d = self.data()
+        self.assertEqual(d["prState"], "closed")
+        self.assertFalse(d["merged"])
+        self.assertFalse(d["canApprove"])
+
+    def test_the_queue_and_the_detail_page_agree(self):
+        for state, merged in (("", False), ("merged", True), ("closed", False)):
+            if state:
+                self.close(state, merged)
+            meta, active = self.srv.pr_meta(REPO, PR)
+            self.assertEqual(self.srv.gh_pr_state(meta, active), self.data()["prState"])
+
+
 # --- blocker 5: the client's indices belong to ONE run -----------------------------------------
 class TheReviewKeyPinsTheRun(PostCase):
     def test_review_data_exposes_a_key(self):

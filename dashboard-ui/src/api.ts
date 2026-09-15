@@ -364,6 +364,11 @@ export interface PrData {
   author: string;
   size: string;
   dryRun: boolean;
+  // The PR's own state on GitHub ("open" | "closed" | "merged"), the same three fields the
+  // queue rows carry, so the detail page can gate Approve before the click rather than after.
+  prState?: string;
+  merged?: boolean;
+  canApprove?: boolean;
   awaiting: boolean;
   runner: string;
   effortBadge: { label: string; hint: string } | null;

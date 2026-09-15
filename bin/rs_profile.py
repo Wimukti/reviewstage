@@ -19,11 +19,17 @@ Schema (profile.json):
      "risk_paths":     [{"label": str, "pattern": str}],
      "review_rules":   [str],
      "do_not_flag":    [str],
-     "meta": {"generated_at", "model", "usage", "dropped_globs", "edited_at", "edited_by"}}
+     "version": 1,
+     "meta": {"generated_at", "model", "usage", "dropped_globs", "edited_at", "edited_by",
+              "head", "validated", "degraded"}}
+
+`version` is the schema version: load_profile shape-checks against it and warns rather than
+swallowing a hand-edited file into a silently empty profile.
 
 Imported by server.py, rs_rollup.py; profile-repo.sh and run-review.sh call it as
 `python3 rs_profile.py <command>` (see main at the bottom). No third-party imports.
 """
+import contextlib
 import fnmatch
 import json
 import os
@@ -41,7 +47,13 @@ import rs_state
 ROOT = Path(os.environ.get("ROOT", Path.home() / ".reviewstage"))
 PROFILES = ROOT / "profiles"
 
+SCHEMA_VERSION = 1
+
 MAX_MATCHED = 12          # critical paths listed per review, at most
+MAX_CRITICAL = 24         # critical paths STORED, at most — the cap validation enforces
+# A glob that matches this share of the tree is not a critical path, it is "the repository".
+# Told that the critical path is touched on every single PR, a review learns nothing from it.
+IMPLAUSIBLE_TREE_SHARE = 0.5
 WHY_LIMIT = 200           # chars of `why` kept per path in the prompt
 TOP_N = 40                # churn / in-degree rows gathered
 TREE_DEPTH = 3            # directory depth shown to the model
@@ -92,9 +104,24 @@ def profile_path(repo):
 
 
 # --- deterministic signals -------------------------------------------------------------------
-def _git(base, *args, timeout=120):
-    r = subprocess.run(["git", "-C", str(base), *args], capture_output=True, text=True,
-                       timeout=timeout)
+def _git(base, *args, timeout=120, degraded=None):
+    """One git call. Never raises: a git that hangs past `timeout`, is missing, or dies is a
+    degraded signal, not a crashed profile build. `degraded` collects a note per failure so the
+    card and the prompt can say which signal is missing instead of pretending it was empty."""
+    try:
+        r = subprocess.run(["git", "-C", str(base), *args], capture_output=True, text=True,
+                           timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if degraded is not None:
+            degraded.append(f"git {args[0]} timed out after {timeout}s")
+        return ""
+    except OSError as e:
+        if degraded is not None:
+            degraded.append(f"git {args[0]} could not run: {e}")
+        return ""
+    if r.returncode != 0 and degraded is not None:
+        tail = (r.stderr or "").strip().splitlines()
+        degraded.append(f"git {args[0]} failed: {(tail or ['no output'])[-1][:120]}")
     return r.stdout if r.returncode == 0 else ""
 
 
@@ -124,13 +151,42 @@ def _languages(files):
     return [{"language": k, "files": n} for k, n in c.most_common(8)]
 
 
-def _churn(base, files):
-    """Top files by number of commits touching them in the last CHURN_MONTHS months."""
-    out = _git(base, "log", f"--since={CHURN_MONTHS}.months", "--name-only", "--format=",
-               "--no-renames", timeout=300)
+def _churn(base, files, degraded=None, timeout=300):
+    """Top files by number of commits touching them in the last CHURN_MONTHS months.
+
+    Streamed line by line: a year of `git log --name-only` on a large monorepo is hundreds of
+    megabytes, and buffering it all before counting is how this got OOM-killed. Only the
+    Counter is ever resident, and the counter only ever holds tracked paths."""
     present = set(files)
-    c = Counter(line for line in out.splitlines() if line and line in present)
-    return [{"path": p, "commits": n} for p, n in c.most_common(TOP_N)]
+    c = Counter()
+    try:
+        p = subprocess.Popen(
+            ["git", "-C", str(base), "log", f"--since={CHURN_MONTHS}.months", "--name-only",
+             "--format=", "--no-renames"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+    except OSError as e:
+        if degraded is not None:
+            degraded.append(f"churn skipped: git log could not run: {e}")
+        return []
+    deadline = time.time() + timeout
+    try:
+        for line in p.stdout:
+            line = line.rstrip("\n")
+            if line and line in present:
+                c[line] += 1
+            if time.time() > deadline:
+                p.kill()
+                if degraded is not None:
+                    degraded.append(f"churn skipped: git log exceeded {timeout}s")
+                return []
+    finally:
+        with contextlib.suppress(OSError):
+            p.stdout.close()
+        try:
+            p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            p.kill()
+    return [{"path": path, "commits": n} for path, n in c.most_common(TOP_N)]
 
 
 _IMPORT_RE = {
@@ -259,19 +315,22 @@ def gather_signals(base, repo=""):
     """Every deterministic input the model sees. No model call, no network beyond git."""
     base = Path(base)
     t0 = time.time()
-    files = [f for f in _git(base, "ls-files").splitlines() if f]
+    degraded = []
+    files = [f for f in _git(base, "ls-files", degraded=degraded).splitlines() if f]
     tree, total = _tree(files)
     langs = _languages(files)
     codeowners = next((rel for rel in CODEOWNERS_PATHS if Path(base, rel).exists()), "")
     ci = sorted(f for f in files if any(fnmatch.fnmatch(f, g) for g in CI_GLOBS))
     manifests = sorted(f for f in files if os.path.basename(f) in MANIFESTS and f.count("/") <= 1)
-    churn = _churn(base, files)
+    churn = _churn(base, files, degraded=degraded)
     indeg = _indegree(base, files, langs)
-    head = _git(base, "rev-parse", "HEAD").strip()
-    commits = _git(base, "rev-list", "--count", f"--since={CHURN_MONTHS}.months", "HEAD").strip()
+    head = _git(base, "rev-parse", "HEAD", degraded=degraded).strip()
+    commits = _git(base, "rev-list", "--count", f"--since={CHURN_MONTHS}.months", "HEAD",
+                   degraded=degraded).strip()
     return {
         "repo": repo,
         "head": head,
+        "degraded": degraded,
         "gathered_at": int(time.time()),
         "duration_ms": int((time.time() - t0) * 1000),
         "file_count": total,
@@ -321,10 +380,15 @@ def build_prompt(signals, skill_text):
     sig = dict(signals)
     sig.pop("gathered_at", None)
     sig.pop("duration_ms", None)
+    missing = ""
+    if sig.get("degraded"):
+        missing = ("\n\nSome signals could not be gathered on this run — reason nothing about "
+                   "what their absence implies:\n"
+                   + "\n".join(f"- {d}" for d in sig["degraded"]))
     return (f"{strip_front_matter(skill_text).strip()}\n\n"
             f"## Signals gathered from {signals.get('repo') or 'the repository'} "
             f"(deterministic, from git — no guessing needed)\n\n"
-            f"```json\n{json.dumps(sig, indent=1)}\n```\n\n{OUTPUT_CONTRACT}")
+            f"```json\n{json.dumps(sig, indent=1)}\n```{missing}\n\n{OUTPUT_CONTRACT}")
 
 
 def parse_model_output(text):
@@ -349,20 +413,69 @@ def parse_model_output(text):
 _LABEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 
-def _glob_matches(glob, files):
-    """Does `glob` match at least one tracked file? A bare directory (`app/auth/`, `app/auth`,
-    `app/auth/**`) counts when any file lives under it."""
-    g = glob.strip().lstrip("./")
+# fnmatch's `*` happily crosses a directory separator, so `src/*.ts` matched every .ts file in
+# the tree — four thousand of them — and every review was told the critical path was touched.
+# A path glob has to behave the way a person writing one expects: `*` stops at `/`, `**` is the
+# only thing that spans directories.
+_GLOB_CACHE = {}
+
+
+def glob_regex(glob):
+    """`glob` as a compiled regex where `*` excludes `/` and `**` spans directories."""
+    rx = _GLOB_CACHE.get(glob)
+    if rx is not None:
+        return rx
+    out, i, n = [], 0, len(glob)
+    while i < n:
+        ch = glob[i]
+        if ch == "*":
+            if glob[i:i + 3] == "**/":
+                out.append(r"(?:[^/]+/)*")
+                i += 3
+                continue
+            if glob[i:i + 2] == "**":
+                out.append(r".*")
+                i += 2
+                continue
+            out.append(r"[^/]*")
+        elif ch == "?":
+            out.append(r"[^/]")
+        elif ch == "[":
+            j = glob.find("]", i + 1)
+            if j < 0:
+                out.append(re.escape(ch))
+            else:
+                body = glob[i + 1:j].replace("\\", "\\\\")
+                out.append("[" + ("^" + body[1:] if body.startswith("!") else body) + "]")
+                i = j + 1
+                continue
+        else:
+            out.append(re.escape(ch))
+        i += 1
+    rx = re.compile("^" + "".join(out) + "$")
+    _GLOB_CACHE[glob] = rx
+    return rx
+
+
+def glob_hits(glob, files):
+    """Every tracked file `glob` matches. A bare directory (`app/auth/`, `app/auth`,
+    `app/auth/**`) counts every file under it."""
+    g = (glob or "").strip().lstrip("./")
     if not g:
-        return False
-    if any(fnmatch.fnmatch(f, g) for f in files):
-        return True
+        return []
+    rx = glob_regex(g)
+    hits = [f for f in files if rx.match(f)]
+    if hits:
+        return hits
     d = g.rstrip("*").rstrip("/")
     if d and not any(ch in d for ch in "*?["):
-        return any(f == d or f.startswith(d + "/") for f in files)
-    if g.endswith("/**"):
-        return _glob_matches(g[:-3] + "/*", files) or _glob_matches(g[:-3] + "/*/*", files)
-    return False
+        return [f for f in files if f == d or f.startswith(d + "/")]
+    return []
+
+
+def _glob_matches(glob, files):
+    """Does `glob` match at least one tracked file?"""
+    return bool(glob_hits(glob, files))
 
 
 def _strs(v, limit=12, each=300):
@@ -378,16 +491,41 @@ def _strs(v, limit=12, each=300):
     return out[:limit]
 
 
-def validate_profile(raw, files):
-    """Coerce a model (or edited) profile into the schema and drop every path_glob that matches
-    nothing in the tree. Returns (clean, dropped_globs, error). `files` is the tracked list;
-    pass None to skip the tree check (an edit with no clone at hand)."""
+SECTIONS = ("critical_paths", "risk_paths", "review_rules", "do_not_flag")
+
+
+def section_counts(profile):
+    """How many entries each list section holds — what a save reports back to the editor."""
+    p = profile or {}
+    out = {k: len(p.get(k) or []) for k in SECTIONS}
+    out["summary"] = 1 if (p.get("summary") or "").strip() else 0
+    return out
+
+
+def emptied_sections(prev, new):
+    """Sections that held something before this edit and hold nothing after it."""
+    a, b = section_counts(prev), section_counts(new)
+    return [k for k in a if a[k] and not b[k]]
+
+
+def validate_profile(raw, files, prev=None, allow_emptying=True):
+    """Coerce a model (or edited) profile into the schema. Returns (clean, dropped_globs, error).
+
+    `files` is the tracked list; pass None to skip the tree check (an edit with no clone at
+    hand — the caller must then record validated: false rather than pretend the paths were
+    checked). `prev` is the profile being replaced: with allow_emptying=False, an edit that
+    empties a section which previously held entries is refused, because the markdown round trip
+    can silently lose a whole section (a retitled heading yields nothing) and the only old
+    guard fired when critical paths AND rules AND summary were all empty at once — so deleting
+    the risk-paths section saved cleanly and every risk rule vanished from future reviews."""
     if not isinstance(raw, dict):
         return None, [], "profile must be a JSON object"
     clean = {"summary": re.sub(r"\s+", " ", str(raw.get("summary") or "")).strip()[:1200],
              "critical_paths": [], "risk_paths": [], "review_rules": [], "do_not_flag": []}
     dropped = []
     seen = set()
+    total_files = len(files) if files is not None else 0
+    over_cap = 0
     for cp in raw.get("critical_paths") or []:
         if not isinstance(cp, dict):
             continue
@@ -396,8 +534,16 @@ def validate_profile(raw, files):
         if not glob or glob in seen or len(glob) > 200:
             continue
         seen.add(glob)
-        if files is not None and not _glob_matches(glob, files):
-            dropped.append(glob)
+        if files is not None:
+            hits = glob_hits(glob, files)
+            if not hits:
+                dropped.append(glob)
+                continue
+            if total_files and len(hits) / total_files > IMPLAUSIBLE_TREE_SHARE:
+                dropped.append(glob)       # "the whole repository" is not a critical path
+                continue
+        if len(clean["critical_paths"]) >= MAX_CRITICAL:
+            over_cap += 1                  # capped at validation, not silently at render time
             continue
         clean["critical_paths"].append({
             "path_glob": glob,
@@ -414,10 +560,20 @@ def validate_profile(raw, files):
     clean["risk_paths"] = clean["risk_paths"][:20]
     clean["review_rules"] = _strs(raw.get("review_rules"), limit=20)
     clean["do_not_flag"] = _strs(raw.get("do_not_flag"), limit=20)
+    clean["version"] = SCHEMA_VERSION
     if isinstance(raw.get("meta"), dict):
         clean["meta"] = raw["meta"]
+    if over_cap:
+        clean.setdefault("meta", {})
+        clean["meta"]["capped_critical_paths"] = over_cap
     if not clean["critical_paths"] and not clean["review_rules"] and not clean["summary"]:
         return None, dropped, "profile has no critical paths, rules or summary"
+    if prev is not None and not allow_emptying:
+        gone = emptied_sections(prev, clean)
+        if gone:
+            names = ", ".join(s.replace("_", " ") for s in gone)
+            return None, dropped, (f"this edit empties a section that was not empty: {names}. "
+                                   "Confirm the deletion to save it anyway")
     return clean, dropped, None
 
 
@@ -447,22 +603,27 @@ def merge_risk_rules(env_rules, profile):
 
 
 def match_critical(profile, changed_paths, cap=MAX_MATCHED):
-    """The critical_paths whose glob matches a changed file, in profile order, capped."""
-    out = []
+    """(listed, not_listed) — the critical_paths this PR touches, most-affected first.
+
+    Ordered by how many of the PR's changed files each glob actually matches, so the cap keeps
+    the paths this PR hits hardest rather than whichever the model happened to emit first."""
+    scored = []
     for cp in (profile or {}).get("critical_paths", []):
         g = cp.get("path_glob", "")
-        if g and _glob_matches(g, changed_paths):
-            out.append(cp)
-            if len(out) >= cap:
-                break
-    return out
+        if not g:
+            continue
+        hits = glob_hits(g, changed_paths)
+        if hits:
+            scored.append((len(hits), cp))
+    scored.sort(key=lambda s: -s[0])
+    return [cp for _, cp in scored[:cap]], max(0, len(scored) - cap)
 
 
 def render_block(profile, changed_paths, effort="standard"):
     """The prompt section for one review, or "" when nothing applies (Quick never gets it)."""
     if not profile or effort == "quick":
         return ""
-    matched = match_critical(profile, changed_paths)
+    matched, not_listed = match_critical(profile, changed_paths)
     rules = profile.get("review_rules") or []
     dnf = profile.get("do_not_flag") or []
     if not (matched or rules or dnf):
@@ -486,6 +647,9 @@ def render_block(profile, changed_paths, effort="standard"):
             lines.append(f"\n- `{cp['path_glob']}` — {why}" if why else f"\n- `{cp['path_glob']}`")
             for c in cp.get("checks") or []:
                 lines.append(f"  - check: {c}")
+        if not_listed:
+            lines.append(f"\n({not_listed} further critical path(s) are also touched by this PR "
+                         "but are not listed here — the ones above are the most affected.)")
     else:
         lines.append("\nNone of this repository's critical paths are touched by this PR; still "
                      "apply the rules below.")
@@ -522,32 +686,58 @@ def to_markdown(profile):
     return "\n".join(out)
 
 
-def from_markdown(md):
-    """Parse the editable markdown back into the schema. Lenient: unknown lines are ignored,
-    `_none_` placeholders are dropped. Sections are matched by heading, case-insensitive."""
+# The editable markdown's headings, matched exactly (case- and punctuation-insensitive) rather
+# than by prefix. A retitled or misspelled heading used to match nothing, quietly yield an empty
+# list for that section, and save — taking every entry in it out of future reviews. Anything not
+# in this map is reported to the editor instead of being swallowed.
+_HEADINGS = {
+    "summary": "summary",
+    "critical paths": "critical_paths", "critical path": "critical_paths",
+    "risk paths": "risk_paths", "risk path": "risk_paths",
+    "review rules": "review_rules", "review rule": "review_rules",
+    "do not flag": "do_not_flag", "dont flag": "do_not_flag", "do-not-flag": "do_not_flag",
+}
+
+
+def _heading_key(title):
+    t = re.sub(r"[^a-z0-9 -]", "", (title or "").strip().lower())
+    t = re.sub(r"\s+", " ", t).strip()
+    return _HEADINGS.get(t) or _HEADINGS.get(t.replace("-", " "))
+
+
+def from_markdown(md, report=False):
+    """Parse the editable markdown back into the schema.
+
+    Lenient about line shapes, strict about headings: every `##` heading must be one this
+    format defines. With report=True returns (profile, notes) where notes lists every heading
+    that was not recognised — content under an unrecognised heading is NOT silently dropped
+    into nothing, the caller is told about it."""
     prof = {"summary": "", "critical_paths": [], "risk_paths": [], "review_rules": [],
             "do_not_flag": []}
-    section, cur = "", None
+    section, cur, unknown = "", None, []
     summary = []
     for line in (md or "").splitlines():
         s = line.rstrip()
         h2 = re.match(r"^##\s+(.+?)\s*$", s)
         h3 = re.match(r"^###\s+`?([^`]+?)`?\s*$", s)
         if h2:
-            section = h2.group(1).strip().lower()
+            title = h2.group(1).strip()
+            section = _heading_key(title) or ""
             cur = None
+            if not section:
+                unknown.append(title[:80])
             continue
         if s.startswith("# "):
             continue
-        if section.startswith("critical") and h3:
+        if section == "critical_paths" and h3:
             cur = {"path_glob": h3.group(1).strip(), "why": "", "checks": []}
             prof["critical_paths"].append(cur)
             continue
         if not s.strip() or s.strip() == "_none_":
             continue
-        if section.startswith("summary"):
+        if section == "summary":
             summary.append(s.strip())
-        elif section.startswith("critical") and cur is not None:
+        elif section == "critical_paths" and cur is not None:
             m = re.match(r"^\s*[-*]\s*(?:check:\s*)?(.+)$", s)
             if re.match(r"^\s*why:\s*", s, re.I):
                 cur["why"] = re.sub(r"^\s*why:\s*", "", s, flags=re.I).strip()
@@ -555,20 +745,20 @@ def from_markdown(md):
                 cur["checks"].append(m.group(1).strip())
             elif not cur["why"]:
                 cur["why"] = s.strip()
-        elif section.startswith("risk"):
+        elif section == "risk_paths":
             m = re.match(r"^\s*[-*]\s*`?([A-Za-z0-9_-]+)`?\s*:\s*(.+?)\s*$", s)
             if m:
                 prof["risk_paths"].append({"label": m.group(1), "pattern": m.group(2).strip("`")})
-        elif section.startswith("review"):
+        elif section == "review_rules":
             m = re.match(r"^\s*[-*]\s*(.+)$", s)
             if m:
                 prof["review_rules"].append(m.group(1).strip())
-        elif section.startswith("do not") or section.startswith("don"):
+        elif section == "do_not_flag":
             m = re.match(r"^\s*[-*]\s*(.+)$", s)
             if m:
                 prof["do_not_flag"].append(m.group(1).strip())
     prof["summary"] = " ".join(summary)
-    return prof
+    return (prof, {"unknownHeadings": unknown}) if report else prof
 
 
 # --- job state ------------------------------------------------------------------------------
@@ -661,12 +851,92 @@ def log_tail(path, n=LOG_TAIL_LINES):
 
 
 # --- storage --------------------------------------------------------------------------------
-def load_profile(repo):
+def check_shape(d):
+    """"" if `d` is a usable profile, else why it is not.
+
+    load_profile used to hand back whatever JSON was on disk, and the caller's `or {}` turned a
+    hand-edited file with a mistyped key into "this repository has no critical paths" — for
+    ever, silently, behind a `|| true` in the shell. A shape check and a warning is the
+    difference between a broken file you can fix and a feature that quietly stopped."""
+    if not isinstance(d, dict):
+        return "not a JSON object"
+    ver = d.get("version", SCHEMA_VERSION)
+    if not isinstance(ver, int) or ver > SCHEMA_VERSION:
+        return f"schema version {ver!r} is newer than this build understands"
+    for k in SECTIONS:
+        if k in d and not isinstance(d[k], list):
+            return f"`{k}` must be a list"
+    for cp in d.get("critical_paths") or []:
+        if not isinstance(cp, dict) or not str(cp.get("path_glob") or "").strip():
+            return "every critical path needs a path_glob"
+    if "summary" in d and not isinstance(d["summary"], str):
+        return "`summary` must be a string"
+    return ""
+
+
+def read_profile(repo, path=None):
+    """(profile, error). `error` is non-empty when there is a file but it cannot be trusted."""
+    f = Path(path) if path else profile_path(repo)
     try:
-        d = json.loads(profile_path(repo).read_text())
-        return d if isinstance(d, dict) else None
-    except (OSError, ValueError):
+        raw = f.read_text()
+    except OSError:
+        return None, ""
+    try:
+        d = json.loads(raw)
+    except ValueError as e:
+        return None, f"{f.name} is not valid JSON ({e})"
+    err = check_shape(d)
+    return (None, err) if err else (d, "")
+
+
+def load_profile(repo):
+    d, err = read_profile(repo)
+    if err:
+        print(f"profile for {repo} ignored: {err}", flush=True)
+    return d
+
+
+def version_path(repo, ts):
+    return profile_dir(repo) / f"profile.{int(ts)}.json"
+
+
+def load_version(repo, ts):
+    """(profile, error) for one earlier version — the read behind the restore route."""
+    if int(ts) not in versions(repo):
+        return None, "no such version"
+    return read_profile(repo, version_path(repo, ts))
+
+
+def head_of(base, degraded=None):
+    return _git(base, "rev-parse", "HEAD", degraded=degraded).strip()
+
+
+def staleness(profile, base, files=None):
+    """How far the profile has drifted from the checkout, or None when we cannot tell.
+
+    meta.head was stored, returned and typed, and nothing ever compared it to anything."""
+    meta = (profile or {}).get("meta") or {}
+    was = (meta.get("head") or "").strip()
+    base = Path(base)
+    if not was or not (base / ".git").exists():
         return None
+    now = head_of(base)
+    if not now:
+        return None
+    out = {"head": was[:12], "currentHead": now[:12], "stale": was != now,
+           "commitsBehind": None, "unmatchedPaths": 0, "criticalPaths": 0}
+    if was != now:
+        n = _git(base, "rev-list", "--count", f"{was}..{now}").strip()
+        out["commitsBehind"] = int(n) if n.isdigit() else None
+    if files is None:
+        files = [f for f in _git(base, "ls-files").splitlines() if f]
+    cps = (profile or {}).get("critical_paths") or []
+    out["criticalPaths"] = len(cps)
+    out["unmatchedPaths"] = sum(1 for cp in cps
+                                if not _glob_matches(cp.get("path_glob", ""), files))
+    if out["unmatchedPaths"]:
+        out["stale"] = True
+    return out
 
 
 def save_profile(repo, profile, meta=None):
@@ -685,6 +955,7 @@ def save_profile(repo, profile, meta=None):
         if not vf.exists():
             os.replace(f, vf)
     out = dict(profile)
+    out["version"] = SCHEMA_VERSION
     m = dict(out.get("meta") or {})
     m.update(meta or {})
     out["meta"] = m
@@ -737,17 +1008,22 @@ def _main(argv):
         if raw is None:
             print("model reply held no JSON object", file=sys.stderr)
             return 2
-        files = [f for f in _git(base, "ls-files").splitlines() if f]
+        degraded = []
+        files = [f for f in _git(base, "ls-files", degraded=degraded).splitlines() if f]
         clean, dropped, err = validate_profile(raw, files)
         if err:
             print(err, file=sys.stderr)
             return 3
         for g in dropped:
-            print(f"dropped hallucinated path_glob (matches nothing in the tree): {g}")
+            print(f"dropped path_glob (matches nothing, or most of the tree): {g}")
+        capped = (clean.get("meta") or {}).get("capped_critical_paths") or 0
+        if capped:
+            print(f"kept the first {MAX_CRITICAL} critical paths; {capped} more were not stored")
         save_profile(repo, clean, {"generated_at": int(time.time()),
                                    "model": usage.get("model", ""), "usage": usage or None,
-                                   "dropped_globs": dropped,
-                                   "head": _git(base, "rev-parse", "HEAD").strip(),
+                                   "dropped_globs": dropped, "validated": True,
+                                   "degraded": degraded,
+                                   "head": head_of(base, degraded),
                                    "edited_at": None, "edited_by": ""})
         c = counts(clean)
         print(f"profile written: {c['critical']} critical paths, {c['risk']} risk paths, "

@@ -1537,6 +1537,13 @@ def risk_banner(label):
 # refused only when THIS run has already been posted, and a re-run archives the list with the run
 # it belongs to. Nothing the webhook writes can close the gate.
 POSTED_RUNS = "posted_runs.json"
+# How many posts the gate remembers per (repo, PR, reviewer). The list is cleared by a re-run,
+# and a second post of the SAME run is already refused, so it only grows when the author pushes
+# again and the reviewer posts against the new head without re-running — twenty of those on one
+# PR is already implausible. It is still a cap on a security-relevant gate, so an eviction is
+# logged rather than swallowed: the run that drops off the end could, in principle, be posted a
+# second time, and whoever reads the log should be able to see that the window reopened.
+POSTED_RUNS_CAP = 20
 
 # Files that describe one review run — copied into history/<ts>/ when a re-run replaces it.
 RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status",
@@ -1641,8 +1648,13 @@ def record_posted_run(repo, pr, login, key, head, inline, event):
     at = int(time.time())
     rows = posted_runs(repo, pr, login)
     rows.append({"reviewKey": key, "head": head, "at": at, "inline": inline, "event": event})
+    evicted, rows = rows[:-POSTED_RUNS_CAP], rows[-POSTED_RUNS_CAP:]
+    for r in evicted:
+        print(f"[post] {repo}#{pr} {login}: posting gate full ({POSTED_RUNS_CAP} entries) — "
+              f"forgetting the post of run {r.get('reviewKey', '?')} at "
+              f"{str(r.get('head', ''))[:7]}; that run could be posted again", flush=True)
     try:
-        (d / POSTED_RUNS).write_text(json.dumps(rows[-20:]))
+        (d / POSTED_RUNS).write_text(json.dumps(rows))
     except OSError:
         pass
     (d / "posted.json").write_text(json.dumps(

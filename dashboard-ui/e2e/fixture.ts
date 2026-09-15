@@ -4,6 +4,7 @@
 // before booting the Python server, and global-setup runs it before the workers start, so the
 // server always boots against a ready fixture regardless of Playwright's setup/webServer order.
 // A FIXED (non-secret) test secret keeps the server's .env and the minted cookie in agreement.
+import type { Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { chmodSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
@@ -439,3 +440,27 @@ if (process.argv[1] && process.argv[1]?.endsWith("fixture.ts")) {
   mintAuthState();
   console.log("e2e fixture built at", FIXTURE);
 }
+
+// ---- helpers for specs that need a state the on-disk fixture cannot produce ----------------
+// The fixture has no Claude token (nothing in this suite may reach Anthropic) and its poller has
+// run, so the QA generate button and the unconfigured-install queue are only reachable by
+// rewriting the server's answer. Everything else in the suite runs against the real server.
+
+/** Merge `patch` into whatever /api/me answers. */
+export async function patchMe(page: Page, patch: Record<string, unknown>) {
+  await page.route("**/api/me", async (route) => {
+    const r = await route.fetch();
+    await route.fulfill({ response: r, json: { ...(await r.json()), ...patch } });
+  });
+}
+
+/** A QA guide with a GFM task list — the list a tester is meant to work through. */
+export const QA_MD = [
+  "# QA guide",
+  "",
+  "## P0 — must pass",
+  "",
+  "- [ ] Open a product card for a vendor with no lead time",
+  "- [x] Confirm the badge is hidden rather than blank",
+  "",
+].join("\n");

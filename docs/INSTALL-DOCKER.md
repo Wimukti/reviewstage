@@ -9,10 +9,14 @@ arm64 Linux all work — the image builds for the host's architecture.
 **Host requirements**
 
 - **At least 2 GB of RAM.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*,
-  not total — so a 1 GB VPS cannot run a single review. `doctor` FAILs the memory check when it
-  is short. Lower `MIN_FREE_MB` only if you know the host can take an agent run anyway.
+  not total — so a 1 GB VPS cannot run a single review. Inside a container the figure is read
+  from the cgroup budget, so a small container on a large host is measured honestly. `doctor`
+  FAILs the memory check when it is short. Lower `MIN_FREE_MB` only if you know the host can
+  take an agent run anyway.
 - **About 3 GB of free disk** for the image, plus one blobless clone per repository in the data
-  volume. `doctor` FAILs below 1 GB free (`MIN_FREE_DISK_MB`, default 1024).
+  volume. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB`
+  (500 MB free on the volume). `doctor` reads the same key but defaults it to 1024, so with
+  the key unset the doctor FAILs a little earlier than the jobs do.
 - **Outbound network for the build.** The image pulls `python:3.12-slim` and `node:24-alpine`,
   Debian packages, the GitHub CLI apt repository, NodeSource and `@anthropic-ai/claude-code`
   from npm. Behind a proxy, set the Docker daemon's proxy (so base images pull) and pass the
@@ -240,5 +244,5 @@ install on a LAN also works — do not do that for anything reachable from outsi
 | Signed in, then straight back to the login page  | Cookie rejected: open `http://localhost:8899`, not `127.0.0.1`; behind a proxy, `PUBLIC_URL` must be `https://` and the proxy must forward `Host` |
 | Slack/Discord card never arrives                 | Poller not running (`--profile team`) or paused in Settings, or no webhook URL in `.env` — `docker compose logs poller` |
 | Settings → Webhooks stays "polling only"         | GitHub cannot reach `<PUBLIC_URL>/webhooks/github` (check the hook's *Recent Deliveries* on GitHub: a 503 means `GITHUB_WEBHOOK_SECRET` is unset, a 401 means the secrets differ, a timeout means the proxy or Access policy blocks the path) |
-| Port 8899 in use                                 | `RS_PORT=9000 docker compose up -d` — in the **shell**, for that command. Never put `RS_PORT` in `.env`: Compose reads that file both to interpolate the published port and to build the container's environment, so the server moves inside the container while the publish still targets 8899, and the dashboard stops answering |
-| Dashboard unreachable right after editing `.env`  | Check you did not add `RS_PORT` there (row above); otherwise `docker compose up -d` to recreate the container, since the server reads `.env` only at startup |
+| Port 8899 in use                                 | Set `RS_HOST_PORT=9000` in `.env` and `docker compose up -d`. That is the host side of the publish only; the container's own port is pinned to 8899. `RS_PORT` in `.env` does nothing here |
+| Dashboard unreachable right after editing `.env`  | `docker compose up -d` to recreate the container — the server reads `.env` only at startup |

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type IntegrationsData, type Me } from "./api";
+import { api, errBanner, type IntegrationsData, type Me } from "./api";
 import { BrandIcon } from "./icons";
 
 function Banner({ html }: { html: string }) {
@@ -47,6 +47,7 @@ const REQ = <span className="tag-req">Required</span>;
 function GithubCtl({ token, onDone }: { token: IntegrationsData["token"]; onDone: (b: string) => void }) {
   const [show, setShow] = useState(false);
   const [pat, setPat] = useState("");
+  const [busy, setBusy] = useState(false);
   if (!show)
     return (
       <button type="button" className="replace" onClick={() => setShow(true)}>
@@ -57,10 +58,18 @@ function GithubCtl({ token, onDone }: { token: IntegrationsData["token"]; onDone
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        const r = await api.saveSettings(token, { pat });
-        setPat("");
-        setShow(false);
-        onDone(r.bannerHtml);
+        if (busy) return;
+        setBusy(true);
+        try {
+          const r = await api.saveSettings(token, { pat });
+          setPat("");
+          setShow(false);
+          onDone(r.bannerHtml);
+        } catch (x) {
+          onDone(errBanner(x, "Couldn't save that token."));
+        } finally {
+          setBusy(false);
+        }
       }}
     >
       <div className="inrow">
@@ -73,8 +82,8 @@ function GithubCtl({ token, onDone }: { token: IntegrationsData["token"]; onDone
           value={pat}
           onChange={(e) => setPat(e.target.value)}
         />
-        <button className="btn primary" type="submit">
-          Save
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? "Saving…" : "Save"}
         </button>
       </div>
     </form>
@@ -91,13 +100,22 @@ function SlackCtl({
   onDone: (b: string) => void;
 }) {
   const [slack, setSlack] = useState(value);
+  const [busy, setBusy] = useState(false);
   useEffect(() => setSlack(value), [value]);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        const r = await api.saveSettings(token, { slack_id: slack.trim() });
-        onDone(r.bannerHtml);
+        if (busy) return;
+        setBusy(true);
+        try {
+          const r = await api.saveSettings(token, { slack_id: slack.trim() });
+          onDone(r.bannerHtml);
+        } catch (x) {
+          onDone(errBanner(x, "Couldn't save your Slack ID."));
+        } finally {
+          setBusy(false);
+        }
       }}
     >
       <div className="inrow">
@@ -110,8 +128,8 @@ function SlackCtl({
           value={slack}
           onChange={(e) => setSlack(e.target.value)}
         />
-        <button className="btn primary" type="submit">
-          Save
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? "Saving…" : "Save"}
         </button>
       </div>
       <div className="hint">
@@ -132,13 +150,22 @@ function DiscordCtl({
   onDone: (b: string) => void;
 }) {
   const [id, setId] = useState(value);
+  const [busy, setBusy] = useState(false);
   useEffect(() => setId(value), [value]);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        const r = await api.saveSettings(token, { discord_id: id.trim() });
-        onDone(r.bannerHtml);
+        if (busy) return;
+        setBusy(true);
+        try {
+          const r = await api.saveSettings(token, { discord_id: id.trim() });
+          onDone(r.bannerHtml);
+        } catch (x) {
+          onDone(errBanner(x, "Couldn't save your Discord ID."));
+        } finally {
+          setBusy(false);
+        }
       }}
     >
       <div className="inrow">
@@ -152,8 +179,8 @@ function DiscordCtl({
           value={id}
           onChange={(e) => setId(e.target.value)}
         />
-        <button className="btn primary" type="submit">
-          Save
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? "Saving…" : "Save"}
         </button>
       </div>
       <div className="hint">
@@ -215,8 +242,12 @@ function ClaudeCtl({
           className="discbtn"
           type="button"
           onClick={async () => {
-            const r = await api.claudeDisconnect(d.token);
-            onDone(r.bannerHtml);
+            try {
+              const r = await api.claudeDisconnect(d.token);
+              onDone(r.bannerHtml);
+            } catch (x) {
+              onDone(errBanner(x, "Couldn't disconnect."));
+            }
           }}
         >
           Disconnect

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   ApiError,
+  errMessage,
+  isExpiredToken,
   type Finding,
   type ReviewData,
   type Me,
@@ -113,18 +115,23 @@ function RunForm({
         e.preventDefault();
         setErr("");
         setBusy(true);
-        const r = await api.review(pr, token, effort, focus, model);
-        if (r.started === false) {
-          // A previous run still holds the per-PR lock (e.g. a stop that could not be confirmed).
+        try {
+          const r = await api.review(pr, token, effort, focus, model);
+          if (r.started === false) {
+            // A previous run still holds the per-PR lock (e.g. a stop that could not be confirmed).
+            setErr(
+              "Couldn't start — a previous run may still be finishing or holding the lock. " +
+                "Try Stop, then start again in a moment.",
+            );
+            return;
+          }
+          pokeRunning(); // so the sidebar says so the moment the reviewer leaves this page
+          onStarted();
+        } catch (x) {
+          setErr(errMessage(x, "Couldn't start the review."));
+        } finally {
           setBusy(false);
-          setErr(
-            "Couldn't start — a previous run may still be finishing or holding the lock. " +
-              "Try Stop, then start again in a moment.",
-          );
-          return;
         }
-        pokeRunning(); // so the sidebar says so the moment the reviewer leaves this page
-        onStarted();
       }}
     >
       {err && (
@@ -234,19 +241,30 @@ function RunForm({
 // still alive (bash gone, the agent it started still burning tokens).
 function StopStalled({ pr, token, onDone }: { pr: PrRef; token: Token; onDone: () => void }) {
   const [stopping, setStopping] = useState(false);
+  const [err, setErr] = useState("");
   return (
-    <button
-      className="btn soft"
-      type="button"
-      disabled={stopping}
-      onClick={async () => {
-        setStopping(true);
-        await api.stop(pr, token);
-        onDone();
-      }}
-    >
-      {stopping ? "Stopping…" : "Stop it"}
-    </button>
+    <>
+      <button
+        className="btn soft"
+        type="button"
+        disabled={stopping}
+        onClick={async () => {
+          setErr("");
+          setStopping(true);
+          try {
+            await api.stop(pr, token);
+            onDone();
+          } catch (x) {
+            setErr(errMessage(x, "Couldn't stop it."));
+          } finally {
+            setStopping(false);
+          }
+        }}
+      >
+        {stopping ? "Stopping…" : "Stop it"}
+      </button>
+      {err && <div className="ferr">{err}</div>}
+    </>
   );
 }
 
@@ -273,6 +291,7 @@ function HistoryList({ pr, runs }: { pr: PrRef; runs: PrData["history"] }) {
 function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: () => void }) {
   const r = data.reviewing!;
   const [stopping, setStopping] = useState(false);
+  const [err, setErr] = useState("");
   return (
     <div className="card top" data-testid="progress-panel">
       <div className="prog-hd">
@@ -296,19 +315,33 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
       <div className="hint" style={{ marginTop: 10 }}>
         This page refreshes itself; {r.effortHint}.
       </div>
-      <form
-        style={{ marginTop: 12 }}
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setStopping(true);
-          await api.stop(pr, data.tokens.stop);
-          onStop();
-        }}
-      >
-        <button className="btn soft" type="submit" disabled={stopping}>
+      {err && (
+        <div className="banner err">
+          <span>🚫</span>
+          <div>{err}</div>
+        </div>
+      )}
+      <div style={{ marginTop: 12 }}>
+        <button
+          className="btn soft"
+          type="button"
+          disabled={stopping}
+          onClick={async () => {
+            setErr("");
+            setStopping(true);
+            try {
+              await api.stop(pr, data.tokens.stop);
+              onStop();
+            } catch (x) {
+              setErr(errMessage(x, "Couldn't stop the review."));
+            } finally {
+              setStopping(false);
+            }
+          }}
+        >
           {stopping ? "Stopping…" : "Stop review"}
         </button>
-      </form>
+      </div>
     </div>
   );
 }
@@ -316,6 +349,17 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
 const OFFDIFF_HINT =
   "This line is not part of the PR's diff, so GitHub cannot take an inline comment. " +
   "It will appear in the review body with a link to the line.";
+
+const UNKNOWN_HINT =
+  "GitHub would not say which lines this PR touches, so where this comment lands is unknown. " +
+  "It goes inline if the line is in the diff, and into the review body if it is not.";
+
+// Where a finding will land. `undefined`/`null` is a real third answer: the server could not ask
+// GitHub, and promising "inline" on that is the post bar telling the reviewer something it does
+// not know.
+type Placement = "inline" | "summary" | "unknown";
+const placementOf = (f: Finding): Placement =>
+  f.anchorable === true ? "inline" : f.anchorable === false ? "summary" : "unknown";
 
 function FindingCard({
   f,
@@ -363,9 +407,14 @@ function FindingCard({
             critical path
           </span>
         )}
-        {f.anchorable === false && (
+        {placementOf(f) === "summary" && (
           <span className="offdiff" title={OFFDIFF_HINT}>
             in summary
+          </span>
+        )}
+        {placementOf(f) === "unknown" && (
+          <span className="offdiff" title={UNKNOWN_HINT} data-testid="placement-unknown">
+            placement unknown
           </span>
         )}
         {f.agreement?.confirmed ? (
@@ -466,6 +515,21 @@ function verdict(rev: ReviewData) {
   return { ico: "🟢", text: "Looks good — comments only, nothing blocking", cls: "v-good" };
 }
 
+// Which review these findings came from. The server matches a post to its stored review by
+// array index, so a re-run started on another device would silently re-point every comment at a
+// different file and line. Prefer an identity the server minted; otherwise fingerprint the list
+// itself, which changes whenever the findings do.
+function reviewIdentity(rev: ReviewData): string {
+  if (rev.reviewKey) return rev.reviewKey;
+  const src = rev.findings.map((f) => `${f.i} ${f.path} ${f.line} ${f.severity}`).join("\n");
+  let h = 0x811c9dc5;
+  for (let i = 0; i < src.length; i++) {
+    h ^= src.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `fp:${rev.count}:${h.toString(16)}`;
+}
+
 function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   const rev = data.review!;
   const [bodies, setBodies] = useState<Record<number, string>>(
@@ -476,6 +540,7 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   );
   const [requestChanges, setRequestChanges] = useState(false);
   const [banner, setBanner] = useState("");
+  const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   // approve
@@ -489,33 +554,72 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
       return n;
     });
 
-  // Where the selected findings will land — GitHub only takes an inline comment on a changed line.
-  const selInline = rev.findings.filter((f) => selected.has(f.i) && f.anchorable !== false).length;
-  const selOff = selected.size - selInline;
+  // Where the selected findings will land — GitHub only takes an inline comment on a changed
+  // line, and sometimes it will not say which lines those are.
+  const sel = rev.findings.filter((f) => selected.has(f.i));
+  const selInline = sel.filter((f) => placementOf(f) === "inline").length;
+  const selOff = sel.filter((f) => placementOf(f) === "summary").length;
+  const selUnknown = sel.filter((f) => placementOf(f) === "unknown").length;
   const shown = rev.findings.filter((f) => !f.low);
   const maybe = rev.findings.filter((f) => f.low);
 
-  async function submitPost(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    const res = await api.post(refOf(data), data.tokens.post, {
-      selected: [...selected],
-      bodies,
-      suggs: {},
-      request_changes: requestChanges,
-    });
-    setBanner(res.bannerHtml);
-    setBusy(false);
-    onDone();
+  // An action token lives 30 minutes and /api/pr only re-mints while a review runs, so reading a
+  // long review and then clicking Post used to 403 into a dead button. Re-read the PR for a
+  // fresh token and try the write exactly once more.
+  async function withFreshToken<T>(
+    pick: (d: PrData) => Token,
+    call: (t: Token) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await call(pick(data));
+    } catch (e) {
+      if (!isExpiredToken(e)) throw e;
+      const fresh = await api.pr(refOf(data));
+      return await call(pick(fresh));
+    }
   }
 
-  async function submitApprove(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitPost() {
+    if (busy) return;
+    setErr("");
     setBusy(true);
-    const res = await api.approve(refOf(data), data.tokens.approve, approveBody, ack);
-    setBanner(res.bannerHtml);
-    setBusy(false);
-    onDone();
+    try {
+      const res = await withFreshToken(
+        (d) => d.tokens.post,
+        (t) =>
+          api.post(refOf(data), t, {
+            selected: [...selected],
+            bodies,
+            suggs: {},
+            request_changes: requestChanges,
+            review_key: reviewIdentity(rev),
+          }),
+      );
+      setBanner(res.bannerHtml);
+      onDone();
+    } catch (e) {
+      setErr(errMessage(e, "Couldn't post to GitHub."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitApprove() {
+    if (busy) return;
+    setErr("");
+    setBusy(true);
+    try {
+      const res = await withFreshToken(
+        (d) => d.tokens.approve,
+        (t) => api.approve(refOf(data), t, approveBody, ack),
+      );
+      setBanner(res.bannerHtml);
+      onDone();
+    } catch (e) {
+      setErr(errMessage(e, "Couldn't approve on GitHub."));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const renderFinding = (f: Finding) => (
@@ -542,6 +646,12 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
         </div>
       )}
       {banner && <Banner html={banner} />}
+      {err && (
+        <div className="banner err" data-testid="action-error">
+          <span>🚫</span>
+          <div>{err}</div>
+        </div>
+      )}
 
       {rev.reused && (
         <div className="banner ok">
@@ -614,7 +724,9 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
           <p className="muted">No findings — nothing to post.</p>
         </div>
       ) : (
-        <form onSubmit={submitPost}>
+        // Deliberately not a <form>: browsers implicitly submit one on Enter, and these are
+        // checkboxes. A stray keystroke while ticking findings would have posted the review.
+        <div data-testid="post-panel">
           {rev.posted && (
             <div className="banner ok">
               <span>✓</span>
@@ -638,11 +750,24 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
               <div className="inner">
                 <span className="muted sm">
                   <b>{selected.size}</b> selected
-                  {selOff > 0 && (
+                  {(selOff > 0 || selUnknown > 0) && (
                     <>
                       {" · "}
-                      {selInline} inline ·{" "}
-                      <span title={OFFDIFF_HINT}>{selOff} in the summary</span>
+                      {selInline} inline
+                      {selOff > 0 && (
+                        <>
+                          {" · "}
+                          <span title={OFFDIFF_HINT}>{selOff} in the summary</span>
+                        </>
+                      )}
+                      {selUnknown > 0 && (
+                        <>
+                          {" · "}
+                          <span title={UNKNOWN_HINT} data-testid="placement-unknown-count">
+                            {selUnknown} unknown
+                          </span>
+                        </>
+                      )}
                     </>
                   )}{" "}
                   ·{" "}
@@ -653,13 +778,19 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                   <input type="checkbox" checked={requestChanges} onChange={(e) => setRequestChanges(e.target.checked)} />{" "}
                   Request changes instead
                 </label>
-                <button className={"btn " + (requestChanges ? "warn" : "primary")} type="submit" disabled={busy}>
-                  {requestChanges ? "Request changes" : rev.postLabel}
+                <button
+                  className={"btn " + (requestChanges ? "warn" : "primary")}
+                  type="button"
+                  disabled={busy}
+                  aria-busy={busy}
+                  onClick={submitPost}
+                >
+                  {busy ? "Posting…" : requestChanges ? "Request changes" : rev.postLabel}
                 </button>
               </div>
             </div>
           )}
-        </form>
+        </div>
       )}
 
       {rev.approved ? (
@@ -686,7 +817,9 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                   </div>
                 </div>
               )}
-              <form onSubmit={submitApprove}>
+              {/* Not a <form>, for the same reason as the post panel: Enter must never approve
+                  a PR. The acknowledgement that `required` used to enforce gates the button. */}
+              <div data-testid="approve-panel">
                 <label className="muted sm">
                   Approval comment — posted on the PR as a whole, then the PR is approved
                 </label>
@@ -694,17 +827,28 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                 {!rev.approve.lgtm && (
                   <p className="sm">
                     <label>
-                      <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} required /> I've
+                      <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} /> I've
                       read the findings above and want to approve anyway.
                     </label>
                   </p>
                 )}
                 <p>
-                  <button className="btn primary" type="submit" disabled={busy}>
-                    {data.dryRun ? "Approve (dry run)" : `Approve #${data.pr}`}
+                  <button
+                    className="btn primary"
+                    type="button"
+                    disabled={busy || (!rev.approve.lgtm && !ack)}
+                    aria-busy={busy}
+                    title={!rev.approve.lgtm && !ack ? "Tick the confirmation above first" : ""}
+                    onClick={submitApprove}
+                  >
+                    {busy
+                      ? "Approving…"
+                      : data.dryRun
+                        ? "Approve (dry run)"
+                        : `Approve #${data.pr}`}
                   </button>
                 </p>
-              </form>
+              </div>
             </div>
           </>
         )

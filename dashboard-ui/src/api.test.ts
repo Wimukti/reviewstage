@@ -1,7 +1,17 @@
 // Unit tests for the typed API client. No network: global.fetch is stubbed per case.
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { api, get, post, Unauthorized } from "./api";
+import {
+  api,
+  ApiError,
+  errBanner,
+  errMessage,
+  escapeHtml,
+  get,
+  isExpiredToken,
+  post,
+  Unauthorized,
+} from "./api";
 
 type FetchArgs = { url: string; init?: RequestInit };
 let calls: FetchArgs[] = [];
@@ -84,4 +94,50 @@ test("api.skillAction posts to the step-scoped route", async () => {
   stubFetch(200, { bannerHtml: "<div/>" });
   await api.skillAction("save", { target: "global", skill: "x" });
   assert.equal(calls[0].url, "/api/skill/save");
+});
+
+test("an error reply carries its HTTP status, so callers can tell 403 from 500", async () => {
+  stubFetch(403, { error: "This link has expired — reload the page for a fresh one." });
+  await assert.rejects(
+    () => get("/pr"),
+    (e: unknown) => e instanceof ApiError && e.status === 403,
+  );
+});
+
+test("isExpiredToken recognises only a recoverable 403", () => {
+  const at = (status: number, msg: string) => new ApiError(msg, {}, status);
+  assert.equal(isExpiredToken(at(403, "This link has expired — reload the page for a fresh one.")), true);
+  assert.equal(isExpiredToken(at(403, "This link was signed with a different key — …")), true);
+  // A refusal the reviewer has to act on, not one a fresh token fixes.
+  assert.equal(isExpiredToken(at(403, "You are not a reviewer on this PR.")), false);
+  assert.equal(isExpiredToken(at(500, "This link has expired")), false);
+  assert.equal(isExpiredToken(new Error("has expired")), false);
+});
+
+test("errMessage prefers the server's words and never returns empty", () => {
+  assert.equal(errMessage(new ApiError("GitHub said no.", {}, 422)), "GitHub said no.");
+  assert.match(errMessage(new Unauthorized()), /session has expired/i);
+  assert.equal(errMessage(null, "fallback"), "fallback");
+  assert.equal(errMessage(new Error("")), "That didn't work — try again.");
+});
+
+test("errBanner escapes the server's message instead of injecting it", () => {
+  assert.equal(escapeHtml('<img src=x onerror="a">'), "&lt;img src=x onerror=&quot;a&quot;&gt;");
+  const html = errBanner(new ApiError("<script>x</script>", {}, 500));
+  assert.ok(!html.includes("<script>"));
+  assert.ok(html.includes("&lt;script&gt;"));
+});
+
+test("api.post carries the review identity so the server can refuse a stale selection", async () => {
+  stubFetch(200, { bannerHtml: "" });
+  await api.post({ repo: "acme/widgets", num: "1" }, { exp: "1", sig: "s" }, {
+    selected: [0], bodies: {}, suggs: {}, request_changes: false, review_key: "fp:2:abc",
+  });
+  assert.equal(JSON.parse(String(calls[0].init?.body)).review_key, "fp:2:abc");
+});
+
+test("api.skillSuggestion sends the reviewer's edited rule on accept", async () => {
+  stubFetch(200, {});
+  await api.skillSuggestion({ exp: "1", sig: "s" }, "sig1", "accept", "My own wording.");
+  assert.equal(JSON.parse(String(calls[0].init?.body)).rule, "My own wording.");
 });

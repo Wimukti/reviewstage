@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type StackData } from "./api";
+import { api, errMessage, type StackData } from "./api";
 import { prLabel, prUrl } from "./pr";
 import { Link, useLocation } from "./router";
 
@@ -15,6 +15,8 @@ export function StackPage() {
   const [d, setD] = useState<StackData | null>(null);
   const [effort, setEffort] = useState("standard");
   const [started, setStarted] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const load = useCallback(() => (pr ? api.stack(ref).then(setD) : Promise.resolve()), [pr, repo]);
@@ -81,10 +83,18 @@ export function StackPage() {
   );
 
   async function runSelected() {
-    if (!d || sel.size === 0) return;
-    const r = await api.stackRun({ repo: d.repo, num: pr }, d.runToken, effort, [...sel]);
-    setStarted(r.started);
-    load();
+    if (!d || sel.size === 0 || busy) return;
+    setErr("");
+    setBusy(true);
+    try {
+      const r = await api.stackRun({ repo: d.repo, num: pr }, d.runToken, effort, [...sel]);
+      setStarted(r.started);
+      load();
+    } catch (x) {
+      setErr(errMessage(x, "Couldn't queue those reviews."));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -129,6 +139,12 @@ export function StackPage() {
         })}
       </div>
       <div className="card top">
+        {err && (
+          <div className="banner err">
+            <span>🚫</span>
+            <div>{err}</div>
+          </div>
+        )}
         {started !== null && (
           <div className="banner ok">
             <span>✓</span>
@@ -164,9 +180,10 @@ export function StackPage() {
                 className="btn primary"
                 type="button"
                 onClick={runSelected}
-                disabled={sel.size === 0}
+                disabled={busy || sel.size === 0}
+                aria-busy={busy}
               >
-                Review selected ({sel.size})
+                {busy ? "Starting…" : `Review selected (${sel.size})`}
               </button>
             </div>
           </>

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type ProfileData, type RuleSuggestion, type SkillsData, type Token } from "./api";
+import { api, errBanner, type ProfileData, type RuleSuggestion, type SkillsData, type Token } from "./api";
 import { MdEditor } from "./MdEditor";
 
 function Banner({ html }: { html: string }) {
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+// Below this many decided findings a percentage is noise dressed as a measurement.
+const RATE_FLOOR = 10;
 
 const COPY_HINT = (
   <div className="hint">
@@ -25,6 +28,7 @@ function RuleForm({
   onDone: (b: string) => void;
 }) {
   const [rule, setRule] = useState("");
+  const [busy, setBusy] = useState(false);
   return (
     <div className="rulebox">
       <div className="rule-lbl">Quick-add a rule</div>
@@ -32,10 +36,17 @@ function RuleForm({
         className="rulerow"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!rule.trim()) return;
-          const r = await api.skillAction("rule", { ...token, target, from: "skills", rule });
-          setRule("");
-          onDone(r.bannerHtml);
+          if (!rule.trim() || busy) return;
+          setBusy(true);
+          try {
+            const r = await api.skillAction("rule", { ...token, target, from: "skills", rule });
+            setRule("");
+            onDone(r.bannerHtml);
+          } catch (x) {
+            onDone(errBanner(x, "Couldn't add that rule."));
+          } finally {
+            setBusy(false);
+          }
         }}
       >
         <input
@@ -45,8 +56,8 @@ function RuleForm({
           value={rule}
           onChange={(e) => setRule(e.target.value)}
         />
-        <button className="btn soft" type="submit">
-          Add rule
+        <button className="btn soft" type="submit" disabled={busy}>
+          {busy ? "Adding…" : "Add rule"}
         </button>
       </form>
       <div className="hint">
@@ -70,17 +81,32 @@ function SkillEditor({
 }) {
   const [text, setText] = useState(value);
   const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
   useEffect(() => setText(value), [value]);
+  // One wrapper for every write on this card: a rejection becomes a banner, never a dead button.
+  const act = async (fn: () => Promise<{ bannerHtml: string }>, fallback: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      onDone((await fn()).bannerHtml);
+    } catch (x) {
+      onDone(errBanner(x, fallback));
+    } finally {
+      setBusy(false);
+    }
+  };
   const isGlobal = target === "global";
   const isRepo = target.startsWith("repo:");
   const repoName = isRepo ? target.slice(5) : "";
   return (
     <>
       <form
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault();
-          const r = await api.skillAction("save", { ...token, target, from: "skills", skill: text });
-          onDone(r.bannerHtml);
+          act(
+            () => api.skillAction("save", { ...token, target, from: "skills", skill: text }),
+            "Couldn't save the skill.",
+          );
         }}
       >
         <textarea
@@ -106,17 +132,20 @@ function SkillEditor({
         </div>
         {COPY_HINT}
         <div className="inrow" style={{ marginTop: 10 }}>
-          <button className="btn primary" type="submit">
-            Save skill
+          <button className="btn primary" type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save skill"}
           </button>
           {!isGlobal && value && (
             <button
               className="btn soft"
               type="button"
-              onClick={async () => {
-                const r = await api.skillAction("reset", { ...token, target, from: "skills" });
-                onDone(r.bannerHtml);
-              }}
+              disabled={busy}
+              onClick={() =>
+                act(
+                  () => api.skillAction("reset", { ...token, target, from: "skills" }),
+                  "Couldn't clear it.",
+                )
+              }
             >
               {isRepo ? "Clear override (use team default)" : "Clear (use team default)"}
             </button>
@@ -129,16 +158,18 @@ function SkillEditor({
           <form
             className="rulerow"
             style={{ marginTop: 8 }}
-            onSubmit={async (e) => {
+            onSubmit={(e) => {
               e.preventDefault();
-              const r = await api.skillAction("restore", {
-                ...token,
-                target: "global",
-                from: "skills",
-                confirm,
-              });
-              setConfirm("");
-              onDone(r.bannerHtml);
+              act(async () => {
+                const r = await api.skillAction("restore", {
+                  ...token,
+                  target: "global",
+                  from: "skills",
+                  confirm,
+                });
+                setConfirm("");
+                return r;
+              }, "Couldn't restore the built-in skill.");
             }}
           >
             <input
@@ -148,8 +179,8 @@ function SkillEditor({
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />
-            <button className="btn warn" type="submit">
-              Restore
+            <button className="btn warn" type="submit" disabled={busy}>
+              {busy ? "Restoring…" : "Restore"}
             </button>
           </form>
           <div className="hint">
@@ -169,7 +200,19 @@ function DepthEditor({ token, level, d, onDone }: {
   onDone: (b: string) => void;
 }) {
   const [text, setText] = useState(d.content);
+  const [busy, setBusy] = useState(false);
   useEffect(() => setText(d.content), [d.content]);
+  const act = async (fn: () => Promise<{ bannerHtml: string }>, fallback: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      onDone((await fn()).bannerHtml);
+    } catch (x) {
+      onDone(errBanner(x, fallback));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <details className="skilled">
       <summary>
@@ -181,15 +224,18 @@ function DepthEditor({ token, level, d, onDone }: {
           What ReviewStage does on a <b>{d.name}</b> review ({d.meta}). Appended to whichever skill runs.
         </p>
         <form
-          onSubmit={async (e) => {
+          onSubmit={(e) => {
             e.preventDefault();
-            const r = await api.skillAction("save", {
-              ...token,
-              target: `effort_${level}`,
-              from: "skills",
-              skill: text,
-            });
-            onDone(r.bannerHtml);
+            act(
+              () =>
+                api.skillAction("save", {
+                  ...token,
+                  target: `effort_${level}`,
+                  from: "skills",
+                  skill: text,
+                }),
+              "Couldn't save that depth.",
+            );
           }}
         >
           <textarea
@@ -200,21 +246,25 @@ function DepthEditor({ token, level, d, onDone }: {
             onChange={(e) => setText(e.target.value)}
           />
           <div className="inrow" style={{ marginTop: 10 }}>
-            <button className="btn primary" type="submit">
-              Save depth
+            <button className="btn primary" type="submit" disabled={busy}>
+              {busy ? "Saving…" : "Save depth"}
             </button>
             {d.edited && (
               <button
                 className="btn soft"
                 type="button"
-                onClick={async () => {
-                  const r = await api.skillAction("reset", {
-                    ...token,
-                    target: `effort_${level}`,
-                    from: "skills",
-                  });
-                  onDone(r.bannerHtml);
-                }}
+                disabled={busy}
+                onClick={() =>
+                  act(
+                    () =>
+                      api.skillAction("reset", {
+                        ...token,
+                        target: `effort_${level}`,
+                        from: "skills",
+                      }),
+                    "Couldn't reset that depth.",
+                  )
+                }
               >
                 Reset to default
               </button>
@@ -462,10 +512,21 @@ function Suggestion({
   onDone: (d: SkillsData, banner: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  // The drafted sentence goes into the team's shared skill, so it has to be editable first —
+  // accept-verbatim-or-dismiss is the wrong shape for a human-gated product. The server already
+  // prefers a `rule` in the body over its own draft.
+  const [draft, setDraft] = useState(s.rule);
+  useEffect(() => setDraft(s.rule), [s.rule]);
+  const edited = draft.trim() !== s.rule.trim();
   const act = async (action: "accept" | "dismiss" | "undismiss") => {
     setBusy(true);
     try {
-      const r = await api.skillSuggestion(token, s.signature, action);
+      const r = await api.skillSuggestion(
+        token,
+        s.signature,
+        action,
+        action === "accept" ? draft.trim() : undefined,
+      );
       onDone(r, r.bannerHtml);
     } catch (e) {
       onDone(
@@ -491,9 +552,32 @@ function Suggestion({
           <span className="muted sm">{evidence}</span>
         </div>
         {s.rule ? (
-          <div className="suggrule" data-testid="rule-sentence">
-            {s.rule}
-          </div>
+          s.dismissed ? (
+            <div className="suggrule" data-testid="rule-sentence">
+              {s.rule}
+            </div>
+          ) : (
+            <div className="suggedit">
+              <label className="rule-lbl" htmlFor={`rule-${s.signature}`}>
+                The rule that will be added — edit it before you accept
+              </label>
+              <textarea
+                id={`rule-${s.signature}`}
+                className="in suggrule-in"
+                data-testid="rule-sentence"
+                rows={2}
+                spellCheck={false}
+                value={draft}
+                disabled={busy}
+                onChange={(e) => setDraft(e.target.value)}
+              />
+              {edited && (
+                <div className="hint" style={{ margin: "4px 0 0" }}>
+                  Your wording will be added, not the draft.
+                </div>
+              )}
+            </div>
+          )
         ) : (
           <div className="muted sm" style={{ marginTop: 6 }} data-testid="rule-pending">
             {s.connected
@@ -534,8 +618,8 @@ function Suggestion({
               <button
                 className="btn primary"
                 type="button"
-                disabled={busy || !s.rule}
-                title={s.rule ? "" : "Nothing drafted to accept yet"}
+                disabled={busy || !draft.trim()}
+                title={draft.trim() ? "" : "Write the rule first, or dismiss this suggestion"}
                 onClick={() => act("accept")}
               >
                 Accept — add to {s.targetLabel}
@@ -625,8 +709,12 @@ export function Skills() {
         checked={d.choice === v}
         disabled={dis}
         onChange={async () => {
-          const r = await api.skillAction("use", { ...d.token, choice: v, from: "skills" });
-          onDone(r.bannerHtml);
+          try {
+            const r = await api.skillAction("use", { ...d.token, choice: v, from: "skills" });
+            onDone(r.bannerHtml);
+          } catch (x) {
+            onDone(errBanner(x, "Couldn't switch skills."));
+          }
         }}
       />
       <span className="effname">{name}</span>
@@ -685,7 +773,16 @@ export function Skills() {
       <details className="skilled">
         <summary>
           Edit the team default skill{" "}
-          <span className={d.hasGlobal ? "tag-on" : "tag-off"}>{d.hasGlobal ? "Edited" : "Built-in"}</span>
+          {/* The file exists on every install — bootstrap writes it — so its mere presence is
+              not evidence of an edit. Say "Edited" only when the server compares it to the
+              shipped skill and says so. */}
+          {d.globalEdited === undefined ? (
+            <span className="tag-off">In use</span>
+          ) : d.globalEdited ? (
+            <span className="tag-on">Edited</span>
+          ) : (
+            <span className="tag-off">Built-in</span>
+          )}
         </summary>
         <div className="dbody">
           <p className="muted sm" style={{ marginTop: 0 }}>
@@ -766,6 +863,11 @@ export function Skills() {
       ))}
 
       <h2>How each skill scores</h2>
+      <p className="muted sm">
+        The share of a skill's findings that were <b>posted at all</b> — kept as-is or reworded
+        first. Insights' &ldquo;kept as-is&rdquo; is a stricter measure and will read lower. A
+        skill with fewer than {RATE_FLOOR} decided findings gets no percentage.
+      </p>
       {d.stats.length === 0 ? (
         <div className="empty">
           <span className="ic">🧭</span>
@@ -783,12 +885,16 @@ export function Skills() {
                     {s.skill === d.user && <span className="tag-on" style={{ marginLeft: 6 }}>you</span>}
                   </span>
                   <span className="num" style={{ WebkitTextFillColor: "var(--fg)" }}>
-                    {s.rate}% kept
+                    {s.total < RATE_FLOOR
+                      ? `n = ${s.total} — too few to rate`
+                      : `${s.rate.toFixed(1)}% kept or reworded`}
                   </span>
                 </div>
-                <div className="ratebar">
-                  <div className="ratefill" style={{ width: `${s.rate}%` }} />
-                </div>
+                {s.total >= RATE_FLOOR && (
+                  <div className="ratebar">
+                    <div className="ratefill" style={{ width: `${s.rate}%` }} />
+                  </div>
+                )}
                 <div className="muted sm" style={{ marginTop: 6 }}>
                   {s.kept} kept · {s.edited} reworded · {s.dropped} dropped · {s.total} findings
                 </div>

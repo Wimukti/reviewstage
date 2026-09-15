@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type Me, type QueueData, type QueueRow } from "./api";
+import { api, errMessage, type Me, type QueueData, type QueueRow } from "./api";
 import { parsePrRef, prUrl } from "./pr";
 import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
 import { Link, navigate, useLocation } from "./router";
@@ -24,11 +24,13 @@ const EMPTY: Record<string, [string, string, string]> = {
 function Row({
   row,
   onChange,
+  onError,
   showRepo,
   status,
 }: {
   row: QueueRow;
   onChange: () => void;
+  onError: (msg: string) => void;
   showRepo: boolean;
   status: string; // non-empty while a review of this PR is in flight for you
 }) {
@@ -43,6 +45,8 @@ function Row({
     try {
       await api.archive(ref, row.archiveToken, row.archived ? "unarchive" : "archive");
       onChange();
+    } catch (x) {
+      onError(errMessage(x, `Couldn't ${row.archived ? "restore" : "archive"} #${row.num}.`));
     } finally {
       setBusy(false);
     }
@@ -113,6 +117,7 @@ export function Queue({ me }: { me: Me }) {
   const [rv, setRv] = useState("");
   const [rvRepo, setRvRepo] = useState("");
   const [nonce, setNonce] = useState(0);
+  const [err, setErr] = useState("");
   // Repository filter — remembered per browser (localStorage), "" = all.
   const [repoFilter, setRepoFilterState] = useState(getRepoFilter);
   useEffect(() => {
@@ -144,17 +149,27 @@ export function Queue({ me }: { me: Me }) {
   const statusOf = (r: QueueRow) =>
     runningFor(jobs, "review", r.repo, r.num)?.status || (r.running ? r.status || "reviewing" : "");
 
+  const matches = (repo: string, num: string, title: string, author = "") => {
+    if (activeFilter && repo !== activeFilter) return false;
+    const needle = q.trim().toLowerCase();
+    if (!needle) return true;
+    return `${repo} ${repo}#${num} #${num} ${title} ${author}`.toLowerCase().includes(needle);
+  };
+
   const filtered = useMemo(() => {
     if (!data) return [];
-    const needle = q.trim().toLowerCase();
-    return data.rows.filter((r) => {
-      if (onlyRunning && !statusOf(r)) return false;
-      if (activeFilter && r.repo !== activeFilter) return false;
-      if (!needle) return true;
-      return `${r.repo} ${r.repo}#${r.num} #${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle);
-    });
+    return data.rows.filter((r) => matches(r.repo, r.num, r.title, r.author));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, q, activeFilter, onlyRunning, runKey]);
+  }, [data, q, activeFilter]);
+
+  // ?running=1 is a view of the running-jobs store, not of a tab. Intersecting it with one tab's
+  // rows hid every job on an archived or not-requested PR — and only matched kind "review", so a
+  // QA guide in flight read as "Nothing running" while the sidebar pill counted it.
+  const runningRows = useMemo(
+    () => jobs.filter((j) => matches(j.repo, j.num, j.title)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runKey, q, activeFilter],
+  );
 
   const parsed = parsePrRef(rv, repos);
   const needsPick = !!parsed && !parsed.repo && multi;
@@ -166,6 +181,15 @@ export function Queue({ me }: { me: Me }) {
 
   if (!data) return <div className="wrap-load muted">Loading…</div>;
   const empty = EMPTY[tab] || ["📭", "Nothing here yet", "This view is empty."];
+  const filtering = !!(q.trim() || activeFilter);
+  // The server counts every tab over the whole install. Only the open tab's rows are here, so
+  // only its count can honestly be recomputed — the rest are labelled rather than left to imply
+  // that "2 rows" and "41" describe the same set.
+  const countFor = (k: string) => (k === tab ? filtered.length : data.stats[k] ?? 0);
+  const UNFILTERED = "Unfiltered — a search or repository filter applies only to the open tab.";
+  // A brand-new install has nothing in the queue because nothing is set up yet, which is not the
+  // same as being caught up.
+  const notSetUp = me.claude_connected === false || me.poller_ran === false;
 
   return (
     <>
@@ -236,7 +260,10 @@ export function Queue({ me }: { me: Me }) {
             className={"stat" + (i === 0 ? " hot" : "") + (tab === k ? " on" : "")}
             to={`/?tab=${k}&sort=${sort}`}
           >
-            <div className="k">{data.stats[k]}</div>
+            <div className="k" title={filtering && k !== tab ? UNFILTERED : undefined}>
+              {countFor(k).toLocaleString("en-US")}
+              {filtering && k !== tab && <span className="cntnote"> all</span>}
+            </div>
             <div className="l">
               {k === "todo"
                 ? "Awaiting your review"
@@ -254,11 +281,25 @@ export function Queue({ me }: { me: Me }) {
         {data.tabs.map((t) => (
           <Link key={t.key} className={"tab" + (tab === t.key ? " on" : "")} to={`/?tab=${t.key}&sort=${sort}`}>
             {t.label}
-            <span className="cnt">{t.count}</span>
+            <span
+              className="cnt"
+              title={filtering && t.key !== tab ? UNFILTERED : undefined}
+            >
+              {(t.key === tab ? filtered.length : t.count).toLocaleString("en-US")}
+              {filtering && t.key !== tab ? " all" : ""}
+            </span>
           </Link>
         ))}
       </div>
-      <div className="tabdesc">{data.tabDesc}</div>
+      <div className="tabdesc">
+        {data.tabDesc}
+        {filtering && (
+          <span className="muted sm" data-testid="filter-note">
+            {" "}
+            Counts on the other tabs and tiles are for everything — the filter applies to this tab.
+          </span>
+        )}
+      </div>
 
       <div className="qtools">
         <input
@@ -299,8 +340,52 @@ export function Queue({ me }: { me: Me }) {
       </div>
 
 
+      {err && (
+        <div className="banner err" data-testid="queue-error">
+          <span>🚫</span>
+          <div>{err}</div>
+        </div>
+      )}
+
       <div data-tour="queue">
-      {filtered.length > 0 ? (
+      {onlyRunning ? (
+        runningRows.length > 0 ? (
+          <div className="list" id="qlist" data-testid="running-list">
+            {runningRows.map((j) => (
+              <div className="row running" key={`${j.kind}:${j.repo}#${j.num}`}>
+                <Link className="rowlink" to={j.href}>
+                  <div className="rowtop">
+                    {multi && j.repo && (
+                      <span className="repochip" title={j.repo}>
+                        {j.repo}
+                      </span>
+                    )}
+                    <span className="num">#{j.num}</span>
+                    <span className="ttl">{j.title || `PR #${j.num}`}</span>
+                  </div>
+                  <div className="rowrun" data-testid="row-running">
+                    <span className="rundot" aria-hidden="true" />
+                    <span>{j.status || (j.kind === "qa" ? "building" : "reviewing")}</span>
+                    <span className="runback">— open to watch</span>
+                  </div>
+                </Link>
+                <div className="rowmeta">
+                  <span className="pill reviewed">{j.kind === "qa" ? "QA guide" : "review"}</span>
+                  <Link className="chev" to={j.href} aria-hidden="true">
+                    ›
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty">
+            <span className="ic">✅</span>
+            <b>Nothing running</b>
+            Every review and QA guide you started has finished.
+          </div>
+        )
+      ) : filtered.length > 0 ? (
         <div className="list" id="qlist" data-tour="queuelist">
           {filtered.map((r) => (
             <Row
@@ -309,20 +394,33 @@ export function Queue({ me }: { me: Me }) {
               showRepo={multi}
               status={statusOf(r)}
               onChange={() => setNonce((n) => n + 1)}
+              onError={setErr}
             />
           ))}
         </div>
-      ) : onlyRunning ? (
-        <div className="empty">
-          <span className="ic">✅</span>
-          <b>Nothing running</b>
-          Every review you started has finished.
-        </div>
-      ) : q || activeFilter ? (
+      ) : filtering ? (
         <div className="empty">
           <span className="ic">🔍</span>
           <b>No matches</b>
           Nothing in this view matches your {q ? "search" : "repository filter"}.
+        </div>
+      ) : notSetUp && tab === "todo" ? (
+        <div className="empty" data-testid="setup-needed">
+          <span className="ic">🧭</span>
+          <b>Finish setting {me.brand} up</b>
+          Your queue is empty because this install isn't ready yet, not because you're caught up.
+          <ul className="setuplist">
+            <li>
+              {me.claude_connected === false ? "○" : "✓"} Connect your Claude account —{" "}
+              <Link to="/integrations">Integrations</Link>. Reviews run on it; nothing runs
+              without it.
+            </li>
+            <li>
+              {me.poller_ran === false ? "○" : "✓"} Let the poller run once so it can find the PRs
+              that name you as a reviewer — <Link to="/settings">Settings</Link>.
+            </li>
+          </ul>
+          You can review any PR right now with the box at the top of this page.
         </div>
       ) : (
         <div className="empty">

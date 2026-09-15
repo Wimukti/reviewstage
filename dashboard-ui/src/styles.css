@@ -65,6 +65,9 @@ box-shadow:var(--shadow);transition:transform .15s,border-color .15s;display:blo
 .empty{padding:44px 20px;text-align:center;color:var(--dim)}
 .empty .ic{font-size:2rem;display:block;margin-bottom:8px;opacity:.7}
 .empty b{color:var(--fg);display:block;font-weight:600;margin-bottom:3px}
+.setuplist{list-style:none;margin:14px auto;padding:0;max-width:520px;text-align:left}
+.setuplist li{margin:7px 0;line-height:1.5}
+.cntnote{opacity:.55;font-weight:400;font-size:.72em}
 .wrap{max-width:64rem;margin:0 auto;padding:30px 20px 0;animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
 .crumb{font-size:.87rem;margin:0 0 14px}
 .bc{display:flex;align-items:center;gap:9px;font-size:.85rem;margin:0 0 14px;font-weight:500}
@@ -622,11 +625,13 @@ color:var(--dim);font-size:.8rem;font-weight:600;cursor:pointer;padding:6px 10px
 .qaguide h3,.qaguide h5{margin:16px 0 6px;font-size:.98rem;font-weight:650}
 .qaguide p{margin:0 0 10px}.qaguide ul,.qaguide ol{margin:8px 0;padding-left:22px}
 .qaguide li{margin:4px 0}
-.qaguide li.task{list-style:none;position:relative;padding-left:26px}
-.qaguide li.task::before{content:'';position:absolute;left:0;top:2px;width:15px;height:15px;
-border:1.5px solid var(--line2);border-radius:4px}
-.qaguide li.task.done::before{content:'✓';border-color:#3ddc97;color:#3ddc97;font-size:11px;
-font-weight:800;text-align:center;line-height:15px}
+/* GFM task lists. remark-gfm emits <li class="task-list-item"><input type="checkbox">, so the
+   real checkbox is what gets styled — the earlier `li.task` rules styled a class nothing
+   produced, which is why the boxes rendered twice and neither one could be ticked. */
+.qaguide li.task-list-item{list-style:none;display:flex;gap:9px;align-items:flex-start}
+.qaguide ul.contains-task-list{padding-left:4px}
+.qaguide li.task-list-item>input[type=checkbox]{flex:none;width:15px;height:15px;margin:4px 0 0;
+accent-color:#3ddc97;cursor:pointer}
 .qaguide code{font-family:var(--mono);font-size:.85em;background:var(--panel2);padding:1px 5px;
 border-radius:4px}
 .qaguide pre{background:#0b0d15;border:1px solid var(--line);border-radius:8px;padding:12px 14px;
@@ -700,6 +705,10 @@ margin-bottom:16px}
 .kpi{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:14px 16px}
 .kpi-l{font-size:.78rem;color:var(--dim);margin-bottom:7px}
 .kpi-v{font-size:1.85rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05}
+/* "n = 7 — too few to rate" is a sentence, not a number: it must not wear the number's type. */
+.kpi-thin{font-size:.95rem;font-weight:600;color:var(--dim)}
+.kpi-tag{margin-left:6px;padding:1px 5px;border:1px solid var(--line2);border-radius:4px;
+font-size:.68rem;letter-spacing:.02em;opacity:.8}
 .kpi-s{font-size:.74rem;color:var(--faint);margin-top:5px}
 .panel{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:15px 16px;
 margin-bottom:14px}
@@ -879,6 +888,17 @@ border-radius:999px;background:var(--warnbg);color:#f6cd8a;border:1px solid var(
   border-radius: 0 5px 5px 0;
   font-size: 13.5px;
   font-weight: 600;
+}
+/* …and stays editable until it is accepted: it is about to become a team rule. */
+.suggedit { margin-top: 8px; }
+.suggrule-in {
+  width: 100%;
+  margin-top: 4px;
+  border-left: 3px solid var(--accent, #7c83f0);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  resize: vertical;
 }
 .suggev { margin-top: 8px; font-size: 12px; color: var(--dim, #8a8f98); }
 .suggev summary { cursor: pointer; }

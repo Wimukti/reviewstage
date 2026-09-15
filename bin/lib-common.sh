@@ -97,13 +97,10 @@ ensure_base_clone() {
 SKIP_BOT_PRS="${SKIP_BOT_PRS:-0}"
 # When 1, review but never touch GitHub — Slack only. Phase 3 starts here.
 DRY_RUN="${DRY_RUN:-1}"
-# Refuse to start a review below this much available RAM (MB). An agent run needs headroom,
-# and a small server usually shares the box with whatever else you run on it.
-MIN_FREE_MB="${MIN_FREE_MB:-800}"
-# …and below this much free disk on $ROOT (MB). A full volume used to be a SILENT success: the
-# agent wrote nothing, every `>` redirection failed unnoticed and the dashboard announced a
-# ready review with no findings. Guard at the front, and check every write that matters.
-MIN_FREE_DISK_MB="${MIN_FREE_DISK_MB:-500}"
+# The free-memory and free-disk floors (MIN_FREE_MB, MIN_FREE_DISK_MB) live in one file so the
+# doctor and the job scripts cannot disagree about them.
+# shellcheck source=bin/lib-limits.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib-limits.sh"
 
 # free_mem_mb — memory available to THIS container/host, in MB, or "" when unknowable.
 #

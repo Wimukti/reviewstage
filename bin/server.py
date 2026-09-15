@@ -4239,7 +4239,7 @@ class Handler(BaseHTTPRequestHandler):
         if pat:
             login, name, err = verify_pat(pat)
             if err:
-                return err_b(html.escape(err))
+                return err_b(html.escape(split_verify_error(err)[0]))
             if login != user:
                 return err_b(f"That token belongs to <code>{html.escape(login)}</code>, not you.")
             new_pat_enc, new_name = enc(pat), name

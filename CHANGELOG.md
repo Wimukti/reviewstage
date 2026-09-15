@@ -290,7 +290,9 @@ is the difference between having a backup and not.
   reads that file both to interpolate the published port and to build the
   container's environment, so the server moves and the publish does not. Warned
   in `.env.example`, `config.example`, the install page, Configuration,
-  INSTALL-DOCKER and OPERATIONS. Use `RS_PORT=9000 docker compose up -d`.
+  INSTALL-DOCKER and OPERATIONS. (Superseded by the remediation above, which
+  split the two keys: the host port is now `RS_HOST_PORT` and `RS_PORT` in a
+  Docker `.env` is inert.)
 
 **docs/OPERATIONS.md was wholesale stale and is rewritten**
 

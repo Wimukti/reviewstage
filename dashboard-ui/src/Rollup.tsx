@@ -236,8 +236,11 @@ export function Rollup() {
   const floor = kt.minSample ?? FLOOR;
   // The last bucket is today only when the series really reaches today — a stale rollup file
   // must not hatch a bar that is in fact complete.
+  // Compare on the point's `ts`, the server's UTC-midnight bucket key: `date` is a display
+  // string (%m/%d/%y) and never matched.
   const last = period.pts[period.pts.length - 1];
-  const partialLast = !!last && last.date === new Date().toISOString().slice(0, 10);
+  const todayTs = Math.floor(Date.now() / 86400000) * 86400;
+  const partialLast = !!last && last.ts === todayTs;
   return (
     <>
       <div className="insights-head">

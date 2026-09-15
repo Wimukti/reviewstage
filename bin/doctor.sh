@@ -3,16 +3,28 @@
 # line per check and exits non-zero if anything FAILed. Writes nothing (the one "writable?"
 # probe creates and removes a temp file in STATE).
 #
-#   bin/doctor.sh                         on a box
+#   bin/doctor.sh                         from a checkout, a box, or a Compose project dir
 #   docker compose exec app doctor        inside the running container
 #   docker compose run --rm app doctor    a throwaway container sharing the data volume
+#
+# On a Docker install the install IS the container: the .env, the state volume, `claude`, `gh`
+# and ~/.claude/skills all live inside it, and none of them are on the host. Run from the host
+# this used to read the host's (usually absent) environment file and probe the host's tooling,
+# so it reported failures against a perfectly healthy install — and on macOS, where there is no
+# /proc/meminfo and no host ~/.reviewstage, it could never pass. So: when the working directory
+# is a ReviewStage Compose project whose `app` service is up, re-exec inside it.
 set -uo pipefail
 
 ROOT="${ROOT:-$HOME/.reviewstage}"
 ENV_FILE="$ROOT/.env"
 STATE="$ROOT/state"
 PORT="${RS_PORT:-8899}"
-MIN_FREE_DISK_MB="${MIN_FREE_DISK_MB:-1024}"
+# The free-memory / free-disk floors, from the same file the job scripts read. Sourced rather
+# than restated: the doctor used to default MIN_FREE_DISK_MB to 1024 while the jobs defaulted it
+# to 500, and FAILed at a level no job script objects to. lib-common.sh is deliberately NOT
+# sourced here — it creates directories and pulls in notify.sh, and the doctor writes nothing.
+# shellcheck source=bin/lib-limits.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-limits.sh"
 
 if [ -t 1 ]; then G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; D=$'\e[2m'; N=$'\e[0m'; else G=; Y=; R=; D=; N=; fi
 fails=0; warns=0
@@ -21,7 +33,58 @@ warn() { printf '%sWARN%s  %s\n' "$Y" "$N" "$*"; warns=$((warns + 1)); }
 fail() { printf '%sFAIL%s  %s\n' "$R" "$N" "$*"; fails=$((fails + 1)); }
 note() { printf '      %s%s%s\n' "$D" "$*" "$N"; }
 
+# --- Docker: diagnose the install, not the laptop it is driven from --------------------------
+# in_container — true inside the ReviewStage image (or any container), so the re-exec below can
+# never recurse, and `docker compose exec app doctor` keeps running the checks directly.
+in_container() {
+  [ -n "${RS_DOCTOR_IN_CONTAINER:-}" ] && return 0
+  [ -f /.dockerenv ] && return 0
+  [ -d /app/bin ] && [ "${HOME:-}" = /home/reviewstage ] && return 0
+  return 1
+}
+
+# compose_cmd — how to drive Compose here: the v2 plugin, else the standalone v1 binary.
+compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then echo "docker compose"
+  elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"
+  fi
+}
+
+# is_rs_project — a compose file in the working directory that builds/uses THIS image. Guards
+# against re-execing into some unrelated project's `app` service that happens to share the name.
+is_rs_project() {
+  local f
+  for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
+    [ -r "$f" ] && grep -Eq '^[[:space:]]*image:[[:space:]]*reviewstage(:|$)' "$f" && return 0
+  done
+  return 1
+}
+
+# app_running — the `app` service of that project is up. Both spellings, because --status
+# landed in a later Compose than some installs have.
+app_running() {
+  local dc="$1"
+  $dc ps --status running --services 2>/dev/null | grep -qx app && return 0
+  $dc ps --services --filter status=running 2>/dev/null | grep -qx app && return 0
+  return 1
+}
+
+compose_fallback=""
+if ! in_container && is_rs_project; then
+  dc=$(compose_cmd)
+  if [ -z "$dc" ]; then
+    compose_fallback="this is a ReviewStage Compose project but docker is not on PATH — checking the host instead, which is not where a Docker install lives"
+  elif app_running "$dc"; then
+    printf '%s\n' "${D}Compose project detected — running the checks inside the app container ($dc exec app doctor).${N}"
+    # -T when there is no terminal: without it Compose fails outright in a pipe or from cron.
+    if [ -t 1 ]; then exec $dc exec app doctor "$@"; else exec $dc exec -T app doctor "$@"; fi
+  else
+    compose_fallback="this is a ReviewStage Compose project but its 'app' service is not running, so the checks below are about THIS HOST, not the install. Start it ($dc up -d) and re-run, or use '$dc run --rm app doctor'"
+  fi
+fi
+
 echo "ReviewStage doctor  ${D}(ROOT=$ROOT)${N}"
+[ -n "$compose_fallback" ] && warn "$compose_fallback"
 
 # --- config --------------------------------------------------------------------------------
 if [ -r "$ENV_FILE" ]; then

@@ -28,8 +28,8 @@ def _sig(body):
 
 
 def _bucket(sev):
-    """Collapse severities into agreement buckets: a blocker and a should-fix on the same line are
-    'the same concern'; nits and questions stay distinct."""
+    """Collapse severities into agreement buckets: a blocker and a should-fix can be 'the same
+    concern' — but only on the exact same line (see _match). Nits and questions stay distinct."""
     return {"blocker": "problem", "should-fix": "problem"}.get(sev, sev or "nit")
 
 
@@ -44,17 +44,39 @@ def _line(c):
 
 
 def _match(a, b):
+    """Are these two findings the same concern raised twice?
+
+    The "confirmed by an independent run" badge is presented to the reviewer as evidence, so
+    both error directions are real damage and both were present:
+
+    Over-confirmation. A body too thin to judge used to fall through to a purely structural
+    match, so a typo nit confirmed a null-check six lines away as long as the severities
+    collapsed into the same bucket. A body with fewer than _MIN_SHARED significant tokens is
+    now an honest "cannot tell" — False, not True — and two findings whose severities merely
+    collapse into one bucket (blocker vs. should-fix) must sit on the SAME line, not within
+    LINE_TOL of each other.
+
+    Under-confirmation. _line() returns None for a file-level finding and any None refused the
+    match, so two byte-identical file-level findings on the same path never confirmed each
+    other. None now matches None on the same path, on the same token-overlap terms as any
+    other pair."""
     if a.get("path") != b.get("path"):
         return False
-    if _bucket(a.get("severity")) != _bucket(b.get("severity")):
-        return False
-    la, lb = _line(a), _line(b)
-    if la is None or lb is None or abs(la - lb) > LINE_TOL:
+    ba, bb = _bucket(a.get("severity")), _bucket(b.get("severity"))
+    if ba != bb:
         return False
     sa, sb = _sig(a.get("body")), _sig(b.get("body"))
-    if len(sa) >= _MIN_SHARED and len(sb) >= _MIN_SHARED:
-        return len(sa & sb) >= _MIN_SHARED     # both have real text: require token overlap
-    return True                                 # one side is terse: fall back to structural match
+    if len(sa) < _MIN_SHARED or len(sb) < _MIN_SHARED:
+        return False                           # too little text to tell them apart: do not guess
+    if len(sa & sb) < _MIN_SHARED:
+        return False
+    la, lb = _line(a), _line(b)
+    if la is None and lb is None:
+        return True                            # two file-level findings on the same path
+    if la is None or lb is None:
+        return False                           # one is anchored and one is not
+    tol = LINE_TOL if a.get("severity") == b.get("severity") else 0
+    return abs(la - lb) <= tol
 
 
 def cluster(runs):

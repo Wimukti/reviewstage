@@ -133,9 +133,11 @@ class PromptAssembly(unittest.TestCase):
         many = {"critical_paths": [{"path_glob": f"d{i}/f.py", "why": "y" * 500, "checks": []}
                                    for i in range(20)]}
         changed = [f"d{i}/f.py" for i in range(20)]
-        matched = PF.match_critical(many, changed)
+        matched, not_listed = PF.match_critical(many, changed)
         self.assertEqual(len(matched), PF.MAX_MATCHED)
+        self.assertEqual(not_listed, 20 - PF.MAX_MATCHED)
         block = PF.render_block(many, changed)
+        self.assertIn(f"{not_listed} further critical path(s)", block)
         line = next(l for l in block.splitlines() if l.startswith("- `d0/f.py`"))
         self.assertLessEqual(len(line), len("- `d0/f.py` — ") + PF.WHY_LIMIT)
         self.assertTrue(line.endswith("…"))
@@ -399,6 +401,211 @@ class Signals(unittest.TestCase):
         self.assertTrue(any(t.startswith("app/ (") for t in sig["tree"]))
         self.assertEqual(sig["commits_last_12mo"], 2)
         self.assertGreaterEqual(sig["duration_ms"], 0)
+
+
+FULL = {
+    "summary": "A web shop.",
+    "critical_paths": [{"path_glob": "app/payments/**", "why": "Charges cards.",
+                        "checks": ["amounts in cents"]}],
+    "risk_paths": [{"label": "payments", "pattern": "app/payments"},
+                   {"label": "auth", "pattern": "app/auth"}],
+    "review_rules": ["Money is integer cents."],
+    "do_not_flag": ["The generated client is checked in on purpose."],
+}
+
+
+class MarkdownRoundTrip(unittest.TestCase):
+    """Regression: a retitled or deleted section used to parse as an empty list and save
+    cleanly, because validation only objected when critical paths AND rules AND summary were
+    all empty at once. Deleting the risk-paths heading took every risk rule out of every
+    future review, with a green "Saved" banner."""
+
+    def test_a_faithful_round_trip_keeps_every_section(self):
+        back = PF.from_markdown(PF.to_markdown(FULL))
+        for key in PF.SECTIONS:
+            self.assertEqual(len(back[key]), len(FULL[key]), key)
+
+    def test_a_retitled_heading_is_reported_not_swallowed(self):
+        md = PF.to_markdown(FULL).replace("## Risk paths", "## Risky areas")
+        prof, notes = PF.from_markdown(md, report=True)
+        self.assertEqual(prof["risk_paths"], [])
+        self.assertEqual(notes["unknownHeadings"], ["Risky areas"])
+
+    def test_emptying_a_section_is_refused_unless_confirmed(self):
+        md = PF.to_markdown(FULL).replace("## Risk paths", "## Risky areas")
+        raw = PF.from_markdown(md)
+        clean, _dropped, err = PF.validate_profile(raw, TREE, prev=FULL, allow_emptying=False)
+        self.assertIsNone(clean)
+        self.assertIn("risk paths", err)
+        ok, _d, err2 = PF.validate_profile(raw, TREE, prev=FULL, allow_emptying=True)
+        self.assertIsNone(err2)
+        self.assertEqual(ok["risk_paths"], [])
+
+    def test_deleting_the_do_not_flag_section_is_caught_too(self):
+        gone = dict(FULL, do_not_flag=[])
+        self.assertEqual(PF.emptied_sections(FULL, gone), ["do_not_flag"])
+        self.assertEqual(PF.emptied_sections(FULL, FULL), [])
+
+    def test_section_counts_are_reported_back(self):
+        self.assertEqual(PF.section_counts(FULL),
+                         {"critical_paths": 1, "risk_paths": 2, "review_rules": 1,
+                          "do_not_flag": 1, "summary": 1})
+
+    def test_shrinking_a_section_is_allowed(self):
+        fewer = dict(FULL, risk_paths=FULL["risk_paths"][:1])
+        self.assertEqual(PF.emptied_sections(FULL, fewer), [])
+
+
+class GlobSemantics(unittest.TestCase):
+    """Regression: fnmatch's `*` crosses `/`, so `src/*.ts` matched the whole tree and every
+    review was told the critical path was touched."""
+
+    TREE = ["src/a.ts", "src/deep/b.ts", "src/deep/deeper/c.ts", "docs/x.md"]
+
+    def test_a_single_star_does_not_cross_a_slash(self):
+        self.assertEqual(PF.glob_hits("src/*.ts", self.TREE), ["src/a.ts"])
+
+    def test_a_double_star_does(self):
+        self.assertEqual(len(PF.glob_hits("src/**", self.TREE)), 3)
+        self.assertEqual(len(PF.glob_hits("src/**/*.ts", self.TREE)), 3)
+
+    def test_a_bare_directory_still_matches_everything_under_it(self):
+        self.assertEqual(len(PF.glob_hits("src/", self.TREE)), 3)
+
+    def test_a_glob_matching_most_of_the_tree_is_rejected(self):
+        raw = {"summary": "s",
+               "critical_paths": [{"path_glob": "**", "why": "everything", "checks": []},
+                                  {"path_glob": "src/*.ts", "why": "ok", "checks": []}]}
+        clean, dropped, err = PF.validate_profile(raw, self.TREE)
+        self.assertIsNone(err)
+        self.assertEqual(dropped, ["**"])
+        self.assertEqual([c["path_glob"] for c in clean["critical_paths"]], ["src/*.ts"])
+
+    def test_matched_paths_are_ordered_by_how_much_of_the_pr_they_cover(self):
+        prof = {"critical_paths": [{"path_glob": "docs/**", "why": "", "checks": []},
+                                   {"path_glob": "src/**", "why": "", "checks": []}]}
+        changed = ["src/a.ts", "src/deep/b.ts", "src/deep/deeper/c.ts", "docs/x.md"]
+        listed, _ = PF.match_critical(prof, changed, cap=1)
+        self.assertEqual(listed[0]["path_glob"], "src/**")
+
+
+class StoredCap(unittest.TestCase):
+    def test_validation_caps_what_is_stored(self):
+        files = [f"d{i}/f.py" for i in range(60)]
+        raw = {"summary": "s", "critical_paths": [
+            {"path_glob": f"d{i}/f.py", "why": "", "checks": []} for i in range(50)]}
+        clean, _dropped, err = PF.validate_profile(raw, files)
+        self.assertIsNone(err)
+        self.assertEqual(len(clean["critical_paths"]), PF.MAX_CRITICAL)
+        self.assertEqual(clean["meta"]["capped_critical_paths"], 50 - PF.MAX_CRITICAL)
+
+
+class SchemaGuard(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        PF.PROFILES = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, text):
+        d = PF.profile_dir("o/r")
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "profile.json").write_text(text)
+
+    def test_a_valid_profile_reads_back(self):
+        PF.save_profile("o/r", dict(FULL))
+        prof, err = PF.read_profile("o/r")
+        self.assertEqual(err, "")
+        self.assertEqual(prof["version"], PF.SCHEMA_VERSION)
+
+    def test_a_hand_broken_file_is_an_error_not_an_empty_profile(self):
+        self.write(json.dumps({"critical_paths": "app/**"}))
+        prof, err = PF.read_profile("o/r")
+        self.assertIsNone(prof)
+        self.assertIn("must be a list", err)
+
+    def test_a_future_schema_version_is_refused(self):
+        self.write(json.dumps({"version": PF.SCHEMA_VERSION + 1, "critical_paths": []}))
+        _prof, err = PF.read_profile("o/r")
+        self.assertIn("newer than this build", err)
+
+    def test_an_earlier_version_can_be_read_back(self):
+        PF.save_profile("o/r", dict(FULL), {"generated_at": 1700000000})
+        PF.save_profile("o/r", dict(FULL, summary="second"), {"generated_at": 1700000900})
+        vs = PF.versions("o/r")
+        self.assertEqual(vs, [1700000000])
+        prof, err = PF.load_version("o/r", vs[0])
+        self.assertEqual(err, "")
+        self.assertEqual(prof["summary"], "A web shop.")
+        self.assertEqual(PF.load_version("o/r", 1)[1], "no such version")
+
+
+class DegradedSignals(unittest.TestCase):
+    def test_a_git_timeout_is_a_note_not_an_exception(self):
+        notes = []
+        out = PF._git(Path("/"), "log", timeout=0.000001, degraded=notes)
+        self.assertEqual(out, "")
+        self.assertTrue(notes)
+
+    def test_churn_on_a_non_repo_degrades_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            notes = []
+            self.assertEqual(PF._churn(Path(tmp), ["a.py"], degraded=notes), [])
+
+    def test_the_prompt_says_which_signals_are_missing(self):
+        sig = {"repo": "o/r", "tree": [], "degraded": ["churn skipped: git log exceeded 300s"]}
+        self.assertIn("churn skipped", PF.build_prompt(sig, "BODY"))
+
+
+class Staleness(unittest.TestCase):
+    """Regression: meta.head was stored, returned and typed, and never compared to anything."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        run = lambda *a: subprocess.run(["git", "-C", str(self.base), *a],  # noqa: E731
+                                        capture_output=True, text=True)
+        run("init", "-q", "-b", "main")
+        run("config", "user.email", "t@t.t")
+        run("config", "user.name", "t")
+        (self.base / "app").mkdir()
+        (self.base / "app" / "pay.py").write_text("x\n")
+        run("add", "-A")
+        run("commit", "-qm", "one")
+        self.first = PF.head_of(self.base)
+        self.run = run
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def prof(self, head):
+        return {"critical_paths": [{"path_glob": "app/**", "why": "", "checks": []}],
+                "meta": {"head": head}}
+
+    def test_a_profile_at_head_is_not_stale(self):
+        s = PF.staleness(self.prof(self.first), self.base)
+        self.assertFalse(s["stale"])
+        self.assertEqual(s["unmatchedPaths"], 0)
+
+    def test_commits_behind_are_counted(self):
+        (self.base / "b.py").write_text("y\n")
+        self.run("add", "-A")
+        self.run("commit", "-qm", "two")
+        s = PF.staleness(self.prof(self.first), self.base)
+        self.assertTrue(s["stale"])
+        self.assertEqual(s["commitsBehind"], 1)
+
+    def test_a_critical_path_that_no_longer_matches_is_reported(self):
+        self.run("rm", "-q", "-r", "app")
+        self.run("commit", "-qm", "drop app")
+        s = PF.staleness(self.prof(self.first), self.base)
+        self.assertEqual((s["criticalPaths"], s["unmatchedPaths"]), (1, 1))
+        self.assertTrue(s["stale"])
+
+    def test_no_clone_means_no_verdict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(PF.staleness(self.prof(self.first), Path(tmp)))
 
 
 if __name__ == "__main__":

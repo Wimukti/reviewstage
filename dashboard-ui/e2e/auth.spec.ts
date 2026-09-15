@@ -1,5 +1,5 @@
 import { expect, request as pwRequest, test } from "@playwright/test";
-import { DEVICES_USER, ORIGIN, PORT, TOUR_KEY, sessionCookie } from "./fixture";
+import { DEVICES_USER, PORT, sessionCookie } from "./fixture";
 
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -69,12 +69,7 @@ test.describe("devices", () => {
   // Their own user: "Sign out everywhere" bumps that user's credential epoch, which now
   // invalidates their session cookies as well as their device tokens. Run as the shared
   // fixture user and it would sign every other test out mid-run.
-  test.use({
-    storageState: {
-      cookies: [sessionCookie(DEVICES_USER)],
-      origins: [{ origin: ORIGIN, localStorage: [{ name: TOUR_KEY, value: "done" }] }],
-    },
-  });
+  test.use({ storageState: { cookies: [sessionCookie(DEVICES_USER)], origins: [] } });
 
   test("mints a token that authenticates /api/me until it is revoked", async ({ page }) => {
     await page.goto("/settings");

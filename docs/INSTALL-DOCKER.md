@@ -15,8 +15,8 @@ arm64 Linux all work — the image builds for the host's architecture.
   take an agent run anyway.
 - **About 3 GB of free disk** for the image, plus one blobless clone per repository in the data
   volume. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB`
-  (500 MB free on the volume). `doctor` reads the same key but defaults it to 1024, so with
-  the key unset the doctor FAILs a little earlier than the jobs do.
+  (500 MB free on the volume). `doctor` reads the same floor from the same file, so a passing
+  disk check means the jobs will start.
 - **Outbound network for the build.** The image pulls `python:3.12-slim` and `node:24-alpine`,
   Debian packages, the GitHub CLI apt repository, NodeSource and `@anthropic-ai/claude-code`
   from npm. Behind a proxy, set the Docker daemon's proxy (so base images pull) and pass the

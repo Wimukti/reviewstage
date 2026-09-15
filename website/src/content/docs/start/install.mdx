@@ -13,7 +13,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 - **Docker with Compose v2** (`docker compose version`). Apple Silicon, Intel and arm64 Linux all build.
 - **A host with at least 2 GB of RAM.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*, not total — so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Inside a container the figure is read from the cgroup budget rather than the host's, so a small container on a large machine is measured honestly. Raise `MIN_FREE_MB` only if you know the host can take it.
-- **About 3 GB of free disk** for the image, plus room for one blobless clone per repository. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB` — 500 MB free on the data volume. The doctor reads the same key but defaults it to 1024, so with the key unset it FAILs a little earlier than the jobs do.
+- **About 3 GB of free disk** for the image, plus room for one blobless clone per repository. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB` — 500 MB free on the data volume. The doctor reads the same floor, so a passing disk check means the jobs will start.
 - **Outbound network during the build.** The image fetches Debian packages, the GitHub CLI apt repository, Node 24 and the Claude Code CLI from npm. Behind a corporate proxy, export `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` and pass them to the build (`docker compose build --build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTPS_PROXY`), and configure the Docker daemon's own proxy so the base images can be pulled. At run time the container needs to reach `api.github.com`, `github.com` and Anthropic.
 - **A GitHub account**, and a Claude **Pro, Max, Team or Enterprise** plan for anyone who will run reviews.
 
@@ -32,7 +32,7 @@ docker compose up -d
 
 Open **http://localhost:8899**. The first visit is the login page.
 
-Before you sign in, run the doctor **inside the container**:
+Before you sign in, run the doctor:
 
 ```bash
 docker compose exec app doctor
@@ -40,7 +40,7 @@ docker compose exec app doctor
 
 It prints one PASS / WARN / FAIL line per check: the `.env` it actually reads, the repositories in `REPOS`, whether the service token can see each of them, whether `git`, `gh`, `claude`, `jq`, `flock`, `openssl` and `curl` are on `PATH`, free disk and free RAM, whether `/health` answers, the installed skills, and who has signed in and connected Claude. It writes nothing and is safe to run at any time.
 
-Run it inside the container, not on the host. Everything it checks — the `.env` the server reads, the CLIs, the data volume, `/proc/meminfo` — lives in the container; on the host it reads a different `.env`, finds no `claude`, and reports FAILs against a healthy install. On macOS it cannot pass at all. Use `docker compose run --rm app doctor` if `app` will not start. It does not check Docker itself; `docker compose ps` is that check.
+Everything it checks — the `.env` the server reads, the CLIs, the data volume, `/proc/meminfo` — lives in the container, so that is where it has to run. `bin/doctor.sh` from this directory gets there by itself: it spots the Compose project, re-execs inside the running `app` container and says so on its first line. If `app` is not up it warns that it is checking the host instead, which on a Docker install will FAIL no matter how healthy the install is — use `docker compose run --rm app doctor` then. It does not check Docker itself; `docker compose ps` is that check.
 
 ### What to put in `.env`
 

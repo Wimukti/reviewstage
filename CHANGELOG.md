@@ -4,6 +4,52 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+### Remediation gaps — 09/15/26
+
+The documentation pass that followed the audit remediation verified 254 claims
+against the code and surfaced seven things the remediation had left undone or
+half-done. All seven are closed here.
+
+- **`bin/doctor.sh` now finds the container.** It had no Compose detection and
+  never invoked `docker`: run from the host on a Docker install it read the
+  host's environment file and probed host tooling, so it reported failures
+  against a healthy install, and on macOS it could never pass — which is a bad
+  thing for the *second command in the quick start* to do. It now detects a
+  ReviewStage Compose project in the working directory with the `app` service
+  up, re-execs itself inside the container and says so on its first line. The
+  direct in-container form and the from-source form are unchanged, and when
+  `app` is not running the fallback is explicit: a WARN saying the checks below
+  describe the host rather than the install.
+- **A dry run is recorded, and is no longer a metric.** Posting under the
+  shipped `DRY_RUN=1` writes nothing to GitHub, but the decision was logged as
+  if it had: a two-week pilot on the default posted nothing at all while
+  Insights reported a keep rate computed entirely from hypothetical posts. Those
+  rows now carry a `dry` flag. They still feed the review prompt and the rule
+  suggestions — unticking a finding is a real judgement — and they are out of
+  every rate and total: the keep rate, the verbatim rate, the per-skill scores,
+  the outcome counts and the per-day series. The count is published as
+  `dryDecisions` (and `counts.dry` on the learnings API) so a surface can label
+  them.
+- **One free-disk floor.** `MIN_FREE_DISK_MB` defaulted to 500 in
+  `bin/lib-common.sh` and 1024 in `bin/doctor.sh`, so the health check FAILed at
+  a level every job was happy to start at. Both now read `bin/lib-limits.sh`;
+  the surviving value is 500.
+- **Retention reaches the run snapshots.** The sweep deleted aged `.log` files
+  but removed a `history/<ts>` directory only when it was already empty — which
+  it never is — so the run snapshots, the bulk of what grows, accumulated for
+  ever. Whole directories older than `RS_RETENTION_DAYS` now go, keeping the
+  newest **five** runs per PR per reviewer however old they are so *view an
+  earlier run* still works.
+- **Profile versions are capped.** `profile.<ts>.json` was never pruned; the
+  newest **ten** per repository are kept.
+- **The superseded `devices-pruned` marker is gone.** Nothing had read it since
+  the daily housekeeping guard was renamed `daily-done`.
+- **The posting gate says when it forgets.** `posted_runs.json` silently dropped
+  its oldest entry at 20, and that entry is what stops a run being posted twice.
+  The cap stays — a re-run clears the list and the same run is already refused,
+  so entries only build up when the author keeps pushing and the reviewer keeps
+  posting without re-running — but an eviction is now logged.
+
 ### Audit remediation — 09/15/26
 
 A six-part audit of the whole project ran in seven lanes and all of them have
@@ -257,8 +303,9 @@ so `docker compose logs` no longer reaches back to the beginning of time.
 Every page was re-read against the code as it now is. The four notes the last
 pass had to leave open are resolved: the QA skill and prompt are aligned, the
 host port is a separate variable, critical paths are capped — and the doctor's
-re-exec into the container did **not** land, so the caveat is gone and the
-pages say plainly that `docker compose exec app doctor` is the form to use.
+re-exec into the container did **not** land in that pass, so the pages said
+plainly that `docker compose exec app doctor` is the form to use. (It landed in
+*Remediation gaps* above, and the pages were updated again.)
 OPERATIONS gains a file-by-file map of the data directory and what the daily
 sweep removes; SECURITY gains the agent sandbox with the four things it does not
 cover; Insights, Skills and learnings, Reviewing, Repository profile and QA

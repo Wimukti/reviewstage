@@ -46,6 +46,9 @@ Type a preference in plain words — *"don't ask for a ticket link in code comme
 
 Each review records which skill ran it. On post, each finding is scored kept / edited / dropped, tagged with that skill. **How each skill scores** shows a keep rate per skill.
 
+Decisions made while `DRY_RUN=1` are excluded from this rate, as they are from every rate —
+nothing reached GitHub — while still feeding the prompt block and the rule suggestions below.
+
 This is **the same keep rate the Insights page shows**, on a per-skill population: `(kept + edited) ÷ (kept + edited + dropped)`. A finding worth rewording was worth raising. The stricter measure — kept unchanged — is a separate number under a separate name, `verbatimRate`, so the two can no longer be quoted as if they were one. See [Insights](/reviewstage/guides/insights/#keep-rate) for the full definition.
 
 Both surfaces read the never-truncated tally in `learnings_totals.json`, not the capped detail log, so a skill's history does not evaporate as old rows fall off.
@@ -67,6 +70,8 @@ On every post, each original finding is recorded as one of:
 | **Dropped as noise** | Not selected. |
 
 **It is recorded once, after the post actually reached GitHub.** The outcomes used to be written before the POST, so a click with nothing ticked logged a full set of drops and three retries through an outage logged every finding four times. The call now happens on the path that succeeded, keyed by the run, and a repeat of the same run **replaces** its rows instead of appending another set. Four identical retries leave one set of decisions; a genuinely new review of a new commit leaves two.
+
+**A dry run is recorded, and flagged.** With the shipped `DRY_RUN=1` the post never reaches GitHub, but unticking a finding is still the reviewer's real judgement about whether it was worth saying. Those rows are written with a `dry` flag: they feed the prompt block and the rule suggestions exactly like any other row, and they are kept out of **every published rate and total** — the keep rate, the verbatim rate, the per-skill scores, the outcome counts and the per-day series. They are counted on their own instead, as `dryDecisions`, so the Learnings page can say how many of the decisions it lists never left the box. A pilot run entirely on the default therefore shows no keep rate at all, rather than one computed from reviews that were never posted.
 
 A short gist of each is appended to **one learnings log for the whole install** — `ROOT/learnings.jsonl`, not a file per repository. Each row records the repository it came from, and that log is capped at the **most recent 300 rows** across every repository.
 

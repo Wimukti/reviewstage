@@ -80,7 +80,13 @@ Connecting Claude runs the genuine `claude setup-token` flow inside an isolated 
 
 ## Prompt injection from hostile diffs
 
-The agent reads untrusted PR content with `Bash`, `Read`, `Glob`, `Grep` and `Write` allowed, inside a **git worktree** of the PR's head, under a timeout, on the account of the person who clicked Start. A hostile PR could try to get it to run commands on the server. It **cannot post to GitHub**, because the review step has no write path. It **can** run commands as the service user. Before pointing ReviewStage at PRs from outside your team, run it in a container with nothing else on it, and read the next section.
+The agent reads untrusted PR content with `Bash`, `Read`, `Glob`, `Grep` and `Write` allowed, inside a **git worktree** of the PR's head, under a timeout, on the account of the person who clicked Start. A hostile PR — or a `CLAUDE.md`, or a test fixture — can try to talk it into acting. Three things stand between that and a comment under your name:
+
+1. **No GitHub credential reaches it.** The agent is launched through an `env -u …` prefix that strips `GH_TOKEN`, `GITHUB_TOKEN`, `GITHUB_PAT`, the enterprise and client-ID variants, `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `RS_SECRET` and every Slack, Discord and webhook secret, and points `GH_CONFIG_DIR` at an empty directory so `gh` cannot fall back to a stored login either. The diff and the branch are on disk before it starts. The one credential kept is `CLAUDE_CODE_OAUTH_TOKEN`, because the CLI reads it only from the environment and dropping it would run every review on the box account — it authorises Claude, not GitHub.
+2. **An explicit deny list.** `Bash(gh:*)`, `Bash(git push:*)`, `Bash(git remote:*)`, `Bash(git config:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `Bash(nc:*)`, `Bash(ssh:*)`, `Bash(scp:*)`, `Bash(env:*)`, `Bash(printenv:*)`, `WebFetch` and `WebSearch`.
+3. **A tripwire.** The script counts the PR's reviews, comments and review threads with the service token immediately before and immediately after the agent. A difference is not a bad review, it is an incident: the run fails with `SECURITY: the review agent wrote to GitHub`, the evidence is kept beside the log, and nothing is published. A test drives the real script against a fake agent that tries exactly this.
+
+What that does **not** cover, said plainly: the agent can still run commands as the service user, because `Bash` is allowed and the deny list names specific programs; the tripwire watches three counters on one pull request, so a write elsewhere, an edit to an existing comment, or a push would not trip it; it is skipped when either count cannot be taken; the QA-guide job has the environment scrub and the deny list but no tripwire; and the deny list itself is enforced by the Claude Code CLI, while the environment scrub is the barrier that depends on nothing the agent does. Before pointing ReviewStage at PRs from outside your team, run it on a machine with nothing else on it, and read the next section.
 
 ## Deploying behind a proxy
 
@@ -98,7 +104,7 @@ Stated plainly so nobody assumes otherwise.
 
 - **Any signed-in user can read any review on the server.** Reviews are shared by design; PR pages are not scoped to who was requested. Everyone signed in already has repository read access, so this discloses nothing they could not `gh pr diff`.
 - **Root on the server has everything**: every stored GitHub and Claude token, the Slack secret. Encryption at rest protects against a copied file, not against the host itself.
-- **The agent can run commands on the server** (see prompt injection above).
+- **The agent can run commands on the server** as the service user (see prompt injection above). Nothing it does can reach GitHub under your name, and a write to the PR fails the run — but command execution on the box is not defended against.
 - **No rate limiting** on the login endpoint beyond GitHub's own.
 - **No RBAC.** Every signed-in user has the same capabilities, including editing the team default skill (versioned, so it can be reverted).
 - **A device token is not bound to a device.** It is a bearer secret; whoever holds it is that user until it is revoked or expires. Keep it in the keychain, not in a shell history.

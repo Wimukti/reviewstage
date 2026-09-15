@@ -112,9 +112,14 @@ slack_post() {
     [ "$mode" = reply ] && [ -f "$ts_file" ] && thread=$(cat "$ts_file")
     body=$(echo "$payload" | jq --arg ch "$SLACK_CHANNEL" --arg th "$thread" \
       '. + {channel:$ch, text:"ReviewStage PR review"} + (if $th=="" then {} else {thread_ts:$th} end)')
-    resp=$(curl -fsS -X POST -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-      -H 'Content-type: application/json; charset=utf-8' --data "$body" \
-      https://slack.com/api/chat.postMessage 2>/dev/null)
+    # The bot token goes in on stdin via `-H @-`, never as an argv element: argv is world-readable
+    # in `ps` for the lifetime of the request, and the box runs other people's jobs.
+    # --connect-timeout / --max-time because pr-watch.sh calls notify_card synchronously inside
+    # the poller's flock: without them one blackholed Slack endpoint wedges discovery for good.
+    resp=$(printf 'Authorization: Bearer %s\n' "$SLACK_BOT_TOKEN" \
+      | curl -fsS --connect-timeout 5 --max-time 10 -X POST -H @- \
+        -H 'Content-type: application/json; charset=utf-8' --data "$body" \
+        https://slack.com/api/chat.postMessage 2>/dev/null)
     if [ "$(echo "$resp" | jq -r '.ok' 2>/dev/null)" = true ]; then
       if [ "$mode" = root ] && [ -n "$ts_file" ]; then
         mkdir -p "$(dirname "$ts_file")"; echo "$resp" | jq -r '.ts' > "$ts_file"
@@ -125,7 +130,8 @@ slack_post() {
     return 0
   fi
   [ -n "${SLACK_WEBHOOK:-}" ] || { echo "(no SLACK_WEBHOOK; skipping notify)"; return 0; }
-  echo "$payload" | curl -fsS -X POST -H 'Content-type: application/json' \
+  echo "$payload" | curl -fsS --connect-timeout 5 --max-time 10 -X POST \
+    -H 'Content-type: application/json' \
     --data @- "$SLACK_WEBHOOK" >/dev/null 2>&1 || echo "WARN: slack post failed" >&2
 }
 
@@ -161,19 +167,26 @@ _notify_slack() {
     review_ready)
       # Ping ONLY the person who triggered the run; no Slack ID => no ping, no label.
       # Bar colour + header come from the verdict (NOTIFY_VERDICT_JQ), not the review event.
+      # The summary block is emitted ONLY when there is a summary: Slack rejects the whole
+      # message (invalid_blocks) for a section whose mrkdwn text is the empty string, so an
+      # agent that returned no summary used to silently lose the entire card. Clamped to
+      # Slack's 3000-character section limit, by characters, for the same reason.
       blocks=$(echo "$p" | jq '
         (if .slack_id != "" then "<@" + .slack_id + "> " else "" end) as $w |
-        {attachments:[{color: .hex, blocks:[
+        ((.extra.summary // "") | .[0:2900]) as $sum |
+        {attachments:[{color: .hex, blocks:([
           {type:"section", text:{type:"mrkdwn",
             text:($w + "Review ready — *<" + .url + "|" + .ref + " — " + .title + ">*\n"
-                  + .header)}},
-          {type:"section", text:{type:"mrkdwn", text:(.extra.summary // "")}},
+                  + .header)}}]
+          + (if $sum == "" then [] else
+              [{type:"section", text:{type:"mrkdwn", text:$sum}}] end)
+          + [
           {type:"actions", elements:[
             {type:"button", text:{type:"plain_text", text:"📋 Open dashboard"},
              style:"primary", url:(.extra.detail // .url)},
             {type:"button", text:{type:"plain_text", text:"Open PR"}, url:.url}]},
           {type:"context", elements:[{type:"mrkdwn",
-            text:"Nothing posted yet — select, edit and post from the dashboard."}]}]}]}')
+            text:"Nothing posted yet — select, edit and post from the dashboard."}]}])}]}')
       echo "$blocks" | slack_post "$repo" "$pr" reply "$login";;
     review_stopped)
       # extra.text is pre-rendered mrkdwn (the server's stop confirmation); a failed run from
@@ -237,12 +250,19 @@ _notify_discord() {
        {c: $brand, d: "📋 **QA guide ready**",
         l: ("[Open QA guide](" + (.extra.detail // .url) + ") · [Open PR](" + .url + ")")}
      end) as $r |
+    # Discord hard-limits an embed title to 256 characters and a description to 4096, and
+    # rejects the WHOLE card with a 400 that only ever showed up in a log line. Both are
+    # truncated by CHARACTER (jq slices codepoints) so a multi-byte title can never be cut in
+    # half into invalid UTF-8. The links line is appended after the clamp so it always survives.
+    ((.repo + " #" + .pr + " · " + .title) | if length > 250 then .[0:249] + "…" else . end) as $ti |
+    (($r.d | if length > 3900 then .[0:3899] + "…" else . end) + "\n\n" + $r.l
+      | if length > 4096 then .[0:4095] + "…" else . end) as $de |
     {content: $m, allowed_mentions: {parse: [], users: (if .discord_id != "" then [.discord_id] else [] end)},
-     embeds: [{title: (.repo + " #" + .pr + " · " + .title), url: .url, color: $r.c,
-               description: ($r.d + "\n\n" + $r.l),
+     embeds: [{title: $ti, url: .url, color: $r.c,
+               description: $de,
                footer: {text: "ReviewStage"}}]}')
   local code
-  code=$(echo "$body" | curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -X POST \
+  code=$(echo "$body" | curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 -X POST \
           -H 'Content-Type: application/json' --data @- "$DISCORD_WEBHOOK" 2>/dev/null) || code="000"
   case "$code" in 2*) ;; *) echo "WARN: notify: discord webhook returned $code" >&2;; esac
   return 0
@@ -261,7 +281,7 @@ _notify_generic() {
     sig=$(printf '%s' "$p" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -r | cut -d' ' -f1)
     hdr+=(-H "X-ReviewStage-Signature: sha256=$sig")
   fi
-  code=$(printf '%s' "$p" | curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -X POST \
+  code=$(printf '%s' "$p" | curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 -X POST \
           "${hdr[@]}" --data-binary @- "$WEBHOOK_URL" 2>/dev/null) || code="000"
   case "$code" in 2*) ;; *) echo "WARN: notify: generic webhook returned $code" >&2;; esac
   return 0

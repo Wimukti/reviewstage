@@ -61,8 +61,12 @@ export function App() {
   }, [load]);
 
   const signOut = useCallback(async () => {
-    await api.logout();
-    load();
+    // Even a failed logout must not leave the UI hanging — reloading /api/me shows the truth.
+    try {
+      await api.logout();
+    } finally {
+      load();
+    }
   }, [load]);
 
   if (!me) return <div className="boot" />;

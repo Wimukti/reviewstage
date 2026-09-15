@@ -7,12 +7,15 @@ const BASE = "/api";
 export class Unauthorized extends Error {}
 
 // A non-2xx reply. `data` is the server's JSON body — e.g. an "ambiguous repo" error carries the
-// candidate `repos` so the UI can offer a picker.
+// candidate `repos` so the UI can offer a picker. `status` is the HTTP status, so callers can
+// tell an expired action token (403) from a refusal the reviewer has to act on.
 export class ApiError extends Error {
   data: Record<string, unknown>;
-  constructor(msg: string, data: Record<string, unknown>) {
+  status: number;
+  constructor(msg: string, data: Record<string, unknown>, status = 0) {
     super(msg);
     this.data = data;
+    this.status = status;
   }
 }
 
@@ -20,8 +23,43 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${BASE}${path}`, { credentials: "same-origin", ...init });
   if (r.status === 401) throw new Unauthorized();
   const data = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new ApiError(data?.error || `${path} → ${r.status}`, data as Record<string, unknown>);
+  if (!r.ok)
+    throw new ApiError(data?.error || `${path} → ${r.status}`, data as Record<string, unknown>, r.status);
   return data as T;
+}
+
+// ---- error helpers ------------------------------------------------------------------------
+// Every submit handler in the app shares these: a rejection has to reach the reviewer as words,
+// never as a button stuck on "Starting…".
+
+export function errMessage(e: unknown, fallback = "That didn't work — try again."): string {
+  if (e instanceof Unauthorized)
+    return "Your session has expired — reload the page and sign in again.";
+  if (e instanceof Error && e.message) return e.message;
+  return fallback;
+}
+
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// The banner markup the server would have sent, for pages that render bannerHtml.
+export function errBanner(e: unknown, fallback?: string): string {
+  return `<div class="banner err"><span>🚫</span><div>${escapeHtml(errMessage(e, fallback))}</div></div>`;
+}
+
+// Action tokens live 30 minutes; /api/pr mints fresh ones. A 403 whose message says the link
+// expired (or was signed with another key) is recoverable by re-reading the page's tokens.
+export function isExpiredToken(e: unknown): boolean {
+  return (
+    e instanceof ApiError &&
+    e.status === 403 &&
+    /has expired|signed with a different key|unsigned link/i.test(e.message)
+  );
 }
 
 // A PR is (repo, number). `repo` may be "" for legacy links; the server resolves it when
@@ -86,6 +124,9 @@ export interface Me {
   public_url?: string;
   logo?: string;
   webhooks_configured?: boolean; // GITHUB_WEBHOOK_SECRET is set on the server
+  // Whether the PR poller has ever completed a cycle on this install. Absent on servers that do
+  // not report it yet — the Queue treats "absent" as "cannot tell" and says nothing.
+  poller_ran?: boolean;
   running?: RunningJob[]; // reviews / QA guides in flight for this user
   auth?: "cookie" | "bearer"; // how this request was authenticated
   login_via?: "oauth" | "pat"; // how the stored GitHub token was obtained
@@ -187,9 +228,10 @@ export interface Finding {
   impact: string;
   structured: boolean;
   criticalPath?: string; // the profile glob this finding concerns, "" when none
-  // false when the line is outside the PR's diff: GitHub takes no inline comment there, so the
-  // finding goes into the review body. Absent when GitHub would not tell us.
-  anchorable?: boolean;
+  // Tri-state. true: GitHub will take an inline comment on this line. false: the line is
+  // outside the PR's diff, so the finding goes into the review body instead. null/undefined:
+  // GitHub would not answer, so where it lands is genuinely unknown — never claim either.
+  anchorable?: boolean | null;
   agreement?: { confirmed: boolean; n: number; by: string[]; differ: string } | null;
 }
 
@@ -202,6 +244,10 @@ export interface ApprovedData {
 }
 
 export interface ReviewData {
+  // Identifies the exact run these findings came from, so a post cannot be applied to a review
+  // that has since been replaced from another device. Absent on servers that do not send one —
+  // the client then falls back to a fingerprint it computes from the findings themselves.
+  reviewKey?: string;
   event: string;
   summary: string;
   keyPoints: string[];
@@ -390,7 +436,10 @@ export interface SkillsData {
   choice: "own" | "team";
   effLabel: string;
   hasMySkill: boolean;
-  hasGlobal: boolean;
+  hasGlobal: boolean; // the team skill file exists — bootstrap seeds it, so this is not "edited"
+  // True only when the team skill differs from the shipped one. Absent on servers that do not
+  // compute it; the UI then says "In use" rather than guessing "Edited".
+  globalEdited?: boolean;
   teamSkill: string;
   mySkill: string;
   depths: Record<string, DepthInfo>;
@@ -478,6 +527,9 @@ export interface LearningCluster {
   rule: string;
 }
 export interface LearningsData {
+  // How many of each outcome a review actually reads back (rs_learn caps them separately).
+  // Absent on servers that do not report it — the UI then uses the shipped defaults.
+  windows?: { dropped: number; edited: number };
   counts: { dropped: number; edited: number; kept: number };
   repos: string[];
   clusters: LearningCluster[];
@@ -571,6 +623,9 @@ export interface RollupSeriesPoint {
 }
 export interface RepoRollup { repo: string; runs: number; week: number; prs: number; tokens: number }
 export interface RollupData {
+  // How many finding decisions the keep/severity/agreement numbers were computed over, and the
+  // cap on the log they come from. Absent on servers that do not report it.
+  findingsCap?: number;
   generatedAt: number;
   repo: string; // the filter applied, or ""
   repos: RepoRollup[];
@@ -628,17 +683,34 @@ export const api = {
   post: (
     ref: PrRef,
     t: Token,
-    payload: { selected: number[]; bodies: Record<number, string>; suggs: Record<number, string>; request_changes: boolean }
+    payload: {
+      selected: number[];
+      bodies: Record<number, string>;
+      suggs: Record<number, string>;
+      request_changes: boolean;
+      // The review these indices belong to. The server matches findings by array index, so a
+      // re-run from another device would otherwise silently re-point every comment.
+      review_key: string;
+    }
   ) => post<BannerResult>("/post", { ...prBody(ref), ...t, ...payload }),
   approve: (ref: PrRef, t: Token, body: string, ack: boolean) =>
     post<BannerResult>("/approve", { ...prBody(ref), ...t, body, ack }),
   qaIndex: () => get<QaIndex>("/qa"),
   qaDetail: (ref: PrRef) => get<QaDetail>(`/qa?${prq(ref)}`),
-  qaGen: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/qa/gen", { ...prBody(ref), ...t }),
+  // `started` is false when nothing spawned (a run already holds the lock). Optional: older
+  // servers always answered {ok:true}, and the UI must not claim a run began on that alone.
+  qaGen: (ref: PrRef, t: Token) =>
+    post<{ ok: boolean; started?: boolean; reason?: string }>("/qa/gen", { ...prBody(ref), ...t }),
   qaStop: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/qa/stop", { ...prBody(ref), ...t }),
   skills: () => get<SkillsData>("/skills"),
-  skillSuggestion: (t: Token, signature: string, action: "accept" | "dismiss" | "undismiss") =>
-    post<SkillsData & BannerResult>("/skills/suggestion", { ...t, signature, action }),
+  // `rule` carries the reviewer's edit of the drafted sentence; the server already prefers it
+  // over its own draft. Omitted for dismiss/undismiss.
+  skillSuggestion: (
+    t: Token,
+    signature: string,
+    action: "accept" | "dismiss" | "undismiss",
+    rule?: string,
+  ) => post<SkillsData & BannerResult>("/skills/suggestion", { ...t, signature, action, rule }),
   skillAction: (step: string, payload: Record<string, unknown>) =>
     post<BannerResult>(`/skill/${step}`, payload),
   integrations: () => get<IntegrationsData>("/integrations"),

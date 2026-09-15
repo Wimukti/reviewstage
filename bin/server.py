@@ -1540,7 +1540,7 @@ POSTED_RUNS = "posted_runs.json"
 
 # Files that describe one review run — copied into history/<ts>/ when a re-run replaces it.
 RUN_FILES = ("review.json", "effort", "focus", "skill", "runner", "head", "status",
-             "usage.json", "posted.json", POSTED_RUNS)
+             "usage.json", "cached", "posted.json", POSTED_RUNS)
 # …and the ones a re-run must not inherit. The post markers belong to the run that was posted.
 RUN_CLEARED = ("review.json", "posted.json", POSTED_RUNS)
 
@@ -5541,12 +5541,7 @@ class Handler(BaseHTTPRequestHandler):
         rate and can trip the rule-suggestion threshold off one bad afternoon. `run_key` makes a
         retry REPLACE its predecessor instead of appending.
         """
-        try:
-            rs_learn.record(repo, pr, user, originals, form, skill=skill, run_key=run_key)
-        except TypeError:
-            # rs_learn has not learned the keyword yet (it is another lane's file). Recording
-            # once, at the right moment, is still the larger half of the fix.
-            rs_learn.record(repo, pr, user, originals, form, skill=skill)
+        rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key)
 
     def _approve_result(self, repo, pr, user, form):
         """Approve as the user. Serialised on the same lock the post path takes, so two tabs

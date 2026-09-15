@@ -5006,8 +5006,10 @@ class Handler(BaseHTTPRequestHandler):
             return _banner("warn", "\u26a0\ufe0f",
                            f"These selected finding(s) have no text: {items}. Add a comment or "
                            "unselect them before posting.")
+        # The same list, in the same order and with the same cap, that _post_form indexed —
+        # a learning logged against the wrong finding is worse than no learning.
         originals = sorted(rev.get("comments", []),
-                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
+                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))[:FINDING_RENDER_CAP]
         skill_f = upath(repo, pr, user, "skill")
         skill = skill_f.read_text().strip() if skill_f.exists() else "global"
         # Learnings are recorded ONCE, at the end, and only down a path that actually reached

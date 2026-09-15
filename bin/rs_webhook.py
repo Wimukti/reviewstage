@@ -144,21 +144,38 @@ def _logins_for(payload, ctx):
 
 
 def _requested(repo, pr, row, logins, ctx):
+    """Queue the row and card whoever has not been told. Identical in order to pr-watch.sh:
+    a suppression (draft / bot / too old) is recorded in `suppressed`, NOT in `seen`, so the PR
+    can still ping once it becomes reviewable; `seen` is written only after a confirmed send.
+    """
     vals = ctx.settings
     notified, skipped = [], []
-    Q.upsert(repo, pr, row, logins)
+    Q.upsert(repo, pr, row, logins, origin=Q.ORIGIN_WEBHOOK)
     for login in logins:
+        # A request that comes back after we auto-archived it (PR closed, or first sign-in)
+        # must be visible and audible again.
+        Q.clear_auto_archive(repo, pr, login)
         if Q.is_seen(repo, pr, login, ctx.single_repo, ctx.reviewer):
             skipped.append(f"{login} (already seen)")
             continue
         why = Q.suppress_reason(row, vals.get("max_pr_age_days", 45),
                                 vals.get("skip_bot_prs", False))
-        Q.mark_seen(repo, pr, login)
         if why:
+            Q.mark_suppressed(repo, pr, login, why)
             skipped.append(f"{login} ({why})")
             continue
+        Q.clear_suppressed(repo, pr, login)
         Q.touch_requested_at(repo, pr, login)
-        ctx.notify(Q.find(repo, pr) or row, login)
+        if ctx.notify(Q.find(repo, pr) or row, login) is False:
+            n = Q.note_notify_failure(repo, pr, login)
+            if n >= Q.MAX_NOTIFY_ATTEMPTS:
+                Q.mark_seen(repo, pr, login)
+                skipped.append(f"{login} (send failed {n}x — giving up)")
+            else:
+                skipped.append(f"{login} (send failed, attempt {n} — will retry)")
+            continue
+        Q.clear_notify_failures(repo, pr, login)
+        Q.mark_seen(repo, pr, login)
         notified.append(login)
     return notified, skipped
 
@@ -198,8 +215,10 @@ def handle(event, payload, ctx):
         return "handled", (f"{repo}#{pr} synchronize → head {row['head'][:12]}"
                            + ("" if updated else " (not queued; nothing to refresh)"))
     if event == "pull_request" and action == "closed":
-        archived = Q.done(repo, pr)
-        return "handled", f"{repo}#{pr} closed → left the queue; archived for {archived}"
+        merged = bool(pr_obj.get("merged") or pr_obj.get("merged_at"))
+        archived = Q.done(repo, pr, state="merged" if merged else "closed", merged=merged)
+        return "handled", (f"{repo}#{pr} {'merged' if merged else 'closed'} → left the queue; "
+                           f"archived for {archived}")
     if event == "pull_request_review":
         review = payload.get("review") or {}
         login = ((review.get("user") or {}).get("login")) or ""
@@ -212,8 +231,15 @@ def handle(event, payload, ctx):
 
 
 def process(event, payload, ctx, delivery=""):
-    """handle() + record() + one log line. Never raises: a bad payload is a recorded error."""
+    """handle() + record() + one log line. Never raises: a bad payload is a recorded error.
+
+    A delivery id we have already processed is dropped: GitHub redelivers, and a replayed
+    `review_request_removed` would otherwise silently un-queue a PR at any later time.
+    """
     tag = f"[webhook {delivery[:8] or '-'}]"
+    if delivery and Q.seen_delivery(delivery):
+        ctx.log(f"{tag} ignored: delivery already processed", flush=True)
+        return "ignored", f"delivery {delivery} already processed"
     try:
         outcome, detail = handle(event, payload, ctx)
     except Exception as e:  # noqa: BLE001 — log and keep serving

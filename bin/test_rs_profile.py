@@ -541,6 +541,49 @@ class SchemaGuard(unittest.TestCase):
         self.assertEqual(PF.load_version("o/r", 1)[1], "no such version")
 
 
+class VersionPruning(unittest.TestCase):
+    """profile.<ts>.json was never pruned: every regeneration and every dashboard edit left one
+    behind for ever, on a store nothing ages out."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        PF.PROFILES = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def save(self, n):
+        for i in range(n):
+            PF.save_profile("o/r", dict(FULL, summary=f"v{i}"),
+                            {"generated_at": 1700000000 + i * 900})
+
+    def test_versions_are_capped_at_the_documented_number(self):
+        self.save(PF.KEEP_VERSIONS + 7)
+        self.assertEqual(len(PF.versions("o/r")), PF.KEEP_VERSIONS)
+
+    def test_the_newest_versions_are_the_ones_kept(self):
+        self.save(PF.KEEP_VERSIONS + 3)
+        kept = PF.versions("o/r")
+        self.assertEqual(kept, sorted(kept, reverse=True))
+        self.assertEqual(kept[0], 1700000000 + (PF.KEEP_VERSIONS + 1) * 900)
+
+    def test_a_kept_version_still_restores(self):
+        self.save(PF.KEEP_VERSIONS + 3)
+        prof, err = PF.load_version("o/r", PF.versions("o/r")[0])
+        self.assertEqual(err, "")
+        self.assertTrue(prof["summary"].startswith("v"))
+
+    def test_the_live_profile_is_not_a_version_and_survives(self):
+        self.save(PF.KEEP_VERSIONS + 3)
+        prof, err = PF.read_profile("o/r")
+        self.assertEqual(err, "")
+        self.assertEqual(prof["summary"], f"v{PF.KEEP_VERSIONS + 2}")
+
+    def test_pruning_an_install_under_the_cap_removes_nothing(self):
+        self.save(3)
+        self.assertEqual(PF.prune_versions("o/r"), 0)
+
+
 class DegradedSignals(unittest.TestCase):
     def test_a_git_timeout_is_a_note_not_an_exception(self):
         notes = []

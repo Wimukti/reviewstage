@@ -939,8 +939,27 @@ def staleness(profile, base, files=None):
     return out
 
 
+# How many superseded profile.<ts>.json versions are kept. They were never pruned, so every
+# regeneration and every dashboard edit left one behind for ever. The Skills page only ever
+# offers a list of them to restore from, and nobody reaches back past the last handful.
+KEEP_VERSIONS = 10
+
+
+def prune_versions(repo, keep=KEEP_VERSIONS):
+    """Delete all but the newest `keep` profile.<ts>.json versions. Returns how many went."""
+    gone = 0
+    for ts in versions(repo)[keep:]:
+        try:
+            version_path(repo, ts).unlink()
+            gone += 1
+        except OSError:
+            pass
+    return gone
+
+
 def save_profile(repo, profile, meta=None):
-    """Write profile.json (+ profile.md), keeping the previous version as profile.<ts>.json."""
+    """Write profile.json (+ profile.md), keeping the previous version as
+    profile.<ts>.json and pruning back to the newest KEEP_VERSIONS of them."""
     d = profile_dir(repo)
     d.mkdir(parents=True, exist_ok=True)
     f = profile_path(repo)
@@ -963,6 +982,7 @@ def save_profile(repo, profile, meta=None):
     tmp.write_text(json.dumps(out, indent=1) + "\n")
     os.replace(tmp, f)
     (d / "profile.md").write_text(to_markdown(out))
+    prune_versions(repo)
     return out
 
 

@@ -79,7 +79,7 @@ Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the 
 | --- | --- | --- | --- |
 | Runs on | Docker on your laptop | One server for the team | One install for the organisation |
 | Sign-in | You, with a fine-grained token | Everyone, as themselves | Org allowlist; GitHub App sign-in is on the roadmap |
-| Repositories | One | One | Many, with per-repo skills and risk paths |
+| Repositories | Many | Many | Many, with per-repo skills and risk paths |
 | Notifications | None; paste a PR URL | Review-request alerts to Slack, Discord or any webhook | Same, per repository |
 | Insights | Your own runs | The team's keep rate, agreement, cycle time | Across repositories |
 | Billing | Your Claude plan | Each reviewer's own plan | Each reviewer's own plan |

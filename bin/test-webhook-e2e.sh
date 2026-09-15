@@ -62,9 +62,10 @@ SERVER_PID=$!
 for _ in $(seq 1 50); do curl -fs "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -fs "$BASE/health" >/dev/null || { echo "server did not start:"; cat "$ROOT/server.log"; exit 1; }
 
-# A session cookie for /api/* reads, minted the way the server does (session:<login>:<exp>).
+# A session cookie for /api/* reads, minted the way the server does:
+# session:<login>:<exp>:<epoch>. The epoch is 0 until "Sign out everywhere" bumps it.
 exp=$(( $(date +%s) + 3600 ))
-sig=$(printf '%s' "session:$USER_LOGIN:$exp" | openssl dgst -sha256 -hmac "$RS_SECRET" -r | cut -d' ' -f1)
+sig=$(printf '%s' "session:$USER_LOGIN:$exp:0" | openssl dgst -sha256 -hmac "$RS_SECRET" -r | cut -d' ' -f1)
 COOKIE="rs_session=$USER_LOGIN:$exp:$sig"
 
 sign() { printf 'sha256=%s' "$(printf '%s' "$1" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)"; }

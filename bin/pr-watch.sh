@@ -7,8 +7,11 @@
 #   */3 * * * * flock -n /tmp/pr-watch.lock $HOME/.reviewstage/bin/pr-watch.sh
 #
 # Notify only; no review runs from here. Dedup is per REPO + PR + LOGIN (`<repo>:<pr>:<login>`
-# in `seen`), so each reviewer is pinged once per PR and never again — pushing new commits
-# changes the head SHA but must not re-ping anyone. The dashboard always reflects the live queue
+# in `seen`), written only AFTER a card is confirmed sent — the same order rs_webhook.py uses.
+# A PR nobody should be pinged about yet (draft, bot, too old) goes to `suppressed` instead and
+# is re-evaluated every cycle, so it pings the moment it becomes reviewable. Each reviewer is
+# pinged once per PR and never again — pushing new commits changes the head SHA but must not
+# re-ping anyone. The dashboard always reflects the live queue
 # regardless of what has been announced, so Slack is a one-time nudge rather than the source
 # of truth. To re-announce one, drop its line from `seen`.
 #
@@ -50,11 +53,38 @@ MAX_AGE_DAYS="${RS_MAX_PR_AGE_DAYS:-45}"
 
 USERS_FILE="$ROOT/users.json"
 
-# Nightly: drop device tokens idle for 180 days (docs/MOBILE.md). Once per calendar day; the
-# prune rewrites users.json only when something actually expired.
-if [ -f "$USERS_FILE" ] && [ "$(cat "$ROOT/devices-pruned" 2>/dev/null)" != "$(date +%F)" ]; then
-  python3 "$HERE/rs_devices.py" prune "$USERS_FILE" && date +%F > "$ROOT/devices-pruned"
+# How many rows one `gh` search may return before we suspect truncation. GitHub silently caps;
+# the old 50 lost rows on any busy repo with no signal at all.
+SEARCH_LIMIT="${RS_SEARCH_LIMIT:-200}"
+ORG_SEARCH_LIMIT="${RS_ORG_SEARCH_LIMIT:-300}"
+# How long per-run artefacts (agent logs, history entries) are kept by the daily sweep.
+RETENTION_DAYS="${RS_RETENTION_DAYS:-30}"
+
+# Nightly housekeeping, once per calendar day: device tokens idle for 180 days (docs/MOBILE.md),
+# `seen` lines for PRs that have closed (the file is append-only and grepped once per PR per
+# login every cycle), and the log / per-run artefact retention sweep. Nothing under ROOT was
+# ever cleaned up before this.
+if [ "$(cat "$ROOT/daily-done" 2>/dev/null)" != "$(date +%F)" ]; then
+  [ -f "$USERS_FILE" ] && python3 "$HERE/rs_devices.py" prune "$USERS_FILE"
+  pruned=$(ROOT="$ROOT" python3 "$HERE/rs_queue.py" prune-seen 2>&1) \
+    && [ "${pruned:-0}" != 0 ] && echo "==> pruned $pruned seen line(s) for closed PRs"
+  ROOT="$ROOT" python3 "$HERE/rs_queue.py" retention "$RETENTION_DAYS" || true
+  date +%F > "$ROOT/daily-done"
+  # Pre-rename marker: an upgraded box must not re-run yesterday's device prune twice.
+  date +%F > "$ROOT/devices-pruned"
 fi
+
+# mark_seen <repo> <pr> <login> — through rs_queue so the append takes the same fcntl lock a
+# concurrent prune or webhook holds; a bare `>> $SEEN` could be lost under a rewrite.
+mark_seen() { ROOT="$ROOT" python3 "$HERE/rs_queue.py" mark-seen "$1" "$2" "$3" >/dev/null; }
+
+# with_timeout <seconds> <cmd...> — GNU `timeout` when present, else run it plain. A card is
+# posted inside the poller's flock, so a blackholed Slack/Discord/webhook endpoint would
+# otherwise stop discovery for everyone, permanently.
+with_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"; else "$@"; fi
+}
 
 logins=$(jq -r 'keys[]' "$USERS_FILE" 2>/dev/null)
 [ -n "$logins" ] || logins="$REVIEWER"
@@ -67,9 +97,16 @@ logins=$(jq -r 'keys[]' "$USERS_FILE" 2>/dev/null)
 repos=$(repos_list)
 if [ -n "$REPO_ALLOW_ORG" ]; then
   for login in $logins; do
-    found=$(gh search prs --owner "$REPO_ALLOW_ORG" --review-requested="$login" --state open \
-              --limit 100 --json repository -q '.[].repository.nameWithOwner' 2>/dev/null) \
-      || { echo "gh search (org $REPO_ALLOW_ORG) failed for $login"; continue; }
+    if ! found=$(gh search prs --owner "$REPO_ALLOW_ORG" --review-requested="$login" \
+                   --state open --limit "$ORG_SEARCH_LIMIT" --json repository \
+                   -q '.[].repository.nameWithOwner' 2>&1); then
+      echo "ERROR: gh search (org $REPO_ALLOW_ORG) failed for $login: $(printf '%s' "$found" \
+        | tr '\n' ' ' | cut -c1-200)" >&2
+      continue
+    fi
+    n=$(printf '%s' "$found" | grep -c . || true)
+    [ "$n" -ge "$ORG_SEARCH_LIMIT" ] && echo "WARN: org discovery for $login returned $n repos \
+(the --limit) — results are probably truncated; raise RS_ORG_SEARCH_LIMIT" >&2
     [ -n "$found" ] && repos+=$'\n'"$found"
   done
 fi
@@ -78,27 +115,64 @@ repos=$(printf '%s\n' "$repos" | awk 'NF && !seen[tolower($0)]++')
 # One search per user per repo beats paging every open PR: a busy repo sees 200+ PR updates a
 # week, and `review-requested:` resolves to direct individual requests server-side. Each row is
 # tagged with the repo and the login it was found for; rows for the same repo+PR are merged below.
+#
+# EVERY FAILURE IS TRACKED. A swallowed `2>/dev/null; || continue` used to let a partial — often
+# empty — result be written straight over queue.json, so an expired token or a secondary rate
+# limit showed every user "You're all caught up" while real requests sat on GitHub. A repo+login
+# whose search failed is simply not in $PAIRS, and rs_queue.merge_poll then leaves its existing
+# rows exactly where they are.
 fields=number,title,author,headRefOid,url,additions,deletions,changedFiles,isDraft,createdAt,updatedAt
+FRESH="$ROOT/.poll-rows.json"
+PAIRS="$ROOT/.poll-pairs"
+: > "$PAIRS"
 tagged=""
+searches=0; failures=0
 for repo in $repos; do
   repo_allowed "$repo" || { echo "skipping $repo (not in REPOS / REPO_ALLOW_ORG)"; continue; }
   for login in $logins; do
-    rows=$(gh pr list -R "$repo" --state open --search "review-requested:$login" \
-            --limit 50 --json "$fields" 2>/dev/null) \
-      || { echo "gh search failed for $login in $repo"; continue; }
+    searches=$((searches + 1))
+    if ! rows=$(gh pr list -R "$repo" --state open --search "review-requested:$login" \
+                  --limit "$SEARCH_LIMIT" --json "$fields" 2>&1); then
+      failures=$((failures + 1))
+      echo "ERROR: gh pr list failed for $login in $repo: $(printf '%s' "$rows" \
+        | tr '\n' ' ' | cut -c1-200)" >&2
+      continue
+    fi
+    n=$(printf '%s' "$rows" | jq 'length' 2>/dev/null || echo 0)
+    if [ "$n" -ge "$SEARCH_LIMIT" ]; then
+      echo "WARN: $repo review-requested:$login returned $n rows (the --limit) — results are \
+probably truncated; raise RS_SEARCH_LIMIT" >&2
+    fi
+    printf '%s %s\n' "$(printf '%s' "$repo" | tr 'A-Z' 'a-z')" "$login" >> "$PAIRS"
     tagged+=$(echo "$rows" | jq -c --arg u "$login" --arg r "$repo" '.[] | . + {requested:[$u], repo:$r}')$'\n'
   done
 done
 
-# queue.json backs the dashboard index. Rewritten every run so the dashboard never has to
-# call gh itself. `requested` is the union of logins awaiting each PR — the dashboard filters
-# on it, so one file serves every user. Rows carry `repo` (owner/name).
+# Nothing at all came back: publish nothing. An empty $PAIRS means we learned nothing this
+# cycle, and writing a queue built from that is exactly the bug above.
+if [ "$searches" -gt 0 ] && [ ! -s "$PAIRS" ]; then
+  echo "ERROR: all $searches gh search(es) failed — queue.json left untouched. Check the token \
+(gh auth status), GitHub status and your rate limit." >&2
+  exit 1
+fi
+[ "$failures" -gt 0 ] && echo "WARN: $failures of $searches searches failed; their rows are kept \
+as-is rather than dropped" >&2
+
+# The rows this cycle derived, in queue.json's shape. `requested` is the union of logins
+# awaiting each PR — the dashboard filters on it, so one file serves every user.
 echo "$tagged" | jq -s 'group_by([.repo, .number]) | map(.[0] + {requested: (map(.requested[]) | unique)})
   | map({repo, number, title, url, additions, deletions, changedFiles, requested,
          author: .author.login, isBot: (.author.is_bot // false),
          isDraft, head: .headRefOid, createdAt, updatedAt})' \
-  > "$ROOT/queue.json.tmp" \
-  && mv "$ROOT/queue.json.tmp" "$ROOT/queue.json"
+  > "$FRESH" || die "could not build this cycle's rows (jq failed)"
+
+# MERGE, never replace, and under the same fcntl lock every other writer takes — a webhook
+# delivery landing mid-poll is no longer lost, and a row only a webhook could know about (a
+# TEAM review request, which `review-requested:<login>` never returns) survives the cycle.
+summary=$(ROOT="$ROOT" python3 "$HERE/rs_queue.py" merge-poll "$FRESH" "$PAIRS") \
+  || die "queue merge failed — queue.json left untouched"
+echo "==> queue: $summary"
+rm -f "$FRESH" "$PAIRS"
 
 # --- New-user clean slate ---------------------------------------------------------------------
 # A person signing in usually has a backlog of open review requests they'll never action. We
@@ -116,7 +190,7 @@ if [ ! -f "$KNOWN" ]; then
   for login in $logins; do
     for key in $(jq -r --arg u "$login" \
                    '.[] | select(.requested | index($u)) | "\(.repo):\(.number)"' "$ROOT/queue.json"); do
-      grep -qxF "$key:$login" "$SEEN" || echo "$key:$login" >> "$SEEN"
+      grep -qxF "$key:$login" "$SEEN" || mark_seen "${key%:*}" "${key##*:}" "$login"
     done
     echo "$login" >> "$KNOWN"
   done
@@ -127,9 +201,11 @@ for login in $logins; do
   n=0
   for key in $(jq -r --arg u "$login" \
                  '.[] | select(.requested | index($u)) | "\(.repo):\(.number)"' "$ROOT/queue.json"); do
-    grep -qxF "$key:$login" "$SEEN" || echo "$key:$login" >> "$SEEN"
+    grep -qxF "$key:$login" "$SEEN" || mark_seen "${key%:*}" "${key##*:}" "$login"
     ud=$(udir "${key%:*}" "${key##*:}" "$login"); mkdir -p "$ud"
-    [ -f "$ud/archived" ] || date +%s > "$ud/archived"
+    # `.auto` marks this as OUR archive, so a later re-request can undo it (a user's own
+    # archive has no such sibling and is never touched).
+    [ -f "$ud/archived" ] || { date +%s > "$ud/archived"; date +%s > "$ud/archived.auto"; }
     n=$((n + 1))
   done
   echo "$login" >> "$KNOWN"
@@ -154,36 +230,47 @@ jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
   num=$(echo "$pr" | jq -r .number)
   repo=$(echo "$pr" | jq -r .repo)
 
-  # Who on this PR has not been told yet?
+  # Who on this PR has not been told yet? A request that returned after we auto-archived it
+  # (PR closed, or the new-user clean slate) is un-archived and un-seen first, or it would come
+  # back invisible and silent.
   new=""
   for login in $(echo "$pr" | jq -r '.requested[]'); do
+    ROOT="$ROOT" python3 "$HERE/rs_queue.py" unarchive-auto "$repo" "$num" "$login" >/dev/null 2>&1
     seen_for "$repo" "$num" "$login" || new+="$login "
   done
   [ -n "$new" ] || continue
 
-  # Stale-PR cutoff: suppress the Slack nudge for PRs created more than MAX_AGE_DAYS ago, but
-  # still mark them seen so they never re-ping. The dashboard queue is unaffected.
+  # Not-yet-notifiable: a draft, a bot PR (with SKIP_BOT_PRS) or one created more than
+  # MAX_AGE_DAYS ago. These go to `suppressed`, NOT to `seen`: marking them seen was permanent,
+  # so a PR that happened to be a draft the first time we looked could never ping again.
+  # `date -d` is GNU-only — on macOS the old `|| echo 0` silently disabled the cutoff entirely.
+  suppress=""
   if [ "${MAX_AGE_DAYS:-0}" -gt 0 ]; then
     created=$(echo "$pr" | jq -r '.createdAt // empty')
     if [ -n "$created" ]; then
-      created_s=$(date -d "$created" +%s 2>/dev/null || echo 0)
-      if [ "$created_s" -gt 0 ]; then
-        age_days=$(( ( $(date +%s) - created_s ) / 86400 ))
-        if [ "$age_days" -gt "$MAX_AGE_DAYS" ]; then
-          echo "==> $repo#$num created ${age_days}d ago (> ${MAX_AGE_DAYS}d) — marking seen, no ping"
-          for login in $new; do echo "$repo:$num:$login" >> "$SEEN"; done
-          continue
-        fi
-      fi
+      age_days=$(python3 -c 'import calendar,sys,time
+try:
+    print(int((time.time() - calendar.timegm(time.strptime(sys.argv[1][:19], "%Y-%m-%dT%H:%M:%S"))) // 86400))
+except ValueError:
+    print(-1)' "$created")
+      [ "$age_days" -gt "$MAX_AGE_DAYS" ] \
+        && suppress="created ${age_days}d ago (> ${MAX_AGE_DAYS}d)"
     fi
   fi
-
   draft=$(echo "$pr"  | jq -r .isDraft)
   is_bot=$(echo "$pr" | jq -r '.isBot')
-  if [ "$draft" = "true" ] || { [ "$SKIP_BOT_PRS" = "1" ] && [ "$is_bot" = "true" ]; }; then
-    for login in $new; do echo "$repo:$num:$login" >> "$SEEN"; done
+  [ "$draft" = "true" ] && suppress="draft"
+  [ "$SKIP_BOT_PRS" = "1" ] && [ "$is_bot" = "true" ] && suppress="bot author (SKIP_BOT_PRS)"
+  if [ -n "$suppress" ]; then
+    echo "==> $repo#$num $suppress — no ping (re-checked every cycle)"
+    for login in $new; do
+      ROOT="$ROOT" python3 "$HERE/rs_queue.py" suppress "$repo" "$num" "$login" "$suppress"
+    done
     continue
   fi
+  for login in $new; do
+    ROOT="$ROOT" python3 "$HERE/rs_queue.py" clear-suppressed "$repo" "$num" "$login"
+  done
 
   author=$(echo "$pr" | jq -r .author)
   title=$(echo "$pr"  | jq -r .title)
@@ -198,14 +285,29 @@ jq -c '.[]' "$ROOT/queue.json" | while read -r pr; do
   # review-ready reply, so two reviewers on the same PR never share a ping or a thread.
   for login in $new; do
     echo "==> notifying $repo#$num ($author) $title → $login"
-    notify_card review_requested "$(jq -n --arg repo "$repo" --arg t "$title" --arg u "$url" \
+    card=$(jq -n --arg repo "$repo" --arg t "$title" --arg u "$url" \
           --arg a "$author" --arg l "$detail" --arg n "$num" --arg s "$adds" --arg d "$dels" \
           --arg f "$files" --arg b "$board" --arg login "$login" \
           --arg sid "$(user_field "$login" slack_id)" --arg did "$(user_field "$login" discord_id)" '
       {repo:$repo, pr:$n, title:$t, author:$a, url:$u, login:$login, slack_id:$sid, discord_id:$did,
        extra:{additions:($s|tonumber? // 0), deletions:($d|tonumber? // 0),
-              files:($f|tonumber? // 0), detail:$l, board:$b}}')"
-    echo "$repo:$num:$login" >> "$SEEN"
+              files:($f|tonumber? // 0), detail:$l, board:$b}}')
+    # Watchdog: notify.sh runs in its own process under `timeout`, not as a function call, so a
+    # backend that accepts the connection and then never answers cannot wedge the whole poll.
+    # `seen` is written only on a confirmed send — the same order rs_webhook.py uses — and a
+    # send that keeps failing is retried, then given up on after MAX_NOTIFY_ATTEMPTS.
+    if ROOT="$ROOT" with_timeout 20 bash "$HERE/notify.sh" review_requested "$card"; then
+      mark_seen "$repo" "$num" "$login"
+      ROOT="$ROOT" python3 "$HERE/rs_queue.py" notify-ok "$repo" "$num" "$login"
+    else
+      tries=$(ROOT="$ROOT" python3 "$HERE/rs_queue.py" notify-failed "$repo" "$num" "$login")
+      if [ "${tries:-1}" -ge 5 ]; then
+        echo "ERROR: card for $repo#$num → $login failed $tries times — giving up (marking seen)" >&2
+        mark_seen "$repo" "$num" "$login"
+      else
+        echo "ERROR: card for $repo#$num → $login failed (attempt $tries) — will retry next cycle" >&2
+      fi
+    fi
     # Phase 4 cycle-time source: stamp when this reviewer was first asked (once).
     ud=$(udir "$repo" "$num" "$login"); mkdir -p "$ud"
     [ -f "$ud/requested_at" ] || date +%s > "$ud/requested_at"

@@ -5,7 +5,10 @@
 # The interval and an on/off switch come from $ROOT/settings.json (the dashboard's Settings
 # page), re-read every cycle so a change applies without a restart: poll_interval_seconds
 # (60..3600; falls back to $POLL_INTERVAL, then 180) and poller_enabled (false = sleep and skip).
-# Each completed poll stamps $ROOT/poller.last (epoch seconds) for the "last poll at" readout.
+# A poll that ACTUALLY RAN stamps $ROOT/poller.last (epoch seconds) for the "last poll at"
+# readout. A cycle flock skipped, or one pr-watch.sh refused, does not: that timestamp is the
+# only signal an operator has for "discovery is dead", and stamping it unconditionally made it
+# read "just now" forever.
 #
 # flock guards against an overlapping run if one poll outlives the interval. The loop never
 # exits on a failed poll — a bad token or a GitHub blip is logged and retried next round.
@@ -44,7 +47,14 @@ while :; do
     [ "$paused" = 0 ] || echo "[$ts] poller resumed from Settings"
     paused=0
     flock -n "$LOCK" "$BIN/pr-watch.sh" 2>&1 | sed "s#^#[$ts] #" | tee -a "$ROOT/watch.log"
-    date +%s > "$ROOT/poller.last.tmp" && mv "$ROOT/poller.last.tmp" "$ROOT/poller.last"
+    # ${PIPESTATUS[0]} is flock's: 1 when -n found the lock held (the previous poll is still
+    # running), otherwise pr-watch.sh's own exit status.
+    rc=${PIPESTATUS[0]}
+    if [ "$rc" = 0 ]; then
+      date +%s > "$ROOT/poller.last.tmp" && mv "$ROOT/poller.last.tmp" "$ROOT/poller.last"
+    else
+      echo "[$ts] poll did not complete (exit $rc) — poller.last left as it was"
+    fi
   else
     echo "[$ts] GITHUB_PAT not set — nothing to poll"
   fi

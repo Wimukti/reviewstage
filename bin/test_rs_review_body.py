@@ -156,5 +156,35 @@ class Messages(unittest.TestCase):
         self.assertEqual(RB.outcome(0, 0), "summary only.")
 
 
+class Permalinks(unittest.TestCase):
+    def test_a_deleted_file_gets_no_blob_link(self):
+        """The head commit has no blob for a file the PR deleted, so the link 404s."""
+        self.assertEqual(RB.permalink(REPO, HEAD, "gone.py", 3, deleted={"gone.py"}), "")
+        md = RB.offdiff_block([f("nit", "gone.py", 3)], repo=REPO, head=HEAD,
+                              deleted={"gone.py"})
+        self.assertIn("`gone.py:3`", md)
+        self.assertNotIn("](https://github.com", md)
+
+    def test_paths_are_percent_encoded(self):
+        url = RB.permalink(REPO, HEAD, "src/my file#1.ts", 2)
+        self.assertEqual(url, f"https://github.com/{REPO}/blob/{HEAD}/"
+                              "src/my%20file%231.ts#L2")
+
+    def test_traversal_and_absolute_paths_are_not_linked(self):
+        for bad in ("../../etc/passwd", "/etc/passwd", "a/../../b", "https://evil/x",
+                    "\\\\server\\share"):
+            self.assertEqual(RB.permalink(REPO, HEAD, bad, 1), "", bad)
+
+    def test_a_dot_segment_is_normalised_away(self):
+        self.assertEqual(RB.permalink(REPO, HEAD, "./src/a.ts", 1),
+                         f"https://github.com/{REPO}/blob/{HEAD}/src/a.ts#L1")
+
+    def test_a_string_line_still_anchors_the_link(self):
+        self.assertTrue(RB.permalink(REPO, HEAD, "a.ts", "9").endswith("#L9"))
+
+    def test_a_boolean_line_is_not_line_one(self):
+        self.assertFalse(RB.permalink(REPO, HEAD, "a.ts", True).endswith("#L1"))
+
+
 if __name__ == "__main__":
     unittest.main()

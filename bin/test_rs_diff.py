@@ -179,8 +179,18 @@ class NotInThePrAtAll(unittest.TestCase):
     def test_bad_line_shapes(self):
         a = D.Anchors(self.FILES)
         self.assertFalse(a.can_anchor("a.py", None))
-        self.assertFalse(a.can_anchor("a.py", "2"))
         self.assertFalse(a.can_anchor("", 2))
+        self.assertFalse(a.can_anchor("a.py", "not a line"))
+        self.assertFalse(a.can_anchor("a.py", 0))
+        # `isinstance(True, int)` is True, so a boolean used to read as line 1.
+        self.assertFalse(a.can_anchor("a.py", True))
+
+    def test_a_digit_string_is_the_same_line_everywhere(self):
+        """The render path asked isinstance(line, int) and the post path asked line.isdigit(),
+        so a string "1" was shown as "in summary" and posted as an inline comment."""
+        a = D.Anchors(self.FILES)
+        self.assertTrue(a.can_anchor("a.py", "1"))
+        self.assertEqual(a.can_anchor("a.py", "1"), a.can_anchor("a.py", 1))
 
 
 class SuggestionRouting(unittest.TestCase):
@@ -213,3 +223,78 @@ class SuggestionRouting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FailedFullDiffFetch(unittest.TestCase):
+    """`gh pr diff` failing must not be reported as "this PR does not change that line".
+
+    Before the fix resolve_all() cleared `pending` regardless, so every patchless modified file
+    resolved to an empty set of commentable lines and the banner told the reviewer their
+    findings point outside the diff — which was false, and un-retryable for the server's life.
+    """
+
+    FILES = [{"filename": "big.html", "status": "modified", "additions": 300}]
+
+    def test_a_failed_fetch_leaves_the_file_unresolved(self):
+        a = D.Anchors(self.FILES, fetch_diff=lambda: None)
+        a.resolve_all()
+        self.assertEqual(a.unresolved(), {"big.html"})
+        self.assertTrue(a.error)
+
+    def test_unknown_is_not_false(self):
+        a = D.Anchors(self.FILES, fetch_diff=lambda: None)
+        self.assertIsNone(a.anchor_state("big.html", 12))
+        self.assertFalse(a.can_anchor("big.html", 12))      # the post path stays conservative
+
+    def test_a_retry_after_a_transient_failure_resolves(self):
+        answers = [None, "diff --git a/big.html b/big.html\n"
+                         "+++ b/big.html\n@@ -1,0 +1,2 @@\n+one\n+two\n"]
+        a = D.Anchors(self.FILES, fetch_diff=lambda: answers.pop(0))
+        self.assertIsNone(a.anchor_state("big.html", 2))
+        self.assertTrue(a.anchor_state("big.html", 2))
+        self.assertIsNone(a.error)
+
+    def test_a_raising_fetcher_is_data_not_a_crash(self):
+        def boom():
+            raise RuntimeError("gh exploded")
+        a = D.Anchors(self.FILES, fetch_diff=boom)
+        self.assertIsNone(a.anchor_state("big.html", 1))
+        self.assertIn("gh exploded", a.error)
+
+    def test_a_file_genuinely_outside_the_diff_is_still_a_firm_no(self):
+        a = D.Anchors(self.FILES, fetch_diff=lambda: None)
+        self.assertFalse(a.anchor_state("elsewhere.py", 3))
+
+
+class SubmoduleBumps(unittest.TestCase):
+    def test_subproject_commit_lines_are_not_commentable(self):
+        text = ("diff --git a/vendor/lib b/vendor/lib\n"
+                "index 1111111..2222222 160000\n"
+                "--- a/vendor/lib\n+++ b/vendor/lib\n"
+                "@@ -1 +1 @@\n"
+                "-Subproject commit 1111111111111111111111111111111111111111\n"
+                "+Subproject commit 2222222222222222222222222222222222222222\n")
+        self.assertEqual(D.parse_full_diff(text), {"vendor/lib": set()})
+
+
+class NormaliseLine(unittest.TestCase):
+    def test_norm_line(self):
+        self.assertEqual(D.norm_line(7), 7)
+        self.assertEqual(D.norm_line(" 7 "), 7)
+        self.assertIsNone(D.norm_line(True))
+        self.assertIsNone(D.norm_line(False))
+        self.assertIsNone(D.norm_line(0))
+        self.assertIsNone(D.norm_line(-3))
+        self.assertIsNone(D.norm_line("?"))
+        self.assertIsNone(D.norm_line(None))
+
+    def test_split_anchorable_emits_an_int_line(self):
+        inline, _ = D.split_anchorable([{"path": "a.py", "line": "2", "body": "x"}],
+                                       {"a.py": {2}})
+        self.assertEqual(inline[0]["line"], 2)
+
+
+class DeletedFilePermalinks(unittest.TestCase):
+    def test_anchors_records_deleted_paths(self):
+        a = D.Anchors([{"filename": "gone.py", "status": "removed"}])
+        self.assertEqual(a.deleted, {"gone.py"})

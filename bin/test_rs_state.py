@@ -4,6 +4,8 @@ status file's age each keep a run "reviewing"; only all three dead means "stalle
 Run: python3 -m unittest bin/test_rs_state.py"""
 import fcntl
 import os
+import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -121,3 +123,53 @@ class Probe(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NamedMarkers(unittest.TestCase):
+    """The QA job keeps its markers as qa.lock / qa.pid / qa.status in the shared PR dir, so
+    probe() has to be told the names — it used to be hardcoded to a review's user dir, which is
+    why the QA page trusted the flock alone and never polled."""
+
+    def setUp(self):
+        self.d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, True)
+
+    def test_probe_reads_prefixed_markers(self):
+        (self.d / "qa.status").write_text("building the QA guide")
+        p = S.probe(self.d, lock="qa.lock", pid="qa.pid", status="qa.status")
+        self.assertEqual(p["state"], S.REVIEWING)          # inside the startup grace
+        self.assertEqual(p["pid"], 0)
+
+    def test_an_old_status_with_no_lock_or_pid_is_stalled(self):
+        f = self.d / "qa.status"
+        f.write_text("building the QA guide")
+        os.utime(f, (0, time.time() - 10_000))
+        p = S.probe(self.d, lock="qa.lock", pid="qa.pid", status="qa.status")
+        self.assertEqual(p["state"], S.STALLED)
+
+
+class JobState(unittest.TestCase):
+    def test_a_dead_job_on_a_progress_status_is_a_failure(self):
+        state, why = S.job_state(False, "building the QA guide", has_output=False)
+        self.assertEqual(state, "failed")
+        self.assertIn("without reporting why", why)
+
+    def test_an_existing_guide_survives_a_failed_regenerate(self):
+        state, why = S.job_state(False, "failed: the agent exited 1", has_output=True)
+        self.assertEqual(state, "done")
+        self.assertIn("exited 1", why)
+
+    def test_terminal_states(self):
+        self.assertEqual(S.job_state(False, "done", True), ("done", ""))
+        self.assertEqual(S.job_state(False, "stopped", False), ("stopped", ""))
+        self.assertEqual(S.job_state(False, "", False), ("none", ""))
+        self.assertEqual(S.job_state(True, "", False), ("running", ""))
+
+    def test_job_alive_ignores_the_grace_once_the_status_is_terminal(self):
+        (self.dir / "qa.status").write_text("done")
+        self.assertFalse(S.job_alive(self.dir, "done", lock="qa.lock", pid="qa.pid",
+                                     status="qa.status"))
+
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, True)

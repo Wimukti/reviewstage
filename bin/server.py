@@ -830,6 +830,28 @@ def skill_path(target):
     return SKILLS_DIR / f"{target}.md"
 
 
+def skill_edit_target(user, raw_target):
+    """(target, who, error) for a Skills-page edit.
+
+    The Skills page renders a full editor for a per-repo override of the team default, posting
+    target="repo:<owner/name>" — and this used to resolve every non-"global" target to the
+    acting user's LOGIN. Saving a repo override therefore overwrote that person's own tuned
+    personal skill, under a green "Saved your skill" banner; the repo file was never created,
+    so run-review.sh never saw an override and suggestion_target could never return one; and
+    "Clear override" deleted the personal skill instead. The repo is validated against the
+    configured ones, because the target names a file path."""
+    raw = (raw_target or "").strip()
+    if raw == "global":
+        return "global", "the team default skill", ""
+    if raw.startswith(REPO_SKILL_PREFIX):
+        repo = raw[len(REPO_SKILL_PREFIX):].strip().strip("/")
+        if not repo_ok(repo):
+            return "", "", f"Unknown repository: {html.escape(repo[:80])}."
+        repo = P.canonical_repo(repo, REPOS)
+        return REPO_SKILL_PREFIX + repo, f"the team default for {repo}", ""
+    return user, "your skill", ""
+
+
 def skill_label(skill_id, viewer=""):
     """Human label for a recorded skill id: "global", a login, or "repo:<owner/name>" (also the
     slug form run-review.sh records: "repo:<owner>__<name>")."""
@@ -857,25 +879,69 @@ def user_skill(login):
     return read_skill(login)
 
 
-def save_skill(login, text):
+BUILTIN_GLOBAL_SKILL = BIN.parent / "skills" / "global-review.md"
+
+
+def builtin_global_skill():
+    """The shipped team-default skill — what bootstrap/entrypoint seed _global.md from."""
+    try:
+        return BUILTIN_GLOBAL_SKILL.read_text()
+    except OSError:
+        return ""
+
+
+def global_skill_edited():
+    """Has the team actually changed the shared skill, or is this still the shipped one?
+
+    hasGlobal is mere file existence and the installer seeds the file on first boot, so it says
+    "edited" about every fresh install. This compares the bytes."""
+    cur, builtin = read_skill("global"), builtin_global_skill()
+    if not cur:
+        return False
+    if not builtin:
+        return None                         # nothing to compare against: say nothing
+    return cur.strip() != builtin.strip()
+
+
+def save_skill(target, text):
     """Returns True if saved. An empty team default is refused (one person must not be able to
-    blank the skill everyone shares); an empty personal skill clears it back to the team default."""
+    blank the skill everyone shares); an empty personal or per-repo skill clears the override.
+
+    `target` is a login, "global", or "repo:<owner/name>" — the same vocabulary skill_path
+    speaks. Personal and per-repo skills are written 0600 like every other file under $ROOT
+    that holds someone's own work."""
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-    p = skill_path(login)
-    if text.strip():
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text)
+    p = skill_path(target)
+    with rs_learn.file_lock(p):
+        if text.strip():
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+            if target != "global":
+                with contextlib.suppress(OSError):
+                    os.chmod(p, 0o600)
+            return True
+        if target == "global":
+            return False                    # never blank the shared skill from an ordinary save
+        p.unlink(missing_ok=True)           # empty override => fall back down the chain
         return True
-    if login == "global":
-        return False                        # never blank the shared skill from an ordinary save
-    p.unlink(missing_ok=True)               # empty personal skill => fall back to the team default
-    return True
 
 
 def restore_global_skill():
-    """Revert the team default to the installed pr-review skill. Guarded behind a typed confirm
-    in the UI because it discards the team's edits for everyone."""
-    GLOBAL_SKILL_PATH.unlink(missing_ok=True)
+    """Write the shipped team-default skill back over _global.md.
+
+    It used to just unlink the file, which is a different thing entirely: runs then fell back
+    to the installed pr-review skill (a different 129-line document) while the editor showed
+    nothing, and the next container start re-seeded _global.md from the shipped file anyway —
+    so "Restore built-in" restored the wrong skill and then silently undid itself. Writing the
+    built-in back makes the state explicit and survives a restart."""
+    text = builtin_global_skill()
+    if not text.strip():
+        return False, ("The built-in team skill is not installed on this box "
+                       f"({BUILTIN_GLOBAL_SKILL}).")
+    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    with rs_learn.file_lock(GLOBAL_SKILL_PATH):
+        GLOBAL_SKILL_PATH.write_text(text)
+    return True, ""
 
 
 # --- Phase 5: skill audit trail (GitOps-on-save) ---------------------------------------------
@@ -894,20 +960,58 @@ def ensure_skills_repo():
         _skills_git("init", "-q")
         _skills_git("config", "user.email", "reviewstage@reviewstage.local")
         _skills_git("config", "user.name", "ReviewStage")
+    # A global `commit.gpgsign=true` on the host is enough to make every commit here fail, and
+    # nothing checked the return code — the audit trail was empty and the UI simply hid the
+    # history panel. This repo is local bookkeeping; it is never signed.
+    _skills_git("config", "commit.gpgsign", "false")
 
 
-def commit_skill_change(editor, summary):
-    """Commit whatever skill files just changed, attributing the edit to `editor`. No-op when
-    nothing changed. Never raises."""
+def commit_skill_change(editor, summary, paths=None):
+    """Commit the skill files that just changed, attributing the edit to `editor`.
+
+    Returns "" on success (or when there was nothing to commit) and the git failure otherwise —
+    callers surface it, because an audit trail that is a silent no-op is worse than none.
+    `paths` are the files this edit touched, relative to $ROOT/skills; committing only those
+    stops two people saving at the same moment from becoming one commit by one author."""
+    rels = [str(p) for p in (paths or [])] or ["-A"]
     try:
         ensure_skills_repo()
-        _skills_git("add", "-A")
-        if not _skills_git("status", "--porcelain").stdout.strip():
-            return
-        _skills_git("commit", "-q", "-m", summary,
-                    "--author", f"{editor} <{editor}@reviewstage.local>")
-    except Exception:
-        pass
+        add = _skills_git("add", *rels)
+        if add.returncode != 0:
+            return (add.stderr or "git add failed").strip().splitlines()[-1][:200]
+        st = _skills_git("status", "--porcelain", "--", *[r for r in rels if r != "-A"])
+        if not st.stdout.strip():
+            return ""
+        args = ["commit", "-q", "-m", summary,
+                "--author", f"{editor} <{editor}@reviewstage.local>"]
+        if rels != ["-A"]:
+            args += ["--", *rels]
+        r = _skills_git(*args)
+        if r.returncode != 0:
+            err = ((r.stderr or r.stdout or "git commit failed").strip().splitlines()
+                   or ["git commit failed"])[-1]
+            print(f"skill history not recorded: {err}", flush=True)
+            return err[:200]
+        return ""
+    except Exception as e:                  # noqa: BLE001 — a save must never die on git
+        print(f"skill history not recorded: {e}", flush=True)
+        return str(e)[:200]
+
+
+def skill_rel(target):
+    """The path inside $ROOT/skills that backs one skill target."""
+    try:
+        return str(skill_path(target).relative_to(SKILLS_DIR))
+    except ValueError:
+        return ""
+
+
+def history_warning(err):
+    """The banner fragment appended when the edit saved but the audit trail did not record it."""
+    if not err:
+        return ""
+    return (" <b>The change was saved but not recorded in the skill history</b> — git said: "
+            f"<code>{html.escape(err)}</code>.")
 
 
 def skill_history(n=5):
@@ -949,13 +1053,27 @@ def tidy_rule(rule):
 
 
 def add_skill_rule(text, rule):
-    """Append one tidied rule to a skill's managed Team-rules section (created if absent)."""
+    """Insert one tidied rule at the end of a skill's managed Team-rules SECTION.
+
+    The section is written last by us, but a skill is a document a human also edits: append at
+    the end of the file and a rule lands under whatever section happens to come after Team
+    rules, claiming to be a team rule while filed somewhere else. Insert before the next
+    heading instead."""
     r = tidy_rule(rule)
     if not r:
         return text
     bullet = f"- {r}"
     if RULES_MARKER in text:
-        return text.rstrip() + f"\n{bullet}\n"      # the section is kept last, so append at end
+        head, tail = text.split(RULES_MARKER, 1)
+        lines = tail.splitlines(keepends=True)
+        end = len(lines)
+        for i, ln in enumerate(lines):
+            if i and ln.lstrip().startswith("#"):
+                end = i
+                break
+        body = "".join(lines[:end]).rstrip("\n")
+        rest = "".join(lines[end:])
+        return f"{head}{RULES_MARKER}{body}\n{bullet}\n" + (f"\n{rest}" if rest.strip() else "")
     base = text.rstrip()
     head = (base + "\n\n") if base else ""
     return f"{head}{RULES_MARKER}\n\n{RULES_INTRO}\n\n{bullet}\n"
@@ -1010,15 +1128,26 @@ def _parse_proposal(text):
     return rule[:300], why[:300]
 
 
-def draft_proposal(user, cluster):
-    """(rule, rationale, error) — one Claude call on the acting user's account, then cached."""
+def draft_proposal(user, cluster, retry=False):
+    """(rule, rationale, error) — one Claude call on the acting user's account, then cached.
+
+    A failure is cached too. Viewing the Skills page used to spend the user's Claude quota
+    with no consent — up to two drafts on every single load — and because failures were not
+    cached, a bad token meant a fresh 90-second subprocess per load, per cluster, with the
+    error only ever reaching stdout. Drafting now happens when someone asks for it, and a
+    remembered failure is shown rather than silently retried."""
     cached = rs_learn.proposals().get(cluster["signature"])
     if cached and cached.get("rule"):
         return cached["rule"], cached.get("rationale", ""), None
+    if cached and cached.get("error") and not retry:
+        return "", "", cached["error"]
+    sig = cluster["signature"]
     tok = user_claude_token(user)
     if not tok:
         return "", "", "Connect your Claude account to draft rules from your dropped findings."
     existing = rs_learn.parse_rules(read_skill(suggestion_target(cluster)), RULES_MARKER)
+    fail = lambda m: (rs_learn.save_proposal(sig, "", "", "haiku", error=m),  # noqa: E731
+                      ("", "", m))[1]
     try:
         r = subprocess.run(["claude", "-p", _house_prompt(cluster, existing),
                             "--max-turns", "1", "--model", "haiku"],
@@ -1026,44 +1155,48 @@ def draft_proposal(user, cluster):
                            stdin=subprocess.DEVNULL,
                            env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": tok})
     except FileNotFoundError:
-        return "", "", "claude is not installed on this box."
+        return fail("claude is not installed on this box.")
     except subprocess.TimeoutExpired:
-        return "", "", "Claude did not answer in time — reopen the page to retry."
+        return fail("Claude did not answer within 90 seconds.")
     if r.returncode != 0:
         tail = ((r.stderr or r.stdout or "error").strip().splitlines() or ["error"])[-1]
-        return "", "", tail[:200]
+        return fail(tail[:200])
     rule, why = _parse_proposal(r.stdout)
     if not rule:
-        return "", "", "No rule was produced — reopen the page to retry."
-    rs_learn.save_proposal(cluster["signature"], rule, why, "haiku")
+        return fail("Claude replied, but not with a rule.")
+    rs_learn.save_proposal(sig, rule, why, "haiku")
     return rule, why, None
 
 
-def _draft_missing(user, pending):
-    """Draft up to two missing proposals in the background so the Skills page never blocks."""
-    for cluster in pending[:2]:
-        sig = cluster["signature"]
+def draft_one(user, sig):
+    """Draft the proposal for one cluster on request. (cluster, error)."""
+    cluster = find_cluster(sig)
+    if not cluster:
+        return None, "That suggestion is no longer current — reload the page."
+    with _PROPOSAL_LOCK:
+        if sig in _PROPOSAL_DRAFTING:
+            return cluster, "A draft for this one is already running."
+        _PROPOSAL_DRAFTING.add(sig)
+    try:
+        _rule, _why, err = draft_proposal(user, cluster, retry=True)
+    finally:
         with _PROPOSAL_LOCK:
-            if sig in _PROPOSAL_DRAFTING:
-                continue
-            _PROPOSAL_DRAFTING.add(sig)
-        try:
-            _, _, err = draft_proposal(user, cluster)
-            if err:
-                print(f"rule proposal {sig} failed: {err}", flush=True)
-        finally:
-            with _PROPOSAL_LOCK:
-                _PROPOSAL_DRAFTING.discard(sig)
+            _PROPOSAL_DRAFTING.discard(sig)
+    return cluster, err
 
 
-def rule_suggestions(user, draft=True):
+def rule_suggestions(user, draft=False):
     """Every qualifying cluster that is not already a rule, with its proposal when we have one.
 
     A cluster already covered by a Team rule is not a suggestion — the rule carries it. Dismissed
-    ones stay in the list, flagged, so the page can offer 'Show dismissed' with an Undo."""
+    ones stay in the list, flagged, so the page can offer 'Show dismissed' with an Undo.
+
+    `draft` is accepted for callers that still pass it and is deliberately ignored: nothing here
+    spends the viewer's Claude quota. A cluster with no proposal is returned with needsDraft so
+    the page can offer a button, and a remembered failure comes back as draftError."""
     proms, dis, props = rs_learn.promotions(), rs_learn.dismissals(), rs_learn.proposals()
     connected = claude_connected(user)
-    out, pending = [], []
+    out = []
     for outcome in ("dropped", "edited"):
         for c in rs_learn.clusters(outcome):
             sig = c["signature"]
@@ -1079,33 +1212,40 @@ def rule_suggestions(user, draft=True):
                     "targetLabel": ("the team default" if target == "global"
                                     else f"the team default for {target[len(REPO_SKILL_PREFIX):]}"),
                     "rule": p.get("rule", ""), "rationale": p.get("rationale", ""),
+                    "draftError": p.get("error", ""),
+                    "drafting": sig in _PROPOSAL_DRAFTING,
                     "dismissed": bool(d), "dismissedBy": (d or {}).get("by", ""),
                     "connected": connected}
-            if not item["rule"] and not d:
-                item["pending"] = True
-                pending.append(c)
+            item["needsDraft"] = not item["rule"] and not d
+            if item["needsDraft"]:
+                item["pending"] = True         # kept for the shipped UI's spelling
             out.append(item)
-    if draft and pending and connected:
-        threading.Thread(target=_draft_missing, args=(user, pending), daemon=True).start()
     out.sort(key=lambda s: (s["dismissed"], not s["rule"], -s["count"]))
     return out
 
 
 def accept_suggestion(user, cluster, rule):
-    """Land a proposed rule through the same quick-add path a typed rule uses."""
+    """Land a proposed rule through the same quick-add path a typed rule uses.
+
+    Serialised on the target skill file: two accepts landing together used to read the same
+    skill, each append their own rule and each write the whole file back — one rule was lost
+    while BOTH clusters were marked promoted, so the lost one could never be suggested again."""
     target = suggestion_target(cluster)
     who = ("the team default skill" if target == "global"
            else f"the team default for {target[len(REPO_SKILL_PREFIX):]}")
-    new_text = add_skill_rule(read_skill(target), rule)
-    if len(new_text) > 40000:
-        return None, "That skill is already very large (>40k chars). Trim it first."
-    save_skill(target, new_text)
-    commit_skill_change(user, f"Promoted a rule to {who} from {cluster['count']} dropped "
-                              f"findings across {cluster['prs']} PRs: {tidy_rule(rule)}")
-    rs_learn.promote(cluster["signature"], cluster, user, tidy_rule(rule), target)
+    path = skill_path(target)
+    with rs_learn.file_lock(Path(str(path) + ".accept")):
+        new_text = add_skill_rule(read_skill(target), rule)
+        if len(new_text) > 40000:
+            return None, "That skill is already very large (>40k chars). Trim it first."
+        save_skill(target, new_text)
+        rs_learn.promote(cluster["signature"], cluster, user, tidy_rule(rule), target)
+    g = commit_skill_change(user, f"Promoted a rule to {who} from {cluster['count']} dropped "
+                                  f"findings across {cluster['prs']} PRs: {tidy_rule(rule)}",
+                            [skill_rel(target)])
     print(f"rule promoted to {target} by {user}: {tidy_rule(rule)!r} "
           f"({cluster['count']} findings)", flush=True)
-    return who, None
+    return who + history_warning(g), None
 
 
 def find_cluster(sig):
@@ -1774,7 +1914,11 @@ def set_auto_profile(repo, on):
 
 
 def profile_tree_files(repo):
-    """Tracked files of the base clone (for validating an edited profile), or None without one."""
+    """Tracked files of the base clone (for validating an edited profile), or None without one.
+
+    None means "the paths in this edit were NOT checked against anything" — the caller must say
+    so rather than saving invented globs as ground truth, because the editor's own hint tells
+    the person that paths matching nothing are dropped."""
     base = P.base_dir(repo)
     if not (base / ".git").exists():
         return None
@@ -1786,18 +1930,36 @@ def profile_tree_files(repo):
     return [f for f in r.stdout.splitlines() if f] if r.returncode == 0 else None
 
 
+def profile_staleness(repo, prof):
+    """How far `prof` has drifted from the base clone's HEAD, or None when there is no clone."""
+    base = P.base_dir(repo)
+    if not (base / ".git").exists():
+        return None
+    try:
+        return rs_profile.staleness(prof, base, profile_tree_files(repo))
+    except OSError:
+        return None
+
+
 def profile_view(repo, user):
     """Everything the Skills page shows for one repository's profile."""
     exp, sig = mint("profile", user, ACTION_TTL)
     d = rs_profile.profile_dir(repo)
-    prof = rs_profile.load_profile(repo)
+    prof, invalid = rs_profile.read_profile(repo)
     st, failure = profile_state(repo)
     out = {"repo": repo, "state": st, "token": {"exp": exp, "sig": sig},
            "connected": claude_connected(user), "isAdmin": is_admin(user),
            "autoProfile": auto_profile_map().get(P.repo_slug(repo), False),
            "counts": rs_profile.counts(prof) if prof else None,
+           "sections": rs_profile.section_counts(prof) if prof else None,
+           # A base clone is what path validation checks against; without one an edit cannot be
+           # validated at all, and the page has to say so rather than imply it was.
+           "canValidate": profile_tree_files(repo) is not None,
            "versions": rs_profile.versions(repo), "md": "", "json": prof, "last": None}
+    if invalid:
+        out["invalid"] = invalid
     if prof:
+        out["stale"] = profile_staleness(repo, prof)
         try:
             out["md"] = (d / "profile.md").read_text()
         except OSError:
@@ -1831,26 +1993,47 @@ def profile_view(repo, user):
 
 
 def save_profile_edit(repo, user, body):
-    """Apply a dashboard edit: markdown (parsed back) or a JSON profile. Validates every path
-    against the base clone's tree when one is on disk, versions the previous file. Returns an
-    error string or ""."""
+    """Apply a dashboard edit: markdown (parsed back) or a JSON profile.
+
+    Returns (error, info). `info` carries what the editor needs to be told: the per-section
+    counts that were saved, which globs were dropped, any heading the markdown parser did not
+    recognise, and whether the paths could be validated at all. An edit that empties a section
+    which was not empty is refused unless the body carries confirm_empty — the markdown round
+    trip can lose a whole section to one retitled heading, and it used to save silently."""
+    notes = {}
     if isinstance(body.get("json"), dict):
         raw = body["json"]
     elif isinstance(body.get("md"), str):
-        raw = rs_profile.from_markdown(body["md"])
+        raw, notes = rs_profile.from_markdown(body["md"], report=True)
     else:
-        return "Send `md` or `json`."
+        return "Send `md` or `json`.", {}
     prev = rs_profile.load_profile(repo) or {}
-    clean, dropped, err = rs_profile.validate_profile(raw, profile_tree_files(repo))
+    files = profile_tree_files(repo)
+    validated = files is not None
+    confirm = bool(body.get("confirm_empty"))
+    clean, dropped, err = rs_profile.validate_profile(
+        raw, files, prev=prev, allow_emptying=confirm or not prev)
     if err:
-        return f"Not saved: {err}."
+        info = dict(notes)
+        info["needsConfirm"] = "empties a section" in err
+        return f"Not saved: {err}.", info
     meta = dict(prev.get("meta") or {})
     meta.update({"edited_at": int(time.time()), "edited_by": user,
-                 "dropped_globs": dropped})
+                 "dropped_globs": dropped, "validated": validated})
+    if not validated:
+        # No base clone: nothing checked these globs against a real tree, and the profile is
+        # injected into reviews as ground truth. Say so on the record instead of implying the
+        # hint about non-matching paths being dropped applied.
+        meta["validated_note"] = "no base clone on disk when this edit was saved"
     rs_profile.save_profile(repo, clean, meta)
     print(f"profile edited by {user} for {repo}: {rs_profile.counts(clean)}"
-          + (f", dropped {dropped}" if dropped else ""), flush=True)
-    return ""
+          + (f", dropped {dropped}" if dropped else "")
+          + ("" if validated else ", paths NOT validated (no base clone)"), flush=True)
+    info = dict(notes)
+    info.update({"validated": validated, "dropped": dropped,
+                 "sections": rs_profile.section_counts(clean),
+                 "capped": (clean.get("meta") or {}).get("capped_critical_paths", 0)})
+    return "", info
 
 
 def reconnect_banner(login):
@@ -3196,7 +3379,12 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/learnings":
             return self.api_json(self.api_learnings(user))
         if route == "/api/rollup":
-            rf = (q.get("repo") or [""])[0].strip()
+            # The filter names a repository, so validate it rather than passing an arbitrary
+            # string through to the walk (and so a typo is an error, not an empty dashboard).
+            rf = (q.get("repo") or [""])[0].strip().strip("/")
+            if rf and not repo_ok(rf):
+                return self.api_json({"error": f"Unknown repository: {rf}",
+                                      "repos": all_repos()}, 400)
             return self.api_json(rs_rollup.compute(STATE, ROOT, repo=rf or None))
         if route == "/api/how":
             return self.api_json({"images": rs_howimg.IMG, "brand": BRAND,
@@ -3451,6 +3639,11 @@ class Handler(BaseHTTPRequestHandler):
             "token": {"exp": exp, "sig": sig},
             "user": user, "choice": choice, "effLabel": eff_lbl,
             "hasMySkill": bool(read_skill(user)), "hasGlobal": bool(read_skill("global")),
+            # hasGlobal is mere file existence and bootstrap seeds it, so it says "edited" about
+            # every fresh install. globalEdited compares the bytes against the shipped skill;
+            # None when the shipped file is not on this box and there is nothing to compare.
+            "globalEdited": global_skill_edited(),
+            "builtinAvailable": bool(builtin_global_skill().strip()),
             "teamSkill": read_skill("global"), "mySkill": read_skill(user),
             "depths": {lv: {"name": EFFORT[lv][0], "meta": EFFORT[lv][1],
                             "content": effort_depth(lv), "edited": effort_edited(lv)}
@@ -3469,8 +3662,24 @@ class Handler(BaseHTTPRequestHandler):
         quick-add box they would otherwise have typed the rule into by hand."""
         sig = str(body.get("signature") or "")
         action = str(body.get("action") or "")
-        if action not in ("accept", "dismiss", "undismiss"):
+        if action not in ("accept", "dismiss", "undismiss", "draft"):
             return {"error": "Unknown action."}, 400
+        if action == "draft":
+            # Drafting costs the acting user's Claude quota, so it happens on a click and never
+            # on a page load. Errors are cached and rendered rather than retried per render.
+            if not claude_connected(user):
+                return {"error": "Connect your Claude account in Integrations to draft a "
+                                 "rule."}, 400
+            _cluster, err = draft_one(user, sig)
+            if err:
+                return {**self.api_skills(user),
+                        "bannerHtml": "<div class='banner err'><span>\U0001f6ab</span><div>"
+                                      f"Could not draft a rule: {html.escape(err)}</div></div>"}, \
+                    200
+            return {**self.api_skills(user),
+                    "bannerHtml": "<div class='banner ok'><span>✓</span><div>Drafted — "
+                                  "review the wording, then Accept or Dismiss."
+                                  "</div></div>"}, 200
         if action == "undismiss":
             rs_learn.undismiss(sig)
             return {**self.api_skills(user),
@@ -3590,6 +3799,10 @@ class Handler(BaseHTTPRequestHandler):
                     "repo": r.get("repo", ""),
                     "editedGist": r.get("edited_gist", "") if o == "edited" else ""}
         return {"counts": rs_learn.counts(), "repos": all_repos(),
+                # How many rows of each outcome a review actually reads back. The page states
+                # these numbers to the user; they are data, not something to hardcode.
+                "windows": rs_learn.windows(),
+                "findingsCap": rs_learn.CAP,
                 "clusters": rs_learn.cluster_status(),
                 "promoted": rs_learn.promoted_count(),
                 "rows": [item(r) for r in rs_learn.recent(80)]}
@@ -4144,9 +4357,6 @@ class Handler(BaseHTTPRequestHandler):
         """Apply a skill/effort-depth edit and return a banner HTML string (reused by the HTML
         page and the JSON API). Assumes the settings token is already verified."""
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
-        # Which skill this edits: the team default (shared) or the user's own.
-        target = "global" if one("target") == "global" else user
-        who = ("the team default skill" if target == "global" else "your skill")
         err_b = lambda m: f"<div class='banner err'><span>🚫</span><div>{m}</div></div>"  # noqa
         ok = lambda m: f"<div class='banner ok'><span>✓</span><div>{m}</div></div>"  # noqa
 
@@ -4157,10 +4367,13 @@ class Handler(BaseHTTPRequestHandler):
             if level not in EFFORT:
                 return err_b("Unknown depth level.")
             name = EFFORT[level][0]
+            rel = [str(effort_depth_path(level).relative_to(SKILLS_DIR))]
             if step == "reset":
                 effort_depth_path(level).unlink(missing_ok=True)
-                commit_skill_change(user, f"Reset {name} review depth to the built-in default")
-                return ok(f"Reset the <b>{name}</b> depth to the built-in default.")
+                g = commit_skill_change(user, f"Reset {name} review depth to the built-in default",
+                                        rel)
+                return ok(f"Reset the <b>{name}</b> depth to the built-in default."
+                          + history_warning(g))
             text = one("skill")
             if not text.strip():
                 return err_b("The depth instruction can't be empty. Use Reset to restore the "
@@ -4169,9 +4382,17 @@ class Handler(BaseHTTPRequestHandler):
                 return err_b("That's very large (>20k chars). Trim it.")
             SKILLS_DIR.mkdir(parents=True, exist_ok=True)
             effort_depth_path(level).write_text(text)
-            commit_skill_change(user, f"Edited the {name} review depth")
+            g = commit_skill_change(user, f"Edited the {name} review depth", rel)
             print(f"effort depth saved: {level} ({len(text)} chars)", flush=True)
-            return ok(f"Saved the <b>{name}</b> review depth — it applies to every {name} review.")
+            return ok(f"Saved the <b>{name}</b> review depth — it applies to every {name} review."
+                      + history_warning(g))
+
+        # Which skill this edits: the team default (shared), a per-repo override of it, or the
+        # acting user's own. A bad repo is refused rather than silently rewritten to the user's.
+        target, who, terr = skill_edit_target(user, tgt)
+        if terr:
+            return err_b(terr)
+        rel = [skill_rel(target)]
 
         # Which skill runs my reviews — my own, or the shared team default.
         if step == "use":
@@ -4187,31 +4408,45 @@ class Handler(BaseHTTPRequestHandler):
             if len(new_text) > 40000:
                 return err_b("That skill is already very large (>40k chars). Trim it first.")
             save_skill(target, new_text)
-            commit_skill_change(user, f"Added a rule to {who}: {tidy_rule(rule)}")
+            g = commit_skill_change(user, f"Added a rule to {who}: {tidy_rule(rule)}", rel)
             print(f"skill rule added to {target}: {tidy_rule(rule)!r}", flush=True)
             return ok(f"Added to {who} — ReviewStage will apply it on every review: "
-                      f"<b>{html.escape(tidy_rule(rule))}</b>")
+                      f"<b>{html.escape(tidy_rule(rule))}</b>" + history_warning(g))
 
         # The team default is shared — restoring the built-in wipes everyone's edits, so it takes
-        # a typed confirmation and lives on its own step. A plain "reset" only clears a personal skill.
+        # a typed confirmation and lives on its own step. A plain "reset" only clears an override.
         if step == "restore":
             if target != "global":
                 return err_b("Nothing to restore.")
             if one("confirm").strip().upper() != "RESTORE":
                 return err_b("Type RESTORE to confirm — this discards the team's edits for "
                              "everyone.")
-            restore_global_skill()
-            commit_skill_change(user, "Restored the team default to the built-in review skill")
-            print("team default skill restored to installed default", flush=True)
-            return ok("Team default restored to the built-in review skill.")
+            done, why = restore_global_skill()
+            if not done:
+                return err_b(html.escape(why))
+            g = commit_skill_change(user, "Restored the team default to the built-in review "
+                                          "skill", rel)
+            print("team default skill restored to the built-in review skill", flush=True)
+            return ok("Team default restored to the built-in review skill — it is written back "
+                      "to the file, so it survives a restart." + history_warning(g))
 
         if step == "reset":
             if target == "global":
                 return err_b("The team default can't be reset here — use “Restore built-in” "
                              "with confirmation.")
+            if target.startswith(REPO_SKILL_PREFIX):
+                # Unlink the repo file so reviews of that repo fall back down the chain
+                # (personal, then the team default). This used to delete the personal skill.
+                if not read_skill(target):
+                    return err_b(f"There is no override to clear for {who}.")
+                save_skill(target, "")
+                g = commit_skill_change(user, f"Cleared {who}", rel)
+                return ok(f"Cleared {who} — reviews of that repository use the team default "
+                          "again." + history_warning(g))
             save_skill(user, "")
-            commit_skill_change(user, "Cleared a personal skill")
-            return ok("Cleared your skill — your reviews use the team default now.")
+            g = commit_skill_change(user, "Cleared a personal skill", rel)
+            return ok("Cleared your skill — your reviews use the team default now."
+                      + history_warning(g))
 
         text = one("skill")
         if target == "global" and not text.strip():
@@ -4220,9 +4455,10 @@ class Handler(BaseHTTPRequestHandler):
         if len(text) > 40000:
             return err_b("That skill is very large (>40k chars). Trim it and try again.")
         save_skill(target, text)
-        commit_skill_change(user, f"Edited {who}")
+        g = commit_skill_change(user, f"Edited {who}", rel)
         print(f"skill saved: {target} ({len(text)} chars)", flush=True)
-        return ok(f"Saved {who} — reviews now use it (with ReviewStage's output format appended).")
+        return ok(f"Saved {who} — reviews now use it (with ReviewStage's output format "
+                  "appended)." + history_warning(g))
 
     def _settings_result(self, user, form):
         """Save the Slack ID, Discord ID and/or replace the GitHub PAT → banner HTML. Settings
@@ -4373,6 +4609,20 @@ class Handler(BaseHTTPRequestHandler):
         repo, err = resolve_repo((q.get("repo") or [""])[0])
         if err:
             return self.api_json({"error": err, "repos": all_repos()}, 400)
+        # ?version=<ts> reads one of the earlier profiles the page already counts. They were
+        # advertised in the UI and unreachable: there was no route that could open one.
+        v = (q.get("version") or [""])[0].strip()
+        if v:
+            if not v.isdigit():
+                return self.api_json({"error": "Bad version."}, 400)
+            prof, verr = rs_profile.load_version(repo, int(v))
+            if verr:
+                return self.api_json({"error": verr}, 404)
+            return self.api_json({**profile_view(repo, user), "versionView": True,
+                                  "ts": int(v), "json": prof,
+                                  "md": rs_profile.to_markdown(prof),
+                                  "counts": rs_profile.counts(prof),
+                                  "sections": rs_profile.section_counts(prof)})
         return self.api_json(profile_view(repo, user))
 
     def api_profile_post(self, route, body, user):
@@ -4385,13 +4635,21 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/profile/auto":
             if err := verify("profile-auto", repo, exp, sig):
                 return self.api_json({"error": err}, 403)
+            # `accepted` is the unambiguous bit the poller needs: it advances its tree
+            # fingerprint before this call answers, so a skipped auto-profile made the next
+            # check see no drift from the NEW baseline and the re-profile never ran again.
+            # accepted=false means "I did not take this job — keep your old fingerprint".
             admin = rs_settings.resolve_admin(load_users(), REVIEWER, modify_users)
             if not (admin and claude_connected(admin)):
                 print(f"auto-profile skipped for {repo}: admin has no connected Claude account",
                       flush=True)
-                return self.api_json({"ok": False, "skipped": "admin has no connected Claude "
-                                                              "account"})
-            return self.api_json({"ok": True, "started": self._spawn_profile(repo, admin)})
+                return self.api_json({"ok": False, "accepted": False, "started": False,
+                                      "skipped": "admin has no connected Claude account"})
+            started = self._spawn_profile(repo, admin)
+            if not started:
+                return self.api_json({"ok": True, "accepted": False, "started": False,
+                                      "skipped": "a profile build is already running"})
+            return self.api_json({"ok": True, "accepted": True, "started": True})
         if not user:
             return self.api_json({"error": "unauthorized"}, 401)
         if err := verify("profile", user, exp, sig):
@@ -4430,13 +4688,45 @@ class Handler(BaseHTTPRequestHandler):
             out["bannerHtml"] = ok("Auto re-profiling " + ("on" if body["auto_profile"] else "off")
                                    + f" for <code>{html.escape(repo)}</code>.")
             return self.api_json(out)
-        if err := save_profile_edit(repo, user, body):
-            return self.api_json({"error": err}, 400)
+        if "restore_version" in body:
+            ts = str(body.get("restore_version") or "")
+            if not ts.isdigit():
+                return self.api_json({"error": "Bad version."}, 400)
+            prof, verr = rs_profile.load_version(repo, int(ts))
+            if verr:
+                return self.api_json({"error": verr}, 404)
+            err, info = save_profile_edit(repo, user, {"json": prof, "confirm_empty": True})
+            if err:
+                return self.api_json({"error": err, **info}, 400)
+            out = profile_view(repo, user)
+            out["bannerHtml"] = ok(f"Restored the profile saved {fmt_date(int(ts))} for "
+                                   f"<code>{html.escape(repo)}</code>.")
+            return self.api_json(out)
+        err, info = save_profile_edit(repo, user, body)
+        if err:
+            return self.api_json({"error": err, **info}, 400)
         out = profile_view(repo, user)
+        out.update(info)
         c = out.get("counts") or {}
+        extra = ""
+        if info.get("unknownHeadings"):
+            names = ", ".join(html.escape(h) for h in info["unknownHeadings"])
+            extra += (f" <b>Unrecognised heading(s) ignored:</b> {names} — anything under them "
+                      "was not saved.")
+        if info.get("dropped"):
+            extra += (" Dropped path(s) matching nothing, or most of the tree: "
+                      + ", ".join(f"<code>{html.escape(g)}</code>" for g in info["dropped"]) + ".")
+        if info.get("capped"):
+            extra += f" {info['capped']} critical path(s) over the cap were not stored."
+        if not info.get("validated"):
+            extra += (" <b>Paths were not validated</b> — there is no clone of this repository "
+                      "on the box yet, so nothing checked these globs against a real tree.")
+        s = info.get("sections") or {}
+        counts = ", ".join(f"{s.get(k, 0)} {k.replace('_', ' ')}"
+                           for k in rs_profile.SECTIONS)
         out["bannerHtml"] = ok(f"Saved the profile for <code>{html.escape(repo)}</code> — "
-                               f"{c.get('critical', 0)} critical paths. Reviews pick it up on "
-                               "their next run.")
+                               f"{c.get('critical', 0)} critical paths ({counts}). Reviews pick "
+                               "it up on their next run." + extra)
         return self.api_json(out)
 
     # --- QA guides ---------------------------------------------------------------------------

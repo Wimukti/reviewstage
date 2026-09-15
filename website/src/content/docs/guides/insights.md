@@ -49,9 +49,11 @@ different populations.
   clicking Post decides nothing on the pull request. Those decisions *are* recorded — they are
   a real human judgement, and the learnings loop and the rule suggestions use them — but they
   are flagged `dry` and excluded from the keep rate, the verbatim rate, the per-skill scores,
-  every outcome total and the per-day series. They are reported separately as `dryDecisions`.
-  A two-week pilot on the shipped default therefore shows no keep rate rather than a keep rate
-  about reviews that never happened.
+  every outcome total and the per-day series. They are reported separately as `dryDecisions`, and
+  the page says so: when there are any, a note above the tiles names `DRY_RUN=1`, says the
+  decisions are in none of the rates below, and links to where they are listed. A two-week
+  pilot on the shipped default therefore shows no keep rate rather than a keep rate about
+  reviews that never happened.
 - **Minimum sample.** Below **20** scored decisions no rate is shown at all — one kept finding
   is not "100%". The same floor governs the Insights tile and the per-skill table, and the API
   publishes it, so no surface invents its own.
@@ -105,6 +107,11 @@ Both sides of the comparison agree, which they did not when the buckets were loc
 walked back in fixed day steps — every daylight-saving change used to knock the generated keys
 an hour off the stored ones and empty the chart. The series is 90 days long, which is also the
 maximum range.
+
+The last bar is **today**, and today is always a part-day, so it is drawn hatched with a caption
+saying so — otherwise every chart ends on a dip that reads as a slowdown. The page decides that
+on each point's `ts`, the bucket key the server sends, not on the formatted label beside it: a
+rollup whose series stops short of today still draws a solid last bar.
 
 ## Panels
 

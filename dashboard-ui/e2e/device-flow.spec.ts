@@ -15,7 +15,8 @@ const START = {
 
 function sessionCookieHeader() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
-  const sig = createHmac("sha256", SECRET).update(`session:${USER}:${exp}`).digest("hex");
+  // The trailing 0 is the credential epoch, now inside the HMAC (server.py session_sig).
+  const sig = createHmac("sha256", SECRET).update(`session:${USER}:${exp}:0`).digest("hex");
   return `rs_session=${USER}:${exp}:${sig}; Path=/; HttpOnly; SameSite=Lax`;
 }
 

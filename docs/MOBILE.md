@@ -119,8 +119,9 @@ keep in the keychain behind biometrics. Hence **device tokens**.
 2. The server runs the existing GitHub OAuth (or the token paste) exactly as for the web and
    sets the normal session cookie.
 3. With that session, the in-app page calls `POST /api/device-token` (name from the OS, e.g.
-   "Wimukthi's iPhone"). The server mints an opaque token, stores **only its SHA-256 hash** in
-   `users.json`, and returns the plaintext once.
+   "Wimukthi's iPhone"). The server mints an opaque token, stores **only a keyed SHA-256 hash**
+   of it in `users.json` (keyed on `RS_SECRET` and the user's credential epoch, so rotating the
+   secret or using *Sign out everywhere* invalidates it), and returns the plaintext once.
 4. The page hands the token back to the app through the custom scheme
    (`reviewstage://auth?token=...&server=...`); the in-app browser closes. The app stores it in
    the keychain, optionally gated by Face ID / fingerprint.
@@ -142,13 +143,15 @@ handlers in `bin/server.py`; deviations from the original spec are listed after 
 - `POST /api/device-token` — session-cookie auth only (a bearer may not mint another bearer).
   Body `{ "name": str }`. Response `{ "token": str, "id": str, "created": int }`. Token is
   32 random bytes, base64url; storage is
-  `users[login]["devices"] = { sha256_hex: { "id", "name", "created", "last_seen" } }`.
+  `users[login]["devices"] = { keyed_sha256_hex: { "id", "name", "created", "last_seen" } }`,
+  where the key is `sha256(RS_SECRET:device:<login>:<epoch>)` — see `rs_devices.hash_token`.
   Cap at 10 devices per user; oldest is evicted with a warning in the response.
 - `GET /api/devices` — list for the signed-in user: `[{ id, name, created, last_seen,
   current: bool }]` (never the hash or token).
 - `POST /api/devices/revoke` — `{ "id": str }`, cookie or bearer auth; a device may revoke
   itself. Signing out on the web (`/logout`) does not revoke devices; a "Sign out everywhere"
-  button in Settings revokes all.
+  button in Settings revokes all of them **and** every session cookie, by bumping the user's
+  epoch (the browser that clicked is re-issued a cookie under the new one).
 - Token lifetime: **180 days since last use**, sliding; the poller's nightly pass drops expired
   hashes. Tokens are never logged; `users.json` stays `chmod 600` as today.
 - `/login?device=1` — the existing login page with one extra step after success: call

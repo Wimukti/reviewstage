@@ -408,7 +408,10 @@ export const TOUR_KEY = "reviewstage_tour";
 // The signed session cookie for USER, the shape Playwright's storageState wants.
 export function sessionCookie() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
-  const sig = createHmac("sha256", SECRET).update(`session:${USER}:${exp}`).digest("hex");
+  // The trailing 0 is the user's credential epoch (server.py session_sig): it is inside the
+  // HMAC so that "Sign out everywhere" can invalidate outstanding cookies. The fixture user
+  // has never bumped it.
+  const sig = createHmac("sha256", SECRET).update(`session:${USER}:${exp}:0`).digest("hex");
   return {
     name: "rs_session",
     value: `${USER}:${exp}:${sig}`,

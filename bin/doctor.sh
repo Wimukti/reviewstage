@@ -162,7 +162,18 @@ if [ -n "${PUBLIC_URL:-}" ]; then
   if [ "$code" = 200 ]; then pass "PUBLIC_URL reachable ($PUBLIC_URL)"
   else warn "PUBLIC_URL ${PUBLIC_URL%/}/health returned '${code:-no response}' from here (fine if it only resolves from outside)"; fi
   case "$PUBLIC_URL" in
-    http://localhost*|http://127.0.0.1*) ;;
+    http://localhost*|http://127.0.0.1*)
+      # The container entrypoint writes http://localhost:PORT when nobody set PUBLIC_URL. That
+      # is fine on a laptop and wrong everywhere else: it drops the Secure cookie flag, and
+      # /device hands a phone an address that resolves to the phone.
+      remote_addr=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | head -1)
+      if [ "${RS_BIND:-127.0.0.1}" != "127.0.0.1" ] && [ -n "$remote_addr" ]; then
+        warn "PUBLIC_URL is the localhost default ($PUBLIC_URL) on a box reachable from outside (RS_BIND=$RS_BIND, address $remote_addr)"
+        note "set PUBLIC_URL to the https:// URL people actually use — otherwise cookies are issued without Secure and /device pairs phones to localhost"
+      else
+        note "PUBLIC_URL is the localhost default — correct for a local install only"
+      fi
+      ;;
     http://*) warn "PUBLIC_URL is plain http on a non-local host — session cookies and tokens travel unencrypted";;
   esac
 else

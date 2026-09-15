@@ -78,9 +78,10 @@ To recover:
 1. Sign in as the service user, re-clone this repo.
 2. Sign Claude Code back in (`claude`, bare).
 3. Re-run `bootstrap.sh`, paste the two secrets, re-run it again.
-4. `RS_SECRET` is regenerated, so **every outstanding Slack link is now invalid**, and every
-   stored user token is undecryptable — teammates sign in again. Clear `seen` (see above) to
-   re-announce your open queue.
+4. `RS_SECRET` is regenerated, so **every outstanding Slack link is now invalid**, every
+   stored user token is undecryptable, and **every device token and session cookie stops
+   working** — teammates sign in again, and phones and CLIs pair again. Clear `seen` (see
+   above) to re-announce your open queue.
 
 Everything else rebuilds itself. Nothing needs to be restored from a backup.
 

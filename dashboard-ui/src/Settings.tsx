@@ -366,7 +366,13 @@ export function Devices({ me }: { me: Me }) {
             type="button"
             disabled={busy}
             onClick={() => {
-              if (window.confirm("Sign out every device? Each one will need to pair again.")) {
+              if (
+                window.confirm(
+                  "Sign out everywhere? Every device token AND every browser session — " +
+                    "including this one, on every machine — stops working. You stay signed in " +
+                    "here; everywhere else has to sign in again.",
+                )
+              ) {
                 run(() => api.revokeAllDevices());
               }
             }}

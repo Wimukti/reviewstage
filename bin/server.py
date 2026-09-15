@@ -1960,14 +1960,31 @@ def _cookie_domain(host):
     return ""
 
 
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]")
+
+
+def is_local_url(url):
+    """True only for a URL whose host is genuinely this machine. The container entrypoint sets
+    RS_COOKIE_SECURE=0 for any `http://` PUBLIC_URL, which quietly kept issuing insecure
+    cookies once an operator put a real domain in front of it — so the server decides for
+    itself rather than trusting that flag on a non-local host."""
+    host = (urlparse(url or "").hostname or "").lower()
+    return bool(host) and (host in LOCAL_HOSTS or host.endswith(".localhost"))
+
+
 # RS_COOKIE_SECURE=0 drops the Secure flag, for a plain-http local install (Docker on
-# localhost). Anything reachable from outside must stay behind TLS with the default.
-COOKIE_SECURE = " Secure;" if os.environ.get("RS_COOKIE_SECURE", "1") != "0" else ""
+# localhost). It is HONOURED ONLY when PUBLIC_URL is unset or points at localhost: anything
+# reachable from outside keeps Secure whatever the flag says.
+_COOKIE_SECURE_OFF = (os.environ.get("RS_COOKIE_SECURE", "1") == "0"
+                      and (not PUBLIC_URL or is_local_url(PUBLIC_URL)))
+COOKIE_SECURE = "" if _COOKIE_SECURE_OFF else " Secure;"
 
 
-def session_cookie(login, host=""):
+def session_cookie(login, host="", epoch=None):
     exp = int(time.time()) + SESSION_TTL
-    return (f"rs_session={login}:{exp}:{session_sig(login, exp)}; {_cookie_domain(host)}Path=/; "
+    ep = login_epoch(login) if epoch is None else epoch
+    return (f"rs_session={login}:{exp}:{session_sig(login, exp, ep)}; "
+            f"{_cookie_domain(host)}Path=/; "
             f"Max-Age={SESSION_TTL}; HttpOnly;{COOKIE_SECURE} SameSite=Lax")
 
 
@@ -2016,9 +2033,12 @@ def session_user(headers):
             return None
     except ValueError:
         return None
-    if not hmac.compare_digest(session_sig(login, exp), sig):
+    users = load_users()
+    if login not in users:
         return None
-    return login if login in load_users() else None
+    if not hmac.compare_digest(session_sig(login, exp, login_epoch(login, users)), sig):
+        return None
+    return login
 
 
 # --- device tokens (bearer) -----------------------------------------------------------------
@@ -2032,7 +2052,7 @@ def bearer_lookup(headers):
     tok = rs_dev.parse_bearer(headers)
     if not tok:
         return None, None
-    login, h, rec = rs_dev.lookup(load_users(), tok)
+    login, h, rec = rs_dev.lookup(load_users(), tok, keyer=device_key)
     if not login:
         return None, None
     if rs_dev.needs_bump(rec):
@@ -3620,7 +3640,7 @@ class Handler(BaseHTTPRequestHandler):
             u = users.get(user)
             if u is None:
                 return
-            tok, rec, evicted = rs_dev.add_device(u, name)
+            tok, rec, evicted = rs_dev.add_device(u, name, key=device_key(user, u))
             out.update({"token": tok, "id": rec["id"], "created": rec["created"],
                         "name": rec["name"]})
             if evicted:
@@ -3633,7 +3653,13 @@ class Handler(BaseHTTPRequestHandler):
         return out, 200
 
     def api_devices_revoke(self, user, body):
-        n = {"n": 0}
+        """Revoke one device, or everything.
+
+        "Sign out everywhere" also bumps the user's epoch, which is inside both the device-token
+        hash key and the session cookie's HMAC — so it now revokes session cookies too. Before
+        this it deleted device hashes only, and the lost laptop the person was worried about
+        stayed signed in for the rest of the 30-day cookie."""
+        n = {"n": 0, "epoch": 0}
         everything = bool(body.get("all"))
         did = str(body.get("id") or "")
         if not everything and not did:
@@ -3643,9 +3669,17 @@ class Handler(BaseHTTPRequestHandler):
             u = users.get(user)
             if u is not None:
                 n["n"] = rs_dev.revoke(u, device_id=did, all_devices=everything)
+                if everything:
+                    u["epoch"] = n["epoch"] = user_epoch(u) + 1
         modify_users(apply)
-        print(f"device token(s) revoked: {user} ({n['n']})", flush=True)
-        return {"ok": True, "revoked": n["n"]}, 200
+        print(f"device token(s) revoked: {user} ({n['n']}"
+              f"{', sessions too' if everything else ''})", flush=True)
+        out = {"ok": True, "revoked": n["n"], "sessions_revoked": everything}
+        if not everything:
+            return out, 200
+        # The browser that clicked keeps working: re-issue its cookie under the new epoch.
+        self._reissue = session_cookie(user, self.headers.get("Host", ""), epoch=n["epoch"])
+        return out, 200
 
     def api_queue(self, user, tab, sort):
         if tab not in dict(TABS):
@@ -3793,8 +3827,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_json({"error": "Sign in on the web to create a device token."},
                                      403)
             return self.api_json(*self.api_device_token(user, body))
+        if route == "/api/tour-seen":
+            # The tour's "seen" flag used to live in localStorage, which is per BROWSER: the
+            # second person to sign in on a shared box never saw it, and the same person on a
+            # new laptop saw it again. It belongs on the user record.
+            seen = bool(body.get("seen", True))
+
+            def mark(users):
+                u = users.get(user)
+                if u is not None:
+                    u["tour_seen"] = seen
+            modify_users(mark)
+            return self.api_json({"ok": True, "tour_seen": seen})
         if route == "/api/devices/revoke":
-            return self.api_json(*self.api_devices_revoke(user, body))
+            self._reissue = None
+            out, code = self.api_devices_revoke(user, body)
+            return self.api_json(out, code, cookie=self._reissue if cookie_user else None)
 
         # Settings-token actions with no PR: skills, integrations settings, Claude connect.
         def settings_gate():

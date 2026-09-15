@@ -10,7 +10,7 @@ Priorities, not promises. Open an issue to argue for reordering.
 ## P0 — done
 
 - Human-gated posting: no GitHub write path in the review step; `COMMENT`-only; approval as a separate click.
-- Per-reviewer identity: each person's own GitHub token for posts and approvals; read-only service token.
+- Per-reviewer identity: each person's own GitHub token for posts and approvals; the service token is never used to write.
 - Per-reviewer independent runs in separate worktrees.
 - Run form: Quick / Standard / Deep effort, focus note, model choice; stop; re-run with full history; identical-run cache.
 - Findings as a staging area: tick, inline edit with preview, suggestion blocks, reply-vs-new, Explain simply, stale flag.

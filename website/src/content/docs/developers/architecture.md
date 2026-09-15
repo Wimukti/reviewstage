@@ -90,7 +90,7 @@ ROOT/skills/repos/<owner>__<name>/SKILL.md  optional per-repo team default
 - **`run-review.sh` never touches GitHub.** This is the property that makes the whole thing safe to run against a real review queue.
 - **Slack dedup is per repo + PR + login, not per head SHA.** Each reviewer is pinged once per PR (`<repo>:<pr>:<login>` in `seen`); pushing new commits must not re-ping anyone. The dashboard reflects the live queue regardless.
 - **One search per user per repo per poll, not a page-through.** `review-requested:<login>` resolves server-side, so the poll costs one API call per user per repository (plus one org-wide search per user when `REPO_ALLOW_ORG` is set), and page loads never call GitHub.
-- **Writes use the acting user's token.** The service token is read-only by permission, not by convention.
+- **Writes use the acting user's token.** The service token is never used to write: the review step has no GitHub write path, and every post and approval is made with the signed-in user's own credentials. It is not read-only *by permission* — GitHub's fine-grained model requires *Pull requests: Read and write* on it for this path to reach review threads — so the guarantee is structural, in the code, not enforced by the token's scope.
 - **The dashboard reads `.env` once.** Deliberate: the process should not change behaviour under you because a file was edited; a restart is an explicit act.
 
 ## Subsystems

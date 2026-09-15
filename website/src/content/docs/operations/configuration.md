@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Settings live in `.env` (Docker; mirrored into the data volume on every start) or `~/.reviewstage/.env` (from source; chmod 600). `config.example` lists the file's full shape, `.env.example` the Docker subset. The dashboard reads the file **once at startup**; restart after any change. The poller and the review runner re-read it on every run. The last five rows are read from the process environment only, not from `.env`.
+Settings live in `.env` (Docker; mirrored into the data volume on every start) or `~/.reviewstage/.env` (from source; chmod 600). `config.example` lists the file's full shape, `.env.example` the Docker subset. The dashboard reads the file **once at startup**; restart after any change. The poller and the review runner re-read it on every run. The rows marked *process environment only* are not written to `.env` by either installer and are not read from it by the server.
 
 A handful of operational knobs can also be changed **live** from the dashboard's Settings page; those are stored in `settings.json` and take precedence over `.env` — see [Runtime settings](#runtime-settings) below.
 
@@ -21,8 +21,10 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `DRY_RUN` | `1` | `1`: the dashboard renders and the buttons work, but nothing is ever written to GitHub. Flip to `0` only after a dry run you have compared by hand, then restart. |
 | `SKIP_BOT_PRS` | `0` | `1` skips PRs opened by bots. Default off: AI-written PRs are where a skeptical review pays off most. Overridable in Settings. |
 | `RS_MAX_PR_AGE_DAYS` | `45` | The poller ignores review requests on PRs older than this many days. `0` disables the cutoff. Overridable in Settings. |
-| `MIN_FREE_MB` | `800` | Refuse to start a review below this much available RAM, in MB. |
-| `RS_PORT` | `8899` | The port the server listens on. Docker maps `127.0.0.1:${RS_PORT}` to the container. |
+| `MIN_FREE_MB` | `800` | Refuse to start a review below this much **available** RAM, in MB (read from `/proc/meminfo`; the check is skipped where that does not exist). The default means a 1 GB host cannot start a single review — give the machine 2 GB rather than lowering this. |
+| `MIN_FREE_DISK_MB` | `1024` | `bin/doctor.sh` only. FAIL the disk check below this much free space on `ROOT`. Nothing else reads it; it does not gate a review. |
+| `RS_MODEL` | empty | Overrides the model for a review started outside the dashboard, and for `bin/profile-repo.sh` (which defaults to `sonnet`). The dashboard sets the model per run from the run form, so this is a from-the-shell knob. |
+| `RS_PORT` | `8899` | The port the server binds. **Do not put this in a Docker install's `.env`.** Compose reads the same file twice — to interpolate the host side of `127.0.0.1:${RS_PORT}:8899`, *and* as `env_file` for the container — so setting it there moves the server inside the container while the publish still targets 8899, and the dashboard silently stops answering. To change the host port, set it in the shell for that one command: `RS_PORT=9000 docker compose up -d`. From source there is no second reader and `.env` is the right place. |
 | `SLACK_WEBHOOK` | empty | A Slack incoming webhook for review-request cards and "review ready" pings. Send-only: a fresh message each time. Point it at a private channel; cards name PR titles and authors. |
 | `SLACK_BOT_TOKEN` | empty | With `SLACK_CHANNEL`, posts via `chat.postMessage` so the review-ready message threads under the review-request card. Takes precedence over the webhook. |
 | `SLACK_CHANNEL` | empty | Channel ID for the bot-token path. |
@@ -44,8 +46,11 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `RS_DOMAIN` | empty | A parent domain to scope the session cookie to, so one login covers every alias. Empty = host-only cookies. |
 | `RS_ENV` | empty | Legacy. With `RS_DOMAIN`, an `.env` without `PUBLIC_URL` derives it as `https://reviewstage-<RS_ENV>.<RS_DOMAIN>`. New installs set `PUBLIC_URL` and leave this empty. |
 | `RS_HOST` | empty | Legacy. Overrides the hostname derived from `RS_ENV` + `RS_DOMAIN`. |
-| `POLL_INTERVAL` | `180` | Process environment only. Seconds between poller passes when Settings has not set `poll_interval_seconds`. Prefer the Settings page: it applies without a restart. |
-| `RS_BIND` | `127.0.0.1` | Process environment only. Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
+| `RS_USER` | the invoking user | `bin/bootstrap.sh` only (from source). The account the systemd unit runs as. |
+| `SETUP_APACHE` | `0` | `bin/bootstrap.sh` only. `1` makes it write and enable an Apache vhost for `PUBLIC_URL`'s hostname; otherwise it prints what to configure and you bring your own proxy. |
+| `CLAUDE_CODE_VERSION` | `latest` | Docker **build arg**, not a runtime setting. Pins `@anthropic-ai/claude-code` in the image: `docker compose build --build-arg CLAUDE_CODE_VERSION=1.2.3`. |
+| `POLL_INTERVAL` | `180` | Seconds between poller passes when Settings has not set `poll_interval_seconds`. Read from the process environment by `poller-loop.sh` (the Docker poller's loop, which does not source `.env`) and from `.env` by `pr-watch.sh`; the dashboard shows the `.env` value on the Settings page. Prefer the Settings page — it applies without a restart and governs both. |
+| `RS_BIND` | `127.0.0.1` | Process environment only (the image sets `0.0.0.0`). Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
 | `RS_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` when `PUBLIC_URL` starts with `http://`. |
 | `ROOT` | `~/.reviewstage` | Process environment only. Base directory for `.env`, the base clones (`repos/<owner>__<name>`), worktrees, per-PR state (`state/<owner>__<name>/<pr>`), `users.json`, learnings and skills. Docker mounts the data volume here. |
 
@@ -115,3 +120,9 @@ Keep the poller on. When a webhook event arrived within `2 × poll_interval_seco
 - **Request changes** is a checkbox on the post form, per review. The default review event is `COMMENT`; the agent never sets it.
 - **Claude credentials** are per user: each reviewer connects their own Claude account in *Integrations*, and their runs use that token. There is no server-wide API key setting; a user who has not connected Claude cannot run reviews.
 - **Per-user data** (encrypted GitHub and Claude tokens, Slack member ID, Discord user ID, the `admin` flag) lives in `ROOT/users.json`, written by the dashboard on sign-in. To remove a user, delete their key.
+- **`ANTHROPIC_API_KEY` is not read anywhere.** There is no server-wide API key and no fallback: a review runs on the clicking user's connected Claude account or it does not run.
+- **`RS_ACTOR`, `RS_EFFORT`, `RS_FOCUS`, `RS_DEPTH`, `RS_SKILL_CHOICE`, `RS_STACK`, `RS_CACHE_KEY`, `RS_RUN_AS`** are set by the server when it spawns `run-review.sh`, per run. They are not configuration; setting them in `.env` does nothing useful.
+
+## Keeping this page honest
+
+Every key above was re-checked against the code for this release. If you add a setting, add the row in the same change — a key that is read by `bin/` and named nowhere here, or named here and read nowhere, is a bug in this page.

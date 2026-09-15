@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errBanner, type ProfileData, type RuleSuggestion, type SkillsData, type Token } from "./api";
+import {
+  api,
+  ApiError,
+  errBanner,
+  errMessage,
+  type ProfileData,
+  type RuleSuggestion,
+  type SkillsData,
+  type SkillStat,
+  type Token,
+} from "./api";
 import { MdEditor } from "./MdEditor";
 
 function Banner({ html }: { html: string }) {
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-// Below this many decided findings a percentage is noise dressed as a measurement.
-const RATE_FLOOR = 10;
+// Fallback only: every stat the server sends carries its own sample floor, and one definition
+// of "enough data to rate" ships in this product.
+const RATE_FLOOR = 20;
+const floorOf = (s: SkillStat) => s.minSample ?? RATE_FLOOR;
+const ratable = (s: SkillStat) => s.ratable ?? s.total >= floorOf(s);
 
 const COPY_HINT = (
   <div className="hint">
@@ -73,11 +86,15 @@ function SkillEditor({
   target,
   value,
   onDone,
+  builtinAvailable,
 }: {
   token: Token;
   target: string; // "global" | "me" | "repo:<owner/name>"
   value: string;
   onDone: (b: string) => void;
+  // Whether the shipped skill exists on this box. Without it "Restore built-in" has nothing to
+  // restore, and offering the button is a promise the server cannot keep.
+  builtinAvailable?: boolean;
 }) {
   const [text, setText] = useState(value);
   const [confirm, setConfirm] = useState("");
@@ -152,7 +169,7 @@ function SkillEditor({
           )}
         </div>
       </form>
-      {isGlobal && (
+      {isGlobal && builtinAvailable !== false && (
         <details className="restorebox">
           <summary>Restore built-in skill…</summary>
           <form
@@ -284,12 +301,24 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
   const [d, setD] = useState<ProfileData | null>(null);
   const [md, setMd] = useState("");
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  // An earlier version being read, or null for the live profile. Reading one does not change
+  // anything; Restore is a separate, explicit click.
+  const [viewing, setViewing] = useState<ProfileData | null>(null);
+  // The server refuses an edit that empties a section that was not empty — the markdown round
+  // trip loses a whole section to one retitled heading, and it used to save silently. Confirming
+  // is the only way through, so the refusal has to leave a button behind.
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
   const load = useCallback(
     () =>
-      api.profile(repo).then((p) => {
-        setD(p);
-        setMd(p.md);
-      }),
+      api
+        .profile(repo)
+        .then((p) => {
+          setErr("");
+          setD(p);
+          setMd(p.md);
+        })
+        .catch((e: unknown) => setErr(errMessage(e, `Couldn't load the profile for ${repo}.`))),
     [repo]
   );
   useEffect(() => {
@@ -306,8 +335,16 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
     return (
       <details className="skilled" data-testid="repo-profile">
         <summary>
-          Profile for <code>{repo}</code> <span className="tag-off">Loading</span>
+          Profile for <code>{repo}</code>{" "}
+          {err ? <span className="tag-req">Unavailable</span> : <span className="tag-off">Loading</span>}
         </summary>
+        {err && (
+          <div className="dbody">
+            <div className="proferr" role="alert" data-testid="profile-error">
+              <div className="proferr-text">{err}</div>
+            </div>
+          </div>
+        )}
       </details>
     );
   }
@@ -349,13 +386,87 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
   const usage = d.last?.usage;
   const c = d.counts;
   const running = d.state === "running";
+  const meta = d.json?.meta;
+  // A profile saved with no base clone was never checked against a real tree, yet reviews read
+  // it as ground truth. `canValidate` is about future saves; meta.validated about this one.
+  const unchecked = meta?.validated === false;
+  const st = d.stale;
+  // Drifted: the checkout has moved on, or globs that once matched now match nothing. Null
+  // means there was no clone to compare with — never render that as "fresh".
+  const drifted = !!st?.stale;
+  const capped = meta?.capped_critical_paths ?? 0;
+  const degraded = meta?.degraded ?? [];
 
   return (
     <details className="skilled" data-testid="repo-profile">
       <summary>
         Profile for <code>{repo}</code> {tag}
+        {drifted && (
+          <span className="tag-req" data-testid="profile-stale" style={{ marginLeft: 6 }}>
+            Stale
+          </span>
+        )}
+        {d.invalid && (
+          <span className="tag-req" style={{ marginLeft: 6 }}>
+            Unreadable
+          </span>
+        )}
       </summary>
       <div className="dbody">
+        {d.invalid && (
+          <div className="proferr" role="alert" data-testid="profile-invalid">
+            <div className="proferr-text">
+              <b>This repository's profile.json could not be read, so no review is using it:</b>{" "}
+              {d.invalid}. Fix the file on the box, or re-profile to replace it.
+            </div>
+          </div>
+        )}
+        {drifted && st && (
+          <div className="banner warn" data-testid="profile-stale-note">
+            <span>🔄</span>
+            <div>
+              <b>This profile is out of date with the checkout.</b>{" "}
+              {st.head !== st.currentHead && (
+                <>
+                  Built against <code>{st.head}</code>; the clone is now at{" "}
+                  <code>{st.currentHead}</code>
+                  {st.commitsBehind ? `, ${st.commitsBehind.toLocaleString("en-US")} commit(s) later` : ""}.{" "}
+                </>
+              )}
+              {st.unmatchedPaths > 0 && (
+                <>
+                  {st.unmatchedPaths.toLocaleString("en-US")} of{" "}
+                  {st.criticalPaths.toLocaleString("en-US")} critical path(s) no longer match
+                  anything in the tree — those are dead weight in every review of this repo until
+                  it is re-profiled or edited.
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        {unchecked && (
+          <div className="banner warn" data-testid="profile-unvalidated">
+            <span>⚠️</span>
+            <div>
+              <b>These paths were never checked against the repository.</b> The profile was saved
+              with no clone of <code>{repo}</code> on this box, so nothing confirmed the globs
+              match real files — and reviews are handed it as fact.
+              {meta?.validated_note ? <> ({meta.validated_note})</> : null}
+            </div>
+          </div>
+        )}
+        {degraded.length > 0 && (
+          <div className="hint" data-testid="profile-degraded">
+            Some signals were not gathered when this was built, so it was written from less than
+            the full picture: {degraded.join("; ")}.
+          </div>
+        )}
+        {capped > 0 && (
+          <div className="hint" data-testid="profile-capped">
+            {capped.toLocaleString("en-US")} further critical path(s) were over the cap and were
+            not stored.
+          </div>
+        )}
         {d.state === "running" && d.running ? (
           <div className="profstat" data-testid="profile-status">
             <span className="dot run" />
@@ -410,9 +521,85 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
 
         {c && (
           <div className="profcounts" data-testid="profile-counts">
-            {c.critical} critical paths · {c.risk} risk paths · {c.rules} review rules · {c.doNotFlag} do-not-flag
-            {d.versions.length > 0 ? ` · ${d.versions.length} earlier version${d.versions.length === 1 ? "" : "s"}` : ""}
+            {c.critical} critical paths · {c.risk} risk paths · {c.rules} review rules ·{" "}
+            {c.doNotFlag} do-not-flag
+            {d.sections?.summary === 0 ? " · no summary" : ""}
           </div>
+        )}
+        {d.unknownHeadings && d.unknownHeadings.length > 0 && (
+          <div className="proferr" role="alert" data-testid="profile-unknown-headings">
+            <div className="proferr-text">
+              <b>Heading(s) the parser did not recognise, so nothing under them was saved:</b>{" "}
+              {d.unknownHeadings.join(", ")}.
+            </div>
+          </div>
+        )}
+        {d.versions.length > 0 && (
+          <details className="profvers" data-testid="profile-versions">
+            <summary>
+              {d.versions.length} earlier version{d.versions.length === 1 ? "" : "s"}
+            </summary>
+            <div className="dbody">
+              <p className="muted sm" style={{ marginTop: 0 }}>
+                Every save and every re-profile keeps the one it replaced. Open one to read it;
+                restoring makes it the live profile and keeps the current one as a version of its
+                own, so nothing is lost either way.
+              </p>
+              <ul className="verlist">
+                {d.versions.map((ts) => (
+                  <li key={ts}>
+                    <span className="verwhen">
+                      {new Date(ts * 1000).toLocaleString("en-US", {
+                        month: "2-digit", day: "2-digit", year: "2-digit",
+                        hour: "2-digit", minute: "2-digit",
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      className="linkbtn"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          setViewing(await api.profileVersion(repo, ts));
+                        } catch (e) {
+                          onBanner(errBanner(e, "Couldn't read that version."));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      className="btn soft"
+                      data-testid="profile-restore"
+                      disabled={busy || running}
+                      onClick={() => {
+                        setViewing(null);
+                        act(() => api.restoreProfile(repo, d.token, ts));
+                      }}
+                    >
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {viewing?.json && (
+                <div className="verview" data-testid="profile-version-view">
+                  <div className="rule-lbl">
+                    Version from{" "}
+                    {new Date((viewing.ts ?? 0) * 1000).toLocaleString("en-US")} — read only
+                  </div>
+                  <pre>{viewing.md}</pre>
+                  <button type="button" className="linkbtn" onClick={() => setViewing(null)}>
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </details>
         )}
 
         <div className="inrow">
@@ -459,19 +646,50 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
         {d.state === "done" && (
           <form
             style={{ marginTop: 14 }}
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              act(() => api.saveProfile(repo, d.token, md));
+              if (busy) return;
+              setBusy(true);
+              try {
+                const r = await api.saveProfile(repo, d.token, md, confirmEmpty);
+                setD(r);
+                setMd(r.md);
+                setConfirmEmpty(false);
+                if (r.bannerHtml) onBanner(r.bannerHtml);
+              } catch (x) {
+                if (x instanceof ApiError && x.data.needsConfirm) setConfirmEmpty(true);
+                onBanner(errBanner(x, "Couldn't save the profile."));
+              } finally {
+                setBusy(false);
+              }
             }}
           >
-            <MdEditor value={md} onChange={setMd} />
+            <MdEditor
+              value={md}
+              onChange={(v) => {
+                setConfirmEmpty(false);
+                setMd(v);
+              }}
+            />
             <div className="hint">
-              Edit the markdown and save — it is parsed back into the profile reviews read. Paths that
-              match nothing in the tree are dropped; the previous version is kept.
+              Edit the markdown and save — it is parsed back into the profile reviews read. The
+              previous version is kept.{" "}
+              {d.canValidate === false ? (
+                <b data-testid="profile-cannot-validate">
+                  There is no clone of this repository on the box, so your paths will be saved
+                  without being checked against the tree.
+                </b>
+              ) : (
+                "Paths that match nothing in the tree are dropped."
+              )}
             </div>
             <div className="inrow" style={{ marginTop: 10 }}>
-              <button className="btn primary" type="submit" disabled={busy || md === d.md}>
-                Save profile
+              <button
+                className={"btn " + (confirmEmpty ? "warn" : "primary")}
+                type="submit"
+                disabled={busy || md === d.md}
+              >
+                {confirmEmpty ? "Save anyway — a section will be emptied" : "Save profile"}
               </button>
             </div>
           </form>
@@ -518,7 +736,7 @@ function Suggestion({
   const [draft, setDraft] = useState(s.rule);
   useEffect(() => setDraft(s.rule), [s.rule]);
   const edited = draft.trim() !== s.rule.trim();
-  const act = async (action: "accept" | "dismiss" | "undismiss") => {
+  const act = async (action: "accept" | "dismiss" | "undismiss" | "draft") => {
     setBusy(true);
     try {
       const r = await api.skillSuggestion(
@@ -580,10 +798,35 @@ function Suggestion({
           )
         ) : (
           <div className="muted sm" style={{ marginTop: 6 }} data-testid="rule-pending">
-            {s.connected
-              ? "Drafting the rule on your Claude account — reload in a moment."
-              : "Connect your Claude account in Integrations and ReviewStage will draft the rule."}{" "}
             The complaint: <i>{s.gist}</i>
+            <div style={{ marginTop: 8 }}>
+              {/* Drafting spends the acting user's Claude quota, so it happens on a click and
+                  never on a page load — this page used to burn two model calls per render. */}
+              {s.connected ? (
+                <button
+                  className="btn soft"
+                  type="button"
+                  data-testid="rule-draft"
+                  disabled={busy || s.drafting}
+                  aria-busy={busy || s.drafting || undefined}
+                  onClick={() => act("draft")}
+                >
+                  {busy || s.drafting ? "Drafting…" : "Draft a rule"}
+                </button>
+              ) : (
+                "Connect your Claude account in Integrations to draft a rule from this."
+              )}
+              {s.connected && (
+                <span className="hint" style={{ margin: "0 0 0 8px" }}>
+                  One Haiku call on your own Claude account.
+                </span>
+              )}
+            </div>
+            {s.draftError && (
+              <div className="ferr" style={{ marginTop: 8 }} data-testid="rule-draft-error">
+                The last attempt to draft this failed: {s.draftError}
+              </div>
+            )}
           </div>
         )}
         {s.rationale && (
@@ -690,7 +933,18 @@ function SuggestedRules({
 export function Skills() {
   const [d, setD] = useState<SkillsData | null>(null);
   const [banner, setBanner] = useState("");
-  const load = useCallback(() => api.skills().then(setD), []);
+  const [err, setErr] = useState("");
+  const load = useCallback(
+    () =>
+      api
+        .skills()
+        .then((x) => {
+          setErr("");
+          setD(x);
+        })
+        .catch((e: unknown) => setErr(errMessage(e, "Couldn't load your skills."))),
+    [],
+  );
   useEffect(() => {
     load();
   }, [load]);
@@ -699,6 +953,13 @@ export function Skills() {
     load();
   };
 
+  if (err && !d)
+    return (
+      <div className="banner err" data-testid="skills-error">
+        <span>🚫</span>
+        <div>{err}</div>
+      </div>
+    );
   if (!d) return <div className="muted">Loading…</div>;
 
   const opt = (v: "team" | "own", name: string, sub: string, dis: boolean) => (
@@ -774,14 +1035,23 @@ export function Skills() {
         <summary>
           Edit the team default skill{" "}
           {/* The file exists on every install — bootstrap writes it — so its mere presence is
-              not evidence of an edit. Say "Edited" only when the server compares it to the
-              shipped skill and says so. */}
-          {d.globalEdited === undefined ? (
-            <span className="tag-off">In use</span>
-          ) : d.globalEdited ? (
+              not evidence of an edit. "Edited" requires the server to have compared the bytes
+              against the shipped skill, which it can only do when that skill is on this box. */}
+          {d.globalEdited === true ? (
             <span className="tag-on">Edited</span>
-          ) : (
+          ) : d.globalEdited === false ? (
             <span className="tag-off">Built-in</span>
+          ) : (
+            <span
+              className="tag-off"
+              title={
+                d.builtinAvailable === false
+                  ? "The shipped skill is not on this box, so there is nothing to compare this one against."
+                  : undefined
+              }
+            >
+              In use
+            </span>
           )}
         </summary>
         <div className="dbody">
@@ -789,7 +1059,13 @@ export function Skills() {
             The shared skill everyone falls back to. Editing it changes reviews for everyone without
             their own.
           </p>
-          <SkillEditor token={d.token} target="global" value={d.teamSkill} onDone={onDone} />
+          <SkillEditor
+            token={d.token}
+            target="global"
+            value={d.teamSkill}
+            onDone={onDone}
+            builtinAvailable={d.builtinAvailable}
+          />
           {d.teamHistory && d.teamHistory.length > 0 && (
             <div className="skillhist">
               <div className="skillhist-h">Revision history — how the team standard evolved</div>
@@ -866,7 +1142,7 @@ export function Skills() {
       <p className="muted sm">
         The share of a skill's findings that were <b>posted at all</b> — kept as-is or reworded
         first. Insights' &ldquo;kept as-is&rdquo; is a stricter measure and will read lower. A
-        skill with fewer than {RATE_FLOOR} decided findings gets no percentage.
+        skill with too few decided findings to rate gets a sample instead of a percentage.
       </p>
       {d.stats.length === 0 ? (
         <div className="empty">
@@ -885,12 +1161,12 @@ export function Skills() {
                     {s.skill === d.user && <span className="tag-on" style={{ marginLeft: 6 }}>you</span>}
                   </span>
                   <span className="num" style={{ WebkitTextFillColor: "var(--fg)" }}>
-                    {s.total < RATE_FLOOR
-                      ? `n = ${s.total} — too few to rate`
-                      : `${s.rate.toFixed(1)}% kept or reworded`}
+                    {ratable(s)
+                      ? `${s.rate.toFixed(1)}% kept or reworded`
+                      : `n = ${s.total} of ${floorOf(s)} — too few to rate`}
                   </span>
                 </div>
-                {s.total >= RATE_FLOOR && (
+                {ratable(s) && (
                   <div className="ratebar">
                     <div className="ratefill" style={{ width: `${s.rate}%` }} />
                   </div>

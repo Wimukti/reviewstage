@@ -441,6 +441,12 @@ export interface SkillStat {
   total: number;
   rate: number;
   label: string;
+  keptOrEdited?: number;
+  verbatimRate?: number | null;
+  // Whether this sample supports a percentage at all, and the server's floor. One definition of
+  // "enough data to rate" ships in the product; do not add a second here.
+  ratable?: boolean;
+  minSample?: number;
 }
 export interface RepoSkill { repo: string; content: string; has: boolean }
 
@@ -626,13 +632,31 @@ export interface ProfileStale {
 // Per-section entry counts, keyed as the profile stores them.
 export type ProfileSections = Partial<Record<
   "critical_paths" | "risk_paths" | "review_rules" | "do_not_flag" | "summary", number>>;
+// The profile's own record of how it was produced.
+export interface ProfileMeta {
+  generated_at?: number;
+  model?: string;
+  head?: string;
+  edited_at?: number | null;
+  edited_by?: string;
+  dropped_globs?: string[];
+  // Were the globs checked against a real tree? A profile saved with no base clone was never
+  // checked at all, and reviews read it as ground truth.
+  validated?: boolean;
+  validated_note?: string;
+  // Signals the build could not gather (a churn walk that timed out, a git call that failed).
+  degraded?: string[];
+  // Critical paths beyond the cap, dropped at validation rather than silently at render.
+  capped_critical_paths?: number;
+  [k: string]: unknown;
+}
 export interface ProfileJson {
   summary: string;
   critical_paths: ProfileCriticalPath[];
   risk_paths: { label: string; pattern: string }[];
   review_rules: string[];
   do_not_flag: string[];
-  meta?: Record<string, unknown>;
+  meta?: ProfileMeta;
 }
 export interface ProfileData {
   repo: string;

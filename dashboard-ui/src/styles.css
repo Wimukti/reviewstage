@@ -907,3 +907,11 @@ border-radius:999px;background:var(--warnbg);color:#f6cd8a;border:1px solid var(
 .suggev summary { cursor: pointer; }
 .suggev ul { margin: 6px 0 0; padding-left: 18px; }
 .suggev li { margin-bottom: 4px; line-height: 1.45; }
+
+.profvers{margin-top:10px}
+.profvers>summary{cursor:pointer;font-size:.8rem;color:var(--dim)}
+.verlist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.verlist li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.verwhen{font-family:var(--mono);font-size:.74rem;color:var(--dim);min-width:12rem}
+.verview{margin-top:10px}
+.verview pre{max-height:320px;overflow:auto;font-size:.72rem;line-height:1.5;white-space:pre-wrap}

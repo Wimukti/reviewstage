@@ -14,12 +14,38 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
 
 ## Controls
 
+- **`RS_SECRET` is load-bearing, and the server will not start without it.** Session cookies,
+  every signed action link, the OAuth `state` and the key stored tokens are encrypted under all
+  derive from it. An empty one is not a weaker mode, it is no mode: `HMAC(b"", …)` is a
+  signature anyone can compute, so a hand-written `rs_session=<anyone>:<exp>:<sig>` cookie
+  would be accepted as that user, admin included. The server refuses to boot when `RS_SECRET`
+  is missing or shorter than 32 characters — the same treatment `REPOS` gets — and
+  `bin/doctor.sh` FAILs on it.
+
 - **Pages need a signed-in session.** Signing in means proving a GitHub token is real (`/user`)
   and can see the repo — either the token GitHub issues through **Sign in with GitHub**
   (the device flow by default, the redirect flow when `GH_CLIENT_ID` is set) or a pasted PAT — then receiving an HMAC-signed,
-  HttpOnly, Secure, SameSite cookie valid for 30 days. Unauthenticated requests — including
-  POSTs — bounce to the login page. Deleting a user from `users.json` invalidates their session
-  and every device token on the next request.
+  HttpOnly, Secure, SameSite cookie valid for 30 days. Deleting a user from `users.json`
+  invalidates their session and every device token on the next request.
+
+- **Five routes answer without a session**, and each is gated by something other than the
+  cookie. Everything else redirects to the login page (pages) or returns `401` (`/api/*`):
+
+  | Route | What gates it |
+  | --- | --- |
+  | `GET /health` | Nothing. Returns the four bytes `ok` and touches no state. |
+  | `POST /api/login` | The pasted token itself, which must pass `/user` and see the repository. Rate-limited per source IP, and the token verification is bounded by a semaphore. |
+  | `POST /api/auth/device/start` | Rate-limited per source IP; sets a nonce cookie that binds the flow to this browser; the pending table has reserved headroom so a flood cannot evict real sign-ins. |
+  | `POST /api/auth/device/poll` | The opaque session id **and** the matching nonce cookie. Rate-limited; refuses polls faster than GitHub's interval (429). |
+  | `POST /webhooks/github` | The HMAC-SHA256 over the raw body in `X-Hub-Signature-256`, against `GITHUB_WEBHOOK_SECRET`. No secret configured → `503`, never a bypass. |
+
+  `GET /oauth/callback` is reachable without a session too, but it is not an entry point: it
+  only accepts a `state` this server signed within the last ten minutes.
+
+  Every `/api/*` POST and PUT must additionally be `application/json` (or carry a device
+  token) and must not arrive with `Sec-Fetch-Site: cross-site`, so a cross-site form post
+  cannot reach the JSON API at all. Bodies over 2 MiB are refused with `413` before a byte is
+  read, and a malformed `Content-Length` is a `400`.
 
 - **Device tokens are the only other credential.** A phone, the CLI or a second browser may
   hold a bearer token instead of the cookie (`Authorization: Bearer …`, see
@@ -31,10 +57,17 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
   rejected and cannot redirect off-site. Tokens (and refresh tokens, for a GitHub App) are
   stored exactly like PATs below, and refreshed server-side a minute before expiry.
 
-- **Stored tokens are encrypted at rest** (AES-256-CBC, PBKDF2) with a key *derived* from
-  `RS_SECRET`, not stored beside them. Rotating the secret therefore also invalidates every
-  stored token — the right outcome if the secret was rotated because it leaked. The shell
-  scripts only ever read login + Slack ID; decryption happens in the server, at post time.
+- **Stored tokens are encrypted at rest**, with a key *derived* from `RS_SECRET`, not stored
+  beside them. Stated plainly: this is **unauthenticated AES-256-CBC**, PBKDF2-SHA256 at
+  600,000 iterations, done by forking `openssl enc` with the key passed down a pipe (not
+  through the child's environment). Unauthenticated means the ciphertext is confidential but
+  not tamper-evident: someone who can already write `users.json` can corrupt a stored token,
+  though they cannot read one or forge a chosen value. The runtime image ships no
+  `cryptography` package, and adding one to keep an AEAD would be a new dependency in the
+  server's smallest, most load-bearing path — so the fork stays and the property is documented
+  rather than overclaimed. Rotating the secret invalidates every stored token, which is the
+  right outcome if it was rotated because it leaked. The shell scripts only ever read login +
+  Slack ID; decryption happens in the server, at post time.
 
 - **Writes use the acting user's own token.** The service token in `.env` does reads and the
   base clone only. Nothing can post or approve under a name other than the signed-in user's,
@@ -64,9 +97,19 @@ the dangerous ones are short-lived, and the process itself cannot be reached dir
   actual diff before posting, so GitHub cannot 422 the entire review because one finding
   pointed at a line that isn't in the diff.
 
-- **The server binds `127.0.0.1`**, reachable only through your reverse proxy. Nothing is
-  listening on a public port directly. Terminate TLS at the proxy; the session cookie is marked
-  `Secure`, so plain HTTP will not carry it.
+- **What actually keeps the process off the public internet is the compose port mapping, not
+  the bind address.** `RS_BIND` defaults to `127.0.0.1`, but the Docker image sets
+  `RS_BIND=0.0.0.0` — it has to, or nothing outside the container could reach it — so inside
+  the container the server listens on every interface. The published port in
+  `docker-compose.yml` is prefixed `127.0.0.1:`, and *that* prefix is the control: drop it and
+  the dashboard is on the internet directly. Check it before you expose anything. Terminate TLS
+  at the proxy; the session cookie is marked `Secure`, so plain HTTP will not carry it.
+
+  `RS_COOKIE_SECURE=0` drops the `Secure` flag for a plain-http localhost install. The
+  container entrypoint sets it for **any** `http://` `PUBLIC_URL`, including the
+  `http://localhost:8899` default it writes when nobody configured one — so the server ignores
+  the flag unless `PUBLIC_URL` genuinely points at localhost. An operator who later puts a real
+  domain in front keeps getting `Secure` cookies whether or not they remembered to unset it.
 
 - **Secrets stay in `~/.reviewstage/.env`** (chmod 600), in `$HOME`, never in a git repo.
   `.gitignore` here blocks `.env` and `*.pem` as a second line of defence.
@@ -88,6 +131,36 @@ ever sees the short user code; GitHub's `device_code` stays in server memory und
 session id, and the token GitHub issues goes straight to *your* server: the ReviewStage project
 never sees it. The server polls GitHub on the person's behalf, refuses polls faster than
 GitHub's interval (429), caps pending sign-ins at 50 and purges expired ones.
+
+**Device-code phishing — the class, and what stops it here.** A device flow has a structural
+weakness: the thing the victim types at github.com is a short code, and a code is trivially
+sent over chat. The generic attack is "here's a code, go authorise it" — the victim approves,
+and the *attacker's* pending flow gets the token. ReviewStage's shape of it was worse, because
+`start` and `poll` are both unauthenticated and used to have nothing in common: an attacker
+could start a flow **on your server**, get a teammate to approve the code, poll, and be handed
+a session cookie as that teammate — on the victim's own install.
+
+Three things now stand between that and a session:
+
+- **A nonce cookie.** `start` sets an HttpOnly nonce and remembers it with the pending session;
+  `poll` refuses any session whose nonce does not match, reporting it exactly as an unknown
+  session. Only the browser that began a sign-in can finish it, so the attacker's poll gets
+  nothing even if the code is approved.
+- **The warning on the card.** The waiting state says, in as many words, to continue only a
+  sign-in you started yourself — because a code someone sent you is the attack.
+- **Cancel really cancels.** The browser hands the pending slot back rather than parking it
+  until GitHub's 15-minute expiry.
+
+Nothing here can stop a victim from approving a code at github.com; what it stops is the
+approval being worth anything to the person who sent it.
+
+**Locking the team out.** `start` is unauthenticated and the pending table is capped, which
+used to be a denial of service in one line of `curl`: the cap evicted the **oldest** pending
+sign-in, i.e. exactly the one a real person was part-way through, so a flood locked everybody
+out of GitHub sign-in. Now `start` is rate-limited per source IP, eviction takes the *newest*
+never-polled session rather than the oldest, a sign-in someone has begun polling is never
+evicted, and slots are reserved for those. A flood gets an error; your teammates keep signing
+in.
 
 Either way the stored token is **the working token**: `user_pat()` prefers the OAuth token and
 falls back to a PAT, and post / approve / review-state reads all go through it. An OAuth user
@@ -114,6 +187,19 @@ bearer), shown once, and stored as a SHA-256 hash under `users[login].devices`.
 - **Revocation.** Per device from Settings → Devices, or all at once with *Sign out
   everywhere*. Revoking deletes the hash; the next call gets `401`. Removing the user from
   `users.json` revokes everything they hold. `/logout` clears the cookie only.
+
+  *Sign out everywhere* also bumps a per-user **epoch** that is inside the session cookie's
+  HMAC, so it now revokes browser sessions as well as device tokens. It previously deleted
+  device hashes only, which meant the lost laptop the person was worried about stayed signed in
+  for the rest of its 30-day cookie. The browser you click it in is re-issued a cookie under
+  the new epoch and stays signed in; everything else has to sign in again.
+
+- **Rotation revokes them.** A device token's stored hash is keyed on `RS_SECRET` **and** that
+  user's epoch, not a bare SHA-256 of the token. Before that, hashes in `users.json` survived
+  a rotation untouched — so the incident response documented under *Rotating `RS_SECRET`* left
+  an attacker holding a device token a persistent credential that regained its full power the
+  moment a real secret existed. Rotating now invalidates every device token and every session
+  cookie along with every stored GitHub token.
 - **Expiry.** 180 days since last use, sliding; `last_seen` is bumped at most once a minute.
   The poller prunes expired hashes nightly. Ten devices per person; the eleventh evicts the
   least recently used, and the response says so.
@@ -156,8 +242,9 @@ sed -i "s|^RS_SECRET=.*|RS_SECRET=$(openssl rand -hex 32)|" ~/.reviewstage/.env
 sudo systemctl restart reviewstage
 ```
 
-Every outstanding link is immediately invalid, including your own, and every stored token
-must be re-entered. See [OPERATIONS.md](OPERATIONS.md#re-notifying-stale-slack-cards) to
+Every outstanding link is immediately invalid, including your own; every stored token must be
+re-entered; and **every device token and session cookie stops working**, so phones and CLIs
+pair again. See [OPERATIONS.md](OPERATIONS.md#re-notifying-stale-slack-cards) to
 re-announce your queue.
 
 ## Slack
@@ -174,9 +261,23 @@ Treat the webhook URL itself as a secret: anyone holding it can post into that c
 
 Stated plainly, so nobody assumes otherwise:
 
-- **Any signed-in user can read any review on the server.** The review is shared by design; PR
-  detail pages are not scoped to who was requested. Everyone signed in has repo access
-  anyway, so this discloses nothing they could not `gh pr diff`.
+- **Any signed-in user can open any PR page on the server** — they are not scoped to who was
+  requested. Everyone signed in has repo access anyway, so this discloses nothing they could
+  not `gh pr diff`. The isolation is finer than "the review is shared", though, and the
+  previous wording understated it:
+
+  - **Your draft is yours.** Selection, edits, suggestions, what you dropped and what you
+    posted live under `state/<repo>/<pr>/users/<your login>/` and are never rendered to anyone
+    else. Nobody sees the comment you rewrote before posting, or the one you decided not to
+    make.
+  - **A run is yours.** Reviews run on the clicking user's own Claude account, and each
+    reviewer's `review.json`, effort, focus and skill are their own. Another reviewer's run on
+    the same PR is visible only as *metadata* — that it happened, by whom, on which head, and
+    how its findings compare in aggregate (the convergence panel) — not as their text.
+  - **What is genuinely shared** is the PR page itself, the queue, and those aggregates.
+
+  So the honest statement is: everyone signed in can see *that* you reviewed a PR and roughly
+  how your findings lined up with theirs; only you see your draft.
 - **Someone with root on the server has everything** — every stored GitHub and Claude token,
   the Slack webhook, the owner's Claude credentials. Run it on a machine that holds nothing
   else you would mind losing, so the blast radius is your GitHub accounts rather than

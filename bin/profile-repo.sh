@@ -17,12 +17,11 @@
 # CLAUDE_CODE_OAUTH_TOKEN; without it this refuses. Never writes to GitHub.
 set -uo pipefail
 . "$(dirname "$0")/lib-common.sh"
-require_env
 
 REPO="${1:?usage: profile-repo.sh <owner/name> [--signals-only]}"
 SIGNALS_ONLY=0
 [ "${2:-}" = "--signals-only" ] && SIGNALS_ONLY=1
-repo_allowed "$REPO" || die "$REPO is not a repository this install reviews (REPOS / REPO_ALLOW_ORG)"
+valid_repo "$REPO" || die "'$REPO' is not owner/name shaped"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BASE=$(base_dir "$REPO")
 PDIR="$ROOT/profiles/$(repo_slug "$REPO")"
@@ -34,10 +33,17 @@ exec 9>"$PDIR/.lock"
 flock -n 9 || { echo "[profile $REPO] already running — not starting a second build" >&2; exit 0; }
 # Holding the lock: this process (bash, the group leader under setsid) owns the run's markers.
 echo $$ > "$PDIR/pid"
+# Only now — with the lock held, so a duplicate that lost the race has already exited without
+# touching a marker — may a failure be recorded. Every die() below lands in the status file the
+# Skills page polls, instead of exiting to stderr and leaving the page spinning at "starting…".
+[ "$SIGNALS_ONLY" = 1 ] || set_status_file "$PDIR/status"
+require_env
+repo_allowed "$REPO" || die "$REPO is not a repository this install reviews (REPOS / REPO_ALLOW_ORG)"
 
 # In --signals-only mode stdout is the JSON, so progress goes to stderr there.
 status() {
-  echo "$1" > "$PDIR/status"
+  printf '%s\n' "$1" > "$PDIR/status" 2>/dev/null \
+    || echo "[profile $REPO] WARN: cannot write $PDIR/status (disk full?)" >&2
   if [ "$SIGNALS_ONLY" = 1 ]; then echo "[profile $REPO] $1" >&2; else echo "[profile $REPO] $1"; fi
 }
 fail() { status "failed: $1"; exit 1; }
@@ -45,8 +51,21 @@ py() { PYTHONPATH="$HERE" ROOT="$ROOT" python3 "$HERE/rs_profile.py" "$@"; }
 
 if [ "$SIGNALS_ONLY" = 0 ]; then
   have_free_mem || fail "not enough free memory to start"
+  have_free_disk "$ROOT" || fail "not enough free disk to start (MIN_FREE_DISK_MB=$MIN_FREE_DISK_MB)"
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] \
     || fail "connect your Claude account in the dashboard to profile a repository"
+fi
+
+# One heavy job at a time on the box, shared with reviews and QA guides. Taken BEFORE the fetch
+# below: two jobs fetching the same base clone collide on .git/index.lock.
+status "queued — waiting for another job to finish"
+exec 8>"$ROOT/review.lock"
+# Bounded: an eternal wait is indistinguishable from a hang on the dashboard.
+flock -w 3600 8 || fail "another job held the box lock for over an hour"
+# The pre-wait guards can be minutes old by now — the job ahead of us was using the box.
+if [ "$SIGNALS_ONLY" = 0 ]; then
+  have_free_mem || fail "not enough free memory to start"
+  have_free_disk "$ROOT" || fail "not enough free disk to start (MIN_FREE_DISK_MB=$MIN_FREE_DISK_MB)"
 fi
 
 status "fetching the repository"
@@ -66,31 +85,35 @@ if [ "$SIGNALS_ONLY" = 1 ]; then
   echo "[profile $REPO] signals gathered in $(( $(date +%s) - t0 ))s" >&2
   exit 0
 fi
-py signals "$BASE" "$REPO" > "$PDIR/signals.json" || fail "could not gather signals"
+py signals "$BASE" "$REPO" > "$PDIR/signals.json" || fail "could not gather signals (disk full?)"
+[ -s "$PDIR/signals.json" ] || fail "signals.json came out empty (disk full?)"
 echo "[profile $REPO] signals gathered in $(( $(date +%s) - t0 ))s"
 
 SKILL="$HERE/../skills/repo-profile/SKILL.md"
 [ -s "$SKILL" ] || fail "skills/repo-profile/SKILL.md is missing next to $HERE"
 # Front-matter off (skill_body) — the prompt must never begin with `---`.
-skill_body "$SKILL" > "$PDIR/skill.md"
+skill_body "$SKILL" > "$PDIR/skill.md" || fail "cannot write $PDIR/skill.md (disk full?)"
+[ -s "$PDIR/skill.md" ] || fail "$PDIR/skill.md came out empty (disk full?)"
 PROMPT=$(py prompt "$PDIR/signals.json" "$PDIR/skill.md") || fail "could not build the prompt"
 MODEL="${RS_MODEL:-sonnet}"
-echo "$MODEL" > "$PDIR/model"
-
-# One heavy agent at a time on the box, shared with reviews and QA guides.
-status "queued — waiting for another job to finish"
-exec 8>"$ROOT/review.lock"
-flock 8
+echo "$MODEL" > "$PDIR/model" || fail "cannot write to $PDIR (disk full?)"
 
 status "asking the model (one call)"
-echo "${RS_RUN_AS:-shared}" > "$PDIR/runner"
+echo "${RS_RUN_AS:-shared}" > "$PDIR/runner" || fail "cannot write to $PDIR (disk full?)"
 # Read-only tools only, cwd = the base clone, so the model can confirm a path before naming it
 # but cannot write anywhere. One prompt, one reply; the JSON is the reply text. The prompt goes
 # in on stdin (`claude -p` reads it when no positional prompt is given): it can never be taken
 # for an option and there is no argv length limit.
-(cd "$BASE" && printf '%s' "$PROMPT" | timeout 15m claude -p --model "$MODEL" \
+# agent_env strips every GitHub credential from the environment (see lib-common.sh): a profile
+# run reads a checkout that is already on disk, so it needs no token, and nothing it reads can
+# turn the reviewer's write-scoped PAT into a post on GitHub.
+agent_env_args
+(cd "$BASE" && printf '%s' "$PROMPT" | "${AGENT_ENV[@]}" timeout 15m claude -p --model "$MODEL" \
   --output-format stream-json --verbose --max-turns 25 \
-  --allowedTools "Read Glob Grep") >"$PDIR/agent.log" 2>&1
+  --allowedTools "Read Glob Grep" \
+  --disallowedTools "$AGENT_DENY_TOOLS") >"$PDIR/agent.log" 2>&1
+rc=$?
+[ "$rc" = 124 ] && fail "the model call timed out after 15m (see $PDIR/agent.log)"
 
 result_line=$(grep -a '"type":"result"' "$PDIR/agent.log" | tail -1 || true)
 [ -n "$result_line" ] || fail "the model produced no result (see $PDIR/agent.log)"

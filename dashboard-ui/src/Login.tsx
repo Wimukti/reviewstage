@@ -99,7 +99,20 @@ function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
   function cancel() {
     if (timer.current) clearTimeout(timer.current);
     waiting.current = false;
+    const session = state.step === "waiting" ? state.start.session : "";
     setState({ step: "idle" });
+    // Hand the pending slot back to the server instead of parking it until GitHub's 15-minute
+    // code expiry — the table is capped, and the cap is what a flood attacks.
+    if (session) {
+      void fetch("/api/auth/device/cancel", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session }),
+      }).catch(() => {
+        /* best effort: the session expires on its own */
+      });
+    }
   }
 
   async function copy(code: string) {
@@ -138,18 +151,24 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   const deviceNext = "/device" + (devName ? `?name=${encodeURIComponent(devName)}` : "");
   const oauthHref = device ? `/oauth/start?next=${encodeURIComponent(deviceNext)}` : "/oauth/start";
 
-  // Where a fresh session lands: the /device interstitial when pairing, the welcome checklist
-  // on a first sign-in (as the redirect callback does), else ?next= or the queue. Only local
-  // paths — an open redirect otherwise.
+  // Where a fresh session lands: the /device interstitial when pairing, Integrations on a
+  // genuine first sign-in (there is nothing to review until Claude is connected), else ?next=
+  // or the queue. Only local paths — an open redirect otherwise.
+  //
+  // This used to send first-timers to `/integrations?welcome=1&next=…`, and nothing anywhere
+  // read either parameter: a teammate following a Slack link to a PR signed in and was
+  // stranded on Integrations with no way back. `welcome` also fired on every sign-in forever
+  // for anyone without Slack. The server's own redirect (see landing() in server.py) now
+  // agrees with this.
   const rawNext = q.get("next") || "";
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
-  function landed(welcome: boolean) {
+  function landed(firstSignIn: boolean) {
     if (device) {
       window.location.assign(deviceNext);
       return;
     }
-    if (welcome) {
-      window.location.assign("/integrations?welcome=1&next=" + encodeURIComponent(next));
+    if (firstSignIn) {
+      window.location.assign("/integrations");
       return;
     }
     // Signed in on /login itself: the SPA has no page there, so move to the destination.
@@ -168,8 +187,8 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
     setBusy(true);
     setErr("");
     try {
-      await api.login(pat.trim());
-      landed(false);
+      const r = (await api.login(pat.trim())) as unknown as { welcome?: boolean };
+      landed(!!r.welcome);
     } catch (x) {
       setErr(x instanceof Error ? x.message : "Sign-in failed.");
       setBusy(false);
@@ -247,6 +266,11 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
               <button type="button" className="linkbtn" onClick={flow.cancel}>
                 Cancel
               </button>
+            </p>
+            <p className="authfine" data-testid="device-phishing-warning">
+              <b>Only continue a sign-in you started yourself.</b> If someone sent you this code
+              or asked you to type one at github.com, stop — approving it would sign{" "}
+              <i>them</i> in as you.
             </p>
           </>
         )}

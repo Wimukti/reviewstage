@@ -466,14 +466,82 @@ def oauth_check_state(state):
     return nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
 
 
-OAUTH_BLOCKED = ROOT / "oauth-blocked"
+OAUTH_BLOCKED = ROOT / "oauth-blocked.json"
+_BLOCKED_LOCK = threading.Lock()
+BLOCKED_TTL = 24 * 3600
+
+
+def _blocked_map():
+    try:
+        d = json.loads(OAUTH_BLOCKED.read_text())
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def record_oauth_block(login, kind):
+    """Remember that THIS login's GitHub sign-in worked but could not see the repository.
+
+    It used to be a single flag file, so one person whose account has no access to the repo
+    made the login page tell the entire team the org had not approved the app. It is a map
+    now, and only the "org-approval" kind — GitHub itself refusing the app — is a statement
+    about the install rather than about one person."""
+    with _BLOCKED_LOCK:
+        d = _blocked_map()
+        d[login or "?"] = {"at": int(time.time()), "kind": kind}
+        try:
+            OAUTH_BLOCKED.write_text(json.dumps(d))
+        except OSError:
+            pass
+
+
+def clear_oauth_block(login):
+    with _BLOCKED_LOCK:
+        d = _blocked_map()
+        if d.pop(login, None) is not None:
+            try:
+                OAUTH_BLOCKED.write_text(json.dumps(d))
+            except OSError:
+                pass
 
 
 def oauth_blocked():
-    """True after a GitHub sign-in that succeeded at GitHub but could not see the repo — the
-    org has not approved the app yet. Cleared by the first sign-in that can. Lets the login
-    page demote the GitHub button instead of walking every newcomer into the same error."""
-    return OAUTH_BLOCKED.exists()
+    """True only when a recent sign-in was refused BY THE ORG (not merely by repo access), so
+    the login page may demote the GitHub button for everyone. A per-person access problem no
+    longer speaks for the team."""
+    cutoff = time.time() - BLOCKED_TTL
+    return any(isinstance(v, dict) and v.get("kind") == "org-approval"
+               and (v.get("at") or 0) > cutoff
+               for v in _blocked_map().values())
+
+
+def who_from_token(token):
+    """The GitHub login behind a token, for the per-login block record. "?" when the lookup
+    fails — a name is nice to have here, not load-bearing."""
+    try:
+        r = gh(["api", "user", "-q", ".login"], token=token, timeout=10)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return "?"
+    return (r.stdout or "").strip() or "?"
+
+
+FIRST_RUN_PATH = "/integrations"
+
+
+def landing(nxt, first_sign_in):
+    """Where a fresh session lands.
+
+    `nxt` is consumed here, which it previously was not: the callback replaced it with
+    `/integrations?welcome=1&next=…`, and nothing in the SPA ever read either parameter — so a
+    teammate following a Slack link to a PR signed in and was stranded on Integrations. And the
+    old trigger (`not prev.get("slack_id")`) was true on EVERY sign-in forever for anyone who
+    does not use Slack, not just the first one. Now: a genuine first sign-in goes to
+    Integrations, where the setup actually is; everyone else goes where they were heading.
+    A device-pairing landing always wins, first sign-in or not."""
+    nxt = nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
+    if nxt.startswith("/device"):
+        return nxt
+    return FIRST_RUN_PATH if first_sign_in else nxt
 
 
 def oauth_authorize_url(nxt):
@@ -1785,28 +1853,91 @@ def save_profile_edit(repo, user, body):
     return ""
 
 
+def reconnect_banner(login):
+    """The banner shown when a user's stored GitHub token can no longer be read or used.
+
+    The old copy said "paste it again in settings" to everyone, which is dead advice for
+    someone who signed in through the device flow — they never had a token to paste, and the
+    "Reconnect with GitHub" button in Integrations only renders when the REDIRECT flow is
+    configured. So branch on how they signed in, and offer re-sign-in whenever either GitHub
+    path is on."""
+    u = load_users().get(login) or {}
+    via_github = bool(u.get("gh_token_enc"))
+    if via_github and (OAUTH_ENABLED or DEVICE_FLOW_ENABLED):
+        how = ("<a href='/oauth/start?next=%2Fintegrations'>Reconnect with GitHub</a>"
+               if OAUTH_ENABLED else "<a href='/login'>Sign in with GitHub again</a>")
+        return ("<div class='banner err'><span>🚫</span><div>Your GitHub sign-in has expired or "
+                f"was revoked — {how} to keep posting as yourself.</div></div>")
+    return ("<div class='banner err'><span>🚫</span><div>"
+            "Your stored GitHub token could not be read — "
+            "paste it again in <a href='/integrations'>settings</a>.</div></div>")
+
+
+# Unauthenticated sign-in forks `gh` subprocesses, so the two endpoints that can reach
+# verify_pat are both rate-limited (see RATE) and the work itself is bounded here: at most
+# VERIFY_SLOTS verifications run at once, and each one checks ONE repository instead of every
+# configured repository. The old code forked 1 + len(REPOS) processes per anonymous request
+# with a 20-second timeout each — an easy out-of-memory on a small box, and a frictionless
+# brute force besides.
+VERIFY_SLOTS = 4
+_verify_sem = threading.BoundedSemaphore(VERIFY_SLOTS)
+VERIFY_BUSY = ("The server is verifying several sign-ins already — try again in a moment.")
+
+
 def verify_pat(pat):
-    """(login, name, error). Proves the token is real and can see the repo before storing it."""
-    r = gh(["api", "user"], token=pat, timeout=20)
-    if r.returncode != 0:
-        return None, None, "GitHub did not accept that token."
+    """(login, name, error). Proves the token is real and can see the repo before storing it.
+
+    The error is a plain string for a bad token, and a (message, kind) pair when GitHub
+    accepted the token but it could not see the repository — `kind` is "org-approval" when
+    GitHub refused with a 403/SAML (the org has not approved this app, which is everyone's
+    problem) and "no-access" when the repository merely 404s for this person (which is only
+    theirs). See oauth_blocked_note."""
+    if not _verify_sem.acquire(timeout=10):
+        return None, None, VERIFY_BUSY
     try:
-        me = json.loads(r.stdout or "{}")
-    except json.JSONDecodeError:
-        return None, None, "Could not parse GitHub's response."
-    login = me.get("login")
-    if not login:
-        return None, None, "GitHub returned no login for that token."
-    visible = [r for r in REPOS if gh(["api", f"repos/{r}"], token=pat, timeout=20).returncode == 0]
-    if REPOS and not visible:
-        return None, None, (f"That token cannot see {', '.join(REPOS)} — it needs the `repo` "
-                            "scope (or access to at least one of them).")
-    return login, me.get("name") or "", None
+        r = gh(["api", "user"], token=pat, timeout=20)
+        if r.returncode != 0:
+            return None, None, "GitHub did not accept that token."
+        try:
+            me = json.loads(r.stdout or "{}")
+        except json.JSONDecodeError:
+            return None, None, "Could not parse GitHub's response."
+        login = me.get("login")
+        if not login:
+            return None, None, "GitHub returned no login for that token."
+        if REPOS:
+            probe = gh(["api", f"repos/{REPOS[0]}"], token=pat, timeout=20)
+            if probe.returncode != 0:
+                blocked = "org-approval" if _looks_org_blocked(probe.stderr) else "no-access"
+                return None, None, (repo_invisible_message(blocked), blocked)
+        return login, me.get("name") or "", None
+    finally:
+        _verify_sem.release()
+
+
+def _looks_org_blocked(stderr):
+    """GitHub answers an unapproved OAuth App with a 403 naming SAML / organization access;
+    a person who simply has no access to the repository gets a plain 404."""
+    t = (stderr or "").lower()
+    return ("403" in t or "saml" in t or "organization" in t or "not accessible by" in t)
+
+
+def repo_invisible_message(kind):
+    where = REPOS[0] if REPOS else "the repository"
+    if kind == "org-approval":
+        return (f"GitHub signed you in, but an org owner has not allowed this app on "
+                f"{where} yet (OAuth App: approve it under Third-party access; GitHub App: "
+                "install it on the org). Sign in with a token meanwhile.")
+    return (f"That token cannot see {where} — it needs the `repo` scope, and the account has "
+            "to have access to the repository.")
 
 
 # --- sessions ------------------------------------------------------------------------------
-def session_sig(login, exp):
-    return hmac.new(SECRET.encode(), f"session:{login}:{exp}".encode(), sha256).hexdigest()
+def session_sig(login, exp, epoch=0):
+    """The cookie's HMAC. The user's epoch is inside it, so bumping the epoch ("Sign out
+    everywhere") invalidates outstanding cookies as well as device tokens."""
+    return hmac.new(SECRET.encode(), f"session:{login}:{exp}:{epoch}".encode(),
+                    sha256).hexdigest()
 
 
 # Optional: a parent domain to scope the session cookie to, so one login works across several
@@ -1922,13 +2053,48 @@ def request_user(headers):
     return session_user(headers) or bearer_user(headers)
 
 
+def cookie_value(headers, name):
+    m = SimpleCookie(headers.get("Cookie", "")).get(name)
+    return m.value if m else ""
+
+
 def server_url(headers):
-    """The URL a device should talk to afterwards: PUBLIC_URL, else what the browser used."""
-    if PUBLIC_URL:
-        return PUBLIC_URL
+    """The URL a device should talk to afterwards: PUBLIC_URL, else what the browser used.
+
+    A PUBLIC_URL of http://localhost:8899 is the container default nobody changed; handing it
+    to a phone gives it an address that resolves to the phone. So when PUBLIC_URL is local but
+    the browser reached us on something else, believe the browser."""
     host = headers.get("Host", "") or "localhost"
+    if PUBLIC_URL and not (is_local_url(PUBLIC_URL) and not is_local_url(f"//{host}")):
+        return PUBLIC_URL
     proto = headers.get("X-Forwarded-Proto") or ("https" if COOKIE_SECURE else "http")
     return f"{proto}://{host}"
+
+
+# --- device-flow browser binding --------------------------------------------------------------
+# A short-lived cookie set when a device sign-in starts and demanded back on every poll, so the
+# only browser that can finish a sign-in is the one that began it. HttpOnly: the page never
+# needs to read it, and the server matches it itself.
+DEVICE_NONCE_COOKIE = "rs_devnonce"
+DEVICE_NONCE_TTL = 20 * 60
+
+
+def device_nonce_cookie(nonce):
+    return (f"{DEVICE_NONCE_COOKIE}={nonce}; Path=/; Max-Age={DEVICE_NONCE_TTL}; "
+            f"HttpOnly;{COOKIE_SECURE} SameSite=Lax")
+
+
+def clear_device_nonce_cookie():
+    return (f"{DEVICE_NONCE_COOKIE}=; Path=/; Max-Age=0; HttpOnly;{COOKIE_SECURE} "
+            "SameSite=Lax")
+
+
+def split_verify_error(err):
+    """verify_pat's error is a string, or (message, kind) when GitHub accepted the token but
+    it could not see the repository. → (message, kind or "")."""
+    if isinstance(err, tuple):
+        return err[0], err[1]
+    return err, ""
 
 
 def guess_device_name(headers):
@@ -3542,12 +3708,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_post(self, route, body):
         if route == "/api/login":
+            if not self.rate_ok("login"):
+                return None
             pat = (body.get("pat") or "").strip()
             if not pat:
                 return self.api_json({"error": "Paste a token."}, 400)
             login, name, err = verify_pat(pat)
             if err:
-                return self.api_json({"error": err}, 400)
+                msg, kind = split_verify_error(err)
+                if kind:
+                    # A pasted PAT tells us nothing about the app's org approval, so this is
+                    # only ever recorded against the person who pasted it.
+                    record_oauth_block(f"pat:{self.client_key()}", "no-access")
+                return self.api_json({"error": msg}, 400)
+            first = login not in load_users()
 
             def apply(users):
                 prev = users.get(login) or {}
@@ -3557,22 +3731,36 @@ class Handler(BaseHTTPRequestHandler):
                           "updated": int(time.time())})
                 users[login] = u
             modify_users(apply)
+            clear_oauth_block(login)
             print(f"login (api): {login}", flush=True)
-            return self.api_json({"ok": True, "login": login},
+            return self.api_json({"ok": True, "login": login, "welcome": first},
                                  cookie=session_cookie(login, self.headers.get("Host", "")))
-        if route == "/api/auth/device/start":
+        if route in ("/api/auth/device/start", "/api/auth/device/poll",
+                     "/api/auth/device/cancel"):
             if not DEVICE_FLOW_ENABLED:
                 return self.api_json({"error": "Device flow is not enabled on this server."},
                                      404)
-            payload, err = DEVICE_FLOW.start()
+        if route == "/api/auth/device/start":
+            if not self.rate_ok("device-start"):
+                return None
+            # Bind the flow to THIS browser. Without it, start and poll are two unauthenticated
+            # endpoints with nothing in common but a session id an attacker minted, so an
+            # attacker could start a sign-in here, talk a teammate into approving the code at
+            # github.com, poll, and be handed a session cookie as that teammate.
+            nonce = secrets.token_urlsafe(24)
+            payload, err = DEVICE_FLOW.start(nonce=nonce)
             if err:
                 return self.api_json({"error": err}, 502)
-            return self.api_json(payload)
+            return self.api_json(payload, cookie=device_nonce_cookie(nonce))
         if route == "/api/auth/device/poll":
-            if not DEVICE_FLOW_ENABLED:
-                return self.api_json({"error": "Device flow is not enabled on this server."},
-                                     404)
-            return self.device_poll(str(body.get("session") or ""))
+            if not self.rate_ok("device-poll"):
+                return None
+            return self.device_poll(str(body.get("session") or ""), self.device_nonce())
+        if route == "/api/auth/device/cancel":
+            # Let the browser hand the slot back when the person clicks Cancel, rather than
+            # leaving it parked until GitHub's 15-minute code expiry.
+            DEVICE_FLOW.forget(str(body.get("session") or ""), self.device_nonce())
+            return self.api_json({"ok": True}, cookie=clear_device_nonce_cookie())
         cookie_user = session_user(self.headers)
         user = cookie_user or bearer_user(self.headers)
         # Pre-session: the profile module answers /api/profile/auto itself.
@@ -3790,25 +3978,25 @@ class Handler(BaseHTTPRequestHandler):
             return to_login_err("GitHub rejected the sign-in code. Try again.")
         login, name, err = verify_pat(d["access_token"])
         if err:
-            # Usually an org-side block, not a bad token: a GitHub App not installed on the org,
-            # or an OAuth App not approved under the org's third-party access settings.
-            OAUTH_BLOCKED.write_text(str(int(time.time())))
-            return to_login_err(
-                f"GitHub signed you in, but the token cannot see {', '.join(REPOS)}. An org owner needs to "
-                "allow this app once (OAuth App: approve under Third-party access; GitHub App: "
-                "install it on the org). Until then, sign in with a token.")
-        OAUTH_BLOCKED.unlink(missing_ok=True)
+            msg, kind = split_verify_error(err)
+            # Recorded against this login only. "org-approval" is GitHub refusing the app,
+            # which is the whole install's problem; "no-access" is one person's.
+            record_oauth_block(who_from_token(d["access_token"]), kind or "no-access")
+            return to_login_err(msg)
+        first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
         oauth_store(login, d, name, prev)
+        clear_oauth_block(login)
         print(f"login (github): {login}", flush=True)
-        if not prev.get("slack_id") and not nxt.startswith("/device"):
-            nxt = "/integrations?welcome=1&next=" + quote(nxt, safe="")
-        return self.redirect(nxt, cookie=session_cookie(login, self.headers.get("Host", "")))
+        return self.redirect(landing(nxt, first_sign_in),
+                             cookie=session_cookie(login, self.headers.get("Host", "")))
 
-    def device_poll(self, session):
+    def device_poll(self, session, nonce=""):
         """POST /api/auth/device/poll. Same landing as oauth_callback once GitHub hands over a
-        token: verify it can see a repo, store it encrypted, set the session cookie."""
-        res, d = DEVICE_FLOW.poll(session)
+        token: verify it can see a repo, store it encrypted, set the session cookie.
+
+        `nonce` must match the cookie set when the flow started — see api_post."""
+        res, d = DEVICE_FLOW.poll(session, nonce)
         st = res["status"]
         if st == "too_fast":
             self.send_response(429)
@@ -3826,18 +4014,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(res)
         login, name, err = verify_pat(d["access_token"])
         if err:
-            OAUTH_BLOCKED.write_text(str(int(time.time())))
-            return self.api_json({
-                "status": "error",
-                "error": f"GitHub signed you in, but the token cannot see {', '.join(REPOS)}. "
-                         "An org owner needs to approve this app once under Third-party "
-                         "access. Until then, sign in with a token."})
-        OAUTH_BLOCKED.unlink(missing_ok=True)
+            msg, kind = split_verify_error(err)
+            record_oauth_block(who_from_token(d["access_token"]), kind or "no-access")
+            return self.api_json({"status": "error", "error": msg})
+        first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
         oauth_store(login, d, name, prev)
+        clear_oauth_block(login)
         print(f"login (github device): {login}", flush=True)
-        return self.api_json({"status": "ok", "login": login,
-                              "welcome": not prev.get("slack_id")},
+        return self.api_json({"status": "ok", "login": login, "welcome": first_sign_in},
                              cookie=session_cookie(login, self.headers.get("Host", "")))
 
     def _claude_result(self, user, step, form):

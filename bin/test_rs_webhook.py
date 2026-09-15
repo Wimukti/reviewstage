@@ -61,7 +61,8 @@ def payload(action, reviewer="alice", team=None, **pr):
 class Base(unittest.TestCase):
     def setUp(self):
         Path(_TMP).mkdir(exist_ok=True)  # a previous class's tearDownClass removed it
-        for f in (Q.QUEUE, Q.SEEN, Path(_TMP, W.STATE_FILE)):
+        for f in (Q.QUEUE, Q.SEEN, Q.SUPPRESSED, Q.DELIVERIES, Q.NOTIFY_FAILS,
+                  Path(_TMP, W.STATE_FILE)):
             f.unlink(missing_ok=True)
         shutil.rmtree(P.STATE, ignore_errors=True)
         self.notified = []
@@ -160,13 +161,17 @@ class ReviewRequested(Base):
         self.assertIn("REPOS", msg)
         self.assertEqual(Q.load(), [])
 
-    def test_old_and_draft_are_marked_seen_without_a_card(self):
+    def test_old_and_draft_are_suppressed_without_a_card(self):
+        """Recorded in `suppressed`, NOT in `seen`: a draft that becomes reviewable, or an old
+        PR under a raised cutoff, must still be able to ping once."""
         W.handle("pull_request", payload("review_requested", created="2020-01-01T00:00:00Z"), self.ctx)
         self.assertEqual(self.notified, [])
-        self.assertEqual(self.seen(), [f"{REPO}:42:alice"])
+        self.assertEqual(self.seen(), [])
+        self.assertIn("> 45d", Q.is_suppressed(REPO, 42, "alice"))
         W.handle("pull_request", payload("review_requested", number=7, draft=True), self.ctx)
         self.assertEqual(self.notified, [])
-        self.assertIn(f"{REPO}:7:alice", self.seen())
+        self.assertEqual(Q.is_suppressed(REPO, 7, "alice"), "draft")
+        self.assertEqual(self.seen(), [])
         self.assertEqual(len(Q.load()), 2)      # both still in the dashboard queue
 
     def test_bot_prs_skipped_only_when_setting_on(self):
@@ -175,7 +180,8 @@ class ReviewRequested(Base):
         self.ctx.settings["skip_bot_prs"] = True
         W.handle("pull_request", payload("review_requested", bot=True, number=43), self.ctx)
         self.assertEqual(self.notified, [(42, "alice")])
-        self.assertIn(f"{REPO}:43:alice", self.seen())
+        self.assertIn("SKIP_BOT_PRS", Q.is_suppressed(REPO, 43, "alice"))
+        self.assertNotIn(f"{REPO}:43:alice", self.seen())
 
     def test_unhandled_actions_are_ignored(self):
         self.assertEqual(W.handle("pull_request", payload("labeled"), self.ctx)[0], "ignored")
@@ -314,13 +320,22 @@ class PollerParity(Base):
         tagged = json.dumps(gh_row) + "\n" + json.dumps({**gh_row, "requested": ["bob"]}) + "\n"
         r = subprocess.run(["jq", "-s", self.jq_program()], input=tagged, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        poller_rows = json.loads(r.stdout)
+        # The poller no longer writes that jq output to queue.json itself — it hands it to
+        # rs_queue.merge_poll, which is what this compares against the webhook's own row.
+        Q.merge_poll(json.loads(r.stdout), [(REPO, "alice"), (REPO, "bob")])
+        poller_rows = Q.load()
+        Q.QUEUE.unlink(missing_ok=True)
 
         W.handle("pull_request", payload("review_requested"), self.ctx)
         W.handle("pull_request", payload("review_requested", reviewer="bob"), self.ctx)
         webhook_rows = Q.load()
-        self.assertEqual(webhook_rows, poller_rows)
-        self.assertEqual([list(r) for r in webhook_rows], [list(r) for r in poller_rows])  # key order too
+        self.assertEqual([list(r) for r in webhook_rows], [list(r) for r in poller_rows])  # key order
+        # Identical but for provenance: the poller can re-derive its logins, the webhook's
+        # may be team-expanded and must never be dropped by a poll.
+        self.assertEqual(poller_rows[0]["origins"], {"alice": "poll", "bob": "poll"})
+        self.assertEqual(webhook_rows[0]["origins"], {"alice": "webhook", "bob": "webhook"})
+        strip = lambda rows: [{k: v for k, v in r.items() if k != "origins"} for r in rows]  # noqa: E731
+        self.assertEqual(strip(webhook_rows), strip(poller_rows))
 
 
 if __name__ == "__main__":

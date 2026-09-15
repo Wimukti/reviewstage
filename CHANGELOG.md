@@ -4,6 +4,266 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+### Audit remediation — 09/15/26
+
+A six-part audit of the whole project ran in seven lanes and all of them have
+landed. **Upgrade.** Several of these are the difference between a feature
+working and quietly not working, two of them are data loss, and one is the
+central safety property finally being enforced rather than asserted.
+
+#### Read this before you upgrade
+
+Four things change behaviour on the way in.
+
+- **`RS_PORT` in a Docker `.env` is now inert; use `RS_HOST_PORT`.** The
+  container's listen port is pinned to 8899 in `docker-compose.yml`, because
+  `EXPOSE`, the healthcheck and the publish target all name it. The host side
+  of the publish is `RS_HOST_PORT` (default 8899) and nothing else reads it. If
+  you were working around the old breakage by passing `RS_PORT=9000` on the
+  command line, that no longer moves anything — set `RS_HOST_PORT=9000` in
+  `.env` instead.
+- **The server refuses to start without a real `RS_SECRET`.** Empty, or shorter
+  than 32 characters, is now a `FATAL` line and exit 1 rather than a weaker
+  mode. It was never a weaker mode: `HMAC(b"", …)` is a signature anyone can
+  compute, and an audit forged a session cookie as an admin and minted a device
+  token from it. Generate one with `openssl rand -hex 32` before you restart.
+- **Rotating `RS_SECRET` now revokes everything, including device tokens.** Their
+  hashes are keyed to the secret and a per-user epoch, so the incident-response
+  runbook finally does what it said. The same epoch is inside the session
+  cookie's HMAC, so *Sign out everywhere* invalidates cookies as well as
+  devices. Everyone signs in again after a rotation; phones and CLIs pair again.
+- **Stored tokens re-encrypt at a higher cost silently, but check your
+  personal skill if you ever saved a per-repository one.** PBKDF2 goes from
+  10,000 to 600,000 iterations and old ciphertext still reads, so nothing is
+  needed from you. The skill tier is the one place where the old bug destroyed
+  data: saving a repository override wrote over the editor's *personal* skill,
+  behind a success banner. If you tried that, look at your own skill in
+  *Integrations* before trusting it.
+
+Two smaller behaviour changes worth knowing: the `Secure` cookie flag is now
+dropped only for a genuinely loopback `PUBLIC_URL`, so an install that put a
+real hostname in front of a `http://` URL starts issuing secure cookies (and
+says so in the log); and container logs are capped at 3 × 10 MB per service,
+so `docker compose logs` no longer reaches back to the beginning of time.
+
+#### The gate
+
+- **The review agent runs with no GitHub credential in its environment.** Until
+  now "the review step has no GitHub write path" was a sentence in a prompt:
+  every agent was launched with the reviewer's write-scoped token in
+  `GH_TOKEN`, so anything it read — a PR description, a `CLAUDE.md`, a test
+  fixture — could talk it into `gh pr review --approve`, and the approval would
+  land under a human's name. The environment is now scrubbed of every GitHub,
+  Slack, Discord, webhook and HMAC credential, `GH_CONFIG_DIR` points at an
+  empty directory so `gh` cannot fall back to a stored login, an explicit tool
+  deny list is the second barrier, and the script counts the PR's reviews,
+  comments and threads before and after the run. A difference is a failed job
+  and a recorded incident, not a review. The Claude token stays, because the
+  CLI reads it only from the environment and dropping it would run every review
+  on the box account.
+  What this does not cover is in
+  [SECURITY.md](docs/SECURITY.md#the-review-agents-sandbox): the agent can still
+  run commands as the service user, the fingerprint watches three counters on
+  one pull request, and the QA job has the scrub and the deny list but no
+  fingerprint.
+- **Posting is scoped to the run, not the pull request.** Review, post, the
+  author pushes, review again, post again was structurally impossible: one
+  permanent marker per (PR, reviewer) was set by the first post and cleared by
+  nothing, so the second post was refused and the post bar disappeared. Worse,
+  a review the reviewer left on GitHub's own Files tab wrote that marker and
+  stranded their staged draft. The gate is now one entry per post this
+  dashboard made, naming the head and a content hash of the run.
+- **Approval knows which commit was reviewed.** A branch that moved since the
+  review needs a typed confirmation, with both short SHAs named; approving the
+  same head twice is refused outright.
+- **A stale tab cannot post the wrong text.** Findings were matched to the
+  reviewer's edits by array index, so a re-run from another device reordered
+  them and an open tab posted old text against a new finding's file and line —
+  a comment about the wrong code, under a human's name. The client echoes the
+  run's hash and a mismatch is a `409`.
+- **No silent fall back to the service token.** A user whose stored token could
+  not be decrypted would have had their comment or approval posted by the
+  service identity. An empty token now raises.
+
+#### Discovery and notifications
+
+- **The poller merges instead of replacing.** It rebuilt `queue.json` wholesale
+  from a search that returns only *direct* review requests, so every row the
+  webhook had created by expanding a `requested_team` was erased within three
+  minutes — while its `seen` line survived, so nobody was re-notified. Team
+  review workflows were silently broken. Rows now carry how each requested
+  login was learned and are merged under the shared lock.
+- **A failed search no longer publishes an empty queue.** An expired token or a
+  rate limit used to show everyone "You're all caught up" while real requests
+  sat on GitHub. A login whose search failed gets no verdict, failures are
+  logged loudly, and a cycle where nothing succeeded publishes nothing.
+- **`seen` means a card was sent.** Both the poller and the webhook notify
+  first and write `seen` only on a confirmed send, with a bounded retry;
+  previously they disagreed, and whether a failed card was retried depended on
+  which won the race.
+- **Draft, bot and over-age pull requests go to `suppressed`.** They were
+  marked seen, permanently, so a PR that was a draft when anyone first looked
+  at it could never ping again. They are now re-evaluated every cycle.
+- **Redelivered webhooks cannot rewrite history.** A replayed
+  `review_request_removed` could un-queue a live PR at any later time; delivery
+  ids are now remembered in a bounded list. A `closed` event persists the
+  closed/merged state, and a review request that comes back after ReviewStage
+  auto-archived the PR clears its own archive marker — an archive a person
+  clicked is still left alone.
+- **A blackholed endpoint cannot wedge discovery.** Cards are sent under a
+  watchdog and every `curl` carries a timeout; the Slack bot token goes in on
+  stdin instead of argv; Discord titles are truncated by character so a long PR
+  title no longer loses the whole card; and Slack's empty-section rejection no
+  longer eats a review with no summary.
+- **New knobs:** `RS_WEBHOOK_WORKERS` (4) bounds the webhook pool, which sheds
+  with `503` rather than spawning a thread per delivery; `RS_SEARCH_LIMIT`
+  (200) and `RS_ORG_SEARCH_LIMIT` (300) raise the search ceilings and warn on a
+  result that equals them; `RS_RETENTION_DAYS` (30) drives a once-a-day sweep
+  of per-run logs, which nothing had ever cleaned up.
+
+#### Numbers that were wrong
+
+- **One keep-rate definition.** Two formulas shipped under one name. There is
+  now one — kept or reworded, over all scored decisions — with the stricter
+  kept-verbatim measure renamed `verbatimRate`. Below **20** decisions no rate
+  is shown at all, on any surface.
+- **"All-time" is all-time again.** Every count came from a detail log capped
+  at 300 rows, so totals froze and could go *down*. A never-truncated tally in
+  `learnings_totals.json` now carries them; installs that predate it seed from
+  what survives and are flagged incomplete.
+- **The keep rate counted findings that never reached GitHub.** Outcomes were
+  recorded before the POST, so three retries through an outage logged every
+  finding four times and a click with nothing ticked logged a full set of
+  drops. Recording happens after the post succeeds, keyed by the run so a retry
+  replaces.
+- **Agreement is pooled.** It was an unweighted mean of per-PR rates over only
+  each PR's newest head, so a two-finding PR counted as much as a twenty-finding
+  one and two heads out of three were thrown away.
+- **Day buckets are UTC on both sides.** Every daylight-saving change used to
+  knock the generated keys an hour off the stored ones and empty the chart.
+- **Token, model and severity panels read every run.** They read only the
+  current run per PR and reviewer, so the "all-time" severity chart went down
+  over time and switching model zeroed the old one. A cached re-run is no
+  longer re-billed on the day it was replayed.
+- **Cycle time says what it measures** — from GitHub's review request to the
+  post — and reports how many posts fell outside that population instead of
+  quietly shrinking `n`.
+
+#### Learnings, skills and profiles
+
+- **A promoted rule now leaves the rolling prompt window.** It never did: the
+  filter re-clustered dropped and reworded rows together, so the merged cluster
+  hashed differently from the one the rule was promoted from and nothing was
+  ever skipped. Promotions record the row ids they were made over.
+- **Dismissals stick to what you dismissed.** They were anchored to a gist that
+  drifts as a cluster grows, which both suppressed complaints nobody had
+  dismissed and resurrected the one that had been.
+- **Agreement stopped over- and under-confirming.** A body too thin to judge
+  used to confirm anything structurally nearby — a one-word typo nit confirmed
+  a null-check six lines away — and two byte-identical file-level findings could
+  never confirm each other. Both fixed.
+- **The per-repository skill tier works.** See the upgrade note above.
+- **Skill history is no longer a silent no-op.** No return code was checked, and
+  a global `commit.gpgsign=true` was enough to leave every edit uncommitted
+  while the UI hid the history panel. Failures are surfaced, signing is
+  disabled locally, and each commit names only the paths it changed.
+- **Opening the Skills page stopped spending your Claude quota.** Up to two rule
+  drafts per page load, failures uncached, so a bad token meant a fresh
+  90-second subprocess every time. Drafting is an explicit action now.
+- **Profiles: globs, sections, caps and staleness.** `fnmatch`'s `*` crossed
+  `/`, so `src/*.ts` matched four thousand files and every review was told the
+  critical path was touched. The markdown round trip lost whole sections
+  silently — deleting the risk-paths heading saved cleanly and every risk rule
+  vanished from future reviews. Nothing capped what was stored while the render
+  cap truncated in model-emission order. And staleness was stored, returned,
+  typed, and never compared to anything. All four are fixed; `profile.json`
+  carries a schema version, earlier versions can be read and restored, and an
+  edit saved with no clone to check against reports `validated: false` instead
+  of presenting unchecked globs as ground truth.
+
+#### QA guides
+
+- **The skill was never inlined.** `run-qa.sh` named it in the prompt while
+  `--allowedTools` did not include `Skill`, so the agent never saw a word of the
+  method and improvised a guide — and the skill itself told it to publish an
+  Artifact the product cannot render. The body is inlined, the skill is
+  rewritten around the markdown deliverable, and the prompt states one output
+  contract.
+- **The evidence claim is now true.** The UI said the guide was built from the
+  diff, review threads and history. Only five metadata fields were fetched and
+  the agent has no network. The script gathers the PR body, the review
+  conversation, the inline threads and the commit history into
+  `.rs-pr-context.md` before the agent starts.
+- **A truncated guide is no longer announced as ready.** The exit code was
+  thrown away and non-emptiness was the only gate, so a run killed at 60%
+  arrived as "Guide ready — hand it to QA". The completeness gate now checks the
+  end marker, the three tiers, a test case and the known-non-defects section.
+- **A QA build reports what it cost** — model, tokens, duration — written before
+  the completeness gate so a timed-out run still accounts for its spend. The
+  budget is sized from the diff (25 / 40 / 60 minutes) and `RS_QA_TIMEOUT`
+  overrides it; `RS_QA_SKILL` overrides the skill path.
+
+#### Jobs, HTTP and sign-in
+
+- **A full disk looked like a successful review.** Unchecked writes under
+  `set -uo pipefail` produced an empty `review.json`, a status of
+  `done ( findings)` and a Slack card announcing a ready review. Every write is
+  checked, and a free-disk guard (`MIN_FREE_DISK_MB`, 500) runs first.
+- **The memory guard read the wrong memory.** `/proc/meminfo` inside Docker is
+  the *host's*, so on any machine larger than the container limit the guard
+  could never fire and the agent was OOM-killed instead of asked to wait. It
+  reads the cgroup budget now.
+- **`review.json` is validated as a review.** `jq -e .` accepts a bare array and
+  invalid UTF-8; the dashboard then threw on every page load of that PR, for
+  ever, because the file is what it re-reads.
+- **Worktrees and branches stopped leaking** on failure paths, where the leftover
+  branch blocked the next run.
+- **Every request body is bounded.** `Content-Length` went straight into memory
+  before any authentication, so an anonymous request could ask a small box for a
+  gigabyte. 2 MiB cap, 413 before reading a byte, 400 on a malformed header.
+- **Query strings are redacted from the access log.** `/handoff?…&sig=…` and
+  `/oauth/callback?code=…` carry single-use credentials and `docker logs` is
+  neither encrypted nor access-controlled.
+- **`/api/login` required no `Content-Type`.** A cross-site `text/plain` form,
+  which needs no preflight, could sign a victim's browser in as the *attacker's*
+  GitHub identity — and a Claude connect on that page would then attach the
+  victim's Claude token to the attacker's record. Every `/api/*` write must be
+  `application/json` or carry a bearer, and `Sec-Fetch-Site: cross-site` is
+  refused.
+- **Device-code phishing.** `start` and `poll` were unauthenticated and shared
+  nothing, so an attacker could start a flow on your server, talk a teammate
+  into approving the code at github.com, and receive a session as them. The
+  flow is bound to the browser by a nonce cookie, and the waiting card says to
+  continue only a sign-in you started.
+- **A flood of `start` locked the team out** by evicting the oldest pending
+  entry — precisely the sign-in a real person was part-way through. Eviction is
+  most-recent-first, never touches a polled session, and keeps headroom back.
+- **Sign-in forked one `gh` per configured repository** per anonymous request,
+  each with a 20-second timeout. It probes one repository, behind a semaphore
+  and a per-IP rate limit.
+- **The "org has not approved this app" flag was global**, so one person whose
+  account could not see the repository told everybody the org had blocked it.
+- **`?welcome=1&next=…` was minted and never read**, so a teammate following a
+  Slack link to a PR signed in and was stranded on Integrations.
+- **A dead job reads `failed`.** Every job — review, QA guide, profile — now
+  goes through the same lock-or-pid-or-grace probe, so a crashed run stops
+  spinning on `reviewing` and its log tail is exposed. Two fast clicks can no
+  longer both spawn an agent and leave **Stop** killing the wrong one.
+- **Rendering the queue stopped firing a `gh pr view` per row.** After a quarter
+  of pings that was dozens of sequential subprocesses on every page load.
+
+#### Documentation
+
+Every page was re-read against the code as it now is. The four notes the last
+pass had to leave open are resolved: the QA skill and prompt are aligned, the
+host port is a separate variable, critical paths are capped — and the doctor's
+re-exec into the container did **not** land, so the caveat is gone and the
+pages say plainly that `docker compose exec app doctor` is the form to use.
+OPERATIONS gains a file-by-file map of the data directory and what the daily
+sweep removes; SECURITY gains the agent sandbox with the four things it does not
+cover; Insights, Skills and learnings, Reviewing, Repository profile and QA
+guides are rewritten against the new behaviour.
+
 ### Documentation remediation — 09/15/26
 
 A six-part audit compared the documentation against the code and found the docs
@@ -125,7 +385,8 @@ signed generic webhooks ship. The "10 to 15 minutes for a 25-file PR" figure, th
 tier, and the doctor claim in the three-step install strip have all been brought
 back to what the code supports.
 
-Nothing in this round changes behaviour.
+Nothing in that documentation round changed behaviour. The audit remediation
+above does — see *Read this before you upgrade*.
 
 - **Repeated rejections become proposed team rules.** The learnings loop used to forget: a rolling 40-row prompt block is a preference, not a standard, so a finding the team had dropped six times still arrived on review seven. Dropped rows (and separately reworded ones) are now clustered by severity, the path's top two directory segments and gist vocabulary overlap — stopwords dropped, crude stemming, half of the shorter gist's significant words present in the other with a floor of two, no dependencies. A cluster of `RULE_SUGGEST_MIN` findings (default 3) from at least two different PRs, not already covered by a Team rule, becomes a **suggestion**.
 - One `claude -p` call on the acting user's account drafts each suggestion as a single imperative sentence in the house style of the skill's existing rules, plus a rationale, cached by cluster signature and drafted on a background thread so the Skills page never waits on a model. With no Claude account connected the cluster still shows its evidence.

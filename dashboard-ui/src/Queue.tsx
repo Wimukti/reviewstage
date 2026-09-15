@@ -182,6 +182,11 @@ export function Queue({ me }: { me: Me }) {
   );
   const multi = repos.length > 1;
   const activeFilter = repoFilter && repos.includes(repoFilter) ? repoFilter : "";
+  // A remembered filter for a repository that no longer exists would otherwise be sent to the
+  // server for ever and match nothing, while the picker said "All repositories". Forget it.
+  useEffect(() => {
+    if (data && repoFilter && !repos.includes(repoFilter)) setRepoFilter("");
+  }, [data, repoFilter, repos]);
 
   const statusOf = (r: QueueRow) =>
     runningFor(jobs, "review", r.repo, r.num)?.status || (r.running ? r.status || "reviewing" : "");

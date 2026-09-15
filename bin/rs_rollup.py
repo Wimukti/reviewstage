@@ -16,6 +16,10 @@ What "all-time" does and does not mean here, since the module used to claim more
   * The keep numbers come from rs_learn's never-truncated tally, not from the capped detail
     log. `findingsCap` is the detail log's cap, published so the UI can say what the per-day
     keep series is drawn from.
+  * Decisions recorded on a DRY_RUN post are excluded from every rate, total and day bucket
+    here, and reported on their own as `dryDecisions`. A pilot on the default DRY_RUN=1 posts
+    nothing to GitHub, and a keep rate computed from those posts describes nothing that
+    happened.
   * Day buckets are UTC on both the writing and the reading side. A local-midnight bucket key
     walked back by a fixed 86400 misses every real bucket after a DST change: the chart emptied
     while the totals stayed.
@@ -217,6 +221,10 @@ def compute(state, root, now=None, repo=None):
             o = row.get("outcome")
             if repo and (row.get("repo") or "").lower() != repo.lower():
                 continue
+            if row.get("dry"):
+                # A dry-run decision: a real judgement, but nothing was posted. It stays out of
+                # the keep series for the same reason it stays out of the tally (rs_learn).
+                continue
             if o in blank:
                 kd = keep_day.setdefault(_daystart(row.get("at", now)),
                                          {"kept": 0, "edited": 0, "dropped": 0})
@@ -282,6 +290,9 @@ def compute(state, root, now=None, repo=None):
         "repo": repo or "",
         "findingsCap": rs_learn.CAP,
         "keepFromTally": bool(tally.get("complete")),
+        # Decisions made on DRY_RUN posts. Excluded from every rate and total above — nothing
+        # reached GitHub — and published only so a surface can say how many there were.
+        "dryDecisions": int(tally.get("dryDecisions", 0) or 0),
         "repos": sorted(([{"repo": k, **v} for k, v in repos.items()]),
                         key=lambda r: (-r["runs"], r["repo"])),
         "reviews": {"total": total_runs, "week": week_runs},

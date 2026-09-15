@@ -52,6 +52,17 @@ class Base(unittest.TestCase):
         Path(self.tmp.name).mkdir(parents=True, exist_ok=True)
         self.L.FILE.write_text("".join(json.dumps(r) + "\n" for r in rows))
 
+    def post(self, n, pr, outcome="dropped", key="", skill="global", repo="acme/widgets",
+             dry=False):
+        originals = [{"path": "app/models/Product.php", "line": 3, "severity": "nit",
+                      "body": f"finding {i} on pr {pr}"} for i in range(n)]
+        form = {}
+        if outcome != "dropped":
+            for i in range(n):
+                form[f"sel_{i}"] = ["1"]
+                form[f"body_{i}"] = [originals[i]["body"] if outcome == "kept" else "reworded"]
+        self.L.record(repo, pr, "acme-dev", originals, form, skill=skill, key=key, dry=dry)
+
 
 class Clustering(Base):
     def test_paraphrases_of_one_complaint_group_together(self):
@@ -240,16 +251,6 @@ class PromotedLeavesTheWindowWithMixedOutcomes(Base):
 class AllTimeTotals(Base):
     """Regression: every "all-time" number was really "the last CAP findings" and could fall."""
 
-    def post(self, n, pr, outcome="dropped", key="", skill="global", repo="acme/widgets"):
-        originals = [{"path": "app/models/Product.php", "line": 3, "severity": "nit",
-                      "body": f"finding {i} on pr {pr}"} for i in range(n)]
-        form = {}
-        if outcome != "dropped":
-            for i in range(n):
-                form[f"sel_{i}"] = ["1"]
-                form[f"body_{i}"] = [originals[i]["body"] if outcome == "kept" else "reworded"]
-        self.L.record(repo, pr, "acme-dev", originals, form, skill=skill, key=key)
-
     def test_counts_survive_the_detail_log_rolling_over(self):
         per = self.L.CAP // 2 + 10
         self.post(per, "1")
@@ -281,6 +282,54 @@ class AllTimeTotals(Base):
         self.assertFalse(st["ratable"])
         self.post(self.L.MIN_RATE_SAMPLE, "2", outcome="kept")
         self.assertTrue(self.L.skill_stats()[0]["ratable"])
+
+
+class DryRunDecisions(Base):
+    """A DRY_RUN post never reaches GitHub. Its decisions are still the reviewer's real
+    judgement, so they feed the prompt block and the rule clusters — but a keep rate computed
+    from them describes a review that did not happen, so no rate may count them."""
+
+    def test_a_dry_row_is_flagged_on_disk(self):
+        self.post(2, "1", dry=True)
+        rows = self.L._read()
+        self.assertEqual([r.get("dry") for r in rows], [True, True])
+
+    def test_dry_decisions_are_left_out_of_every_rate_and_total(self):
+        self.post(4, "1", outcome="kept", dry=True)
+        c = self.L.counts()
+        self.assertEqual((c["kept"], c["edited"], c["dropped"]), (0, 0, 0))
+        self.assertEqual(c["dry"], 4)
+        self.assertEqual(self.L.keep_rates(c)["keepRate"], None)
+        self.assertEqual(self.L.skill_stats(), [])
+
+    def test_a_live_post_beside_dry_ones_rates_only_itself(self):
+        self.post(6, "1", outcome="kept", dry=True)
+        self.post(2, "2", outcome="kept")
+        self.post(2, "3")                                        # dropped, live
+        c = self.L.counts()
+        self.assertEqual((c["kept"], c["dropped"], c["dry"]), (2, 2, 6))
+        self.assertEqual(self.L.keep_rates(c)["keepRate"], 50.0)
+
+    def test_dry_rows_still_reach_the_prompt_block(self):
+        self.post(1, "1", dry=True)
+        self.assertIn("finding 0 on pr 1", self.L.render("acme/widgets"))
+
+    def test_dry_rows_still_cluster_into_a_rule_suggestion(self):
+        self.write([dict(r, dry=True) for r in CONST])
+        self.assertEqual(len(self.L.clusters("dropped")), 1)
+
+    def test_a_retried_dry_post_does_not_double_count(self):
+        k = self.L.post_key("acme/widgets", 7, "acme-dev", "abc123def456")
+        self.post(3, "7", key=k, dry=True)
+        self.post(3, "7", key=k, dry=True)
+        self.assertEqual(self.L.counts()["dry"], 3)
+
+    def test_a_tally_written_before_dry_rows_existed_still_loads(self):
+        self.post(2, "1")
+        t = json.loads(self.L.TOTALS.read_text())
+        t.pop("dryDecisions", None)
+        self.L.TOTALS.write_text(json.dumps(t))
+        self.assertEqual(self.L.counts()["dry"], 0)
 
 
 class RuleSectionParsing(Base):

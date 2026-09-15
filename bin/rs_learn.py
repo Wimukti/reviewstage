@@ -150,12 +150,19 @@ def row_id(row):
     return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
-def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=None):
-    """Log the outcome of each original finding for one review that REACHED GitHub.
+def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=None, dry=False):
+    """Log the outcome of each original finding for one review the reviewer actually decided on.
 
-    Call this AFTER the post succeeds — never before the dry-run branch and never before the
-    POST. A keep rate computed over findings that were never sent is a number about a
-    hypothetical review; during a DRY_RUN pilot it is entirely hypothetical.
+    Call this AFTER the post succeeds, or from the dry-run branch with `dry=True` — never before
+    either, and never before the POST on the live path.
+
+    `dry` splits the two things this log is used for. A DRY_RUN post is a real human decision
+    about which findings are worth saying, so it is genuine signal for the prompt block and for
+    the rule-suggestion clusters, and it stays in the detail log. It is NOT a fact about what
+    reached GitHub, so it must never reach a published RATE: a two-week pilot on the default
+    DRY_RUN=1 posts nothing at all, and Insights used to report a keep rate computed entirely
+    from hypothetical posts. Dry rows are tallied only as a count (`dryDecisions`), which the
+    Learnings page uses to label them.
 
     `originals_sorted` is review.json's comments sorted exactly as the dashboard renders them
     (by severity), so form index i lines up. `form` is the parsed POST body: sel_i present =>
@@ -187,6 +194,8 @@ def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=No
             row["edited_gist"] = _gist(edited_body)
         if key:
             row["key"] = key
+        if dry:
+            row["dry"] = True
         out.append(row)
     if not out:
         return
@@ -225,6 +234,10 @@ def _apply_row(t, row, sign):
     o = row.get("outcome")
     if o not in ("kept", "edited", "dropped"):
         return
+    if row.get("dry"):
+        # A decision made on a post that never left the box. Counted, never rated — see record().
+        t["dryDecisions"] = int(t.get("dryDecisions", 0)) + sign
+        return
     repo = (row.get("repo") or "").lower()
     day = _utc_daystart(int(row.get("at") or 0))
     for path in (("outcomes",), ("repos", repo or "-"), ("skills", row.get("skill") or "global"),
@@ -245,7 +258,7 @@ def rebuild_totals(rows):
     """A tally built from whatever rows survive in the detail log — the best an install that
     predates the tally can do. Flagged `complete: false` so nothing claims it is all-time."""
     t = {"version": TOTALS_VERSION, "cap": CAP, "complete": False,
-         "outcomes": _blank(), "criticalPath": _blank(),
+         "outcomes": _blank(), "criticalPath": _blank(), "dryDecisions": 0,
          "repos": {}, "repoCriticalPath": {}, "skills": {}, "days": {}}
     for r in rows:
         _apply_row(t, r, 1)
@@ -259,6 +272,7 @@ def load_totals(root=None):
         v = json.loads(p.read_text())
         if isinstance(v, dict) and v.get("version") == TOTALS_VERSION:
             v.setdefault("cap", CAP)
+            v.setdefault("dryDecisions", 0)      # tallies written before dry rows existed
             return v
     except (OSError, ValueError):
         pass
@@ -432,7 +446,10 @@ def clusters(outcome="dropped", rows=None, min_rows=None):
     """Qualifying clusters of one outcome, richest first.
 
     A cluster qualifies as evidence when it holds >= min_rows rows from >= MIN_PRS distinct PRs.
-    Coverage by an existing rule is checked separately (the caller owns the skills)."""
+    Coverage by an existing rule is checked separately (the caller owns the skills).
+
+    Dry-run rows count here for the same reason they count in render(): a repeated rejection is
+    a repeated rejection whether or not the post left the box."""
     mn = RULE_SUGGEST_MIN if min_rows is None else min_rows
     src = _read() if rows is None else rows
     src = [r for r in src if r.get("outcome") == outcome]
@@ -643,6 +660,8 @@ def render(repo="", max_items=40):
     the same repo come first (they are about this codebase); rows from other repos — or legacy
     rows with no repo — fill whatever room is left, so a new repo still benefits from the team's
     general preferences."""
+    # Dry-run decisions are IN: the reviewer really did judge these findings not worth saying,
+    # and that is exactly what this block is for. Only the published rates exclude them.
     rows = [r for r in _read() if r.get("outcome") in ("dropped", "edited")]
     # A cluster the team promoted to a Team rule is already in the skill; repeating it here
     # would spend the 40-row window restating what the rule says. Drop those rows.
@@ -687,11 +706,15 @@ def recent(n=60):
 
 
 def counts():
-    """All-time outcome counts, from the running tally — not from the capped detail log."""
+    """All-time outcome counts, from the running tally — not from the capped detail log.
+
+    `dry` is the number of decisions recorded on dry-run posts. They are deliberately NOT in
+    the three outcome counts (nothing reached GitHub, so no rate may be computed from them);
+    it is published separately so a surface can say how many of the rows it lists are dry."""
     t = load_totals()
     c = dict(t.get("outcomes") or _blank())
     return {"dropped": c.get("dropped", 0), "edited": c.get("edited", 0),
-            "kept": c.get("kept", 0)}
+            "kept": c.get("kept", 0), "dry": int(t.get("dryDecisions", 0) or 0)}
 
 
 # One definition of "keep rate" ships in this product: a finding was worth posting when the

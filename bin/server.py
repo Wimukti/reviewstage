@@ -4323,6 +4323,9 @@ class Handler(BaseHTTPRequestHandler):
                     "loc": r.get("path", "") + (f":{r['line']}" if r.get("line") else ""),
                     "severity": r.get("severity", "nit"), "gist": r.get("gist", ""),
                     "repo": r.get("repo", ""),
+                    # True when the post it came from was a DRY_RUN: a real decision that never
+                    # reached GitHub. Counted in `counts.dry`, excluded from every rate.
+                    "dry": bool(r.get("dry")),
                     "editedGist": r.get("edited_gist", "") if o == "edited" else ""}
         return {"counts": rs_learn.counts(), "repos": all_repos(),
                 # How many rows of each outcome a review actually reads back. The page states
@@ -5439,7 +5442,8 @@ class Handler(BaseHTTPRequestHandler):
         skill = skill_f.read_text().strip() if skill_f.exists() else "global"
         # Learnings are recorded ONCE, at the end, and only down a path that actually reached
         # GitHub or was an explicit dry run — see _learn() below.
-        learn = lambda: self._learn(repo, pr, user, originals, form, skill, key)  # noqa: E731
+        learn = lambda dry=False: self._learn(repo, pr, user, originals, form, skill, key,  # noqa: E731
+                                              dry=dry)
         if not chosen:
             # Nothing ticked is not "the reviewer dropped every finding": it is a click with an
             # empty selection, and logging a full set of drops for it inflated the drop rate and
@@ -5505,7 +5509,10 @@ class Handler(BaseHTTPRequestHandler):
                       "rather than risk a 422 that would lose the whole review.")
 
         if DRY_RUN:
-            learn()
+            # Recorded, but flagged: the reviewer's judgement is real signal for the prompt block
+            # and the rule clusters, while nothing reached GitHub, so no published rate may
+            # count it. See rs_learn.record().
+            learn(dry=True)
             return _banner("warn", "\U0001f9ea",
                            "<b>DRY RUN — nothing was sent to GitHub.</b><br>Your review would "
                            f"post as <code>{event}</code> — "
@@ -5531,9 +5538,9 @@ class Handler(BaseHTTPRequestHandler):
                        + caveat)
 
     @staticmethod
-    def _learn(repo, pr, user, originals, form, skill, run_key):
+    def _learn(repo, pr, user, originals, form, skill, run_key, dry=False):
         """Record what the reviewer kept, edited and dropped — once, for a post that actually
-        happened.
+        happened, or for an explicit dry run (`dry=True`, which keeps the row out of every rate).
 
         It used to fire before the anchor fetch, before the dry-run branch and before the POST,
         with no per-run dedupe: a GitHub outage plus three retries logged every finding four
@@ -5541,7 +5548,7 @@ class Handler(BaseHTTPRequestHandler):
         rate and can trip the rule-suggestion threshold off one bad afternoon. `run_key` makes a
         retry REPLACE its predecessor instead of appending.
         """
-        rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key)
+        rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key, dry=dry)
 
     def _approve_result(self, repo, pr, user, form):
         """Approve as the user. Serialised on the same lock the post path takes, so two tabs

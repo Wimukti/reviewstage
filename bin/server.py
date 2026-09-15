@@ -223,14 +223,47 @@ def notify_env_status():
 # poller stays on as the safety net. GITHUB_WEBHOOK_SECRET gates the endpoint (503 unset, 401
 # on a bad X-Hub-Signature-256). Never runs a review — same notify-only rule as pr-watch.sh.
 GITHUB_WEBHOOK_SECRET = rs_webhook.secret_from(ENV)
+# One unbounded thread per delivery meant an org-wide hook on a busy morning could spawn
+# hundreds, all contending on the same queue lock. Cap the workers and shed load instead:
+# GitHub retries a 503, and the poller is the safety net for whatever it drops.
+WEBHOOK_WORKERS = max(1, int(ENV.get("RS_WEBHOOK_WORKERS", "4") or 4))
+_WEBHOOK_SLOTS = threading.BoundedSemaphore(WEBHOOK_WORKERS)
+
+
+def webhook_worker(event, payload, ctx, delivery):
+    try:
+        rs_webhook.process(event, payload, ctx, delivery)
+    finally:
+        _WEBHOOK_SLOTS.release()
 
 
 def webhook_team_members(org, slug):
     """Logins of a requested team, via the service token. Only signed-in members are then
-    queued/pinged (Context intersects with users.json)."""
-    if not (org and slug and PAT):
+    queued/pinged (Context intersects with users.json).
+
+    `orgs/{org}/teams/{slug}/members` needs the `read:org` scope, which the service PAT is not
+    otherwise required to have — so this used to fail silently (default=[]) and every team
+    review request looked like "no signed-in member". Log the real stderr and name the scope.
+    """
+    if not (org and slug):
         return []
-    rows = gh_json(["api", f"orgs/{org}/teams/{slug}/members?per_page=100"], default=[])
+    if not PAT:
+        print(f"[webhook] team {org}/{slug}: no service token (GITHUB_PAT) — cannot expand it",
+              flush=True)
+        return []
+    r = gh(["api", f"orgs/{org}/teams/{slug}/members?per_page=100"])
+    if r.returncode != 0:
+        err = (r.stderr or "").strip().replace("\n", " ")[:300]
+        hint = (" — the service token needs the `read:org` scope to expand team review requests"
+                if ("404" in err or "403" in err or "Resource not accessible" in err
+                    or "scope" in err.lower()) else "")
+        print(f"[webhook] team {org}/{slug}: members lookup failed: {err}{hint}", flush=True)
+        return []
+    try:
+        rows = json.loads(r.stdout or "null")
+    except json.JSONDecodeError:
+        print(f"[webhook] team {org}/{slug}: members response was not JSON", flush=True)
+        return []
     if not isinstance(rows, list):
         return []
     return [m.get("login") for m in rows if isinstance(m, dict) and m.get("login")]
@@ -2574,7 +2607,7 @@ def running_jobs(login, now=None):
         if s and pr_state(repo, num, login) == "reviewing":
             jobs.append({"kind": "review", "repo": repo, "num": num,
                          "status": status_phrase(s),
-                         "title": pr_meta(repo, num)[0].get("title", ""),
+                         "title": pr_meta(repo, num, fetch=False)[0].get("title", ""),
                          "href": f"/pr?repo={quote(repo, safe='')}&pr={num}"})
         # QA guides are per-PR, not per-user: whoever is watching should see one being built.
         qs = _live_status(d / "qa.status")
@@ -2605,15 +2638,31 @@ def load_review(repo, pr, login):
         return None
 
 
+_QUEUE_CACHE = (None, [])               # (stat signature, rows)
+
+
 def queue():
     """queue.json rows, each guaranteed a `repo`. Rows written before the repo dimension carry
     none and are the single configured repo's; with several repos configured they cannot be
-    placed and are skipped until the poller rewrites the file (every few minutes)."""
+    placed and are skipped until the poller rewrites the file (every few minutes).
+
+    Parsed once per version of the file, not once per caller: pr_meta() calls this per row, so
+    rendering the queue page re-read and re-parsed the whole file once for every PR on it.
+    The poller writes with os.replace, so (mtime_ns, size, inode) changes on every write.
+    """
+    global _QUEUE_CACHE
+    try:
+        st = QUEUE.stat()
+        sig = (st.st_mtime_ns, st.st_size, st.st_ino)
+    except OSError:
+        sig = None
+    if sig is not None and _QUEUE_CACHE[0] == sig:
+        return _QUEUE_CACHE[1]
     rows = []
-    if QUEUE.exists():
+    if sig is not None:
         try:
             rows = json.loads(QUEUE.read_text()) or []
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             rows = []
     out = []
     for r in rows:
@@ -2624,6 +2673,7 @@ def queue():
                 continue
             r = {**r, "repo": SINGLE_REPO}
         out.append(r)
+    _QUEUE_CACHE = (sig, out)
     return out
 
 
@@ -2652,9 +2702,32 @@ def fetch_pr_meta(repo, pr):
     return m
 
 
-def pr_meta(repo, pr):
-    """Identity for a PR, from the live queue if still there, else the cached copy, else fetched
-    live from GitHub for a PR opened by number that was never in this user's queue.
+# A `gh pr view` that came back with nothing is remembered for this long, so a mistyped or
+# deleted PR number cannot re-fire a subprocess on every single page load.
+MISS_TTL = 600
+_META_MISS = {}                         # (repo.lower(), pr) -> when we last failed
+
+
+def meta_missing(repo, pr):
+    """True while a recent fetch for this PR came back empty."""
+    hit = _META_MISS.get((repo.lower(), str(pr)))
+    return bool(hit and time.time() - hit < MISS_TTL)
+
+
+def note_meta_miss(repo, pr):
+    if len(_META_MISS) > 512:           # bounded: this is a cache, not a store
+        _META_MISS.clear()
+    _META_MISS[(repo.lower(), str(pr))] = time.time()
+
+
+def pr_meta(repo, pr, fetch=True):
+    """Identity for a PR: the live queue row, else the meta.json the poller/webhook wrote when
+    they first saw it, else — only when `fetch` — one live `gh pr view`.
+
+    The fetch is the expensive path and used to be unavoidable: meta.json was written only by
+    run-review.sh, so every PR that had ever left the queue cost one synchronous subprocess per
+    page render, repeated on every load when `gh` failed. rs_queue.write_min_meta() now caches
+    it up front, callers that only need a label pass fetch=False, and a miss is negative-cached.
     """
     for item in queue():
         if str(item.get("number")) == str(pr) and item.get("repo", "").lower() == repo.lower():
@@ -2663,11 +2736,13 @@ def pr_meta(repo, pr):
     if f.exists():
         try:
             return {"repo": repo, **json.loads(f.read_text())}, False
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             pass
-    fetched = fetch_pr_meta(repo, pr)
-    if fetched:
-        return fetched, False
+    if fetch and not meta_missing(repo, pr):
+        fetched = fetch_pr_meta(repo, pr)
+        if fetched:
+            return fetched, False
+        note_meta_miss(repo, pr)
     return {"repo": repo, "number": pr, "title": f"PR #{pr}"}, False
 
 
@@ -2676,6 +2751,18 @@ def requested_of(item):
     and were, by construction, the owner's."""
     r = item.get("requested")
     return list(r) if isinstance(r, list) else [REVIEWER]
+
+
+def pr_known(repo, pr, login):
+    """Does this PR actually exist as far as we can tell — queued, cached, already touched by
+    this user, or resolvable on GitHub right now?
+
+    /api/pr used to call touch_user() before asking. One mistyped number therefore created a
+    state directory, which made mine() true forever: the number became a permanent phantom row
+    in the queue that re-fired `gh pr view` on every single load. Resolve first, create after.
+    """
+    meta, active = pr_meta(repo, pr)
+    return bool(active or meta.get("url") or mine(repo, pr, login))
 
 
 def mine(repo, pr, login):
@@ -2695,7 +2782,7 @@ def all_prs(login):
     extra = []
     for repo, num, _ in P.iter_prdirs():
         if (repo.lower(), num) not in seen and mine(repo, num, login):
-            extra.append((pr_meta(repo, num)[0], False))
+            extra.append((pr_meta(repo, num, fetch=False)[0], False))
     extra.sort(key=lambda m: -int(m[0].get("number", 0)))
     return [(i, True) for i in live] + extra
 
@@ -3170,7 +3257,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(self.api_devices(user))
         if route == "/api/queue":
             return self.api_json(self.api_queue(user, (q.get("tab") or ["todo"])[0],
-                                                (q.get("sort") or ["newest"])[0]))
+                                                (q.get("sort") or ["newest"])[0],
+                                                repo=(q.get("repo") or [""])[0],
+                                                text=(q.get("q") or [""])[0]))
         if route in ("/api/pr", "/api/qa", "/api/stack"):
             pr = (q.get("pr") or [""])[0]
             if route == "/api/qa" and not pr:
@@ -3181,6 +3270,12 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self.api_json({"error": err, "repos": all_repos(), "pr": pr}, 400)
             if route == "/api/pr":
+                if not pr_known(repo, pr, user):
+                    return self.api_json(
+                        {"error": f"{repo}#{pr} could not be found on GitHub — check the number, "
+                                  f"and that this install's token can see the repository.",
+                         "repo": repo, "pr": pr}, 404)
+                touch_user(repo, pr, user)      # only now: the PR is real
                 return self.api_json(self.api_pr(repo, pr, user, (q.get("v") or [""])[0]))
             if route == "/api/qa":
                 return self.api_json(self.api_qa_detail(repo, pr, user))
@@ -3222,7 +3317,6 @@ class Handler(BaseHTTPRequestHandler):
         return {"exp": exp, "sig": sig}
 
     def api_pr(self, repo, pr, user, version):
-        touch_user(repo, pr, user)
         if version.isdigit():
             rev = load_history_review(repo, pr, user, int(version)) or {}
             comments = sorted(rev.get("comments", []),
@@ -3629,6 +3723,9 @@ class Handler(BaseHTTPRequestHandler):
                 # What this user has in flight, so the sidebar can say so from any page. The
                 # shell polls /api/me for it while anything is running (see running.ts).
                 "running": running_jobs(user),
+                # Has discovery ever completed a cycle? The new-install setup state depends on
+                # it; /api/settings exposes the timestamp itself as poller.lastPoll.
+                "poller_ran": (ROOT / "poller.last").exists(),
                 "webhooks_configured": bool(GITHUB_WEBHOOK_SECRET)}
 
     # -- devices (docs/MOBILE.md) -----------------------------------------------------------
@@ -3688,20 +3785,35 @@ class Handler(BaseHTTPRequestHandler):
         self._reissue = session_cookie(user, self.headers.get("Host", ""), epoch=n["epoch"])
         return out, 200
 
-    def api_queue(self, user, tab, sort):
+    def api_queue(self, user, tab, sort, repo="", text=""):
+        """The queue page. `repo` and `q` filter EVERY tab and tile, not just the rows: the
+        client used to receive only the open tab's rows, so it could not recompute a count for
+        anything else. Per-repo counts come back alongside, so a repo tab can render its own
+        number without a second request."""
         if tab not in dict(TABS):
             tab = "todo"
+        repo_f = (repo or "").strip().lower()
+        text_f = (text or "").strip().lower()
         run = running_map(user)                 # one pass over the state dir, not one per row
         entries = []
         for item, active in all_prs(user):
             num = str(item.get("number"))
             repo = item.get("repo", "")
+            if repo_f and repo.lower() != repo_f:
+                continue
+            if text_f and text_f not in (f"{repo}#{num} {item.get('title', '')} "
+                                         f"{item.get('author', '')}").lower():
+                continue
             st = pr_state(repo, num, user)
             rev = load_review(repo, num, user)
             cs = sev_counts(rev.get("comments", [])) if rev else {}
             t = pr_times(repo, num, user)
             upd = iso_ts(item.get("updatedAt")) or iso_ts(item.get("createdAt"))
+            gh_state = str(item.get("state") or ("open" if active else "")).lower()
+            if not gh_state:
+                gh_state = "merged" if item.get("merged") else "open"
             entries.append({"repo": repo, "num": num, "item": item, "active": active,
+                            "prState": gh_state, "merged": bool(item.get("merged")),
                             "st": st, "t": t,
                             "cs": cs, "updated": upd,
                             "touched": max(t["approved"], t["posted"], t["reviewed"], upd),
@@ -3716,12 +3828,18 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             return tb
         counts = {k: 0 for k, _ in TABS}
+        repo_counts = {}
         for e in entries:
             tb = entry_tab(e)
             if tb:
                 counts[tb] += 1
             if e["st"] != "archived":
                 counts["all"] += 1
+            rc = repo_counts.setdefault(e["repo"], {k: 0 for k, _ in TABS})
+            if tb:
+                rc[tb] += 1
+            if e["st"] != "archived":
+                rc["all"] += 1
         shown = [e for e in entries
                  if entry_tab(e) == tab or (tab == "all" and e["st"] != "archived")]
         keys = {"newest": lambda e: -(e["updated"] or int(e["num"])),
@@ -3754,13 +3872,21 @@ class Handler(BaseHTTPRequestHandler):
             rows.append({"repo": repo, "num": num, "title": item.get("title", ""),
                          "author": item.get("author", ""), "state": e["st"], "size": size,
                          "when": when, "sev": sev, "archived": archived,
+                         # The PR's own state on GitHub, persisted by rs_queue when the closed
+                         # webhook arrived. A merged PR can no longer be approved, and the row
+                         # should say "merged", not "posted · no longer requested".
+                         "prState": e["prState"], "merged": e["merged"],
+                         "canApprove": e["prState"] == "open",
                          # A review of this PR is in flight for this user right now; `status`
                          # is the phrase it replaces the row's meta line with.
                          "running": bool(job), "status": job["status"] if job else "",
                          "archiveToken": {"exp": aexp, "sig": asig}})
-        return {"tab": tab, "sort": sort,
+        return {"tab": tab, "sort": sort, "repo": repo_f, "q": text_f,
                 "tabs": [{"key": k, "label": lbl, "count": counts[k]} for k, lbl in TABS],
                 "stats": {k: counts[k] for k in ("todo", "reviewed", "posted", "approved")},
+                # Per-repo tab counts under the SAME filter, so every repo tab and tile can be
+                # rendered from one response instead of guessing from the visible rows.
+                "repoCounts": repo_counts,
                 "tabDesc": TAB_DESC.get(tab, ""),
                 "rows": rows, "repos": all_repos(),
                 "slackOk": bool((load_users().get(user) or {}).get("slack_id"))}
@@ -4034,7 +4160,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"error": "body is not JSON"}, 400)
         if not isinstance(payload, dict):
             return self.api_json({"error": "body is not a JSON object"}, 400)
-        threading.Thread(target=rs_webhook.process,
+        # The body was already read through read_body(), which caps Content-Length at
+        # MAX_BODY before a single byte is consumed — this path benefits from that cap and
+        # does not bypass it (see do_POST: read_body runs before the route split).
+        if not _WEBHOOK_SLOTS.acquire(blocking=False):
+            print(f"[webhook {delivery[:8]}] 503: all {WEBHOOK_WORKERS} workers busy", flush=True)
+            return self.api_json({"error": "busy — retry", "retry": True}, 503)
+        threading.Thread(target=webhook_worker,
                          args=(event, payload, webhook_ctx(), delivery), daemon=True).start()
         return self.api_json({"accepted": True, "event": event, "delivery": delivery}, 202)
 

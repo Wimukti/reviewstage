@@ -22,19 +22,52 @@ The guide is derived from evidence, not the PR description:
 
 ## Structure
 
-1. **Header** — PR, ticket, scope, and a plain-language standfirst.
-2. **Domain primer** when the feature needs a concept explained, with a worked example.
-3. **What changes on screen**, stated plainly, including when the change is invisible and where the real evidence is.
-4. **Before you start** — flags, settings, test data, viewports.
-5. **How to run it** when the change is not triggered by ordinary clicking.
-6. **P0 · Test these first** — failures that defeat the purpose or silently corrupt what the user sees, plus anything the review history marked fragile.
-7. **P1 · Does the feature work** — the advertised behaviours.
-8. **P2 · Check nothing else broke** — every gate independently off, un-gated users see no change, shared components unchanged elsewhere.
-9. **Surface matrix** with the deliberate "must not appear" rows.
-10. **Known — please don't file these**, sourced from the PR conversation.
-11. **Footer** — the one failure to escalate immediately, and the branch head the guide was checked against.
+A guide is assembled from these parts, in this order. Two of them appear only when the change
+calls for them:
 
-Cases are numbered continuously so bug reports can say "test 7". Every case has the data you need, ordered steps, and an explicit pass and fail.
+1. **Header** — the PR number, any ticket IDs, the scope or pilot audience, and a
+   plain-language line saying what the change is.
+2. **Domain primer** — *only when understanding the feature needs a concept the tester does not
+   have* (a cut-off rule, a billing cycle, an inventory state machine), with a worked example.
+   Most PRs do not get one.
+3. **What changes on screen** — stated plainly, including the case where nothing visibly
+   changes and the real evidence is a log line, an export or a database row.
+4. **Before you start** — flags, settings, test data, accounts, viewports; exact names, in
+   `code`.
+5. **How to run it** — *only when the change is not triggered by ordinary clicking*: a scheduled
+   job, a queue worker, a webhook, an import.
+6. **P0 · Test these first** — failures that defeat the purpose of the change or silently
+   corrupt what the user sees, plus anything the PR's review history marked fragile.
+7. **P1 · Does the feature work** — the advertised behaviours.
+8. **P2 · Check nothing else broke** — each gate independently off, un-gated users see no
+   change, shared components unchanged elsewhere.
+9. **Surface matrix** — a table of every surface the change could plausibly appear on, including
+   the deliberate *must not appear* rows.
+10. **Known — please don't file these** — intentional limitations and out-of-scope surfaces,
+    sourced from the PR conversation.
+11. **Footer** — the one failure worth escalating immediately, and the branch head SHA the guide
+    was checked against.
+
+Cases are numbered continuously across P0, P1 and P2 (1…N) so a bug report can say "test 7".
+Every case is a `- [ ]` checkbox item carrying the data it needs, ordered steps, and an explicit
+pass and fail.
+
+:::caution[What is actually guaranteed today]
+The eleven parts above are what the `pr-qa-guide` skill specifies. The prompt `bin/run-qa.sh`
+sends asks for five of them by name — the what-this-is line, *Before you start*, the surface
+matrix, the numbered P0/P1/P2 cases, and *Known — please don't file these* — and leaves the rest
+to the skill. In practice that means the domain primer, *What changes on screen*, continuous
+numbering across tiers and the branch-head footer are **not reliably produced**, because nothing
+in the prompt asks for them.
+
+A parallel change is aligning the skill and the prompt so the prompt defers to the skill's
+structure. Until that lands, treat items 2, 3, 11 and the continuous numbering as
+best-effort — and if a guide you generate is missing one, that is why, not a bug in your PR.
+:::
+
+Headless note: the skill's own publishing step does not apply here. `run-qa.sh` runs the agent
+with no Artifact tool and tells it to write GitHub-flavoured markdown to `qa.md` instead, which
+is what the QA page renders.
 
 ## Output
 

@@ -69,10 +69,28 @@ One `claude -p` call — **Sonnet by default**, `RS_MODEL` overrides — receive
 The model runs in the base clone with read-only tools (`Read`, `Glob`, `Grep`) so it can confirm
 a path before naming it, and nothing else. Its reply is the JSON.
 
-**Every `path_glob` is validated against the tree.** A glob that matches no tracked file is
-dropped and logged (`dropped hallucinated path_glob …` in the job log; the Skills page shows the
-dropped globs under the profile). Labels are restricted to `[A-Za-z0-9_-]`, lists are bounded,
-and the profile is refused entirely if nothing survives.
+**Every `path_glob` from a profiling run is validated against the tree.** A glob that matches no
+tracked file is dropped and logged (`dropped hallucinated path_glob …` in the job log; the Skills
+page shows the dropped globs under the profile). Labels are restricted to `[A-Za-z0-9_-]`, and a
+risk pattern containing `,` or `:` is discarded because those are the rule separators.
+
+Three limits on that sentence are worth knowing:
+
+- **Validation needs a base clone.** A profile *generated* by `bin/profile-repo.sh` always has
+  one, so its globs are always checked. A profile **edited in the dashboard** is checked only
+  when the base clone exists and `git ls-files` succeeds; when it does not — a repository
+  accepted through `REPO_ALLOW_ORG` that has never been reviewed, a clone still in flight, a
+  wedged checkout — the tree check is skipped entirely and the paths you typed are saved as
+  written. They are validated the next time the profile is saved with a clone present.
+- **Not every list is bounded.** `risk_paths`, `review_rules` and `do_not_flag` are capped at 20
+  entries each, and `checks` at 8 per path — but `critical_paths` itself is **not** capped, so a
+  profile can carry an arbitrarily long list. Only the first 12 *matched* paths reach any one
+  review prompt, so an over-long list costs storage and editing effort rather than tokens.
+- **A summary-only profile is accepted.** The profile is refused only when the summary, the
+  critical paths *and* the review rules are all empty. A reply that produced nothing but two
+  sentences of summary — every glob hallucinated and dropped — is saved, and the Skills page
+  shows the dropped globs. Check the dropped list after a run rather than assuming a saved
+  profile is a useful one.
 
 ### Cost and duration
 

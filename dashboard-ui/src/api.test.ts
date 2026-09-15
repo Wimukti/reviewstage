@@ -141,3 +141,62 @@ test("api.skillSuggestion sends the reviewer's edited rule on accept", async () 
   await api.skillSuggestion({ exp: "1", sig: "s" }, "sig1", "accept", "My own wording.");
   assert.equal(JSON.parse(String(calls[0].init?.body)).rule, "My own wording.");
 });
+
+test("api.queue sends the repo and text filters only when they are set", async () => {
+  stubFetch(200, { rows: [] });
+  await api.queue("todo", "newest");
+  assert.equal(calls[0].url, "/api/queue?tab=todo&sort=newest");
+  await api.queue("todo", "newest", "acme/api", "lead time");
+  assert.equal(calls[1].url, "/api/queue?tab=todo&sort=newest&repo=acme%2Fapi&q=lead%20time");
+});
+
+test("api.approve carries the head the verdict was written against", async () => {
+  stubFetch(200, { bannerHtml: "" });
+  await api.approve({ repo: "acme/widgets", num: "1" }, { exp: "1", sig: "s" }, "LGTM.", true, "cafe1234");
+  const body = JSON.parse(String(calls[0].init?.body));
+  assert.equal(body.reviewed_head, "cafe1234");
+  assert.equal(body.ack, true);
+  // Omitted rather than sent as undefined, so an older server sees the shape it expects.
+  stubFetch(200, { bannerHtml: "" });
+  await api.approve({ repo: "acme/widgets", num: "1" }, { exp: "1", sig: "s" }, "LGTM.", false);
+  assert.equal(JSON.parse(String(calls[0].init?.body)).reviewed_head, "");
+});
+
+test("api.skillSuggestion can ask the server to draft, with no rule of its own", async () => {
+  stubFetch(200, {});
+  await api.skillSuggestion({ exp: "1", sig: "s" }, "sig1", "draft");
+  const body = JSON.parse(String(calls[0].init?.body));
+  assert.equal(calls[0].url, "/api/skills/suggestion");
+  assert.equal(body.action, "draft");
+  assert.equal(body.rule, undefined);
+});
+
+test("api.profileVersion reads one earlier version; restore is a PUT", async () => {
+  stubFetch(200, {});
+  await api.profileVersion("acme/widgets", 1777900000);
+  assert.equal(calls[0].url, "/api/profile?repo=acme%2Fwidgets&version=1777900000");
+  stubFetch(200, {});
+  await api.restoreProfile("acme/widgets", { exp: "1", sig: "s" }, 1777900000);
+  assert.equal(calls[0].init?.method, "PUT");
+  assert.equal(JSON.parse(String(calls[0].init?.body)).restore_version, "1777900000");
+});
+
+test("api.saveProfile only confirms an emptied section when told to", async () => {
+  stubFetch(200, {});
+  await api.saveProfile("acme/widgets", { exp: "1", sig: "s" }, "# md");
+  assert.equal(JSON.parse(String(calls[0].init?.body)).confirm_empty, false);
+  stubFetch(200, {});
+  await api.saveProfile("acme/widgets", { exp: "1", sig: "s" }, "# md", true);
+  assert.equal(JSON.parse(String(calls[0].init?.body)).confirm_empty, true);
+});
+
+test("tourSeen and deviceCancel are real calls, not hand-rolled fetches", async () => {
+  stubFetch(200, { ok: true, tour_seen: true });
+  await api.tourSeen();
+  assert.equal(calls[0].url, "/api/tour-seen");
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { seen: true });
+  stubFetch(200, { ok: true });
+  await api.deviceCancel("sess-1");
+  assert.equal(calls[0].url, "/api/auth/device/cancel");
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { session: "sess-1" });
+});

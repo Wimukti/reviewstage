@@ -20,6 +20,10 @@ export const USER = "acme-dev";
 // user's credential epoch, which invalidates their session cookie as well as their device
 // tokens — correct, and fatal to a shared fixture cookie, so those tests get their own.
 export const DEVICES_USER = "acme-devices";
+// A user who has never seen the guided tour. The flag lives on the user record now, so "first
+// run" is a property of the account, not of the browser's localStorage — and the test that
+// dismisses it really does write to the server, which is the whole point of the change.
+export const TOUR_USER = "acme-tourist";
 export const REPO = "acme/widgets";
 export const REPO2 = "acme/api";
 export const REPO3 = "acme/billing"; // its profile run failed — the Skills page error state
@@ -27,8 +31,11 @@ export const PR = "38849"; // in REPO
 export const PR2 = "38850"; // in REPO — dedicated archive-test target — no other test touches it
 export const PR3 = "7"; // in REPO2
 export const PR4 = "38851"; // in REPO — a review of this one is permanently "in flight"
+export const PR5 = "38852"; // in REPO — merged on GitHub, posted here: the dead-PR row
 // The stack: PR (#38849) is the parent of PR2 (#38850). PR3 lives in REPO2, whose fake gh
 // answers nothing, so it is the un-stacked case.
+// The timestamp of the one earlier profile version the fixture ships for REPO.
+export const PROFILE_V1 = 1777900000;
 export const BRANCH = "lead-time-badge";
 export const BRANCH2 = "cache-lead-times";
 export const PORT = 8988;
@@ -39,6 +46,17 @@ function write(path: string, body: string) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, body);
 }
+
+/** A QA guide with a GFM task list — the list a tester is meant to work through. */
+export const QA_MD = [
+  "# QA guide",
+  "",
+  "## P0 — must pass",
+  "",
+  "- [ ] Open a product card for a vendor with no lead time",
+  "- [x] Confirm the badge is hidden rather than blank",
+  "",
+].join("\n");
 
 export function buildFixture() {
   rmSync(FIXTURE, { recursive: true, force: true });
@@ -60,13 +78,25 @@ export function buildFixture() {
   write(
     join(FIXTURE, "users.json"),
     JSON.stringify({
-      [USER]: { name: "Acme Dev", slack_id: "U0TEST", discord_id: "4242", added: 1, updated: 1 },
-      [DEVICES_USER]: { name: "Acme Devices", added: 1, updated: 1 },
+      // tour_seen lives on the user record now (it was per browser). The default fixture user
+      // has already seen it, so it does not cover every page; the first-run specs rewrite
+      // /api/me to say otherwise.
+      [USER]: {
+        name: "Acme Dev", slack_id: "U0TEST", discord_id: "4242",
+        added: 1, updated: 1, tour_seen: true,
+      },
+      [DEVICES_USER]: { name: "Acme Devices", added: 1, updated: 1, tour_seen: true },
+      [TOUR_USER]: { name: "Acme Tourist", added: 1, updated: 1 },
     }),
   );
 
   // Already in the per-repo layout: nothing for the server to migrate.
   write(join(FIXTURE, "MIGRATED"), JSON.stringify({ at: 1, note: "e2e fixture" }) + "\n");
+
+  // Discovery has completed a cycle here — /api/me reports poller_ran from this file, and the
+  // new-install setup state depends on it. The specs that want a fresh install say so by
+  // rewriting /api/me.
+  write(join(FIXTURE, "poller.last"), "1778000000\n");
 
   write(
     join(FIXTURE, "queue.json"),
@@ -147,6 +177,46 @@ export function buildFixture() {
   const ahead = new Date(Date.now() + 3600_000);
   utimesSync(running, ahead, ahead);
 
+  // A PR that was merged on GitHub after it was reviewed and posted here. It is no longer in
+  // queue.json — rs_queue.done() removes it — so the row is rebuilt from the meta.json
+  // mark_closed() persisted, which is where prState/merged come from.
+  write(
+    join(FIXTURE, "state", slug(REPO), PR5, "meta.json"),
+    JSON.stringify({
+      number: Number(PR5),
+      title: "Ship the lead-time cache warmer",
+      url: `https://github.com/${REPO}/pull/${PR5}`,
+      additions: 60,
+      deletions: 11,
+      changedFiles: 4,
+      author: "teammate",
+      head: "5eaf00d5eaf0",
+      createdAt: "2026-04-20T10:00:00Z",
+      updatedAt: "2026-04-28T10:00:00Z",
+      state: "merged",
+      merged: true,
+    }),
+  );
+  write(join(FIXTURE, "state", slug(REPO), PR5, "status"), "done");
+  write(
+    join(FIXTURE, "state", slug(REPO), PR5, "review.json"),
+    JSON.stringify({
+      event: "COMMENT",
+      summary: "Warms the lead-time cache on boot. Nothing blocking.",
+      explainer: "",
+      analysis: "",
+      comments: [],
+    }),
+  );
+  write(
+    join(FIXTURE, "state", slug(REPO), PR5, "users", USER, "review.json"),
+    JSON.stringify({ event: "COMMENT", summary: "Nothing blocking.", comments: [] }),
+  );
+  write(
+    join(FIXTURE, "state", slug(REPO), PR5, "users", USER, "posted.json"),
+    JSON.stringify({ at: 1778000200, inline: 0, event: "COMMENT" }),
+  );
+
   write(join(FIXTURE, "state", slug(REPO2), PR3, "status"), "done");
   write(
     join(FIXTURE, "state", slug(REPO2), PR3, "review.json"),
@@ -221,6 +291,34 @@ export function buildFixture() {
     }),
   );
 
+  // A QA guide on disk whose last regenerate failed. The server keeps the state at "done" —
+  // a bad attempt must never hide a good guide — and reports the failure alongside, with the
+  // agent's own last words in qa_agent.log.
+  write(join(FIXTURE, "state", slug(REPO), PR2, "qa.md"), QA_MD);
+  write(
+    join(FIXTURE, "state", slug(REPO), PR2, "qa_meta.json"),
+    JSON.stringify({ title: "Cache vendor lead times", url: `https://github.com/${REPO}/pull/${PR2}` }),
+  );
+  write(
+    join(FIXTURE, "state", slug(REPO), PR2, "qa.status"),
+    "failed: the guide is incomplete — missing the P1 section",
+  );
+  write(
+    join(FIXTURE, "state", slug(REPO), PR2, "qa_agent.log"),
+    ["reading the diff…", "error: the model stopped mid-section", ""].join("\n"),
+  );
+  write(
+    join(FIXTURE, "state", slug(REPO), PR2, "qa_usage.json"),
+    JSON.stringify({
+      model: "claude-sonnet-4-5",
+      input_tokens: 24000,
+      output_tokens: 3100,
+      cache_read_input_tokens: 1200,
+      cost_usd: 0.14,
+      duration_ms: 92000,
+    }),
+  );
+
   // A repository profile for REPO so the Skills page's "Repository profile" section renders as
   // profiled (status line, counts, editor) — REPO2 stays "never run".
   const profile = {
@@ -286,6 +384,21 @@ export function buildFixture() {
       "",
     ].join("\n"),
   );
+  // One earlier version on disk, so the "N earlier versions" the card counts is reachable
+  // without a save first: save_profile keeps the profile it replaces as profile.<ts>.json.
+  write(
+    join(FIXTURE, "profiles", slug(REPO), `profile.${PROFILE_V1}.json`),
+    JSON.stringify(
+      {
+        ...profile,
+        review_rules: ["Money is always integer cents."],
+        do_not_flag: [],
+        meta: { ...profile.meta, generated_at: PROFILE_V1 },
+      },
+      null,
+      1,
+    ) + "\n",
+  );
   write(join(FIXTURE, "profiles", slug(REPO), "status"), "done");
   write(join(FIXTURE, "profiles", slug(REPO), "runner"), USER);
   write(
@@ -300,6 +413,39 @@ export function buildFixture() {
       duration_ms: 48000,
     }),
   );
+
+  // A base clone for REPO. Without one nothing can compare the profile's meta.head against a
+  // real tree, and the server correctly answers "cannot tell" rather than "fresh" — so the
+  // stale badge is only reachable with a checkout on the box. Its HEAD is a real commit and the
+  // profile's stored head is not, which is exactly the drift the badge is for. Every critical
+  // path glob still matches a tracked file, so saving an edit drops nothing.
+  const base = join(FIXTURE, "repos", slug(REPO));
+  for (const f of [
+    "README.md",
+    "app/models/Product.php",
+    "app/payments/charge.php",
+    "app/payments/refund.php",
+    "app/auth/session.php",
+    "src/javascripts/Badge.tsx",
+    "src/javascripts/Card.tsx",
+    "api/limits.py",
+    "docs/overview.md",
+    "package.json",
+  ]) {
+    write(join(base, f), `// ${f}\n`);
+  }
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", base, ...args], {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "e2e", GIT_AUTHOR_EMAIL: "e2e@example.com",
+        GIT_COMMITTER_NAME: "e2e", GIT_COMMITTER_EMAIL: "e2e@example.com",
+      },
+      stdio: "ignore",
+    });
+  git("init", "-q", "-b", "main");
+  git("add", "-A");
+  git("commit", "-qm", "e2e base clone");
 
   // REPO3's last profile run failed before the model answered anything usable: a status line
   // beginning "failed:" and an agent.log holding the CLI error (state failed, log tail, Retry).
@@ -409,7 +555,6 @@ export function buildFixture() {
 }
 
 export const ORIGIN = `http://127.0.0.1:${PORT}`;
-export const TOUR_KEY = "reviewstage_tour";
 
 // A signed session cookie, the shape Playwright's storageState wants. `epoch` is the user's
 // credential counter and is inside the HMAC (server.py session_sig) so that "Sign out
@@ -432,16 +577,11 @@ export function sessionCookie(login = USER, epoch = 0) {
   };
 }
 
-// The default storage state: signed in AND the guided tour already dismissed, so it does not
-// cover the page in every test. The first-run spec opts out with a fresh localStorage.
+// The default storage state: signed in as a user whose record already says the guided tour was
+// dismissed, so it does not cover the page in every test. The first-run spec signs in as
+// TOUR_USER instead, who has never seen it.
 export function mintAuthState() {
-  writeFileSync(
-    AUTH_STATE,
-    JSON.stringify({
-      cookies: [sessionCookie()],
-      origins: [{ origin: ORIGIN, localStorage: [{ name: TOUR_KEY, value: "done" }] }],
-    }),
-  );
+  writeFileSync(AUTH_STATE, JSON.stringify({ cookies: [sessionCookie()], origins: [] }));
 }
 
 // Standalone invocation (from the webServer command).
@@ -458,19 +598,26 @@ if (process.argv[1] && process.argv[1]?.endsWith("fixture.ts")) {
 
 /** Merge `patch` into whatever /api/me answers. */
 export async function patchMe(page: Page, patch: Record<string, unknown>) {
-  await page.route("**/api/me", async (route) => {
-    const r = await route.fetch();
-    await route.fulfill({ response: r, json: { ...(await r.json()), ...patch } });
-  });
+  await patchJson(page, "**/api/me", patch);
 }
 
-/** A QA guide with a GFM task list — the list a tester is meant to work through. */
-export const QA_MD = [
-  "# QA guide",
-  "",
-  "## P0 — must pass",
-  "",
-  "- [ ] Open a product card for a vendor with no lead time",
-  "- [x] Confirm the badge is hidden rather than blank",
-  "",
-].join("\n");
+/**
+ * Merge a patch into whatever the real server answers for `glob`, leaving everything else
+ * intact. For the handful of states the offline fixture cannot produce — a review replaced
+ * between render and post, a branch that moved, a Claude account this suite must never have —
+ * where the point of the test is what the page does with the field, not how it was computed.
+ * `patch` may be a function so it can read the real body first.
+ */
+export async function patchJson(
+  page: Page,
+  glob: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  patch: Record<string, unknown> | ((body: any) => Record<string, unknown>),
+) {
+  await page.route(glob, async (route) => {
+    const r = await route.fetch();
+    const body = await r.json();
+    const extra = typeof patch === "function" ? patch(body) : patch;
+    await route.fulfill({ response: r, json: { ...body, ...extra } });
+  });
+}

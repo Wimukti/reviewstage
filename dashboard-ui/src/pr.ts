@@ -1,3 +1,5 @@
+import type { Usage } from "./api";
+
 // PR identity on the client: a PR is (repo, number). parsePrRef() turns whatever a user typed or
 // pasted — a bare number, "#123", "owner/name#123", or a full GitHub PR URL — into a PrRef,
 // resolving the repo from the configured list when the input carries none. Shared by the Queue
@@ -60,4 +62,30 @@ export function fmtDuration(ms: number | undefined | null): string {
   if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
   if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
   return `${s}s`;
+}
+
+// The usage chip a finished run carries: model, real tokens, wall clock. Shared by the review
+// page and the QA guide — a QA build spends the same subscription and had no chip at all.
+export function usageChip(u: Usage): string {
+  const d = fmtDuration(u.durationMs);
+  return `${u.model.replace(/^claude-/, "")} · ${u.realTokens.toLocaleString("en-US")} tokens${
+    d ? ` · ${d}` : ""
+  }`;
+}
+
+// Details on hover: the real breakdown, plus the API-list-price estimate clearly marked as NOT
+// what a Claude subscription is billed (it isn't per-token).
+export function usageTitle(u: Usage): string {
+  const cache = u.cacheReadTokens + (u.cacheCreationTokens ?? 0);
+  const cost =
+    u.costUsd > 0
+      ? ` · ≈ $${u.costUsd.toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} at API list prices (not billed on your Claude subscription)`
+      : "";
+  return (
+    `${u.inputTokens.toLocaleString("en-US")} input · ${u.outputTokens.toLocaleString("en-US")} ` +
+    `output · ${cache.toLocaleString("en-US")} cached context re-reads${cost}`
+  );
 }

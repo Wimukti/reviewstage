@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { PR, PR2, PR3, REPO, REPO2, REPO3, TOUR_KEY, sessionCookie } from "./fixture";
+import { PR, PR2, PR3, REPO, REPO2, REPO3, TOUR_USER, sessionCookie } from "./fixture";
 
 const enc = (r: string) => encodeURIComponent(r);
 
@@ -30,7 +30,9 @@ test.describe("signed out", () => {
 // First sign-in: the guided tour must open on the Queue page once the queue has rendered —
 // the queue mounts after its fetch, so a mount-time check would miss it. Fresh localStorage.
 test.describe("first run", () => {
-  test.use({ storageState: { cookies: [sessionCookie()], origins: [] } });
+  // TOUR_USER's record has no tour_seen flag — "first run" is now a property of the account,
+  // not of this browser's localStorage, so a second person on a shared box gets their own.
+  test.use({ storageState: { cookies: [sessionCookie(TOUR_USER)], origins: [] } });
 
   test("the tour opens on the first Queue load and stays away once dismissed", async ({ page }) => {
     await page.goto("/");
@@ -42,21 +44,25 @@ test.describe("first run", () => {
     await tour.getByRole("button", { name: "Next" }).click();
     await tour.getByRole("button", { name: "Next" }).click();
     await expect(tour).toContainText(/your review queue/i);
+    // Dismissing records it on the SERVER, against this user — there is nothing in this
+    // browser that remembers it any more.
+    const recorded = page.waitForResponse((r) => r.url().includes("/api/tour-seen") && r.ok());
     await tour.getByRole("button", { name: "Skip" }).click();
     await expect(tour).toHaveCount(0);
-    expect(await page.evaluate((k) => localStorage.getItem(k), TOUR_KEY)).toBe("done");
-    // Dismissed: a reload does not bring it back.
+    await recorded;
     await page.reload();
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     await page.waitForTimeout(1200);
     await expect(tour).toHaveCount(0);
   });
+});
 
-  test("Take a tour reopens it on demand", async ({ page }) => {
+test.describe("the tour on demand", () => {
+  test("Take a tour reopens it for someone who has already dismissed it", async ({ page }) => {
+    // The shared fixture user has seen it: nothing opens by itself, and Help is the way back.
     await page.goto("/");
+    await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     const tour = page.getByTestId("tour");
-    await expect(tour).toBeVisible({ timeout: 8_000 });
-    await tour.getByRole("button", { name: "Skip" }).click();
     await expect(tour).toHaveCount(0);
     await page.getByRole("button", { name: /help/i }).click();
     await page.getByRole("button", { name: /take a tour/i }).click();
@@ -188,7 +194,7 @@ test.describe("signed in", () => {
     const profiles = page.getByTestId("repo-profile");
     await expect(profiles).toHaveCount(3);
     const first = profiles.filter({ hasText: REPO }).first();
-    await first.locator("summary").click();
+    await first.locator("> summary").click();
     await expect(first).toContainText(/profiled/i);
     await expect(first.getByTestId("profile-status")).toContainText(/last run/i);
     await expect(first.getByTestId("profile-status")).toContainText(/claude-sonnet-4-5/);
@@ -196,7 +202,7 @@ test.describe("signed in", () => {
     await expect(first.getByTestId("profile-counts")).toContainText(/2 risk paths/);
     await expect(first).toContainText(/app\/billing/); // dropped glob is surfaced
     const second = profiles.filter({ hasText: REPO2 }).first();
-    await second.locator("summary").click();
+    await second.locator("> summary").click();
     await expect(second.getByTestId("profile-status")).toContainText(/never run/i);
     await expect(second.getByTestId("profile-error")).toHaveCount(0);
   });
@@ -221,7 +227,7 @@ test.describe("signed in", () => {
     await expect(retry).toHaveAttribute("title", /connect your claude account/i);
     await expect(retry).not.toHaveAttribute("aria-busy", "true");
     const done = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
-    await done.locator("summary").click();
+    await done.locator("> summary").click();
     await expect(done.getByTestId("profile-error")).toHaveCount(0);
   });
 
@@ -279,7 +285,7 @@ test.describe("signed in", () => {
     await expect(card.getByTestId("profile-status")).toContainText(/queued — waiting for another job/i);
     await expect(card.getByTestId("profile-error")).toHaveCount(0);
     await expect(page.locator(".banner.err")).toHaveCount(0);
-    await expect(page.locator(".banner.warn")).toContainText(/already profiling/i);
+    await expect(page.getByText(/already profiling this repository/i)).toBeVisible();
     await expect(retry).toHaveAttribute("aria-busy", "true");
     await expect(retry).toBeDisabled();
     // Still Profiling after the next poll — nothing flips it back to FAILED.
@@ -291,7 +297,7 @@ test.describe("signed in", () => {
   test("repository profile editor round-trips an edit", async ({ page }) => {
     await page.goto("/skills");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
-    await card.locator("summary").click();
+    await card.locator("> summary").click();
     await card.getByRole("button", { name: "Edit" }).click();
     const box = card.locator("textarea.fedit");
     const before = await box.inputValue();
@@ -303,7 +309,7 @@ test.describe("signed in", () => {
     await expect(card.getByTestId("profile-counts")).toContainText(/2 review rules/);
     await page.reload();
     const again = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
-    await again.locator("summary").click();
+    await again.locator("> summary").click();
     await again.getByRole("button", { name: "Edit" }).click();
     await expect(again.locator("textarea.fedit")).toHaveValue(new RegExp(marker));
     await expect(again).toContainText(/edited by/i);

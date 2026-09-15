@@ -15,7 +15,7 @@ import {
 } from "./api";
 import { Md } from "./Md";
 import { MdEditor } from "./MdEditor";
-import { fmtDuration, prLabel, prUrl } from "./pr";
+import { prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
 import { pokeRunning } from "./running";
@@ -517,30 +517,29 @@ function verdict(rev: ReviewData) {
 
 // Which review these findings came from. The server matches a post to its stored review by
 // array index, so a re-run started on another device would silently re-point every comment at a
-// different file and line. Prefer an identity the server minted; otherwise fingerprint the list
-// itself, which changes whenever the findings do.
-function reviewIdentity(rev: ReviewData): string {
-  if (rev.reviewKey) return rev.reviewKey;
-  const src = rev.findings.map((f) => `${f.i} ${f.path} ${f.line} ${f.severity}`).join("\n");
-  let h = 0x811c9dc5;
-  for (let i = 0; i < src.length; i++) {
-    h ^= src.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return `fp:${rev.count}:${h.toString(16)}`;
-}
+// different file and line. This is the server's own identity for the run — a fingerprint
+// computed here could only agree with the very list the server handed us, so it proved nothing
+// and made a replaced run look current. An older server sends none: we send "" and it skips the
+// check, exactly as it did before the key existed.
+const reviewIdentity = (rev: ReviewData): string => rev.reviewKey || "";
 
 function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   const rev = data.review!;
   const [bodies, setBodies] = useState<Record<number, string>>(
     () => Object.fromEntries(rev.findings.map((f) => [f.i, f.body]))
   );
-  const [selected, setSelected] = useState<Set<number>>(
-    () => new Set(rev.findings.filter((f) => !f.low).map((f) => f.i))
-  );
+  // The server pre-selects, and caps how many it pre-selects: GitHub takes a review
+  // all-or-nothing, so ticking every non-low finding of a 200-finding run turned one click into
+  // a review GitHub rejects whole. Fall back to "everything not low" only when it does not say.
+  const [selected, setSelected] = useState<Set<number>>(() => {
+    const serverKnows = rev.findings.some((f) => f.preselect !== undefined);
+    const pick = serverKnows ? (f: Finding) => f.preselect === true : (f: Finding) => !f.low;
+    return new Set(rev.findings.filter(pick).map((f) => f.i));
+  });
   const [requestChanges, setRequestChanges] = useState(false);
   const [banner, setBanner] = useState("");
   const [err, setErr] = useState("");
+  const [stale, setStale] = useState(false); // the server refused: this run has been replaced
   const [busy, setBusy] = useState(false);
 
   // approve
@@ -562,6 +561,18 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   const selUnknown = sel.filter((f) => placementOf(f) === "unknown").length;
   const shown = rev.findings.filter((f) => !f.low);
   const maybe = rev.findings.filter((f) => f.low);
+  // GitHub accepts a review all-or-nothing, so a batch over the server's cap is refused there
+  // anyway — catch it before the click rather than after the whole review is lost.
+  const maxPerPost = rev.maxPerPost ?? 0;
+  const overCap = maxPerPost > 0 && selected.size > maxPerPost;
+  // Approving head B while reading head A's "LGTM, no blockers" is the failure this catches. The
+  // server refuses it too; this just makes the reason visible before the click.
+  const headMoved = !!(
+    rev.approve?.reviewedHead &&
+    rev.approve?.currentHead &&
+    rev.approve.reviewedHead !== rev.approve.currentHead
+  );
+  const needsAck = !!rev.approve && (!rev.approve.lgtm || headMoved);
 
   // An action token lives 30 minutes and /api/pr only re-mints while a review runs, so reading a
   // long review and then clicking Post used to 403 into a dead button. Re-read the PR for a
@@ -598,6 +609,13 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
       setBanner(res.bannerHtml);
       onDone();
     } catch (e) {
+      // 409: the stored review is not the one on screen. Say so in those words and offer the
+      // only thing that helps — a reload — rather than a button that looks retryable.
+      if (e instanceof ApiError && e.status === 409) {
+        setStale(true);
+        setErr("");
+        return;
+      }
       setErr(errMessage(e, "Couldn't post to GitHub."));
     } finally {
       setBusy(false);
@@ -611,7 +629,7 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
     try {
       const res = await withFreshToken(
         (d) => d.tokens.approve,
-        (t) => api.approve(refOf(data), t, approveBody, ack),
+        (t) => api.approve(refOf(data), t, approveBody, ack, rev.approve?.reviewedHead || ""),
       );
       setBanner(res.bannerHtml);
       onDone();
@@ -650,6 +668,51 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
         <div className="banner err" data-testid="action-error">
           <span>🚫</span>
           <div>{err}</div>
+        </div>
+      )}
+      {stale && (
+        <div className="banner err" data-testid="rerun-refusal">
+          <span>🔁</span>
+          <div>
+            <b>This review was re-run — reload before posting.</b> The findings on the server are
+            not the ones on this page, so your ticks and edits no longer line up with them.
+            Nothing was posted.{" "}
+            <button type="button" className="linkbtn" onClick={() => window.location.reload()}>
+              Reload the page
+            </button>
+            .
+          </div>
+        </div>
+      )}
+      {rev.anchorsUnknown && (
+        <div className="banner warn" data-testid="anchors-unknown">
+          <span>❓</span>
+          <div>
+            <b>Where these comments will land could not be checked.</b> GitHub would not say which
+            lines this PR touches, so this is not a claim that the findings sit outside the diff —
+            it is simply unknown. Each one goes inline if its line is in the diff, and into the
+            review body if it is not.
+            {rev.anchorError ? <> The check failed with: <code>{rev.anchorError}</code>.</> : null}
+          </div>
+        </div>
+      )}
+      {rev.truncated && (
+        <div className="banner warn" data-testid="truncated">
+          <span>✂️</span>
+          <div>
+            <b>
+              Showing {rev.truncated.shown.toLocaleString("en-US")} of{" "}
+              {rev.truncated.total.toLocaleString("en-US")} findings.
+            </b>{" "}
+            This run produced more than one page — and one review — should carry, so the rest were
+            not rendered and cannot be posted from here. Re-run with a focus to narrow it.
+          </div>
+        </div>
+      )}
+      {rev.preselectCapped && (
+        <div className="banner warn" data-testid="preselect-capped">
+          <span>⚠️</span>
+          <div>{rev.preselectCapped.note}</div>
         </div>
       )}
 
@@ -772,6 +835,14 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                   )}{" "}
                   ·{" "}
                   {requestChanges ? "requests changes — can block the PR until updated" : "posts as plain comments"}
+                  {overCap && (
+                    <>
+                      {" · "}
+                      <b data-testid="over-cap">
+                        over the {maxPerPost} per-post limit — untick some
+                      </b>
+                    </>
+                  )}
                 </span>
                 <span className="spacer" />
                 <label className="rqtoggle">
@@ -781,8 +852,15 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                 <button
                   className={"btn " + (requestChanges ? "warn" : "primary")}
                   type="button"
-                  disabled={busy}
+                  disabled={busy || stale || overCap}
                   aria-busy={busy}
+                  title={
+                    stale
+                      ? "Reload the page — this review has been replaced"
+                      : overCap
+                        ? `GitHub takes a review all-or-nothing; post at most ${maxPerPost} at a time`
+                        : ""
+                  }
                   onClick={submitPost}
                 >
                   {busy ? "Posting…" : requestChanges ? "Request changes" : rev.postLabel}
@@ -800,6 +878,18 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
           <>
             <h2>Approve</h2>
             <div className="card">
+              {headMoved && (
+                <div className="banner warn" data-testid="head-moved">
+                  <span>🔄</span>
+                  <div>
+                    <b>The branch has moved since this review ran.</b> The verdict above was
+                    written against <code>{rev.approve.reviewedHead!.slice(0, 7)}</code>; GitHub is
+                    now at <code>{rev.approve.currentHead!.slice(0, 7)}</code>. Approving would
+                    bless commits nobody here has read — re-run the review, or confirm below to
+                    approve the current commit anyway.
+                  </div>
+                </div>
+              )}
               {rev.approve.lgtm ? (
                 <div className="banner ok">
                   <span>✅</span>
@@ -824,11 +914,13 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                   Approval comment — posted on the PR as a whole, then the PR is approved
                 </label>
                 <MdEditor value={approveBody} onChange={setApproveBody} />
-                {!rev.approve.lgtm && (
+                {needsAck && (
                   <p className="sm">
                     <label>
-                      <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} /> I've
-                      read the findings above and want to approve anyway.
+                      <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />{" "}
+                      {headMoved && rev.approve.lgtm
+                        ? "I know the branch has moved and want to approve the current commit."
+                        : "I've read the findings above and want to approve anyway."}
                     </label>
                   </p>
                 )}
@@ -836,9 +928,9 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                   <button
                     className="btn primary"
                     type="button"
-                    disabled={busy || (!rev.approve.lgtm && !ack)}
+                    disabled={busy || (needsAck && !ack)}
                     aria-busy={busy}
-                    title={!rev.approve.lgtm && !ack ? "Tick the confirmation above first" : ""}
+                    title={needsAck && !ack ? "Tick the confirmation above first" : ""}
                     onClick={submitApprove}
                   >
                     {busy
@@ -910,28 +1002,6 @@ function RerunSection({ data, onDone }: { data: PrData; onDone: () => void }) {
         <HistoryList pr={refOf(data)} runs={data.history} />
       </div>
     </div>
-  );
-}
-
-function usageChip(u: NonNullable<PrData["usage"]>): string {
-  const dur = fmtDuration(u.durationMs);
-  return `${u.model.replace(/^claude-/, "")} · ${u.realTokens.toLocaleString()} tokens${dur ? ` · ${dur}` : ""}`;
-}
-
-// Details on hover: the real breakdown, plus the API-list-price estimate clearly marked as NOT
-// what a Claude subscription is billed (it isn't per-token).
-function usageTitle(u: NonNullable<PrData["usage"]>): string {
-  const cache = u.cacheReadTokens + u.cacheCreationTokens;
-  const cost =
-    u.costUsd > 0
-      ? ` · ≈ $${u.costUsd.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })} at API list prices (not billed on your Claude subscription)`
-      : "";
-  return (
-    `${u.inputTokens.toLocaleString()} input · ${u.outputTokens.toLocaleString()} output · ` +
-    `${cache.toLocaleString()} cached context re-reads${cost}`
   );
 }
 

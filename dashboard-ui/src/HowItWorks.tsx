@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type HowData } from "./api";
+import { api, errMessage, type HowData } from "./api";
 
 interface Step {
   n: number;
@@ -70,9 +70,20 @@ const GUARANTEES = [
 
 export function HowItWorks() {
   const [d, setD] = useState<HowData | null>(null);
+  const [err, setErr] = useState("");
   useEffect(() => {
-    api.how().then(setD);
+    api
+      .how()
+      .then(setD)
+      .catch((e: unknown) => setErr(errMessage(e, "Couldn't load this page.")));
   }, []);
+  if (err)
+    return (
+      <div className="banner err" data-testid="how-error">
+        <span>🚫</span>
+        <div>{err}</div>
+      </div>
+    );
   if (!d) return <div className="muted">Loading…</div>;
 
   return (

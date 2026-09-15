@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { api, type Me } from "./api";
 import { navigate } from "./router";
 
 interface TourStep {
@@ -36,7 +37,6 @@ const TOUR: TourStep[] = [
   },
 ];
 
-const SEEN_KEY = "reviewstage_tour";
 const EVT = "reviewstage:start-tour";
 // The queue renders after its data loads, so the auto-start waits for the target this long.
 const AUTO_START_SEL = '[data-tour="queue"]';
@@ -50,14 +50,6 @@ function findTarget(sel: string): HTMLElement | null {
     if (el) return el;
   }
   return null;
-}
-
-function tourSeen(): boolean {
-  try {
-    return localStorage.getItem(SEEN_KEY) === "done";
-  } catch {
-    return false; /* private mode */
-  }
 }
 
 // Resolve once `sel` is in the DOM (now, or when it appears within `ms`); false on timeout.
@@ -87,22 +79,27 @@ export function startTour() {
   window.dispatchEvent(new Event(EVT));
 }
 
-export function Tour() {
+export function Tour({ me }: { me: Me }) {
   const [open, setOpen] = useState(false);
   const [i, setI] = useState(0);
+  // Whether this person has seen it. The flag lives on the user record, not in localStorage:
+  // that was per BROWSER, so the second person to sign in on a shared box never saw the tour,
+  // and the same person on a new laptop saw it again. Held here as well so dismissing it takes
+  // effect immediately rather than on the next /api/me.
+  const [seen, setSeen] = useState(me.tour_seen !== false);
   const ringRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const end = useCallback(() => {
-    try {
-      localStorage.setItem(SEEN_KEY, "done");
-    } catch {
-      /* private mode */
-    }
+    setSeen(true);
     setOpen(false);
+    // Best effort: a server that cannot record it costs the person one repeat, not an error.
+    void api.tourSeen().catch(() => {});
   }, []);
 
-  // Open on demand, and auto-start once on the queue for first-timers.
+  // Open on demand, and auto-start once on the queue for first-timers. `tour_seen` absent means
+  // an older server that cannot remember a dismissal — auto-starting then would reopen it on
+  // every load, so we only ever offer it from the Help menu there.
   useEffect(() => {
     const onStart = () => {
       setI(0);
@@ -111,12 +108,12 @@ export function Tour() {
     window.addEventListener(EVT, onStart);
     let t: number | undefined;
     let waiter: ReturnType<typeof whenPresent> | undefined;
-    if (!tourSeen()) {
+    if (me.tour_seen === false && !seen) {
       // First visit: the queue card mounts after its fetch, so wait for it rather than
       // checking once. Empty queue or not, the card is there — the tour still runs.
       waiter = whenPresent(AUTO_START_SEL, AUTO_START_WAIT_MS);
       waiter.promise.then((ok) => {
-        if (ok && !tourSeen()) t = window.setTimeout(onStart, 450);
+        if (ok) t = window.setTimeout(onStart, 450);
       });
     }
     return () => {
@@ -124,6 +121,8 @@ export function Tour() {
       waiter?.cancel();
       window.clearTimeout(t);
     };
+    // Deliberately mount-only: `seen` flipping mid-session must not re-arm the waiter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Position the ring + card against the current step's target.

@@ -36,6 +36,10 @@ function Row({
 }) {
   const [busy, setBusy] = useState(false);
   const ref = { repo: row.repo, num: row.num };
+  // The PR's own state on GitHub. "no longer requested" is true of a merged PR too, and saying
+  // only that made a shipped PR look like one someone quietly dropped you from.
+  const dead = row.prState === "merged" || row.prState === "closed";
+  const when = dead ? row.when.filter((w) => w !== "no longer requested") : row.when;
   async function toggleArchive(e: React.MouseEvent) {
     // The button sits outside the row's <Link>, but guard anyway so a click never navigates.
     e.preventDefault();
@@ -71,9 +75,14 @@ function Row({
         <div className="muted sm rowsub">
           {row.author && <span>{row.author}</span>}
           {row.size && <span>{row.size}</span>}
-          {row.when.map((w, i) => (
+          {when.map((w, i) => (
             <span key={i}>{w}</span>
           ))}
+          {dead && (
+            <span className={"pill " + (row.merged ? "posted" : "archived")} data-testid="pr-state">
+              {row.merged ? "merged" : "closed"}
+            </span>
+          )}
           {row.sev.length > 0 && (
             <span className="chipwrap">
               {row.sev.map((s) => (
@@ -88,6 +97,15 @@ function Row({
       </Link>
       <div className="rowmeta">
         <span className={"pill " + row.state}>{status ? "reviewing" : row.state}</span>
+        {row.canApprove === false && !status && (
+          <span className="rownote" data-testid="no-approve" title={
+            row.merged
+              ? "This PR is merged — GitHub will not take an approval on it."
+              : "This PR is closed — an approval on it would not be actionable."
+          }>
+            can't approve
+          </span>
+        )}
         <button
           type="button"
           className="rowact"
@@ -126,41 +144,61 @@ export function Queue({ me }: { me: Me }) {
     return () => window.removeEventListener(REPO_FILTER_EVENT, on);
   }, []);
 
+  // A remembered filter for a repo that no longer exists falls back to "all"; `repos` is only
+  // known after the first response, so the first request sends whatever is remembered and the
+  // effect re-runs if it turns out to be unknown.
+  const [query, setQuery] = useState(q); // `q` debounced — one request per pause, not per key
+  useEffect(() => {
+    const t = window.setTimeout(() => setQuery(q), 250);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
   const runKey = jobs.map((j) => `${j.kind}:${j.repo}#${j.num}`).join(",");
   useEffect(() => {
     let live = true;
-    api.queue(tab, sort).then((d) => live && setData(d));
+    // The filters go to the server, which applies them to EVERY tab and tile — not just to the
+    // rows it sends back. The page used to receive one tab's rows and could not honestly count
+    // anything else, so it labelled the other counts "all" and hoped.
+    api
+      .queue(tab, sort, repoFilter, query)
+      .then((d) => {
+        if (!live) return;
+        setErr("");
+        setData(d);
+      })
+      .catch((e: unknown) => live && setErr(errMessage(e, "Couldn't load your queue.")));
     return () => {
       live = false;
     };
     // runKey: a job appearing or finishing changes what these rows should say.
-  }, [tab, sort, nonce, runKey]);
+  }, [tab, sort, nonce, runKey, repoFilter, query]);
 
-  // Every repo we know of: configured + anything in the rows (org-discovered).
-  const repos = useMemo(() => {
-    const set = new Set<string>([...(me.repos || []), ...(data?.repos || [])]);
-    for (const r of data?.rows || []) if (r.repo) set.add(r.repo);
-    return [...set];
-  }, [me.repos, data]);
+  // Every repo we know of: configured + whatever the server reports. Deliberately NOT the
+  // repos of the visible rows — under a repo filter that list is one entry, and the picker
+  // offering exactly the filter you already applied is a dead end.
+  const repos = useMemo(
+    () => [...new Set<string>([...(me.repos || []), ...(data?.repos || [])])],
+    [me.repos, data],
+  );
   const multi = repos.length > 1;
-  // A remembered filter for a repo that no longer exists falls back to "all".
   const activeFilter = repoFilter && repos.includes(repoFilter) ? repoFilter : "";
+  // A remembered filter for a repository that no longer exists would otherwise be sent to the
+  // server for ever and match nothing, while the picker said "All repositories". Forget it.
+  useEffect(() => {
+    if (data && repoFilter && !repos.includes(repoFilter)) setRepoFilter("");
+  }, [data, repoFilter, repos]);
 
   const statusOf = (r: QueueRow) =>
     runningFor(jobs, "review", r.repo, r.num)?.status || (r.running ? r.status || "reviewing" : "");
 
-  const matches = (repo: string, num: string, title: string, author = "") => {
+  // Only the in-flight jobs still need filtering here: they come from the running store, not
+  // from /api/queue, so the server never saw them.
+  const matches = (repo: string, num: string, title: string) => {
     if (activeFilter && repo !== activeFilter) return false;
-    const needle = q.trim().toLowerCase();
+    const needle = query.trim().toLowerCase();
     if (!needle) return true;
-    return `${repo} ${repo}#${num} #${num} ${title} ${author}`.toLowerCase().includes(needle);
+    return `${repo} ${repo}#${num} #${num} ${title}`.toLowerCase().includes(needle);
   };
-
-  const filtered = useMemo(() => {
-    if (!data) return [];
-    return data.rows.filter((r) => matches(r.repo, r.num, r.title, r.author));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, q, activeFilter]);
 
   // ?running=1 is a view of the running-jobs store, not of a tab. Intersecting it with one tab's
   // rows hid every job on an archived or not-requested PR — and only matched kind "review", so a
@@ -168,7 +206,7 @@ export function Queue({ me }: { me: Me }) {
   const runningRows = useMemo(
     () => jobs.filter((j) => matches(j.repo, j.num, j.title)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runKey, q, activeFilter],
+    [runKey, query, activeFilter],
   );
 
   const parsed = parsePrRef(rv, repos);
@@ -179,14 +217,22 @@ export function Queue({ me }: { me: Me }) {
     navigate(prUrl({ repo, num: parsed.number }));
   };
 
+  if (err && !data)
+    return (
+      <div className="banner err" data-testid="queue-error">
+        <span>🚫</span>
+        <div>{err}</div>
+      </div>
+    );
   if (!data) return <div className="wrap-load muted">Loading…</div>;
   const empty = EMPTY[tab] || ["📭", "Nothing here yet", "This view is empty."];
-  const filtering = !!(q.trim() || activeFilter);
-  // The server counts every tab over the whole install. Only the open tab's rows are here, so
-  // only its count can honestly be recomputed — the rest are labelled rather than left to imply
-  // that "2 rows" and "41" describe the same set.
-  const countFor = (k: string) => (k === tab ? filtered.length : data.stats[k] ?? 0);
-  const UNFILTERED = "Unfiltered — a search or repository filter applies only to the open tab.";
+  const filtering = !!(query.trim() || activeFilter);
+  const rows = data.rows;
+  // Every count here is the server's, computed over the SAME filter that produced the rows —
+  // so a tab number and the list under it now describe one set of PRs.
+  const countFor = (k: string) => data.stats[k] ?? 0;
+  // Per-repo counts for the open tab, so the picker says how much is behind each option.
+  const repoCount = (r: string) => data.repoCounts?.[r]?.[tab];
   // A brand-new install has nothing in the queue because nothing is set up yet, which is not the
   // same as being caught up.
   const notSetUp = me.claude_connected === false || me.poller_ran === false;
@@ -260,10 +306,7 @@ export function Queue({ me }: { me: Me }) {
             className={"stat" + (i === 0 ? " hot" : "") + (tab === k ? " on" : "")}
             to={`/?tab=${k}&sort=${sort}`}
           >
-            <div className="k" title={filtering && k !== tab ? UNFILTERED : undefined}>
-              {countFor(k).toLocaleString("en-US")}
-              {filtering && k !== tab && <span className="cntnote"> all</span>}
-            </div>
+            <div className="k">{countFor(k).toLocaleString("en-US")}</div>
             <div className="l">
               {k === "todo"
                 ? "Awaiting your review"
@@ -281,13 +324,7 @@ export function Queue({ me }: { me: Me }) {
         {data.tabs.map((t) => (
           <Link key={t.key} className={"tab" + (tab === t.key ? " on" : "")} to={`/?tab=${t.key}&sort=${sort}`}>
             {t.label}
-            <span
-              className="cnt"
-              title={filtering && t.key !== tab ? UNFILTERED : undefined}
-            >
-              {(t.key === tab ? filtered.length : t.count).toLocaleString("en-US")}
-              {filtering && t.key !== tab ? " all" : ""}
-            </span>
+            <span className="cnt">{t.count.toLocaleString("en-US")}</span>
           </Link>
         ))}
       </div>
@@ -296,7 +333,7 @@ export function Queue({ me }: { me: Me }) {
         {filtering && (
           <span className="muted sm" data-testid="filter-note">
             {" "}
-            Counts on the other tabs and tiles are for everything — the filter applies to this tab.
+            Every count above is for the filtered set.
           </span>
         )}
       </div>
@@ -321,11 +358,15 @@ export function Queue({ me }: { me: Me }) {
               onChange={(e) => setRepoFilter(e.target.value)}
             >
               <option value="">All repositories</option>
-              {repos.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
+              {repos.map((r) => {
+                const n = repoCount(r);
+                return (
+                  <option key={r} value={r}>
+                    {r}
+                    {n === undefined ? "" : ` (${n.toLocaleString("en-US")})`}
+                  </option>
+                );
+              })}
             </select>
           </label>
         )}
@@ -385,9 +426,9 @@ export function Queue({ me }: { me: Me }) {
             Every review and QA guide you started has finished.
           </div>
         )
-      ) : filtered.length > 0 ? (
+      ) : rows.length > 0 ? (
         <div className="list" id="qlist" data-tour="queuelist">
-          {filtered.map((r) => (
+          {rows.map((r) => (
             <Row
               key={`${r.repo}#${r.num}`}
               row={r}
@@ -402,7 +443,7 @@ export function Queue({ me }: { me: Me }) {
         <div className="empty">
           <span className="ic">🔍</span>
           <b>No matches</b>
-          Nothing in this view matches your {q ? "search" : "repository filter"}.
+          Nothing in this view matches your {query ? "search" : "repository filter"}.
         </div>
       ) : notSetUp && tab === "todo" ? (
         <div className="empty" data-testid="setup-needed">

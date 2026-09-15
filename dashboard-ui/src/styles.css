@@ -68,6 +68,7 @@ box-shadow:var(--shadow);transition:transform .15s,border-color .15s;display:blo
 .setuplist{list-style:none;margin:14px auto;padding:0;max-width:520px;text-align:left}
 .setuplist li{margin:7px 0;line-height:1.5}
 .cntnote{opacity:.55;font-weight:400;font-size:.72em}
+.rownote{color:var(--dim);font-size:.72rem;white-space:nowrap}
 .wrap{max-width:64rem;margin:0 auto;padding:30px 20px 0;animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
 .crumb{font-size:.87rem;margin:0 0 14px}
 .bc{display:flex;align-items:center;gap:9px;font-size:.85rem;margin:0 0 14px;font-weight:500}
@@ -619,6 +620,8 @@ color:var(--dim);font-size:.8rem;font-weight:600;cursor:pointer;padding:6px 10px
 /* QA guide */
 .qagen{display:flex;gap:9px;align-items:stretch;margin-top:4px}.qagen .in{flex:1;min-width:0}
 .qabar{display:flex;align-items:center;gap:10px;margin:14px 0 12px;flex-wrap:wrap}
+.qausage{margin:0}
+.qafail{margin-top:6px;font-family:var(--mono);font-size:.74rem;word-break:break-word}
 .qaguide{font-size:.92rem;line-height:1.62}
 .qaguide h1,.qaguide h2,.qaguide h4{margin:20px 0 8px;font-size:1.12rem;font-weight:700}
 .qaguide>h1:first-child,.qaguide>h2:first-child,.qaguide>h4:first-child{margin-top:0}
@@ -904,3 +907,11 @@ border-radius:999px;background:var(--warnbg);color:#f6cd8a;border:1px solid var(
 .suggev summary { cursor: pointer; }
 .suggev ul { margin: 6px 0 0; padding-left: 18px; }
 .suggev li { margin-bottom: 4px; line-height: 1.45; }
+
+.profvers{margin-top:10px}
+.profvers>summary{cursor:pointer;font-size:.8rem;color:var(--dim)}
+.verlist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.verlist li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.verwhen{font-family:var(--mono);font-size:.74rem;color:var(--dim);min-width:12rem}
+.verview{margin-top:10px}
+.verview pre{max-height:320px;overflow:auto;font-size:.72rem;line-height:1.5;white-space:pre-wrap}

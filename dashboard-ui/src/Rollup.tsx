@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type RollupData, type RollupSeriesPoint } from "./api";
+import { api, errMessage, type KeepBlock, type RollupData, type RollupSeriesPoint } from "./api";
 
 // Insights — ReviewStage's activity, precision and agreement, aggregated from files it already writes.
 // All charts are hand-rolled SVG (no chart dependency), matching ReviewStage's no-framework style.
@@ -15,10 +15,9 @@ const C = {
 };
 
 // Below this many observations a percentage is noise with a decimal point on it. Show the
-// sample instead of a number that will swing to 0.0% or 100.0% on the next finding.
+// sample instead of a number that will swing to 0.0% or 100.0% on the next finding. The server
+// ships the real floor with every keep bucket — this is only the fallback for one that does not.
 const FLOOR = 20;
-// rs_learn keeps only the most recent this many finding decisions; "all-time" cannot mean more.
-const LOG_CAP = 300;
 
 function num(n: number): string {
   return n.toLocaleString("en-US"); // org rule: commas in numbers
@@ -27,13 +26,23 @@ function pct(n: number | null): string {
   return n == null ? "—" : `${n.toFixed(1)}%`; // org rule: one decimal
 }
 // A rate the sample can actually support, or an honest refusal to rate it.
-function rate(n: number | null, sample: number): string {
+function rate(n: number | null, sample: number, floor = FLOOR): string {
   if (n == null) return "—";
-  if (sample < FLOOR) return `n = ${num(sample)} — too few to rate`;
+  if (sample < floor) return `n = ${num(sample)} — too few to rate`;
   return pct(n);
 }
-function thin(sample: number): boolean {
-  return sample < FLOOR;
+function thin(sample: number, floor = FLOOR): boolean {
+  return sample < floor;
+}
+// One keep bucket, rated the way the server says it may be rated: it carries both the sample it
+// was computed over and the minimum it considers enough, so no surface here invents a floor.
+function keepRate(b: KeepBlock | undefined, which: "rate" | "keepRate" = "rate"): string {
+  if (!b) return "—";
+  const decided = b.decided ?? b.kept + b.edited + b.dropped;
+  const v = which === "keepRate" ? b.keepRate ?? b.rate : b.rate;
+  if (v == null) return "—";
+  const ratable = b.ratable ?? decided >= (b.minSample ?? FLOOR);
+  return ratable ? pct(v) : `n = ${num(decided)} — too few to rate`;
 }
 function dur(sec: number | null): string {
   if (sec == null) return "—";
@@ -178,7 +187,7 @@ const RANGES: [string, number][] = [
 
 export function Rollup() {
   const [d, setD] = useState<RollupData | null>(null);
-  const [err, setErr] = useState(false);
+  const [err, setErr] = useState("");
   const [range, setRange] = useState(30);
   const [repo, setRepo] = useState(""); // "" = every repository
   const [allRepos, setAllRepos] = useState<string[]>([]);
@@ -191,7 +200,7 @@ export function Rollup() {
         // The unfiltered call knows every repo; keep that list for the pills while filtering.
         if (!repo) setAllRepos(r.repos.map((x) => x.repo));
       })
-      .catch(() => setErr(true));
+      .catch((e: unknown) => setErr(errMessage(e, "Couldn't load insights.")));
   }, [repo]);
 
   const period = useMemo(() => {
@@ -207,15 +216,24 @@ export function Rollup() {
              keepRate: kt ? (100 * kept) / kt : null };
   }, [d, range]);
 
-  if (err) return <div className="card"><p className="muted">Couldn't load insights.</p></div>;
+  if (err)
+    return (
+      <div className="banner err" data-testid="insights-error">
+        <span>🚫</span>
+        <div>{err}</div>
+      </div>
+    );
   if (!d || !period) return <div className="wrap-load muted">Loading…</div>;
 
   const sev = d.severity;
   const allSev = sev.blocker + sev["should-fix"] + sev.nit + sev.question;
   const kt = d.keep.allTime;
-  const allDecided = kt.kept + kt.edited + kt.dropped;
+  const allDecided = kt.decided ?? kt.kept + kt.edited + kt.dropped;
   const cp = d.keep.criticalPath;
-  const cpDecided = (cp?.kept ?? 0) + (cp?.edited ?? 0) + (cp?.dropped ?? 0);
+  const cpDecided = cp ? cp.decided ?? cp.kept + cp.edited + cp.dropped : 0;
+  // The floor the server applies to its own buckets, reused for the per-range numbers this
+  // page computes itself so the two cannot disagree about what "too few" means.
+  const floor = kt.minSample ?? FLOOR;
   // The last bucket is today only when the series really reaches today — a stale rollup file
   // must not hatch a bar that is in fact complete.
   const last = period.pts[period.pts.length - 1];
@@ -228,8 +246,10 @@ export function Rollup() {
           <p className="muted sm">
             ReviewStage's activity, precision and agreement. Run counts and tokens come from every
             run this install has kept; the keep, severity and agreement numbers are computed over
-            the most recent {num(d.findingsCap ?? LOG_CAP)} finding decisions only, not from day
-            one. Read these as early signal to build on, not proof.
+            {d.findingsCap
+              ? ` the most recent ${num(d.findingsCap)} finding decisions only, not from day one.`
+              : " a capped window of recent finding decisions, not from day one."}{" "}
+            Read these as early signal to build on, not proof.
           </p>
         </div>
         <div className="rangepills" title="Applies to the activity chart and the tiles marked “last Nd”">
@@ -261,16 +281,18 @@ export function Rollup() {
         <Kpi label={`Tokens · last ${range}d`} value={num(period.tokens)}
              sub={`${num(d.tokens.total)} in total · runs that reported usage`} />
         <Kpi label={`Kept as-is · last ${range}d`}
-             value={rate(period.keepRate, period.decided)}
+             value={rate(period.keepRate, period.decided, floor)}
              sub={`posted unchanged, of ${num(period.decided)} decided · ${
-               rate(d.keep.allTime.rate, allDecided)} over the logged ${num(allDecided)}`} />
+               keepRate(kt)} over the logged ${num(allDecided)}`} />
         <Kpi label="PRs · reviewers" allTime value={`${num(d.prs)} · ${num(d.reviewers.length)}`}
              sub="distinct PRs · people" />
         <Kpi label="Rules promoted from evidence" allTime value={num(d.promotedRules ?? 0)}
              sub="repeated rejections accepted as Team rules" />
         <Kpi label="Kept on critical paths" allTime
-             value={rate(d.keep.criticalPath?.rate ?? null, cpDecided)}
+             value={keepRate(cp)}
              sub={`posted unchanged, of ${num(cpDecided)} findings on profiled paths`} />
+        <Kpi label="Kept or reworded" allTime value={keepRate(kt, "keepRate")}
+             sub={`the share worth posting at all, of ${num(allDecided)} decided`} />
       </div>
 
       <div className="panel">
@@ -286,8 +308,8 @@ export function Rollup() {
         <div className="panel">
           <div className="panel-h">Findings kept vs. edited vs. dropped (last {range}d)</div>
           <Donut
-            center={thin(period.decided) ? `n = ${num(period.decided)}` : pct(period.keepRate)}
-            sub={thin(period.decided) ? "too few to rate" : "kept as-is"}
+            center={thin(period.decided, floor) ? `n = ${num(period.decided)}` : pct(period.keepRate)}
+            sub={thin(period.decided, floor) ? "too few to rate" : "kept as-is"}
             segments={[
               { label: "Kept", value: period.kept, color: C.green },
               { label: "Edited", value: period.edited, color: C.amber },
@@ -337,25 +359,54 @@ export function Rollup() {
       <div className="grid2">
         <div className="panel">
           <div className="panel-h">Agreement across reviewers — whole range</div>
-          <div className={"agreebig" + (thin(d.agreement.multiReviewerPRs) ? " kpi-thin" : "")}>
-            {rate(d.agreement.avgRate, d.agreement.multiReviewerPRs)}
-          </div>
-          <p className="muted sm">
-            The <b>unweighted mean of each PR's own agreement rate</b> across{" "}
-            {num(d.agreement.multiReviewerPRs)} multi-reviewer PRs ({num(d.agreement.confirmedFindings)}{" "}
-            confirmed findings) — a PR with two findings counts as much as one with twenty. A
-            finding counts as confirmed only when a reviewer using a different skill, model or
-            effort raised it too. A signal to improve toward, not a score: a lower number can mean
-            broader coverage, not worse reviews.
-          </p>
+          {(() => {
+            const ag = d.agreement;
+            // Pooled: confirmed and total are summed across every reviewed head, so the sample
+            // is findings, not PRs. The old copy described an unweighted mean of per-PR rates,
+            // which is not what the server computes any more.
+            const sample = ag.totalFindings ?? ag.multiReviewerPRs;
+            return (
+              <>
+                <div className={"agreebig" + (thin(sample) ? " kpi-thin" : "")} data-testid="agreement">
+                  {rate(ag.avgRate, sample)}
+                </div>
+                <p className="muted sm">
+                  {ag.pooled ? (
+                    <>
+                      <b>Pooled</b> across every reviewed commit:{" "}
+                      {num(ag.confirmedFindings)} confirmed of{" "}
+                      {num(ag.totalFindings ?? 0)} findings, over{" "}
+                      {num(ag.heads ?? 0)} commit(s) on {num(ag.multiReviewerPRs)} multi-reviewer
+                      PR(s). A big PR therefore counts for more than a small one — the earlier
+                      per-PR mean let a PR with two findings weigh as much as one with twenty.
+                    </>
+                  ) : (
+                    <>
+                      Across {num(ag.multiReviewerPRs)} multi-reviewer PRs (
+                      {num(ag.confirmedFindings)} confirmed findings).
+                    </>
+                  )}{" "}
+                  A finding counts as confirmed only when a reviewer using a different skill,
+                  model or effort raised it too. A signal to improve toward, not a score: a lower
+                  number can mean broader coverage, not worse reviews.
+                </p>
+              </>
+            );
+          })()}
         </div>
         <div className="panel">
           <div className="panel-h">Cycle time (lagging) — whole range</div>
           <div className="agreebig">{dur(d.cycle.medianReviewToPostSec)}</div>
           <p className="muted sm">
-            Median time from <b>GitHub requesting the review</b> to the first comment posted
+            {/* The server names what it measured; restating it here is how the two drifted
+                apart the first time. */}
+            Median time {d.cycle.label ?? "from GitHub's review request to the post"}
             {d.cycle.n ? ` over ${num(d.cycle.n)} posted review(s)` : ""} — it includes however
             long the PR sat before anyone clicked Run, not just the run itself.
+            {d.cycle.excluded
+              ? ` ${num(d.cycle.excluded)} of ${num(d.cycle.posts ?? 0)} posted review(s) are
+                 outside this: nobody had requested them, so there is no request to measure from.`
+              : ""}
             {d.cycle.n ? "" : " Needs requested-at data — captured from now on."}
           </p>
         </div>

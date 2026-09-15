@@ -1,21 +1,31 @@
 import { useEffect, useState } from "react";
-import { api, type LearningsData, type Me } from "./api";
+import { api, errMessage, type LearningsData, type Me } from "./api";
 
 function Pill({ kind, label }: { kind: string; label?: string }) {
   return <span className={"pill " + kind}>{label || kind}</span>;
 }
 
-// What a review actually reads back, per rs_learn: the most recent N of each outcome, capped
-// separately. The old copy said "the last 40 decisions", which is neither number.
-const WINDOW = { dropped: 24, edited: 12 };
-
 export function Learnings({ me }: { me: Me }) {
   const [d, setD] = useState<LearningsData | null>(null);
+  const [err, setErr] = useState("");
   useEffect(() => {
-    api.learnings().then(setD);
+    api
+      .learnings()
+      .then(setD)
+      .catch((e: unknown) => setErr(errMessage(e, "Couldn't load what has been learned.")));
   }, []);
+  if (err)
+    return (
+      <div className="banner err" data-testid="learnings-error">
+        <span>🚫</span>
+        <div>{err}</div>
+      </div>
+    );
   if (!d) return <div className="muted">Loading…</div>;
-  const win = d.windows ?? WINDOW;
+  // How many rows of each outcome a review actually reads back. These are the server's numbers
+  // and it states them to the reader — a copy of them here would silently go stale the day
+  // rs_learn changed either one, which is exactly how the old "last 40 decisions" got there.
+  const win = d.windows;
 
   return (
     <>
@@ -49,10 +59,16 @@ export function Learnings({ me }: { me: Me }) {
           <h2>What is hardening into a rule</h2>
           <p className="muted sm">
             The same complaint, rejected again and again. While it is a <b>rolling preference</b> it
-            survives only as long as it stays inside the window {me.brand} reads before a review —
-            the most recent <b>{win.dropped} drops</b> and <b>{win.edited} rewordings</b>, counted
-            separately. Once you promote it on the Skills page it becomes a Team rule and leaves
-            that window for good.
+            survives only as long as it stays inside the window {me.brand} reads before a review
+            {win ? (
+              <>
+                {" "}
+                — the most recent <b>{win.dropped} drops</b> and <b>{win.edited} rewordings</b>,
+                counted separately
+              </>
+            ) : null}
+            . Once you promote it on the Skills page it becomes a Team rule and leaves that window
+            for good.
           </p>
           <div className="list" data-testid="learning-clusters">
             {d.clusters.map((c) => (
@@ -117,6 +133,11 @@ export function Learnings({ me }: { me: Me }) {
             ))}
           </div>
           <p className="fine">
+            {d.findingsCap
+              ? `This list is the detail log, which keeps only the most recent ${d.findingsCap.toLocaleString(
+                  "en-US",
+                )} decisions — the four totals above are counted separately and are never truncated. `
+              : ""}
             One log for the whole install: every repository, every reviewer. {me.brand} weighs
             decisions from the repository under review first, but nothing here is scoped to a
             single repo. These are preferences, not hard rules — it still raises a genuine

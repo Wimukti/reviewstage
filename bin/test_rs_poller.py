@@ -58,6 +58,7 @@ class Base(unittest.TestCase):
         for f in (Q.QUEUE, Q.SEEN, Q.SUPPRESSED, Q.DELIVERIES, Q.NOTIFY_FAILS):
             f.unlink(missing_ok=True)
         shutil.rmtree(P.STATE, ignore_errors=True)
+        shutil.rmtree(Path(_TMP) / "state", ignore_errors=True)
 
     def seen(self):
         return Q.SEEN.read_text() if Q.SEEN.exists() else ""
@@ -238,6 +239,74 @@ class SeenPrune(Base):
         self.assertEqual(Q.prune_seen(live, Q._closed_lookup), 1)
         self.assertIn(f"{REPO}:30:alice", self.seen())
         self.assertNotIn(f"{REPO}:31:alice", self.seen())
+
+
+class Retention(Base):
+    """The sweep removed aged `.log` files but only ever removed a history/<ts>/ directory that
+    was ALREADY empty — so the run snapshots, the bulk of what grows, accumulated for ever."""
+
+    DAY = 86400
+
+    def hdir(self, pr, login):
+        # Built from _TMP, not P.STATE: another test module in the same discovery run reloads
+        # rs_paths against its own ROOT, and the sweep is asked about _TMP.
+        return Path(_TMP) / "state" / "acme__widgets" / str(pr) / "users" / login / "history"
+
+    def run_dir(self, pr, login, ts, age_days):
+        d = self.hdir(pr, login) / str(ts)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "review.json").write_text('{"comments": []}')
+        (d / "agent.log").write_text("x")
+        when = time.time() - age_days * self.DAY
+        for f in (d / "review.json", d / "agent.log", d):
+            os.utime(f, (when, when))
+        return d
+
+    def hist(self, pr=1, login="alice"):
+        d = self.hdir(pr, login)
+        return sorted(p.name for p in d.iterdir()) if d.is_dir() else []
+
+    def test_a_whole_aged_run_directory_goes_not_just_the_log_inside_it(self):
+        now = time.time()
+        for i in range(8):
+            self.run_dir(1, "alice", int(now - (90 - i) * self.DAY), 90 - i)
+        out = Q.retention_sweep(root=_TMP, days=30, now=now, log=lambda *a: None)
+        self.assertEqual(len(self.hist()), Q.HISTORY_KEEP)
+        self.assertTrue(out["removed"] >= 3)
+
+    def test_the_newest_runs_survive_however_old_they_are(self):
+        now = time.time()
+        for i in range(3):
+            self.run_dir(1, "alice", int(now - (400 + i) * self.DAY), 400 + i)
+        Q.retention_sweep(root=_TMP, days=30, now=now, log=lambda *a: None)
+        self.assertEqual(len(self.hist()), 3, "'view an earlier run' must still have something")
+
+    def test_a_recent_run_beyond_the_keep_count_is_not_swept(self):
+        now = time.time()
+        for i in range(Q.HISTORY_KEEP + 4):
+            self.run_dir(1, "alice", int(now - i * 3600), 0)
+        Q.retention_sweep(root=_TMP, days=30, now=now, log=lambda *a: None)
+        self.assertEqual(len(self.hist()), Q.HISTORY_KEEP + 4)
+
+    def test_each_reviewer_keeps_their_own_runs(self):
+        now = time.time()
+        for login in ("alice", "bob"):
+            for i in range(Q.HISTORY_KEEP + 3):
+                self.run_dir(1, login, int(now - (200 + i) * self.DAY), 200 + i)
+        Q.retention_sweep(root=_TMP, days=30, now=now, log=lambda *a: None)
+        for login in ("alice", "bob"):
+            self.assertEqual(len(self.hist(login=login)), Q.HISTORY_KEEP)
+
+    def test_the_live_run_is_never_touched(self):
+        now = time.time()
+        live = Path(_TMP) / "state" / "acme__widgets" / "1" / "users" / "alice"
+        live.mkdir(parents=True, exist_ok=True)
+        for name in ("review.json", "posted.json", "approved"):
+            (live / name).write_text("{}")
+            os.utime(live / name, (now - 400 * self.DAY,) * 2)
+        Q.retention_sweep(root=_TMP, days=30, now=now, log=lambda *a: None)
+        for name in ("review.json", "posted.json", "approved"):
+            self.assertTrue((live / name).exists())
 
 
 FAKE_GH = """#!/usr/bin/env bash

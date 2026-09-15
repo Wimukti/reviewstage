@@ -18,6 +18,16 @@ The **Skills** page has one selector:
 - **Team default** — a shared, editable skill, seeded on first start from `skills/global-review.md` in the repository and then owned by you. It is *not* the built-in `pr-review` skill: `global-review.md` is a separate, shorter document written to be edited by a team, while `pr-review/SKILL.md` is the built-in procedure the agent falls back to. Everyone's reviews use the team default unless they opt out.
 - **Your own skill** — a skill you pasted in *Integrations*. Only your reviews use it.
 
+Above both sits a **per-repository override**. There are three tiers on disk, and both the dashboard and `run-review.sh` resolve them in the same order:
+
+| Tier | Path under `ROOT/skills/` | When it wins |
+| --- | --- | --- |
+| Repository override | `repos/<owner>__<name>/SKILL.md` | Always, for that repository. |
+| Your own skill | `<login>.md` | When there is no repository override and your selector says *own*. |
+| Team default | `_global.md` | Otherwise. Falls back to the installed `pr-review` skill if it is missing. |
+
+The repository tier works now. Until this release the editor rendered fine and posted a target the server did not understand, so **saving a repository override wrote over your personal skill** — behind a green *Saved your skill* banner — while the repository file was never created and `run-review.sh` never saw an override. *Clear override* then deleted the personal skill. If you tried this before upgrading, check your personal skill in *Integrations* before you trust it. Personal and per-repository skills are written `0600`.
+
 ReviewStage runs the chosen skill's logic and **always appends its own output contract**, so any Claude Code review skill works: the agent must end by writing a `review.json` with the assessment, explainer, analysis and a `comments` array of `path`, `line`, `severity`, `body`, `reply_to`, and an optional `suggestion`.
 
 ### Editing the team default
@@ -25,28 +35,22 @@ ReviewStage runs the chosen skill's logic and **always appends its own output co
 The team default is a file, edited in the browser. Guard rails:
 
 - It **cannot be blanked**. Saving an empty skill is refused.
-- **Restore built-in** replaces it with the installed skill and requires a typed confirmation.
-- Every save *tries* to commit to a small git repository on the server (`ROOT/skills`), with the editor's login as the commit author and a summary as the message, and the **Revision history** panel reads that log. The commit is **best-effort**: if git is missing, or the repository cannot be initialised or written, the save still succeeds and the commit is silently skipped. So the history is a good record of how the standard evolved, but it is not a guarantee — a gap in the panel means a commit failed, not that nobody edited the file. `ROOT/skills` is one of the directories that must be in your backup ([Operations](/reviewstage/operations/troubleshooting/#backup-and-restore)).
+- **Restore built-in** writes the shipped skill back, and requires a typed confirmation. It used to *delete* `_global.md` instead, so runs silently fell back to a different document, the editor showed nothing, and the next container start re-seeded the file anyway.
+- Every save commits to a small git repository on the server (`ROOT/skills`), with the editor's login as the commit author and a summary as the message; the **Revision history** panel reads that log. The save never fails on git — but the commit's exit code is checked, and a failure is **reported in the save banner and the server log** rather than swallowed. It used to be a silent no-op: a global `commit.gpgsign=true` on the host was enough to leave every edit uncommitted while the UI just hid the panel. Signing is now disabled inside this repository, and each commit names only the paths that edit touched, so two people saving at the same moment are two commits by two authors. `ROOT/skills` is one of the directories that must be in your backup ([Operations](/reviewstage/operations/troubleshooting/#backup-and-restore)).
 
 ### Quick-add a rule
 
-Type a preference in plain words — *"don't ask for a ticket link in code comments"* — and it is tidied into a managed **Team rules** section at the end of the skill. You do not edit the whole file to add one rule.
+Type a preference in plain words — *"don't ask for a ticket link in code comments"* — and it is tidied into a managed **Team rules** section. The rule is inserted at the end of *that section*, not the end of the file, so a skill whose Team rules are not the last heading no longer collects rules under whatever section happens to come last. You do not edit the whole file to add one rule.
 
 ### Scoring
 
 Each review records which skill ran it. On post, each finding is scored kept / edited / dropped, tagged with that skill. **How each skill scores** shows a keep rate per skill.
 
-Read that number carefully — it is **not** the keep rate on the Insights page:
+This is **the same keep rate the Insights page shows**, on a per-skill population: `(kept + edited) ÷ (kept + edited + dropped)`. A finding worth rewording was worth raising. The stricter measure — kept unchanged — is a separate number under a separate name, `verbatimRate`, so the two can no longer be quoted as if they were one. See [Insights](/reviewstage/guides/insights/#keep-rate) for the full definition.
 
-| | Skills page | Insights page |
-| --- | --- | --- |
-| Formula | (kept + edited) ÷ all scored findings | kept ÷ all scored findings |
-| Reads as | *worth posting* — a reworded finding still earned its place | *posted unchanged* — a reworded finding counts against it |
-| Population | every scored finding still in the log, per skill | every scored finding still in the log |
+Both surfaces read the never-truncated tally in `learnings_totals.json`, not the capped detail log, so a skill's history does not evaporate as old rows fall off.
 
-Both are computed over `learnings.jsonl`, which keeps only the **most recent 300 rows**, so neither is all-time on a busy install. See [Insights](/reviewstage/guides/insights/#how-each-number-is-defined) for the full definitions.
-
-It is a signal for improving the team default, not a leaderboard; a skill that produces many findings with a low keep rate is a skill that costs reviewers time. With a handful of findings the rate is noise — treat anything under about 20 scored findings as unreadable.
+Below **20** scored decisions no rate is shown at all, on either page — one kept finding is not "100%". It is a signal for improving the team default, not a leaderboard; a skill that produces many findings with a low keep rate is a skill that costs reviewers time.
 
 ### Repository profile
 
@@ -62,27 +66,35 @@ On every post, each original finding is recorded as one of:
 | **Reworded** | Selected, but the body was edited first. |
 | **Dropped as noise** | Not selected. |
 
-A short gist of each is appended to **one learnings log for the whole install** — `ROOT/learnings.jsonl`, not a file per repository. Each row records the repository it came from, and the log is capped at the **most recent 300 rows** across every repository: on a busy multi-repository server, older decisions fall off.
+**It is recorded once, after the post actually reached GitHub.** The outcomes used to be written before the POST, so a click with nothing ticked logged a full set of drops and three retries through an outage logged every finding four times. The call now happens on the path that succeeded, keyed by the run, and a repeat of the same run **replaces** its rows instead of appending another set. Four identical retries leave one set of decisions; a genuinely new review of a new commit leaves two.
 
-When the next review starts, up to 40 recent *dropped* and *reworded* rows are rendered into the prompt: "the team has recently rejected findings like these; do not raise them again unless the code makes them unavoidable." Rows from the repository being reviewed come first, and rows from other repositories fill whatever room is left — so the steering is repository-*preferring*, not repository-scoped, and a new repository still benefits from the team's general preferences.
+A short gist of each is appended to **one learnings log for the whole install** — `ROOT/learnings.jsonl`, not a file per repository. Each row records the repository it came from, and that log is capped at the **most recent 300 rows** across every repository.
+
+Beside it sits `learnings_totals.json`, a **never-truncated tally**: outcomes by repository, by skill, by critical path and by UTC day. Every "all-time" count on Insights and Skills reads that file, so the numbers no longer freeze or go *down* as old detail rows fall off the cap. What the cap still governs is the per-finding detail — the recent-decisions list, the per-day keep series, and the prompt block below. An install upgrading into this release seeds the tally from whatever survives in the log and marks it incomplete.
+
+When the next review starts, recent *dropped* and *reworded* rows are rendered into the prompt: "the team has recently rejected findings like these; do not raise them again unless the code makes them unavoidable." The two windows are bounded separately — **24 dropped rows and 12 reworded** — and the dashboard reads those numbers from the server rather than hardcoding them. Rows from the repository being reviewed come first, and rows from other repositories fill whatever room is left, so the steering is repository-*preferring*, not repository-scoped, and a new repository still benefits from the team's general preferences.
 
 This is **not machine learning**. It is in-context steering with your own recent decisions, shared per repository and attributed per user. The **Learnings** page shows the counts and the recent decisions so you can see what the agent is being told.
 
 ### From a repeated rejection to a proposed rule
 
-A rolling window forgets. A finding you dropped six times still arrives on review seven, because the last forty decisions are a preference, not a standard. So repetition is promoted deliberately.
+A rolling window forgets. A finding you dropped six times still arrives on review seven, because the last few dozen decisions are a preference, not a standard. So repetition is promoted deliberately.
 
 1. **Clustering.** Dropped rows — and separately reworded ones — are grouped into complaints. Two findings are the same complaint when they carry the same severity, sit under the same top-two directory segments, and their gists share vocabulary: stopwords dropped, words stemmed crudely, and at least half of the shorter gist's significant words present in the other, with a floor of two shared words. It is cheap, dependency-free string work, in the same spirit as the agreement matching — coarse on purpose.
 2. **Qualifying.** A cluster becomes evidence at `RULE_SUGGEST_MIN` findings (default 3) from **at least two different PRs**. Three drops on one pull request is one bad day; three across three is a pattern. A cluster an existing Team rule already covers — checked with the same similarity function — is never offered again.
 3. **Drafting.** One Claude call, on the account of whoever opened the page, turns the cluster's gists into a single imperative sentence in the house style of the rules already in the skill, plus a one-line rationale. It is cached against the cluster's signature, so reopening the page costs nothing. With no Claude account connected, the cluster still appears with its evidence and simply has no drafted sentence.
 4. **Deciding.** The **Suggested rules** section at the top of the Skills page shows each proposal: the sentence, the rationale, the count in words (*"from 4 findings you dropped across 3 PRs"*), and an expandable list of the actual findings, each linking to its PR.
    - **Accept** appends it through the same quick-add path a hand-typed rule uses: a bullet in `## Team rules`, committed to the skills repository with you as the author and the evidence count in the message. Cross-repository evidence goes to the team default; evidence from a single repository goes to that repository's own team default, but only when one already exists — accepting a rule must never create an override that silently displaces the shared skill.
-   - **Dismiss** records the cluster so it is not offered again. Dismissed suggestions stay behind a **Show dismissed** toggle with an **Undo**.
+   - **Dismiss** records the cluster so it is not offered again. A dismissal is anchored to the **row ids** of the findings that were in the cluster when you dismissed it, with a same-directory, high-similarity fallback — it used to be anchored to a gist that drifts as the cluster grows, which both suppressed complaints nobody had dismissed and resurrected the one that had been. Dismissed suggestions stay behind a **Show dismissed** toggle with an **Undo**.
+
+Drafting no longer happens on page load. Opening the Skills page used to spend up to two Claude calls of *your* quota with no consent, and a failure was not cached, so a bad token meant a fresh 90-second subprocess on every load with the error reaching nothing but stdout. A draft is an explicit action now, and a failure is cached with its reason and shown to you.
 
 **Nothing is ever written to a skill without a click.** The model drafts; a person decides.
 
-Once a cluster is promoted, its rows leave the rolling prompt block — the rule carries them now, and the forty-row window is spent on newer signal. The block says so in its preamble. The **Learnings** page lists each cluster as a *rolling preference* or *promoted to a rule*, and [Insights](/reviewstage/guides/insights/) counts the rules promoted from evidence, so you can watch the memory harden instead of guessing.
+Once a cluster is promoted, its rows leave the rolling prompt block — the rule carries them now, and the window is spent on newer signal. A promotion records the **row ids** it was made over, so the answer does not depend on re-clustering the log again later; the outcome is part of a cluster's identity, so a dropped-row cluster and a reworded-row cluster can no longer be merged into a third that matches neither. The block says so in its preamble. The **Learnings** page lists each cluster as a *rolling preference* or *promoted to a rule*, and [Insights](/reviewstage/guides/insights/) counts the rules promoted from evidence, so you can watch the memory harden instead of guessing.
 
 ## Agreement across reviewers
 
 When more than one reviewer runs the same commit, findings are matched across runs. A finding is **confirmed** when it was raised by runs with a *different* skill, model or effort; two runs of the same configuration do not confirm each other. The PR page shows `✓ N independent` on such findings and an overall convergence rate. It is a signal to build on, not a score.
+
+Both error directions were real and both are fixed. A body with fewer than two significant words used to match *anything* structurally nearby, so a one-word typo nit confirmed a null-check six lines away; a body too thin to judge is now an honest "not confirmed", and two findings whose severities merely collapse into the same bucket must sit on the same line rather than within six of each other. In the other direction, two byte-identical **file-level** findings never confirmed each other, because a file-level finding has no line number; they now match on the same path, on the same token-overlap terms as any anchored pair.

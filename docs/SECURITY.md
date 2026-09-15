@@ -257,6 +257,73 @@ that.
 
 Treat the webhook URL itself as a secret: anyone holding it can post into that channel.
 
+## The review agent's sandbox
+
+This is the property the whole product rests on, so it is worth stating exactly.
+
+**A review runs with no GitHub credential in its environment.** Before `claude` is launched,
+`agent_env` (in `bin/lib-common.sh`) builds an `env -u …` prefix that removes every
+credential-shaped variable:
+
+```
+GH_TOKEN  GITHUB_TOKEN  GITHUB_PAT  GH_ENTERPRISE_TOKEN  GITHUB_ENTERPRISE_TOKEN
+GH_HOST  GH_REPO  GH_PATH  GH_CLIENT_ID  GH_CLIENT_SECRET  GITHUB_WEBHOOK_SECRET
+GIT_ASKPASS  SSH_ASKPASS  GIT_CONFIG_PARAMETERS  SSH_AUTH_SOCK
+RS_SECRET  SLACK_BOT_TOKEN  SLACK_WEBHOOK  SLACK_CHANNEL  DISCORD_WEBHOOK
+WEBHOOK_URL  WEBHOOK_SECRET
+```
+
+It also points `GH_CONFIG_DIR` at an empty directory and sets `GIT_TERMINAL_PROMPT=0`, so a
+`gh` call inside the agent finds neither a token in the environment nor the box owner's stored
+login: it fails unauthenticated. The diff and the branch are already on disk before the agent
+starts, so it has no reason to reach GitHub at all.
+
+**One credential deliberately stays: `CLAUDE_CODE_OAUTH_TOKEN`.** The CLI takes it only from
+the environment — there is no flag and no credentials file — so dropping it would run every
+review on the box account instead of the clicking reviewer's. It authorises Claude, not
+GitHub; it cannot post.
+
+**A tool deny list is the second barrier.** The agent runs with
+`--allowedTools "Bash Read Glob Grep Write"` and an explicit `--disallowedTools`:
+
+```
+Bash(gh:*)  Bash(git push:*)  Bash(git remote:*)  Bash(git config:*)
+Bash(curl:*)  Bash(wget:*)  Bash(nc:*)  Bash(ssh:*)  Bash(scp:*)
+Bash(env:*)  Bash(printenv:*)  WebFetch  WebSearch
+```
+
+**And the run is fingerprinted.** Immediately before and immediately after the agent,
+`run-review.sh` takes one GraphQL count of the PR's reviews, comments and review threads —
+using the service token, from outside the agent's environment. If the two differ, the run does
+not become a review: it writes `security-violation` next to the log, prints
+`SECURITY: the review agent wrote to GitHub` to the server log, and fails the job with that
+message. A prompt-injected write attempt is a failed run and an incident, not a quiet success.
+
+There is an end-to-end test for this. `bin/test_rs_job_scripts.py` runs the real job scripts
+against a fake agent that calls `gh pr review --approve` before doing its work, asserts the
+attempt happened and could not succeed, and captures the agent's whole environment to assert
+no GitHub credential, Slack token or HMAC secret is in it while the Claude token still is. A
+second case gives the fake agent a working token anyway and asserts the tripwire fires.
+
+### What this does not cover
+
+- **The agent can still run commands on the server.** `Bash` is allowed; the deny list names
+  specific programs. Anything else on the box that can reach the network is not covered by
+  name. Run ReviewStage on a machine that holds nothing else.
+- **The fingerprint watches three counters on one pull request.** It would not see a write to
+  a different PR or repository, an edit to an existing comment, a label or assignee change, or
+  a push. It is a tripwire for the specific failure it is named after, not a proof of
+  inaction.
+- **It is skipped when it cannot run.** If either GraphQL call comes back empty — a network
+  failure, a service token that lost access — the comparison is not made and the run
+  continues.
+- **The QA guide has no fingerprint.** `run-qa.sh` uses the same scrubbed environment and the
+  same deny list, but takes no before/after count. A QA build is protected by the first two
+  barriers only.
+- **The deny list is enforced by the Claude Code CLI.** It is the CLI's permission layer that
+  honours `--disallowedTools`; the environment scrub is the barrier that does not depend on
+  anything the agent or the CLI decides.
+
 ## What is not defended against
 
 Stated plainly, so nobody assumes otherwise:
@@ -282,11 +349,13 @@ Stated plainly, so nobody assumes otherwise:
   the Slack webhook, the owner's Claude credentials. Run it on a machine that holds nothing
   else you would mind losing, so the blast radius is your GitHub accounts rather than
   production data — but that is not nothing.
-- **The agent reads untrusted PR content.** It runs with `Bash` allowed, in a worktree, on
-  this server. A hostile PR could in principle try prompt injection to get the agent to do
-  something with those tools. It cannot post to GitHub — `run-review.sh` has no write path —
-  but it can run commands on the server. Worth knowing before you point this at PRs from
-  outside the team, and a good reason to keep the server single-purpose.
+- **The agent reads untrusted PR content and can run commands on the server.** It runs with
+  `Bash` allowed, in a worktree of the PR's head. It has no GitHub credential and an explicit
+  deny list, and a write to the PR fails the run — see
+  [The review agent's sandbox](#the-review-agents-sandbox), including the four things that
+  arrangement does not cover. What remains is command execution as the service user, which is
+  the reason to keep the server single-purpose before pointing it at PRs from outside the
+  team.
 
 ## Reporting a vulnerability
 

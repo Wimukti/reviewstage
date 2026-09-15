@@ -15,9 +15,9 @@ printed under the keep rate.
 
 | Tile | What it counts |
 | --- | --- |
-| **Reviews · last Nd** | Agent runs whose result landed in the range — the current `review.json` plus every kept run in `history/`, one per reviewer per PR. |
-| **Tokens · last Nd** | Input + output tokens from each run's `usage.json`. Cache reads and cache writes are recorded but **not** added in, so the figure understates what the model actually processed. A cached re-run adds nothing. |
-| **Kept as-is · last Nd** | Findings posted unchanged ÷ all findings that reached a post decision, in the range. The small *all-time* figure beneath it is the same ratio over the whole log — see the cap below. |
+| **Reviews · last Nd** | Agent runs whose result landed in the range — the current `review.json` **and** every earlier run in `history/`, each bucketed by its own finish time. |
+| **Tokens · last Nd** | Input + output tokens from each run's `usage.json`, live and archived. Cache reads and cache writes are recorded but **not** added in, so the figure understates what the model actually processed. A cache hit carries a `cached` marker that zeroes it, so a replayed run is not billed twice. |
+| **Kept · last Nd** | Findings the reviewer kept, verbatim or reworded, ÷ all findings that reached a post decision. |
 | **PRs · reviewers** | Distinct PRs that have at least one run on disk, and distinct logins that have run one. Always all-time, never filtered by the range or narrowed by the repository picker's date logic. |
 
 ## How each number is defined
@@ -26,75 +26,92 @@ Read this before quoting any of them at anybody.
 
 ### Keep rate
 
-`kept ÷ (kept + edited + dropped)`, over `learnings.jsonl`.
+**There is one definition, and both pages use it:**
 
-- **A reworded finding counts as a miss.** The Skills page's per-skill score uses a *different*
-  formula — `(kept + edited) ÷ total`, on the grounds that a finding worth rewording was worth
-  raising. The two numbers are both called a keep rate, they are both correct for their purpose,
-  and they will not match. When they are quoted side by side, say which is which.
-- **"All-time" is capped.** `learnings.jsonl` keeps only the **most recent 300 rows** across
-  every repository and every reviewer. On a busy install the all-time keep rate is the keep rate
-  of the last 300 findings, and older history is gone rather than averaged in.
-- **Population.** Only findings that reached a *post* are scored; a review you read and never
-  posted contributes nothing, in either direction.
-- **Minimum sample.** Under about 20 scored findings the number moves several points per
-  decision. Treat it as unreadable below that, and do not compare two skills until each has 50.
+`keepRate = (kept + edited) ÷ (kept + edited + dropped)`
+
+A finding was worth posting when the reviewer kept it, verbatim or reworded. The stricter
+measure — kept *unchanged* — still exists, under its own name, `verbatimRate`, so the two are
+never confused. The Skills page's per-skill score and the Insights tile are the same formula on
+different populations.
+
+- **All-time is genuinely all-time.** Every outcome is added to a never-truncated tally in
+  `learnings_totals.json` as it happens. The detail log `learnings.jsonl` is still capped at
+  the most recent 300 rows — that is what the per-day keep series and the *What happened to
+  findings* panel are drawn from, and the page says so — but the headline counts no longer
+  shrink as old rows fall off. An install that predates the tally seeds it from whatever
+  survives in the log and is flagged as incomplete.
+- **Population.** Only findings that reached a *post* are scored, and the outcome is recorded
+  after the post actually reached GitHub. A review you read and never posted contributes
+  nothing, in either direction; a post retried through an outage is recorded once, not four
+  times.
+- **Minimum sample.** Below **20** scored decisions no rate is shown at all — one kept finding
+  is not "100%". The same floor governs the Insights tile and the per-skill table, and the API
+  publishes it, so no surface invents its own.
 
 ### Kept on critical paths
 
 The same ratio restricted to findings the agent tagged with a `critical_path` — so it needs a
 [repository profile](/reviewstage/guides/repo-profile/) and a Standard or Deep review that
-touched a profiled path. It is usually a small subset of an already-capped log; expect it to be
-the noisiest number on the page.
+touched a profiled path. It comes from the same tally and obeys the same 20-decision floor;
+expect it to be the sparsest number on the page.
 
 ### Agreement
 
-The **unweighted mean of per-PR agreement rates** — not a rate over findings.
+**Pooled, not averaged.** Confirmed clusters and total clusters are summed across every head of
+every PR, and the rate is the one division at the end:
 
-- One PR's rate is *clusters confirmed by two or more independent configurations ÷ all clusters
-  on that PR*, taken from the most recent agreement file written for it.
+`avgRate = confirmed ÷ total`, over all heads
+
+- A PR with forty findings therefore carries forty findings' worth of weight, and a PR reviewed
+  on three heads contributes all three rather than only its newest. The tile reports `heads`
+  and `totalFindings` beside the rate, and marks itself pooled.
 - Independence is by configuration, not by person: two runs with the same skill, model and
   effort are one unit however many people started them.
-- Because the per-PR rates are averaged unweighted, a PR with three findings counts exactly as
-  much as one with forty.
 - **Population.** Only PRs where two or more runs exist. On most installs that is a small
-  handful; the tile prints the count next to it, and that count is the number to look at first.
-- **Minimum sample.** Below roughly ten multi-reviewer PRs the mean is anecdote. Matching is
-  deliberately coarse (same file, severity bucket, within six lines, a little body-token
-  overlap), so a "confirmed" finding is a strong candidate, not proof.
+  handful, and the count next to the tile is the number to look at first.
+- Matching is deliberately coarse — same file, same severity bucket, within six lines, with
+  real token overlap required. A finding too thin to judge is not confirmed rather than
+  confirmed by default, and two file-level findings on the same path can now confirm each
+  other. A "confirmed" finding is a strong candidate, not proof.
 
 ### Cycle time
 
-The **median** of `posted.json` timestamp − `requested_at`, in seconds, over every
-reviewer-and-PR pair that has both.
+The **median** of `posted.json` timestamp − `requested_at`, in seconds. The page labels it for
+what it measures: *from GitHub's review request to the post*.
 
 - The clock starts when **GitHub recorded the review request** and ReviewStage first saw it —
   the poller or the webhook writes `requested_at`. It does **not** start when the reviewer
-  opened the PR or clicked Start. So it measures request-to-posted latency, most of which is
-  usually a human not having got to it yet, and it is not a measure of how fast the agent is.
+  opened the PR or clicked Start. Most of the interval is usually a human not having got to it
+  yet; it is not a measure of how fast the agent is.
 - If ReviewStage was not running when the request was made, the marker is written on first
   sight, and that PR's cycle time is short by however long the gap was.
-- **Population.** Only pairs that reached a post. Reviews read and not posted, and posts on PRs
-  nobody formally requested, are both absent — which biases the median towards work that went
-  smoothly.
+- **Population.** Only posts on PRs that carried a review request. A PR you reviewed because
+  you felt like it has no `requested_at` and is excluded — and the tile reports how many posts
+  were excluded rather than quietly shrinking `n`.
 - **Minimum sample.** The tile prints `n`. Below about 20 the median swings on one slow PR.
 
 ### Reviews per day
 
-Bucketed by the run's completion time in the **server's local timezone**, and the series is 90
-days long — the 90-day range is the maximum, and there is no way to see further back on this
-page.
+Bucketed in **UTC**, on a fixed 86,400-second grid, with the labels formatted in UTC to match.
+Both sides of the comparison agree, which they did not when the buckets were local midnights
+walked back in fixed day steps — every daylight-saving change used to knock the generated keys
+an hour off the stored ones and empty the chart. The series is 90 days long, which is also the
+maximum range.
 
 ## Panels
 
 - **Review activity — per day** — reviews and tokens for the chosen range.
-- **What happened to findings** — kept / edited / dropped for the range. This is the learnings
-  loop's raw material, and the same 300-row cap applies.
-- **Findings by severity** — blocker, should-fix, nit, question, counted from each reviewer's
-  *current* `review.json` only; earlier runs in `history/` are not re-counted. All-time.
+- **What happened to findings** — kept / reworded / dropped for the range, drawn from the
+  capped 300-row detail log. The page marks it as such; the headline rate above it is not.
+- **Findings by severity** — blocker, should-fix, nit, question, counted across **every** run,
+  live and archived. It used to read only the current run per PR and reviewer, so the "all-time"
+  chart went down over time as re-runs pushed earlier ones into `history/`.
 - **By reviewer** — runs per login, all-time.
-- **By model** — runs and tokens per model, from `usage.json`.
-- **By repository** — runs, PRs and tokens per repository, all-time.
+- **By model** — runs and tokens per model, over every run including archived ones, so
+  switching model no longer zeroes the old one.
+- **By repository** — runs, PRs and tokens per repository, all-time. Repository keys are
+  lowercased, so one repository discovered under two spellings is one row.
 - **Agreement across reviewers** and **Cycle time** — defined above.
 
 ## What it is for

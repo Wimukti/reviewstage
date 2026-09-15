@@ -37,6 +37,7 @@ git clone https://github.com/Wimukti/reviewstage && cd reviewstage
 cp .env.example .env               # set REPOS and GITHUB_PAT (the service token)
 docker compose up -d
 docker compose exec app doctor     # diagnostics from inside the container
+                                   # (RS_HOST_PORT=9000 in .env moves the host port)
 ```
 
 You need Docker with Compose v2 and a host with **at least 2 GB of RAM** — a review refuses to
@@ -44,7 +45,9 @@ start below `MIN_FREE_MB` (800 MB *available*), so a 1 GB VPS cannot run one. `G
 fine-grained service token on the repositories in `REPOS` with **Pull requests: Read and
 write**, **Contents: Read** and **Metadata: Read**. It reads PR metadata and diffs, clones the
 repositories and runs the poller's searches; nothing in the review or service path ever writes
-to GitHub with it — every comment and approval uses the acting reviewer's own token.
+to GitHub with it — every comment and approval uses the acting reviewer's own token. You also
+need about **500 MB free** on the data volume (`MIN_FREE_DISK_MB`); a job refuses to start below
+it rather than producing an empty review.
 
 Before you point it at anyone else's pull request, read the
 [security model](https://wimukti.github.io/reviewstage/security/): what is stored, what each
@@ -63,15 +66,16 @@ Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the 
 ## Highlights
 
 - **A staging area, not a comment stream.** Tick and untick findings, edit inline with a preview, attach GitHub suggestion blocks, ask for a plain-words explanation with how to verify. Re-run at another effort or focus; every earlier run is kept.
-- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from — the review step has no GitHub write path at all.
+- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from — and the review agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before/after count of the PR's reviews, comments and threads that fails the run if anything landed. A prompt-injected write attempt is a failed run, not a comment under your name. [What that does not cover](https://wimukti.github.io/reviewstage/security/#prompt-injection-from-hostile-diffs).
 - **Effort, focus and model per run.** Quick, Standard or Deep (auto-suggested from the diff), a free-text focus note, and your plan's default model or Opus, Sonnet or Haiku. Tokens and model are shown per run.
 - **Profiles your repo once and makes every review walk its critical paths.** Deterministic signals (tree, churn, in-degree, CODEOWNERS, CI) plus one Sonnet call name the paths where a mistake hurts most, and every generated path is checked against the tree before it is kept. Standard and Deep reviews that touch one are told to verify callers, contracts, migrations and tests, and findings on it carry a badge. Editable in the dashboard; optional automatic re-profile when the tree changes.
-- **It learns what your team drops — and hardens it into rules.** Kept, reworded and dropped findings feed the next review of the repository. Drop the same complaint three times across different PRs and ReviewStage drafts it as a proposed team rule, with the evidence attached, for you to accept or dismiss with one click — nothing reaches a skill on its own. Skills are scored by how often their findings survive a human; the team default is versioned in a git repository on your server, with a revision history; add a rule in plain words.
+- **It learns what your team drops — and hardens it into rules.** Kept, reworded and dropped findings feed the next review of the repository, recorded once after the post actually reaches GitHub and keyed so a retry replaces rather than doubles. Drop the same complaint three times across different PRs and ReviewStage drafts it as a proposed team rule, with the evidence attached, for you to accept or dismiss with one click — nothing reaches a skill on its own. Skills are scored by how often their findings survive a human; the team default is versioned in a git repository on your server, with a revision history; add a rule in plain words.
 - **Independent reviews, weighted agreement.** Two reviewers on one PR get separate runs in separate worktrees; findings both raised with a different skill, model or effort are marked confirmed.
 - **One install, many repositories.** List them in `REPOS` or accept a whole org with `REPO_ALLOW_ORG`; per-repo skills and risk paths, a repo chip and filter on every queue row, Insights across repositories.
 - **From PR to QA guide.** A tester-ready P0/P1/P2 test plan built from the same diff and review threads.
 - **Slack, Discord or any webhook.** Cards for review requested, review ready, stopped and QA ready — Slack (webhook or threaded bot token), Discord embeds, or a signed JSON POST to Teams, Zapier, n8n or your own endpoint. Or none: the dashboard is the inbox. Switched live from the Settings page.
-- **Safe by construction.** Diff-anchor validation so GitHub never rejects a whole review; every action HMAC-signed and short-lived; tokens encrypted at rest; `DRY_RUN` on by default.
+- **Post a second round.** Posting is scoped to the review run, not the pull request: review, post, the author pushes, review again, post again. The same run cannot post twice, and approval knows which commit you read — a moved branch needs an explicit confirmation.
+- **Safe by construction.** Diff-anchor validation so GitHub does not reject a whole review over one line; every action HMAC-signed and short-lived; tokens encrypted at rest; the server refuses to start without a real `RS_SECRET`; `DRY_RUN` on by default.
 
 ## Solo · Team · Company
 

@@ -9,26 +9,27 @@ Priorities, not promises. Open an issue to argue for reordering.
 
 ## P0 — done
 
-- Human-gated posting: no GitHub write path in the review step; `COMMENT`-only; approval as a separate click.
+- Human-gated posting: no GitHub write path in the review step — every GitHub credential stripped from the agent's environment, an explicit tool deny list, and a before/after fingerprint that fails the run if anything reached the PR; `COMMENT`-only; approval as a separate click, refused when the branch has moved since the review.
+- Posting scoped to the review run rather than the pull request, so a second round posts after the author pushes.
 - Per-reviewer identity: each person's own GitHub token for posts and approvals; the service token is never used to write.
 - Per-reviewer independent runs in separate worktrees.
 - Run form: Quick / Standard / Deep effort, focus note, model choice; stop; re-run with full history; identical-run cache.
 - Findings as a staging area: tick, inline edit with preview, suggestion blocks, reply-vs-new, Explain simply, stale flag.
 - Diff-anchor validation and refusal on malformed GitHub responses.
-- Learnings loop; skills page with team default vs personal skill; quick-add rule; versioned team default with revision history; per-skill keep rate.
+- Learnings loop, recorded once after a post reaches GitHub and keyed so a retry replaces; a never-truncated tally behind the capped detail log; repeated rejections clustered into proposed team rules. Skills page with the three tiers — per-repository override, personal skill, team default; quick-add rule; versioned team default with revision history; per-skill keep rate on one shared definition.
 - Independence-weighted agreement across reviewers; convergence on the PR page.
 - Insights: reviews, tokens, keep rate, severity, by reviewer, by model, agreement, cycle time.
 - QA guide generation.
 - Stacked-PR review.
 - Multiple repositories per server: `REPOS` list or `REPO_ALLOW_ORG`, per-repo skills and risk paths, repo chips/filter, Insights across repositories.
-- Notifications: Slack via webhook or bot token, Discord embeds, generic signed webhook, or none; per-reviewer mentions; once-per-PR dedup.
+- Notifications: Slack via webhook or bot token, Discord embeds, generic signed webhook, or none; per-reviewer mentions; once-per-PR dedup written only after a confirmed send, with drafts and bot PRs suppressed and re-evaluated rather than marked seen.
 - Runtime settings page (poller on/off, interval, backends, PR filters) — `settings.json`, no restart.
 - Per-user Claude account via the genuine `claude setup-token` flow; encrypted at rest.
 - GitHub OAuth App / GitHub App sign-in with server-side refresh; **Sign in with GitHub** is the primary login when configured and the OAuth token is the working token.
 - Device tokens: `POST /api/device-token` from a web session, bearer accepted on every `/api/*` route, Settings → Devices to list and revoke, 180-day sliding expiry, `/login?device=1` pairing page for mobile and CLI clients.
 - Docker Compose install with `team` and `demo` profiles; `bin/doctor.sh`.
 - Guided first-run tour; command palette.
-- Repository profile: deterministic signals + one Sonnet call name each repo's critical paths (validated against the tree); Standard/Deep reviews walk the ones a PR touches; editable, versioned, optional auto re-profile; kept rate on critical paths in Insights.
+- Repository profile: deterministic signals + one Sonnet call name each repo's critical paths (validated against the tree); Standard/Deep reviews walk the ones a PR touches; editable, versioned and restorable, schema-versioned, with staleness reported against the current head; optional auto re-profile; kept rate on critical paths in Insights.
 
 ## P1 — in flight
 

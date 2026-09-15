@@ -23,7 +23,7 @@ const description =
   <TrustBar />
 
   <Section id="gate" eyebrow="The gate" title="Nothing posts until you click"
-    lede="The review step has no GitHub write path at all. It reads the diff and produces a file the dashboard renders. Every write to GitHub is a separate, deliberate click by a signed-in person, using that person's own token.">
+    lede="The review step has no GitHub write path at all: the agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before-and-after count of the pull request that fails the run if anything landed on it. It reads the diff and produces a file the dashboard renders. Every write to GitHub is a separate, deliberate click by a signed-in person, using that person's own token.">
     <Feature shot="gate" alt="The Post to GitHub bar with four of six findings selected, and the separate Approve panel below it, greyed out until comments are posted."
       label="post · 4 of 6 selected · COMMENT review"
       points={[
@@ -31,6 +31,7 @@ const description =
         "Approval is its own click, pre-filled with LGTM plus a checklist of the blocker and should-fix findings, editable before it goes.",
         "Every finding's file and line is checked against the actual diff before posting, so one anchor pointing outside it cannot make GitHub reject the whole review; those findings move into the summary instead, and the page tells you before you post.",
         "A failed GitHub read never degrades into a bad post: the fetch checks the response shape, retries once, and refuses on anything odd.",
+        "Posting is scoped to the run, not the pull request, so you can review and post a second time after the author pushes — while the same run can never post twice, and approving a branch that has moved needs an explicit confirmation.",
       ]}>
       <GateMock slot="mock" />
       <h3 class="card-title">Comment-only, by construction.</h3>
@@ -82,7 +83,7 @@ const description =
         "Independent reviews per reviewer, each in its own git worktree, so two people on one PR never collide and can compare what they each found.",
         "A poller notices review requests within three minutes (or a GitHub webhook delivers them in one second) and sends each requested person their own card — Slack, Discord, or any signed JSON webhook.",
         "Posts and approvals go out under each person's own GitHub account. GitHub's own self-approval check runs against that user.",
-        "The service token in the server's .env does reads and the base clone only. It cannot post or approve as anyone.",
+        "The service token in the server's .env does reads and the base clone. GitHub requires Pull requests: Read and write on it to reach review threads, so the guarantee is not the token's scope — it is that nothing in the service or review path writes with it.",
         "Stacked PRs (Graphite or ghstack style) can be reviewed from one page, top to bottom, at one effort.",
       ]}>
       <TeamMock slot="mock" />
@@ -96,9 +97,9 @@ const description =
     <Feature shot="learnings" alt="The Skills page: a selector between the team default and your own skill, a keep-rate score per skill, a quick-add rule box, and the revision history of the team standard."
       label="skills · team default · kept 71.4% · 3 revisions"
       points={[
-        "Per-skill keep rate: each review records which skill ran it, so the Skills page shows how often each skill's findings survive a human.",
+        "Per-skill keep rate: each review records which skill ran it, so the Skills page shows how often each skill's findings survive a human — on one shared definition, from a tally that is never truncated, and hidden entirely below twenty decisions.",
         "Bring your own Claude Code skill. Paste your review skill and ReviewStage runs its logic, appending only the output contract the dashboard needs.",
-        "Quick-add a rule in plain words (\"don't ask for a ticket link in code comments\"); it is tidied into the skill's Team rules section.",
+        "Quick-add a rule in plain words (\"don't ask for a ticket link in code comments\"); it is tidied into the skill's Team rules section. Drop the same complaint three times across different PRs and it is drafted as a proposed rule for you to accept or dismiss.",
         "The team default is versioned: edits are committed to a git repository on your server with the editor's name, and the revision history is on the page. It cannot be blanked, and restoring the built-in takes a typed confirm.",
         "Independence-weighted agreement: when reviewers using a different skill, model or effort raise the same finding, it is marked confirmed. Same configuration twice does not count.",
       ]}>
@@ -116,7 +117,7 @@ const description =
         "Risk-tiered P0 / P1 / P2 cases derived from the real diff, the review threads and the branch's commit history, not from the PR description.",
         "Written for a tester who has never seen the code: numbered steps, explicit pass and fail, no identifiers except the ones a tester has to type.",
         "Includes a surface matrix with the deliberate \"must not appear\" rows and a list of known non-defects, so QA does not file them.",
-        "Runs on the requesting user's own Claude account, in its own worktree, never writing to GitHub.",
+        "Runs on the requesting user's own Claude account, in its own worktree, never writing to GitHub — with the model, tokens and cost reported, and a budget sized from the diff. A guide that was cut short is failed, not handed to QA.",
       ]}>
       <QaMock slot="mock" />
       <h3 class="card-title">Hand testers something grounded.</h3>

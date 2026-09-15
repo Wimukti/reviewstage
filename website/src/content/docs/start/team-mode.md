@@ -38,7 +38,7 @@ That is it. The next review request pings them within three minutes.
 
 | Action | Whose credentials |
 | --- | --- |
-| Poll review requests, discover org repos, clone the base repos | The **service token** in `.env`. Read-only. |
+| Poll review requests, discover org repos, clone the base repos | The **service token** in `.env`. It needs *Pull requests: Read and write* to reach review threads, but nothing in the service or review path writes with it — the guarantee is structural, not the token's scope. |
 | Run a review or QA guide | The **clicker's Claude account**. |
 | Post comments | The **clicker's GitHub token**. |
 | Approve | The **clicker's GitHub token**. GitHub's self-approval rule applies to them. |
@@ -80,6 +80,6 @@ Any signed-in user can open any PR page on the server. That is by design (everyo
 
 - The dashboard reads `.env` once at startup. Restart after editing.
 - To remove someone, delete their entry from the users file; their session dies on the next request.
-- Reviews serialise server-wide, one at a time, and refuse to start below a free-memory floor (`MIN_FREE_MB`). Size the box for one agent plus the dashboard.
+- Reviews serialise server-wide, one at a time, and refuse to start below a free-memory floor (`MIN_FREE_MB`) or a free-disk floor (`MIN_FREE_DISK_MB`). Size the box for one agent plus the dashboard.
 - Team review requests routed through a **GitHub team handle** are not polled; only direct requests to a login fire.
 - A repository can have its own **team default skill** (Skills page → *Team default per repository*); it takes precedence over personal skills for reviews of that repository. `RISK_PATHS__<OWNER>__<NAME>` does the same for risk banners.

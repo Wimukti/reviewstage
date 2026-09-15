@@ -70,11 +70,6 @@ the same in a throwaway container sharing the volume, which works when `app` wil
 
 It never checks Docker itself — `docker compose ps` is that check.
 
-> **Dependency:** `bin/doctor.sh` is being changed in a parallel lane to detect that it is
-> running on a Compose host and re-exec itself inside the container. Once that lands, plain
-> `bin/doctor.sh` becomes a correct front door too. The `docker compose exec app doctor` form
-> above works either way, which is why the docs use it.
-
 ### `.env` is read once, at startup
 
 `server.py` reads `ROOT/.env` **once, at startup**. After editing any secret — or flipping
@@ -119,19 +114,28 @@ the tokens are simply spent.
 
 ### Ports
 
-`RS_PORT` is the port the **server binds inside the container**. Compose also interpolates it
-into the host side of the published port. Because Compose reads the very same `./.env` for
-interpolation *and* passes it into the container as an environment variable, putting `RS_PORT`
-in `.env` moves the two halves apart and silently breaks the install — the publish still
-targets container port 8899 while the server has moved somewhere else. Change the host port
-from the shell instead, where only the interpolation sees it:
+The container's listen port is **pinned to 8899** in `docker-compose.yml`. It is part of the
+image contract — `EXPOSE`, the healthcheck and the publish target all name it — so the compose
+file sets `RS_PORT: "8899"` in the service environment and `.env` cannot move it.
+
+The host side is `RS_HOST_PORT`, which does nothing else. It is safe in `.env`:
 
 ```bash
-RS_PORT=9000 docker compose up -d        # host 127.0.0.1:9000 -> container 8899
+echo 'RS_HOST_PORT=9000' >> .env
+docker compose up -d                     # host 127.0.0.1:9000 -> container 8899
 ```
 
-See [Configuration](https://wimukti.github.io/reviewstage/operations/configuration/) for the
-current state of this key.
+Earlier versions used one key for both halves. Because Compose reads `./.env` twice — once to
+interpolate `${...}` in the ports mapping and once as the container's `env_file` — an `RS_PORT`
+there moved the server inside the container while the publish still targeted 8899, and nothing
+listened. Splitting the two keys is what fixed it; an `RS_PORT` left over in an old `.env` is
+now inert rather than fatal.
+
+### Container logs are capped
+
+Docker's default json-file driver is unbounded, so a container left running for months fills
+the disk with its own stdout. Every service in `docker-compose.yml` caps it at **3 files of
+10 MB**. `docker compose logs -f app` therefore shows at most the last 30 MB.
 
 ---
 
@@ -185,13 +189,99 @@ reboot still does not.
 
 ---
 
+## What is on disk
+
+Everything ReviewStage knows is a file under **ROOT**. This is the map, because deciding what
+is safe to delete is the most common reason to need one.
+
+### Top level
+
+| Path | What it is | Safe to delete? |
+| --- | --- | --- |
+| `.env`, `settings.json` | The install's configuration. `settings.json` is the Settings page's copy and wins over `.env`. | **No.** |
+| `users.json` (+ `users.json.lock`) | Every reviewer's encrypted GitHub and Claude tokens, their Slack/Discord IDs, the admin flag, their device-token hashes and their credential epoch. | **No.** |
+| `skills/` | A git repository: the team default `_global.md`, `<login>.md` personal skills, `repos/<owner>__<name>/SKILL.md` per-repository overrides, and the revision history. | **No.** |
+| `learnings.jsonl` | The detail log of kept / reworded / dropped findings, capped at the **most recent 300 rows** across the whole install. Feeds the prompt block and the Learnings page. | No — it steers every future review. |
+| `learnings_totals.json` | The never-truncated tally behind that capped log: outcomes by repository, by skill, by critical path and by UTC day. Every "all-time" number on Insights and Skills is read from here. | No. It self-heals by rebuilding from `learnings.jsonl`, but the rebuild is marked incomplete and anything older than the surviving 300 rows is gone for good. |
+| `rule_proposals.json`, `rule_dismissals.json`, `rule_promotions.json` | Which repeated rejections were drafted as team rules, which the team dismissed, and which were accepted. | No — deleting the dismissals re-offers rules people already said no to. |
+| `profiles/<owner>__<name>/` | `profile.json` (machine copy, with a schema version and generation metadata), `profile.md` (the human copy), `profile.<ts>.json` for every earlier version, and the `tree.*` fingerprints auto-reprofiling compares. | No — regenerating costs a model call and loses the hand edits. |
+| `queue.json` (+ `.queue.lock`) | The live "who owes a review on what" queue, merged under a lock by the poller and the webhook. | Yes — the next poll rebuilds it. |
+| `seen` | Notification dedup, one line per `<repo>:<pr>:<login>`. See below: a line here means a card was **sent**. | Yes, at the cost of re-announcing the backlog. Prune it with the recipe below instead. |
+| `suppressed` | PR/reviewer pairs deliberately not pinged *yet* — draft, bot-authored with `SKIP_BOT_PRS=1`, or older than `RS_MAX_PR_AGE_DAYS` — with the reason and when. Re-evaluated every cycle. | Yes. Everything in it is re-derived on the next poll. |
+| `deliveries` | A bounded list (500) of GitHub `X-GitHub-Delivery` ids already processed, so a redelivery cannot replay an event. | Yes, with a small window in which one redelivered event could be processed twice. |
+| `notify-fails.json` | Consecutive failed notification attempts per `<repo>:<pr>:<login>`. After five the reviewer is marked `seen` anyway rather than retrying forever. | Yes — it resets the counters, giving a wedged endpoint five more tries. |
+| `daily-done` | Today's date, written once the once-a-day housekeeping block has run. | Yes — housekeeping simply runs again on the next poll. |
+| `webhooks.json` | Webhook health: `last_event_at`, `last_event`, `last_ping`, `count`, `last_error`. Drives the Settings card's amber/green light. | Yes; the light goes amber until the next delivery. |
+| `poller.last` | Epoch of the last poll that actually ran — stamped only on a real pass, so "discovery is dead" no longer reads "just now". | Yes. |
+| `known_logins` | Who has already been onboarded, so adding a user to an existing box does not ping them with the entire backlog. | **Be careful.** Deleting it can re-announce history to everyone. |
+| `used-nonces`, `oauth-blocked.json`, `sig-v2-since` | Replay protection, the per-login "this account cannot see the repo" map, and the signed-link scheme cutover marker. | Yes. |
+| `repos/`, `wt/` | Base clones and review worktrees. | Yes — re-cloned on demand. |
+| `watch.log`, `clone.log`, `server.log` | Append-only logs. The first two are truncated by the daily sweep once either passes 8 MiB. | Yes. |
+| `MIGRATED` | Marks that the one-time legacy single-repo layout migration ran. | **No** — deleting it can re-run a migration against an already-migrated tree. |
+
+### Per pull request
+
+`state/<owner>__<name>/<pr>/` holds `meta.json` (title, author, head SHA, draft/open/merged
+state), `agreement/` (the cross-reviewer matching), `qa.md` and its siblings for the QA guide,
+and `users/<login>/` per reviewer.
+
+Inside `users/<login>/`:
+
+| File | What it is |
+| --- | --- |
+| `review.json` | The run's findings, as the dashboard renders them. |
+| `head` | The commit this run actually reviewed. Approval compares it against the PR's current head. |
+| `status`, `pid`, `.lock`, `started_at`, `run.log`, `agent.log` | The job's lifecycle and logs. |
+| `usage.json`, `cached` | Model, tokens and cost — or, for a cache hit, the marker that zeroes them so a replay is not billed twice. |
+| `posted.json` | The shared fact "this reviewer has a review on this PR". Read by the queue, the timeline and the webhook. It is **not** the posting gate. |
+| `posted_runs.json` | The posting gate: one entry per post this dashboard actually made, each naming the head SHA and a content hash of the run. Capped at the last 20. |
+| `approved` | The approval, with the head it was given against. |
+| `requested_at` | When GitHub recorded the review request — the start of the cycle-time clock. |
+| `archived`, `archived.auto` | Hidden from this person's tabs. The `.auto` sibling marks an archive *ReviewStage* made (the PR closed, or a new user's clean slate); a returning review request clears both and the `seen` line with them. An archive the person clicked has no `.auto` sibling and is never undone automatically. |
+| `history/<ts>/` | Earlier runs, kept whole. |
+
+Deleting a reviewer's `posted_runs.json` reopens the gate: clicking Post again would send the
+same review to GitHub a second time. Deleting `archived.auto` while leaving `archived` makes an
+automatic archive look like a deliberate one, so a returning request will no longer unhide it.
+The rest of the per-run files are logs and artefacts.
+
+### Retention
+
+The poller runs a housekeeping block **once a calendar day** (guarded by `daily-done`):
+
+- Prunes expired device-token hashes.
+- Prunes `seen` lines for PRs that are now closed.
+- Sweeps with `RS_RETENTION_DAYS` (default 30): every `*.log` under a PR or a reviewer
+  directory older than that is deleted, and a `history/<ts>` directory is removed only if it is
+  already empty — so the runs themselves are kept and it is their logs that age out.
+- Truncates `watch.log` and `clone.log` to their last 4 MiB once either passes 8 MiB.
+
+It never touches `review.json`, `posted.json` or `approved`. On Docker, the container's own
+stdout is capped separately by the compose file (3 × 10 MB per service).
+
+---
+
 ## Re-notifying stale cards
 
 Notification dedup is keyed **`<repo>:<pr>:<login>`** — one line per person per PR — in
 `ROOT/seen`. (Lines written before the repository dimension existed are `<pr>:<login>`, or a
 bare `<pr>` from before multi-user; both still count, but only on an install with exactly one
-repository configured.) To re-announce PRs whose cards went stale — after a link expiry, or a
-secret rotation — drop their lines.
+repository configured.)
+
+**A line in `seen` now means a card was sent.** The poller and the webhook both notify first
+and write `seen` only on a confirmed send; a failed send is counted in `notify-fails.json` and
+retried, and only after five consecutive failures is the pair marked `seen` to stop it
+retrying for ever. Both paths behave identically — which they did not before, when the webhook
+wrote `seen` first and whether a failed card was ever retried depended on which path won the
+race.
+
+**Draft, bot-authored and over-age pull requests are not marked `seen` at all.** They go into
+`ROOT/suppressed` with the reason, and are re-evaluated on every cycle: a PR that was a draft
+the first time anyone looked at it now pings the moment it is marked ready. Nothing needs to be
+cleared by hand for that to happen.
+
+To re-announce PRs whose cards went stale — after a link expiry, or a secret rotation — drop
+their lines.
 
 The recipe below keeps the line for any PR that already has a `review.json` for that reviewer,
 so work you already finished is not re-announced. It splits the repository out of each line, so
@@ -259,12 +349,14 @@ exist nowhere else and cannot be regenerated:
 | --- | --- |
 | `users.json` | Every reviewer's GitHub and Claude tokens, encrypted with a key derived from `RS_SECRET`, plus their Slack/Discord IDs and the admin flag. |
 | `skills/` | A **git repository**: the team default `_global.md`, per-user and per-repo skills, and the full revision history of who changed the team's review standard and why. This is hand-tuned prose the team wrote. |
-| `learnings.jsonl`, `rule_proposals.json`, `rule_dismissals.json`, `rule_promotions.json` | The accept/reject record that steers every future review, the drafted rule suggestions, and which ones the team accepted or dismissed. |
+| `learnings.jsonl`, `learnings_totals.json`, `rule_proposals.json`, `rule_dismissals.json`, `rule_promotions.json` | The accept/reject record that steers every future review, the never-truncated tally behind every "all-time" figure, the drafted rule suggestions, and which ones the team accepted or dismissed. |
+| `state/<owner>__<name>/<pr>/users/<login>/` | Each reviewer's own runs: `review.json`, the reviewed `head`, `posted.json`, `posted_runs.json` (the posting gate), `approved`, and `history/`. Losing it loses the record of what was reviewed and posted, and reopens the gate on anything not yet posted. |
 | `profiles/<owner>__<name>/` | Each repository's critical-path profile, its earlier versions, and the human edits made to it. Regenerating costs a model call and loses the edits. |
 | `.env`, `settings.json` | The install's configuration — including `RS_SECRET` itself. |
 
-Genuinely disposable: `repos/` (base clones), `wt/` (worktrees), `state/` (per-PR runs — losing
-it loses history, not function), `queue.json`, `used-nonces`, `clone.log`.
+Genuinely disposable: `repos/` (base clones), `wt/` (worktrees), `queue.json`, `suppressed`,
+`deliveries`, `notify-fails.json`, `daily-done`, `poller.last`, `used-nonces`, `clone.log`. See
+[What is on disk](#what-is-on-disk) for the file-by-file version.
 
 `RS_SECRET` is the keystone. Lose it and `users.json` is undecryptable even if you still have
 the file: everyone signs in again and reconnects Claude, and every outstanding signed link
@@ -376,16 +468,31 @@ Step 4 is the one that hurts, and it is why the previous version of this documen
   source). Editing it on your laptop does not propagate — commit it here and redeploy. The
   *team default* is a different document: it is seeded from `skills/global-review.md`, edited
   live from the dashboard, and lives at `ROOT/skills/_global.md`.
-- **Skill history is best-effort.** Every save tries to commit to the git repository in
-  `ROOT/skills`. If git is missing or the repository is wedged the save still succeeds and the
-  commit is silently skipped, so the Revision history panel can have gaps.
-- **Team review requests are not polled.** `review-requested:<you>` matches direct requests
-  only; a request routed through a team handle never fires.
+- **Skill history can still have gaps, but never silently.** Every save commits to the git
+  repository in `ROOT/skills`. The save itself never fails on git — but the commit's exit code
+  is checked now and a failure is reported in the save banner and the server log, and each
+  commit names only the paths that edit touched, so two people saving at the same moment are
+  two commits by two authors rather than one. A global `commit.gpgsign=true` used to empty the
+  whole audit trail; signing is disabled inside this repository.
+- **The poller cannot discover a team review request.** `review-requested:<you>` matches direct
+  requests only. A request routed through a team handle arrives only if GitHub webhooks are
+  configured, where `requested_team` is expanded into its members. Those rows now survive a
+  poll that cannot see them — they used to be erased within three minutes while their `seen`
+  line survived, so nobody was ever re-notified.
+- **A poll that learns nothing publishes nothing.** A failed search is logged loudly and that
+  reviewer gets no verdict for the cycle, rather than an empty result being written over a good
+  queue and everyone being told they are all caught up.
 - **Reviews cost tokens.** A few minutes of agent time for a typical PR on Opus (longer for
   Deep), against the clicking reviewer's Claude subscription. That is what click-to-run is for.
 - **One heavy job at a time per server.** Reviews and QA guides share a box-wide lock.
-- **Reviews need memory.** `MIN_FREE_MB` defaults to 800 MB *available* (not total), so a 1 GB
-  VPS cannot run a single review. Give the host at least 2 GB.
+- **Reviews need memory and disk.** `MIN_FREE_MB` defaults to 800 MB *available* (not total),
+  read from the container's cgroup budget rather than the host, so a 1 GB VPS cannot run a
+  single review. Give the host at least 2 GB. A job also refuses to start below
+  `MIN_FREE_DISK_MB` (500 MB) free on the volume.
+- **The QA guide has no write tripwire.** Both job scripts run the agent with every GitHub
+  credential stripped and the same tool deny list, but only `run-review.sh` takes the
+  before/after fingerprint that turns an actual write into a failed run. See
+  [SECURITY.md](SECURITY.md#prompt-injection-from-hostile-diffs).
 
 ## Changing the code
 

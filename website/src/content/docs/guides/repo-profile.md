@@ -74,23 +74,59 @@ tracked file is dropped and logged (`dropped hallucinated path_glob …` in the 
 page shows the dropped globs under the profile). Labels are restricted to `[A-Za-z0-9_-]`, and a
 risk pattern containing `,` or `:` is discarded because those are the rule separators.
 
+A glob is matched the way a person reads it: `*` stops at a `/` and only `**` spans
+directories. `fnmatch`'s `*` crosses separators, so `src/*.ts` used to match all four thousand
+files in a tree and every review was told the critical path was touched. A glob that matches
+more than half the repository is now rejected outright — that is "the repository", not a
+critical path.
+
 Three limits on that sentence are worth knowing:
 
-- **Validation needs a base clone.** A profile *generated* by `bin/profile-repo.sh` always has
-  one, so its globs are always checked. A profile **edited in the dashboard** is checked only
-  when the base clone exists and `git ls-files` succeeds; when it does not — a repository
-  accepted through `REPO_ALLOW_ORG` that has never been reviewed, a clone still in flight, a
-  wedged checkout — the tree check is skipped entirely and the paths you typed are saved as
-  written. They are validated the next time the profile is saved with a clone present.
-- **Not every list is bounded.** `risk_paths`, `review_rules` and `do_not_flag` are capped at 20
-  entries each, and `checks` at 8 per path — but `critical_paths` itself is **not** capped, so a
-  profile can carry an arbitrarily long list. Only the first 12 *matched* paths reach any one
-  review prompt, so an over-long list costs storage and editing effort rather than tokens.
+- **Validation needs a base clone, and says when it did not have one.** A profile *generated* by
+  `bin/profile-repo.sh` always has one, so its globs are always checked. A profile **edited in
+  the dashboard** is checked only when the base clone exists and `git ls-files` succeeds; when
+  it does not — a repository accepted through `REPO_ALLOW_ORG` that has never been reviewed, a
+  clone still in flight, a wedged checkout — the tree check is skipped and the profile records
+  `validated: false` with the reason. The card says *"Paths were not validated — there is no
+  clone of this repository"* rather than presenting unchecked globs as ground truth. They are
+  validated the next time the profile is saved with a clone present.
+- **Every list is bounded now.** `risk_paths`, `review_rules` and `do_not_flag` are capped at 20
+  entries each, `checks` at 8 per path, and `critical_paths` at **24** stored — a profile used
+  to accept fifty and quietly carry them. The cap is applied at validation, not silently at
+  render time, and the number dropped is recorded. At most 12 *matched* paths reach any one
+  review prompt, and that cap now keeps the paths the PR hits hardest and says how many it did
+  not list, rather than truncating in the order the model happened to emit them.
 - **A summary-only profile is accepted.** The profile is refused only when the summary, the
   critical paths *and* the review rules are all empty. A reply that produced nothing but two
   sentences of summary — every glob hallucinated and dropped — is saved, and the Skills page
   shows the dropped globs. Check the dropped list after a run rather than assuming a saved
   profile is a useful one.
+
+An edit that **empties a section that was not empty** is a different case, and is refused unless
+you confirm it. The markdown round trip used to match headings by prefix, so renaming or
+deleting a heading yielded an empty list and saved cleanly — deleting the risk-paths section
+made every risk rule disappear from future reviews with no warning. Headings are matched against
+the format's own set, unrecognised ones are reported back to you rather than swallowed, and the
+refusal carries per-section counts.
+
+## Schema version, staleness and earlier versions
+
+`profile.json` carries a **`version`** field (currently `1`) and is shape-checked when it is
+read. A hand-edited or future-version file is surfaced as invalid — *"schema version … is newer
+than this build understands"* — instead of being read as a critical-paths section that is
+silently empty for ever.
+
+**Staleness is computed, not just stored.** The head the profile was generated against used to
+be recorded, returned, typed, and never compared to anything. The card now reports:
+
+- whether the profile is stale at all;
+- **how many commits behind** the repository's current head it is;
+- **how many of its critical paths no longer match** any tracked file — which marks a profile
+  stale even when the head has not moved.
+
+**Earlier versions are readable and restorable.** Each save renames the previous `profile.json`
+to `profile.<ts>.json` beside it; the card counts them and they can be opened and restored.
+Nothing prunes them, so the count only grows — one small JSON file per edit.
 
 ### Cost and duration
 
@@ -106,7 +142,7 @@ Three limits on that sentence are worth knowing:
 
 ```
 $ROOT/profiles/<owner>__<name>/
-  profile.json          the machine copy reviews read (with generation metadata)
+  profile.json          the machine copy reviews read (schema version + generation metadata)
   profile.md            the human copy — edited from the dashboard, parsed back into JSON
   profile.<ts>.json     every earlier version, kept when a new one is written
   signals.json          exactly what the model was shown
@@ -120,7 +156,11 @@ repository:
 
 - **Status** — never run · running, with the current phase (fetching the repository → gathering
   signals → asking the model → validating paths) and a **Stop** button · or the last run's date,
-  model and token count, and who edited it last.
+  model and token count, and who edited it last, plus the staleness read above.
+- **Degraded signals are named.** A `git` call that times out or is OOM-killed no longer takes
+  the run down or, worse, implies the repository has no churn: `_git` never raises, the churn
+  scan streams a year of history through a counter instead of buffering it, and a `degraded`
+  list travels with the signals so the card and the prompt can say which signal was skipped.
 - **Profile this repo** / **Re-profile this repo** — runs on **your** connected Claude account,
   exactly like a review; the button is disabled until you connect one in Integrations.
 - **Counts** — critical paths · risk paths · review rules · do-not-flag entries, and how many

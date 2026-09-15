@@ -144,6 +144,21 @@ no GitHub writes, just a `review.json` with `event`, `summary`, `keyPoints`, `ex
 `analysis`, and a `comments` array carrying `path`, `line`, `severity`, `title`, `impact`,
 `body`, `reply_to`, `suggestion` and `confidence`.
 
+The agent is launched through `agent_env` (`lib-common.sh`), which strips every GitHub, Slack,
+webhook and HMAC credential from the environment and points `GH_CONFIG_DIR` at an empty
+directory, and with an explicit `--disallowedTools` list. The script then takes a GraphQL count
+of the PR's reviews, comments and threads with the service token immediately before and after
+the run; a difference fails the job as a security incident rather than publishing a review.
+[SECURITY.md → The review agent's sandbox](SECURITY.md#the-review-agents-sandbox) has the exact
+lists and the four things they do not cover.
+
+`review.json` is validated as an **object with a comments array** and re-encoded through `jq`
+before it is copied out — `jq -e .` accepted a bare array and invalid UTF-8, and the dashboard
+then threw on every page load of that PR, permanently. Every write the dashboard later reads is
+checked, and the job refuses to start below `MIN_FREE_MB` and `MIN_FREE_DISK_MB`, because a full
+volume used to look like a finished review with an empty result. An `EXIT` trap removes the
+worktree and its `review-<pr>-<login>` branch on every path, including failures.
+
 The prompt tells the agent a human will read `explainer` and `analysis` in a dashboard to
 decide whether to trust the findings. That framing is load-bearing — it is what makes the
 prose readable rather than a wall of bullet points.
@@ -153,8 +168,11 @@ The worktree is removed as soon as `review.json` is copied out.
 ## Subsystems added since the first cut
 
 - **Learnings** (`rs_learn.py`): on post, each original finding is scored dropped / edited /
-  kept and appended to `learnings.jsonl` (short gists, capped, tagged with the repo).
-  `render(repo)` folds recent dropped/edited rows — same-repo first, then the rest — into the
+  kept and appended to `learnings.jsonl` (short gists, capped at 300 rows, tagged with the
+  repo) — after the post reaches GitHub, keyed by the run so a retry replaces its rows rather
+  than appending a second set. A never-truncated tally in `learnings_totals.json` carries the
+  all-time counts the detail cap would otherwise lose.
+  `render(repo)` folds recent dropped (24) and edited (12) rows — same-repo first, then the rest — into the
   next review prompt so the agent stops re-raising rejected noise; the `/learnings` page shows
   it. Attributed per user. Not ML — in-context
   steering with your own recent decisions.
@@ -179,10 +197,12 @@ The worktree is removed as soon as `review.json` is copied out.
   `skills/global-review.md`) maintained from the `/skills` page. `run-review.sh` picks the
   clicker's skill (`RS_ACTOR`), else the editable team default, else the installed
   `pr-review` skill — and before all of those, a per-repo override at
-  `skills/repos/<owner>__<name>/SKILL.md` if one exists (recorded as skill id `repo:<slug>`); it
+  `skills/repos/<owner>__<name>/SKILL.md` if one exists (recorded as skill id `repo:<slug>`, and
+  editable from the dashboard, which until this release silently wrote the editor's personal
+  skill instead); it
   runs the skill's logic and **always appends an explicit `review.json` output contract**, so any skill yields the shape the dashboard needs. **Quick-add rule**:
   `add_skill_rule` tidies a plain-English preference into a managed `## Team rules` section of
-  the target skill (kept last so appends are trivial). Each review records the skill id
+  the target skill (inserted at the end of that section, wherever it sits in the file). Each review records the skill id
   (`skill`); learnings rows carry it; the `/skills` page scores each skill by kept-rate. The
   flywheel: usage → accept/reject signal → which skills work → a better team default
   (human-approved). Dashboard edits also commit to a local git repo in `$ROOT/skills` so the
@@ -194,8 +214,16 @@ The worktree is removed as soon as `review.json` is copied out.
   routing or auto-mentions. Empty `RISK_PATHS` turns it off.
 - **Suggestion blocks**: a finding may carry a `suggestion` (single-line replacement); on post
   it's appended to the comment body as a GitHub ```` ```suggestion ```` block (one-click apply).
-- **Staleness**: `run-review.sh` records the reviewed head SHA (`head`); the detail page flags
-  the review stale when the PR's current head differs — without auto-re-running.
+- **Staleness**: `run-review.sh` records the reviewed head SHA (`head`) and writes it into
+  `meta.json`; the detail page flags the review stale when the PR's current head differs —
+  without auto-re-running. The same SHA keys the re-run cache and the anchor cache, neither of
+  which will now take a hit without one.
+- **Posting gate** (`posted_runs.json`): one entry per post this dashboard made, naming the head
+  and a content hash of the run. A post is refused only when *that run* already reached GitHub,
+  so a second round after the author pushes posts normally. The shared `posted.json` fact the
+  queue, the timeline and the webhook read is written alongside it and never blocks. Approving
+  compares the reviewed head with GitHub's current one and needs a typed confirmation when they
+  differ.
 - **Slack threading**: with `SLACK_BOT_TOKEN` + `SLACK_CHANNEL`, `slack_post` (in `bin/notify.sh`, behind `notify_card`) uses
   `chat.postMessage`, stores the request card's ts, and threads the review-ready reply under it;
   otherwise it falls back to the send-only webhook.
@@ -210,8 +238,10 @@ The worktree is removed as soon as `review.json` is copied out.
   against the tree (hallucinated globs dropped and logged). `run-review.sh` merges the risk paths
   into the banners and, for Standard/Deep, appends the critical paths the PR touches with their
   checks; findings may set `critical_path` (badge on the card, kept in learnings, kept-rate in
-  Insights). Editable as markdown from the Skills page, versioned on every write; `auto_profile`
-  in settings.json lets `pr-watch.sh` ask the server to re-profile (as the admin) when the tree
+  Insights). Editable as markdown from the Skills page, versioned on every write (earlier
+  versions are readable and restorable), carrying a schema version, and reporting staleness as
+  commits behind the head plus critical paths that no longer match; `auto_profile` in
+  settings.json lets `pr-watch.sh` ask the server to re-profile (as the admin) when the tree
   changes materially, at most once a day.
 
 ## What this is not

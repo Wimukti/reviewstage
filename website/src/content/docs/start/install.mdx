@@ -12,8 +12,8 @@ import { Aside } from '@astrojs/starlight/components';
 ### Before you start
 
 - **Docker with Compose v2** (`docker compose version`). Apple Silicon, Intel and arm64 Linux all build.
-- **A host with at least 2 GB of RAM.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*, not total — so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Raise `MIN_FREE_MB` only if you know the host can take it.
-- **About 3 GB of free disk** for the image, plus room for one blobless clone per repository. The doctor FAILs below 1 GB free on the data volume.
+- **A host with at least 2 GB of RAM.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*, not total — so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Inside a container the figure is read from the cgroup budget rather than the host's, so a small container on a large machine is measured honestly. Raise `MIN_FREE_MB` only if you know the host can take it.
+- **About 3 GB of free disk** for the image, plus room for one blobless clone per repository. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB` — 500 MB free on the data volume. The doctor reads the same key but defaults it to 1024, so with the key unset it FAILs a little earlier than the jobs do.
 - **Outbound network during the build.** The image fetches Debian packages, the GitHub CLI apt repository, Node 24 and the Claude Code CLI from npm. Behind a corporate proxy, export `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` and pass them to the build (`docker compose build --build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTPS_PROXY`), and configure the Docker daemon's own proxy so the base images can be pulled. At run time the container needs to reach `api.github.com`, `github.com` and Anthropic.
 - **A GitHub account**, and a Claude **Pro, Max, Team or Enterprise** plan for anyone who will run reviews.
 
@@ -51,7 +51,7 @@ Only two values are required to start:
 | `REPOS` | The repositories to review, as `owner/name`, comma-separated — one install reviews many. `REPO=owner/name` still works as a single-entry alias. |
 | `GITHUB_PAT` | The **service token**. A fine-grained PAT whose *Repository access* covers every repo in `REPOS`, with **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read**. Read and write is what GitHub requires to reach review threads through this path; nothing in the service or review path ever writes to GitHub with it. Posting and approving always use the signed-in reviewer's own token. |
 
-Do **not** put `RS_PORT` in `.env`. Compose reads that same file to interpolate the published port *and* passes it into the container, so setting it there moves the server off the port the publish targets and the dashboard stops answering. To change the host port, set it in the shell for that command instead: `RS_PORT=9000 docker compose up -d`.
+To publish on a different host port, set **`RS_HOST_PORT=9000`** in `.env` and `docker compose up -d`. That key is read only to interpolate the publish and is never passed into the container. `RS_PORT` is not the knob here: the container's listen port is pinned to 8899 in `docker-compose.yml`, because `EXPOSE`, the healthcheck and the publish target all name it.
 
 Everything else has a sensible default. `DRY_RUN=1` ships on by default: the dashboard works end to end but refuses to write to GitHub until you flip it. See [Configuration](/reviewstage/operations/configuration/) for every knob.
 

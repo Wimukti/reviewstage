@@ -3244,6 +3244,16 @@ def fetch_pr_meta(repo, pr):
     return m
 
 
+def gh_pr_state(meta, active):
+    """("open" | "closed" | "merged") for a PR, from the meta/queue row rs_queue persisted when
+    the closed webhook arrived. One definition for the queue and the detail page, so the two
+    cannot disagree about whether Approve is still on the table."""
+    st = str((meta or {}).get("state") or ("open" if active else "")).lower()
+    if not st:
+        st = "merged" if (meta or {}).get("merged") else "open"
+    return st
+
+
 # A `gh pr view` that came back with nothing is remembered for this long, so a mistyped or
 # deleted PR number cannot re-fire a subprocess on every single page load.
 MISS_TTL = 600
@@ -3908,6 +3918,7 @@ class Handler(BaseHTTPRequestHandler):
         # never fire.
         cur_head = pr_head(repo, pr, meta)
         stale = bool(head_f.exists() and cur_head and head_f.read_text().strip() != cur_head)
+        gh_state = gh_pr_state(meta, active)
         out = {
             "repo": repo, "pr": pr, "title": meta.get("title", f"PR #{pr}"), "state": st,
             "ghUrl": meta.get("url", f"https://github.com/{repo}/pull/{pr}"),
@@ -3915,6 +3926,12 @@ class Handler(BaseHTTPRequestHandler):
             "size": (f"+{meta.get('additions', 0):,} −{meta.get('deletions', 0):,} · "
                      f"{meta['changedFiles']} files") if meta.get("changedFiles") else "",
             "dryRun": DRY_RUN,
+            # The PR's own state on GitHub, from the metadata already fetched above. Without it
+            # the detail page offered a live Approve button on a merged or closed PR and only
+            # the click told the reviewer the server would refuse.
+            "prState": gh_state,
+            "merged": gh_state == "merged",
+            "canApprove": gh_state == "open",
             "awaiting": bool(active and user in requested_of(meta)),
             "runner": runner,
             "effortBadge": ({"label": EFFORT[eff][0], "hint": EFFORT[eff][2]}
@@ -4469,9 +4486,7 @@ class Handler(BaseHTTPRequestHandler):
             cs = sev_counts(rev.get("comments", [])) if rev else {}
             t = pr_times(repo, num, user)
             upd = iso_ts(item.get("updatedAt")) or iso_ts(item.get("createdAt"))
-            gh_state = str(item.get("state") or ("open" if active else "")).lower()
-            if not gh_state:
-                gh_state = "merged" if item.get("merged") else "open"
+            gh_state = gh_pr_state(item, active)
             entries.append({"repo": repo, "num": num, "item": item, "active": active,
                             "prState": gh_state, "merged": bool(item.get("merged")),
                             "st": st, "t": t,

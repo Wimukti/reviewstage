@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -361,6 +362,51 @@ class Storage(unittest.TestCase):
             self.assertEqual(cur["summary"], "edited")
             self.assertEqual(cur["meta"]["edited_by"], "me")
             self.assertEqual(PF.counts(cur), {"critical": 3, "risk": 3, "rules": 1, "doNotFlag": 1})
+            # The archive holds the profile as it was, written from the bytes save_profile
+            # already had — the live path is never moved out of the way to produce it.
+            self.assertEqual(json.loads(PF.version_path("o/r", 1000).read_text())["summary"],
+                             clean["summary"])
+
+    def test_a_concurrent_reader_never_sees_a_missing_profile(self):
+        """Regression: save_profile used to rename profile.json away to archive it, so for the
+        instant before the replacement landed a reader got nothing. It reads a flaky browser
+        test; here it reads a thread that polls the path while a hundred saves go through."""
+        with tempfile.TemporaryDirectory() as tmp:
+            PF.ROOT = Path(tmp)
+            PF.PROFILES = PF.ROOT / "profiles"
+            clean, _, _ = PF.validate_profile(CANNED, TREE)
+            PF.save_profile("o/r", clean, {"generated_at": 1})
+            f = PF.profile_path("o/r")
+            misses = []
+            stop = threading.Event()
+
+            def poll():
+                while not stop.is_set():
+                    try:
+                        json.loads(f.read_text())
+                    except (OSError, ValueError):
+                        misses.append(1)
+
+            t = threading.Thread(target=poll, daemon=True)
+            t.start()
+            try:
+                for i in range(100):
+                    PF.save_profile("o/r", dict(clean, summary=f"v{i}"),
+                                    {"generated_at": 1000 + i})
+            finally:
+                stop.set()
+                t.join(5)
+            self.assertEqual(misses, [])
+            self.assertEqual(PF.load_profile("o/r")["summary"], "v99")
+
+    def test_no_temp_files_are_left_behind(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            PF.ROOT = Path(tmp)
+            PF.PROFILES = PF.ROOT / "profiles"
+            clean, _, _ = PF.validate_profile(CANNED, TREE)
+            PF.save_profile("o/r", clean, {"generated_at": 1})
+            PF.save_profile("o/r", clean, {"generated_at": 2})
+            self.assertEqual([p.name for p in PF.profile_dir("o/r").glob("*.tmp")], [])
 
 
 class Signals(unittest.TestCase):

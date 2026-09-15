@@ -280,7 +280,11 @@ It never touches the live `review.json`, `posted.json` or `approved`. On Docker,
 container's own stdout is capped separately by the compose file (3 × 10 MB per service).
 
 Profile versions are capped at their own write rather than by this sweep: `save_profile()`
-keeps the newest **ten** `profile.<ts>.json` per repository and deletes the rest.
+keeps the newest **ten** `profile.<ts>.json` per repository and deletes the rest. That write
+never moves the live file: the archive copy is written from the content already in hand and
+`profile.json` and `profile.md` are each replaced with a single `os.replace` of a temp file in
+the same directory, so a request reading a profile while one is being saved always sees a whole
+one.
 
 ---
 

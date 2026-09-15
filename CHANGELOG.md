@@ -50,6 +50,40 @@ half-done. All seven are closed here.
   so entries only build up when the author keeps pushing and the reviewer keeps
   posting without re-running — but an eviction is now logged.
 
+### Final stragglers — 09/15/26
+
+Five loose ends, each found by one lane working in a file another lane owned,
+closed before the release.
+
+- **A concurrent read can no longer find no profile at all.**
+  `rs_profile.save_profile` renamed `profile.json` away to archive it and then
+  wrote the replacement, so for that instant a reader got nothing — the Skills
+  page rendered a repository with no profile. The previous version is now
+  archived from the bytes already in hand and the replacement lands with a
+  single `os.replace`, so the live path is never moved out of the way.
+- **The hatched marker for today's bar can render.** Insights compared the
+  server's `%m/%d/%y` series date against an ISO date, so the comparison was
+  never true, the hatch never drew and every chart ended on what looks like a
+  slowdown and is in fact a part-day. It compares on the series point's `ts`
+  now — the bucket key the server already sends.
+- **A merged or closed PR says so on its own page.** `canApprove`, `prState`
+  and `merged` reached the queue rows only, so the detail page offered a live
+  Approve button on a shipped PR and the server's refusal arrived after the
+  click. `/api/pr` carries the three fields now, from metadata it already had,
+  and the page renders the state and disables Approve with the reason.
+- **Dry-run decisions are labelled.** `counts.dry`, the per-row `dry` flag and
+  `dryDecisions` existed and nothing rendered them, so a pilot on the shipped
+  `DRY_RUN=1` saw a Learnings page whose totals ignored a week of judgements
+  and an Insights page that read like an empty install. Both pages now say how
+  many decisions were made in dry run, that they are in no rate, and that they
+  still teach the reviewer; the affected rows carry a **dry run** pill.
+
+The `posted_runs.json` eviction added above stays a log line and is
+deliberately not surfaced in the dashboard: reaching the cap needs twenty-one
+distinct posts of distinct runs on one pull request by one reviewer without a
+re-run, nothing an operator could act on follows from it, and the only honest
+placement would be a banner nothing ever clears.
+
 ### Audit remediation — 09/15/26
 
 A six-part audit of the whole project ran in seven lanes and all of them have

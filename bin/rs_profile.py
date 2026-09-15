@@ -36,6 +36,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import Counter
@@ -957,31 +958,56 @@ def prune_versions(repo, keep=KEEP_VERSIONS):
     return gone
 
 
+def _atomic_write(path, text):
+    """Replace `path` with `text` via a temp file in the same directory, so a concurrent
+    reader sees either the old file or the new one — never a missing or half-written one."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def save_profile(repo, profile, meta=None):
     """Write profile.json (+ profile.md), keeping the previous version as
-    profile.<ts>.json and pruning back to the newest KEEP_VERSIONS of them."""
+    profile.<ts>.json and pruning back to the newest KEEP_VERSIONS of them.
+
+    The live path is never moved out of the way: the previous version is archived from the
+    bytes we already read, and the replacement lands with a single os.replace. A reader
+    racing the write therefore always sees a complete profile.json.
+    """
     d = profile_dir(repo)
     d.mkdir(parents=True, exist_ok=True)
     f = profile_path(repo)
+    prev_text = None
     if f.exists():
         try:
-            prev = json.loads(f.read_text())
+            prev_text = f.read_text()
+            prev = json.loads(prev_text)
             ts = int((prev.get("meta") or {}).get("edited_at")
                      or (prev.get("meta") or {}).get("generated_at") or f.stat().st_mtime)
         except (OSError, ValueError, TypeError):
-            ts = int(f.stat().st_mtime)
+            try:
+                ts = int(f.stat().st_mtime)
+            except OSError:
+                ts = int(time.time())
         vf = d / f"profile.{ts}.json"
-        if not vf.exists():
-            os.replace(f, vf)
+        if prev_text is not None and not vf.exists():
+            with contextlib.suppress(OSError):
+                _atomic_write(vf, prev_text)
     out = dict(profile)
     out["version"] = SCHEMA_VERSION
     m = dict(out.get("meta") or {})
     m.update(meta or {})
     out["meta"] = m
-    tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(out, indent=1) + "\n")
-    os.replace(tmp, f)
-    (d / "profile.md").write_text(to_markdown(out))
+    _atomic_write(f, json.dumps(out, indent=1) + "\n")
+    _atomic_write(d / "profile.md", to_markdown(out))
     prune_versions(repo)
     return out
 

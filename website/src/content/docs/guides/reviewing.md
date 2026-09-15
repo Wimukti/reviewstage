@@ -102,6 +102,8 @@ Two ceilings worth knowing: a review is refused above **50** comments in one all
 
 A separate panel. Enabled only when the PR is **open**, **not a draft**, **not yours**, and has a review on this server. Deliberately *not* gated on "still a requested reviewer": GitHub clears the request the moment any review is submitted, which would make post-then-approve impossible.
 
+**A merged or closed PR says so before you click.** The PR page carries the pull request's own state on GitHub — the same `prState` / `merged` / `canApprove` the queue rows show — so a shipped or abandoned PR is banded at the top, pilled *merged* or *closed* in the Details rail, and its Approve button is disabled with the reason on it. The server refused these already; what changed is that you find out before pressing rather than after.
+
 **Approval knows which commit you read.** The run records the head it reviewed. If the branch has moved since, approving is refused with the two short SHAs named — *"New commits have landed since this review ran"* — and goes through only when you tick the confirmation to approve the current commit anyway. Approving the same head twice is refused outright, because a second click would post a second approval; a new commit makes approving possible again.
 
 The body is pre-filled with `LGTM` plus a checklist of blocker and should-fix findings (nits omitted). Edit it, then **Approve**: it posts the comment and the approval, as you. Once approved, the panel is replaced by a card showing when and with what text.

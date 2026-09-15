@@ -573,6 +573,12 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
     rev.approve.reviewedHead !== rev.approve.currentHead
   );
   const needsAck = !!rev.approve && (!rev.approve.lgtm || headMoved);
+  // The server refuses an approval on a PR that is no longer open; say so before the click
+  // instead of after it.
+  const noApprove = data.canApprove === false;
+  const noApproveWhy = data.merged
+    ? "This PR is merged — GitHub will not take an approval on it."
+    : "This PR is closed — an approval on it would not be actionable.";
 
   // An action token lives 30 minutes and /api/pr only re-mints while a review runs, so reading a
   // long review and then clicking Post used to 403 into a dead button. Re-read the PR for a
@@ -928,9 +934,9 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                   <button
                     className="btn primary"
                     type="button"
-                    disabled={busy || (needsAck && !ack)}
+                    disabled={busy || noApprove || (needsAck && !ack)}
                     aria-busy={busy}
-                    title={needsAck && !ack ? "Tick the confirmation above first" : ""}
+                    title={noApprove ? noApproveWhy : needsAck && !ack ? "Tick the confirmation above first" : ""}
                     onClick={submitApprove}
                   >
                     {busy
@@ -939,6 +945,11 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
                         ? "Approve (dry run)"
                         : `Approve #${data.pr}`}
                   </button>
+                  {noApprove && (
+                    <span className="rownote" data-testid="no-approve">
+                      {noApproveWhy}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -1070,6 +1081,11 @@ function PrSidebar({ data }: { data: PrData }) {
         <div className="sidehead">Details</div>
         <div className="siderow">
           <span className={"pill " + data.state}>{data.state}</span>
+          {data.canApprove === false && (
+            <span className={"pill " + (data.merged ? "posted" : "archived")} data-testid="pr-state">
+              {data.merged ? "merged" : "closed"}
+            </span>
+          )}
           {data.dryRun && <span className="pill dry">dry run</span>}
           {data.effortBadge && (
             <span className="effbadge" title={data.effortBadge.hint}>
@@ -1141,6 +1157,24 @@ function PrBanners({ data }: { data: PrData }) {
           <div>
             <b>The author pushed new commits since this review.</b> The findings may be out of date —
             re-run below.
+          </div>
+        </div>
+      )}
+      {data.canApprove === false && (
+        <div className="banner warn" data-testid="pr-closed-banner">
+          <span>{data.merged ? "🟣" : "🚫"}</span>
+          <div>
+            {data.merged ? (
+              <>
+                <b>This pull request is merged.</b> GitHub will not take an approval on it, and
+                comments posted now cannot be acted on. The review below is kept for the record.
+              </>
+            ) : (
+              <>
+                <b>This pull request is closed.</b> An approval on it would not be actionable.
+                Reopen it on GitHub if you still want to sign off.
+              </>
+            )}
           </div>
         </div>
       )}

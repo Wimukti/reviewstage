@@ -2220,10 +2220,24 @@ def verify(action, subject, exp, sig, legacy_pr=""):
 
 
 # --- github -------------------------------------------------------------------------------
-def gh(args, timeout=45, token=None):
-    """Runs gh with the service token, or with a specific user's PAT for writes-as-them."""
+SERVICE_TOKEN = object()   # sentinel: "this read is meant to use the service token"
+
+
+def gh(args, timeout=45, token=SERVICE_TOKEN):
+    """Run gh. `token` is either the SERVICE_TOKEN sentinel (reads and the base clone) or a
+    specific user's token (everything that acts as them).
+
+    An empty or None token is a bug, never a fallback. It used to mean `token or PAT`, so a
+    user whose stored token could not be decrypted would have had their comment or approval
+    posted by the SERVICE account instead — the one shape the "never post as a bot" property
+    depends on not existing. It raises now; callers that act as a user must check first."""
+    if token is SERVICE_TOKEN:
+        token = PAT
+    elif not token:
+        raise ValueError("gh() called with an empty token — pass SERVICE_TOKEN for a read, or "
+                         "refuse the action when the user's token cannot be read")
     return subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout,
-                          env={**os.environ, "GH_TOKEN": token or PAT})
+                          env={**os.environ, "GH_TOKEN": token})
 
 
 def gh_json(args, default=None):
@@ -2342,7 +2356,11 @@ def can_approve(repo, pr, login):
     it is not the user's own PR (GitHub forbids self-approval), and this box genuinely
     reviewed it — which, combined with the signed session and action token, is the control.
     """
-    r = gh(["api", f"repos/{repo}/pulls/{pr}"], token=user_pat(login))
+    tok = user_pat(login)
+    if not tok:
+        return False, ("Your stored GitHub token could not be read — sign in again, then "
+                       "retry.")
+    r = gh(["api", f"repos/{repo}/pulls/{pr}"], token=tok)
     if r.returncode != 0:
         err = (r.stderr or "unknown error").strip().splitlines()[-1][:250]
         return False, f"GitHub rejected the check: {err}"

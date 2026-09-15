@@ -3560,7 +3560,13 @@ class Handler(BaseHTTPRequestHandler):
         connected = bool(u.get("claude_token_enc"))
         claude_url = ""
         if not connected:
-            claude_url, _ = claude_connect_start(user)
+            # Reuse the in-flight connect rather than minting a new one. A GET must not have
+            # this side effect: every page load (a refresh, a second tab, the SPA remounting)
+            # replaced the stored PKCE verifier, so the code the person had already pasted into
+            # Claude failed with "that code is from a different sign-in". Minting happens on
+            # POST /api/claude/start.
+            live = claude_connect_pending(user)
+            claude_url = (live or {}).get("url", "")
         vals, _src = runtime_settings()
         return {"token": {"exp": exp, "sig": sig},
                 "github": {"login": user,
@@ -3616,6 +3622,7 @@ class Handler(BaseHTTPRequestHandler):
                 # How this request was authenticated and how the GitHub token was obtained.
                 "auth": auth or "cookie",
                 "login_via": "oauth" if u.get("gh_token_enc") else "pat",
+                "tour_seen": bool(u.get("tour_seen")),
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
                 "brand": BRAND, "oauth": OAUTH_ENABLED, "device_flow": DEVICE_FLOW_ENABLED,
                 "public_url": PUBLIC_URL, "logo": rs_assets.LOGO,
@@ -3869,7 +3876,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_json({"error": err}, 403)
             form = {k: [str(v)] for k, v in body.items()}
             banner = self._claude_result(user, step, form)
-            return self.api_json({"bannerHtml": banner, "connected": claude_connected(user)})
+            out = {"bannerHtml": banner, "connected": claude_connected(user)}
+            if step == "start":
+                out["authUrl"] = (claude_connect_pending(user) or {}).get("url", "")
+            return self.api_json(out)
 
         # PR-scoped actions — all gated by the signed token in the body (same model as the forms).
         pr = str(body.get("pr") or "")
@@ -4097,6 +4107,12 @@ class Handler(BaseHTTPRequestHandler):
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
         if step == "cancel":
             claude_connect_cancel(user)
+            return ""
+        if step == "start":
+            # Explicit, and idempotent while one is live — see api_integrations.
+            live = claude_connect_pending(user)
+            if not live:
+                claude_connect_start(user)
             return ""
         if step == "disconnect":
             def apply(users):

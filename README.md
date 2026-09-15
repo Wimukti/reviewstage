@@ -34,10 +34,21 @@ ReviewStage is an open-source, self-hosted PR review assistant built on [Claude 
 
 ```bash
 git clone https://github.com/Wimukti/reviewstage && cd reviewstage
-cp .env.example .env          # set REPOS and a read-only GITHUB_PAT
+cp .env.example .env               # set REPOS and GITHUB_PAT (the service token)
 docker compose up -d
-bin/doctor.sh                 # checks Docker, .env, and that the service is healthy
+docker compose exec app doctor     # diagnostics from inside the container
 ```
+
+You need Docker with Compose v2 and a host with **at least 2 GB of RAM** — a review refuses to
+start below `MIN_FREE_MB` (800 MB *available*), so a 1 GB VPS cannot run one. `GITHUB_PAT` is a
+fine-grained service token on the repositories in `REPOS` with **Pull requests: Read and
+write**, **Contents: Read** and **Metadata: Read**. It reads PR metadata and diffs, clones the
+repositories and runs the poller's searches; nothing in the review or service path ever writes
+to GitHub with it — every comment and approval uses the acting reviewer's own token.
+
+Before you point it at anyone else's pull request, read the
+[security model](https://wimukti.github.io/reviewstage/security/): what is stored, what each
+token can do, and what is deliberately not defended against.
 
 Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the box: GitHub's device flow with a shared public client ID — enter a short code at github.com/login/device, nothing to register; a fine-grained token also works), connect your Claude account, and paste a PR URL. Teams that want one-click redirect sign-in under their own app identity can still register an OAuth App (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`). `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://wimukti.github.io/reviewstage/start/first-review/).
 
@@ -52,7 +63,7 @@ Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the 
 ## Highlights
 
 - **A staging area, not a comment stream.** Tick and untick findings, edit inline with a preview, attach GitHub suggestion blocks, ask for a plain-words explanation with how to verify. Re-run at another effort or focus; every earlier run is kept.
-- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own token is read-only.
+- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from — the review step has no GitHub write path at all.
 - **Effort, focus and model per run.** Quick, Standard or Deep (auto-suggested from the diff), a free-text focus note, and your plan's default model or Opus, Sonnet or Haiku. Tokens and model are shown per run.
 - **Profiles your repo once and makes every review walk its critical paths.** Deterministic signals (tree, churn, in-degree, CODEOWNERS, CI) plus one Sonnet call name the paths where a mistake hurts most; every path is checked against the tree. Standard and Deep reviews that touch one are told to verify callers, contracts, migrations and tests, and findings on it carry a badge. Editable in the dashboard; optional automatic re-profile when the tree changes.
 - **It learns what your team drops — and hardens it into rules.** Kept, reworded and dropped findings feed the next review of the repository. Drop the same complaint three times across different PRs and ReviewStage drafts it as a proposed team rule, with the evidence attached, for you to accept or dismiss with one click — nothing reaches a skill on its own. Skills are scored by keep rate; the team default is versioned with a revision history; add a rule in plain words.
@@ -92,7 +103,7 @@ Adds the review-request poller and notification cards: within three minutes of s
 - [Configuration](https://wimukti.github.io/reviewstage/operations/configuration/) · [Troubleshooting](https://wimukti.github.io/reviewstage/operations/troubleshooting/)
 - [Architecture](https://wimukti.github.io/reviewstage/developers/architecture/) · [Contributing](https://wimukti.github.io/reviewstage/developers/contributing/) · [Roadmap](https://wimukti.github.io/reviewstage/developers/roadmap/)
 
-The four documents under [`docs/`](docs/) are the canonical prose the site is built from.
+The documents under [`docs/`](docs/) are the canonical prose the site is built from: [SETUP.md](docs/SETUP.md) (from source), [INSTALL-DOCKER.md](docs/INSTALL-DOCKER.md), [OPERATIONS.md](docs/OPERATIONS.md), [SECURITY.md](docs/SECURITY.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [MOBILE.md](docs/MOBILE.md).
 
 ## Develop from source
 

@@ -6,6 +6,34 @@ Budget 10 minutes, most of it the first image build.
 You need Docker 24+ with Compose v2 (`docker compose version`). Apple Silicon, Intel and
 arm64 Linux all work — the image builds for the host's architecture.
 
+**Host requirements**
+
+- **At least 2 GB of RAM.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*,
+  not total — so a 1 GB VPS cannot run a single review. `doctor` FAILs the memory check when it
+  is short. Lower `MIN_FREE_MB` only if you know the host can take an agent run anyway.
+- **About 3 GB of free disk** for the image, plus one blobless clone per repository in the data
+  volume. `doctor` FAILs below 1 GB free (`MIN_FREE_DISK_MB`, default 1024).
+- **Outbound network for the build.** The image pulls `python:3.12-slim` and `node:24-alpine`,
+  Debian packages, the GitHub CLI apt repository, NodeSource and `@anthropic-ai/claude-code`
+  from npm. Behind a proxy, set the Docker daemon's proxy (so base images pull) and pass the
+  variables to the build:
+
+  ```bash
+  docker compose build \
+    --build-arg HTTP_PROXY="$HTTP_PROXY" \
+    --build-arg HTTPS_PROXY="$HTTPS_PROXY" \
+    --build-arg NO_PROXY="$NO_PROXY"
+  docker compose up -d
+  ```
+
+  At run time the container needs `github.com`, `api.github.com` and Anthropic's API; add those
+  to the proxy allowlist. `CLAUDE_CODE_VERSION` is a build arg (default `latest`) if you need to
+  pin the CLI to a version your proxy has cached.
+
+**Before you point it at someone else's pull request**, read [SECURITY.md](SECURITY.md). A
+review checks out a contributor's branch and runs an agent over it; the threat model, and what
+is deliberately not defended against, are worth five minutes.
+
 ## Quick start
 
 ```bash
@@ -212,4 +240,5 @@ install on a LAN also works — do not do that for anything reachable from outsi
 | Signed in, then straight back to the login page  | Cookie rejected: open `http://localhost:8899`, not `127.0.0.1`; behind a proxy, `PUBLIC_URL` must be `https://` and the proxy must forward `Host` |
 | Slack/Discord card never arrives                 | Poller not running (`--profile team`) or paused in Settings, or no webhook URL in `.env` — `docker compose logs poller` |
 | Settings → Webhooks stays "polling only"         | GitHub cannot reach `<PUBLIC_URL>/webhooks/github` (check the hook's *Recent Deliveries* on GitHub: a 503 means `GITHUB_WEBHOOK_SECRET` is unset, a 401 means the secrets differ, a timeout means the proxy or Access policy blocks the path) |
-| Port 8899 in use                                 | `RS_PORT=9000 docker compose up -d` (host side only)         |
+| Port 8899 in use                                 | `RS_PORT=9000 docker compose up -d` — in the **shell**, for that command. Never put `RS_PORT` in `.env`: Compose reads that file both to interpolate the published port and to build the container's environment, so the server moves inside the container while the publish still targets 8899, and the dashboard stops answering |
+| Dashboard unreachable right after editing `.env`  | Check you did not add `RS_PORT` there (row above); otherwise `docker compose up -d` to recreate the container, since the server reads `.env` only at startup |

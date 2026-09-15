@@ -8,6 +8,19 @@ type at github.com/login/device. `poll(session)` exchanges the device_code for a
 person has approved, enforcing GitHub's minimum polling interval so a misbehaving client cannot
 get this server rate-limited. Sessions are in-memory: a restart just makes people start over.
 
+Two things bind and bound the flow:
+
+  * **A nonce.** `start(nonce=…)` remembers an opaque value the server also drops on the
+    browser as a cookie; `poll()` refuses a session whose nonce does not match. Without it the
+    start and poll endpoints are unauthenticated and unlinked, so an attacker could start a
+    flow here, get a teammate to type the code at github.com, poll, and be handed a session
+    cookie as that teammate (see docs/SECURITY.md, "Device-code phishing").
+  * **Headroom.** The pending table is capped. A flood of unauthenticated `start` calls used to
+    evict the OLDEST entry, which is exactly the sign-in a real person is part-way through, so
+    a trivial flood locked the whole team out. Eviction is now most-recent-first and only ever
+    takes sessions nobody has polled, and `RESERVED_FOR_ACTIVE` slots are kept back from
+    never-polled sessions altogether — a flood gets an error, not everyone else's slot.
+
 The HTTP layer is a plain function (`http_post_form`) so the unit tests can point the flow at a
 fake GitHub on localhost. server.py owns everything after a token arrives (verify, encrypt,
 session cookie)."""
@@ -22,7 +35,8 @@ from urllib.request import Request, urlopen
 GITHUB_BASE = "https://github.com"
 DEFAULT_CLIENT_ID = "Ov23liHjtjxcPNwXC6Y5"   # public by design — device flow has no secret
 GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
-MAX_PENDING = 50          # sessions held at once; the oldest expired ones go first
+MAX_PENDING = 50          # sessions held at once
+RESERVED_FOR_ACTIVE = 15  # of those, kept back from sign-ins nobody has polled yet
 DEFAULT_INTERVAL = 5      # GitHub's documented minimum, used when the response omits one
 DEFAULT_EXPIRES_IN = 900  # GitHub's user codes last 15 minutes
 POLL_GRACE = 1.0          # seconds a poll may arrive early (browser timer jitter)
@@ -50,14 +64,16 @@ def http_post_form(url, fields, timeout=20):
 
 class DeviceFlow:
     def __init__(self, client_id, scopes="repo", base=GITHUB_BASE, post=http_post_form,
-                 now=time.time, max_pending=MAX_PENDING):
+                 now=time.time, max_pending=MAX_PENDING, reserved=RESERVED_FOR_ACTIVE):
         self.client_id = client_id
         self.scopes = scopes
         self.base = base.rstrip("/")
         self.post = post
         self.now = now
         self.max_pending = max_pending
-        self._pending = {}   # session -> {device_code, interval, expires_at, next_poll, started}
+        self.reserved = min(reserved, max(max_pending - 1, 0))
+        # session -> {device_code, interval, expires_at, next_poll, started, nonce, polled}
+        self._pending = {}
         self._lock = threading.Lock()
 
     @property
@@ -65,16 +81,31 @@ class DeviceFlow:
         return bool(self.client_id)
 
     # -- housekeeping -----------------------------------------------------------------------
-    def _purge(self, make_room=False):
-        """Drop expired sessions; with make_room, also evict the oldest until one more fits.
-        Caller holds the lock."""
+    def _purge(self):
+        """Drop expired sessions. Caller holds the lock."""
         t = self.now()
         for k, v in list(self._pending.items()):
             if v["expires_at"] <= t:
                 self._pending.pop(k, None)
-        while make_room and len(self._pending) >= self.max_pending:
-            oldest = min(self._pending, key=lambda k: self._pending[k]["started"])
-            self._pending.pop(oldest, None)
+
+    def _make_room(self):
+        """True when one more never-polled session fits. Caller holds the lock and has purged.
+
+        Sign-ins someone is actually part-way through (polled at least once) are untouchable;
+        the cap is enforced against the never-polled ones, keeping `reserved` slots free for
+        the active ones. When the room has to be made, the NEWEST never-polled session goes
+        first — a flood evicts itself instead of the person who started a minute ago."""
+        budget = max(self.max_pending - self.reserved, 1)
+        idle = [k for k, v in self._pending.items() if not v.get("polled")]
+        while len(idle) >= budget:
+            newest = max(idle, key=lambda k: self._pending[k]["started"])
+            # Only evict something that has had a fair chance to be typed in; otherwise refuse,
+            # so two people starting at once cannot cancel each other.
+            if self.now() - self._pending[newest]["started"] < 30:
+                return False
+            self._pending.pop(newest, None)
+            idle.remove(newest)
+        return len(self._pending) < self.max_pending
 
     def pending_count(self):
         with self._lock:
@@ -82,10 +113,18 @@ class DeviceFlow:
             return len(self._pending)
 
     # -- step 1: get a user code ------------------------------------------------------------
-    def start(self):
-        """→ (browser_payload, error). The payload never includes the device_code."""
+    def start(self, nonce=""):
+        """→ (browser_payload, error). The payload never includes the device_code.
+
+        `nonce` is remembered with the session and demanded back by poll(); the caller sets it
+        on the browser as a cookie so only the browser that started a sign-in can finish it."""
         if not self.enabled:
             return None, "Device flow is not enabled on this server."
+        with self._lock:
+            self._purge()
+            if not self._make_room():
+                return None, ("Too many sign-ins are already in progress on this server — "
+                              "wait a moment and try again.")
         fields = {"client_id": self.client_id}
         if self.scopes:
             fields["scope"] = self.scopes
@@ -98,10 +137,14 @@ class DeviceFlow:
         t = self.now()
         session = secrets.token_urlsafe(24)
         with self._lock:
-            self._purge(make_room=True)
+            self._purge()
+            if not self._make_room():
+                return None, ("Too many sign-ins are already in progress on this server — "
+                              "wait a moment and try again.")
             self._pending[session] = {
                 "device_code": d["device_code"], "interval": interval,
                 "expires_at": t + expires_in, "next_poll": t + interval, "started": t,
+                "nonce": nonce or "", "polled": False,
             }
         return {"session": session, "user_code": d["user_code"],
                 "verification_uri": d.get("verification_uri")
@@ -109,15 +152,21 @@ class DeviceFlow:
                 "expires_in": expires_in, "interval": interval}, None
 
     # -- step 2: poll for the token ---------------------------------------------------------
-    def poll(self, session):
+    def poll(self, session, nonce=""):
         """→ (result, tokens). result is a dict with `status` in pending | expired | denied |
         unknown | too_fast | error; tokens is GitHub's token response only when status == ok.
-        `too_fast` carries retry_after (seconds) — the caller answers 429."""
+        `too_fast` carries retry_after (seconds) — the caller answers 429.
+
+        A session started with a nonce may only be polled with that same nonce; a mismatch is
+        reported as `unknown`, exactly like a session id that was never issued."""
         with self._lock:
             self._purge()
             s = self._pending.get(session or "")
             if not s:
                 return {"status": "unknown"}, None
+            if not secrets.compare_digest(s.get("nonce") or "", nonce or ""):
+                return {"status": "unknown"}, None
+            s["polled"] = True
             t = self.now()
             if t + POLL_GRACE < s["next_poll"]:
                 return {"status": "too_fast",
@@ -151,6 +200,10 @@ class DeviceFlow:
         return {"status": "error",
                 "error": d.get("error_description") or err or "GitHub returned no token"}, None
 
-    def forget(self, session):
+    def forget(self, session, nonce=""):
+        """Hand a slot back early (the browser's Cancel). Nonce-checked like poll(), so a
+        session id cannot be cancelled by anyone but the browser that started it."""
         with self._lock:
-            self._pending.pop(session or "", None)
+            s = self._pending.get(session or "")
+            if s and secrets.compare_digest(s.get("nonce") or "", nonce or ""):
+                self._pending.pop(session, None)

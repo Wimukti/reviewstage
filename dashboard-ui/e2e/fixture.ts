@@ -15,6 +15,10 @@ export const FIXTURE = join(HERE, ".fixture");
 export const AUTH_STATE = join(HERE, ".auth.json");
 export const SECRET = "e2e-fixed-test-secret-not-for-production";
 export const USER = "acme-dev";
+// A second signed-in user, used only by the Devices tests. "Sign out everywhere" bumps that
+// user's credential epoch, which invalidates their session cookie as well as their device
+// tokens — correct, and fatal to a shared fixture cookie, so those tests get their own.
+export const DEVICES_USER = "acme-devices";
 export const REPO = "acme/widgets";
 export const REPO2 = "acme/api";
 export const REPO3 = "acme/billing"; // its profile run failed — the Skills page error state
@@ -56,6 +60,7 @@ export function buildFixture() {
     join(FIXTURE, "users.json"),
     JSON.stringify({
       [USER]: { name: "Acme Dev", slack_id: "U0TEST", discord_id: "4242", added: 1, updated: 1 },
+      [DEVICES_USER]: { name: "Acme Devices", added: 1, updated: 1 },
     }),
   );
 
@@ -405,13 +410,18 @@ export function buildFixture() {
 export const ORIGIN = `http://127.0.0.1:${PORT}`;
 export const TOUR_KEY = "reviewstage_tour";
 
-// The signed session cookie for USER, the shape Playwright's storageState wants.
-export function sessionCookie() {
+// A signed session cookie, the shape Playwright's storageState wants. `epoch` is the user's
+// credential counter and is inside the HMAC (server.py session_sig) so that "Sign out
+// everywhere" can invalidate outstanding cookies; a fixture user that has never bumped it is
+// at 0.
+export function sessionCookie(login = USER, epoch = 0) {
   const exp = Math.floor(Date.now() / 1000) + 3600;
-  const sig = createHmac("sha256", SECRET).update(`session:${USER}:${exp}`).digest("hex");
+  const sig = createHmac("sha256", SECRET)
+    .update(`session:${login}:${exp}:${epoch}`)
+    .digest("hex");
   return {
     name: "rs_session",
-    value: `${USER}:${exp}:${sig}`,
+    value: `${login}:${exp}:${sig}`,
     domain: "127.0.0.1",
     path: "/",
     expires: exp,

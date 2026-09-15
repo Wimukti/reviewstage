@@ -75,8 +75,10 @@ class DeviceFlowTests(unittest.TestCase):
         FakeGitHub.script = []
         FakeGitHub.requests = []
         self.clock = Clock()
+        # reserved=1 of max_pending=3: two never-polled sign-ins fit, the third slot is
+        # kept for sign-ins someone is actually part-way through.
         self.flow = df.DeviceFlow("cid-test", "repo", base=self.base, now=self.clock,
-                                  max_pending=3)
+                                  max_pending=3, reserved=1)
 
     def start(self):
         payload, err = self.flow.start()
@@ -216,22 +218,73 @@ class DeviceFlowTests(unittest.TestCase):
         res, _ = self.flow.poll(s)
         self.assertEqual(res, {"status": "unknown"})
 
-    def test_pending_cap_evicts_the_oldest(self):
+    def test_a_flood_of_fresh_signins_is_refused_not_absorbed(self):
+        """The old cap evicted the OLDEST pending sign-in, so an unauthenticated flood locked
+        every real person out of GitHub sign-in. A flood now bounces off instead."""
         first = self.start()["session"]
         self.clock.t += 1
         self.start()
         self.clock.t += 1
-        self.start()
-        self.assertEqual(self.flow.pending_count(), 3)
-        self.clock.t += 1
-        self.start()                                     # fourth: the first is evicted
-        self.assertEqual(self.flow.pending_count(), 3)
+        payload, err = self.flow.start()
+        self.assertIsNone(payload)
+        self.assertIn("Too many sign-ins", err)
+        # and the person who started first is untouched
+        FakeGitHub.script = [{"error": "authorization_pending"}]
         res, _ = self.poll_after(first, 5)
+        self.assertEqual(res["status"], "pending")
+
+    def test_room_is_made_from_the_newest_abandoned_signin(self):
+        first = self.start()["session"]
+        self.clock.t += 40
+        self.start()                                     # abandoned, and older than the grace
+        self.clock.t += 40
+        self.start()                                     # evicts the one above, not `first`
+        FakeGitHub.script = [{"error": "authorization_pending"}]
+        res, _ = self.poll_after(first, 5)
+        self.assertEqual(res["status"], "pending")
+
+    def test_a_polled_signin_is_never_evicted(self):
+        mine = self.start()["session"]
+        FakeGitHub.script = [{"error": "authorization_pending"}]
+        self.poll_after(mine, 5)                         # now "active"
+        for _ in range(3):
+            self.clock.t += 40
+            self.flow.start()
+        FakeGitHub.script = [{"error": "authorization_pending"}]
+        res, _ = self.poll_after(mine, 5)
+        self.assertEqual(res["status"], "pending")
+
+    # -- browser binding (device-code phishing) -----------------------------------------------
+    def test_poll_needs_the_nonce_the_flow_started_with(self):
+        s = self.flow.start(nonce="browser-A")[0]["session"]
+        self.clock.t += 5
+        res, tok = self.flow.poll(s, "attacker")
         self.assertEqual(res, {"status": "unknown"})
+        self.assertIsNone(tok)
+        res, _ = self.flow.poll(s, "")
+        self.assertEqual(res, {"status": "unknown"})
+        FakeGitHub.script = [{"error": "authorization_pending"}]
+        res, _ = self.flow.poll(s, "browser-A")
+        self.assertEqual(res["status"], "pending")
+
+    def test_a_refused_nonce_does_not_burn_the_poll_interval(self):
+        s = self.flow.start(nonce="browser-A")[0]["session"]
+        self.clock.t += 5
+        self.flow.poll(s, "attacker")
+        FakeGitHub.script = [{"error": "authorization_pending"}]
+        res, _ = self.flow.poll(s, "browser-A")
+        self.assertEqual(res["status"], "pending")
 
     def test_forget(self):
         s = self.start()["session"]
         self.flow.forget(s)
+        self.assertEqual(self.flow.pending_count(), 0)
+
+    def test_forget_needs_the_nonce_too(self):
+        s = self.flow.start(nonce="browser-A")[0]["session"]
+        self.flow.forget(s, "attacker")
+        self.assertEqual(self.flow.pending_count(), 1)
+        self.flow.forget(s, "browser-A")
         self.assertEqual(self.flow.pending_count(), 0)
 
 

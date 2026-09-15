@@ -47,6 +47,19 @@ if [ -n "$repos" ]; then
 else
   fail "no repository configured (set REPOS=owner/name[,…] or REPO=owner/name)"
 fi
+# RS_SECRET: sessions, every signed link and the at-rest encryption key all derive from it.
+# Empty means HMAC with a key anyone can reproduce — a forged rs_session cookie is accepted as
+# any user, including an admin. The server refuses to start without one; say so here too.
+if [ -z "${RS_SECRET:-}" ]; then
+  fail "RS_SECRET is empty — session cookies and signed links would be forgeable by anyone (the server refuses to start)"
+  note "fix: RS_SECRET=\$(openssl rand -hex 32) in $ENV_FILE, then restart"
+elif [ "${#RS_SECRET}" -lt 32 ]; then
+  fail "RS_SECRET is ${#RS_SECRET} characters — it must be at least 32 (the server refuses to start)"
+  note "fix: RS_SECRET=\$(openssl rand -hex 32) in $ENV_FILE, then restart"
+else
+  pass "RS_SECRET set (${#RS_SECRET} characters)"
+fi
+
 [ -n "${REPO_ALLOW_ORG:-}" ] && note "REPO_ALLOW_ORG=$REPO_ALLOW_ORG — repos under that org are accepted on demand (the service token must see the org)"
 case "${DRY_RUN:-1}" in
   1) note "DRY_RUN=1 — nothing is written to GitHub";;
@@ -149,7 +162,18 @@ if [ -n "${PUBLIC_URL:-}" ]; then
   if [ "$code" = 200 ]; then pass "PUBLIC_URL reachable ($PUBLIC_URL)"
   else warn "PUBLIC_URL ${PUBLIC_URL%/}/health returned '${code:-no response}' from here (fine if it only resolves from outside)"; fi
   case "$PUBLIC_URL" in
-    http://localhost*|http://127.0.0.1*) ;;
+    http://localhost*|http://127.0.0.1*)
+      # The container entrypoint writes http://localhost:PORT when nobody set PUBLIC_URL. That
+      # is fine on a laptop and wrong everywhere else: it drops the Secure cookie flag, and
+      # /device hands a phone an address that resolves to the phone.
+      remote_addr=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | head -1)
+      if [ "${RS_BIND:-127.0.0.1}" != "127.0.0.1" ] && [ -n "$remote_addr" ]; then
+        warn "PUBLIC_URL is the localhost default ($PUBLIC_URL) on a box reachable from outside (RS_BIND=$RS_BIND, address $remote_addr)"
+        note "set PUBLIC_URL to the https:// URL people actually use — otherwise cookies are issued without Secure and /device pairs phones to localhost"
+      else
+        note "PUBLIC_URL is the localhost default — correct for a local install only"
+      fi
+      ;;
     http://*) warn "PUBLIC_URL is plain http on a non-local host — session cookies and tokens travel unencrypted";;
   esac
 else

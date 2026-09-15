@@ -353,8 +353,9 @@ To recover **without one**:
    secrets pasted in between).
 2. From source only: sign Claude Code in as the service user if you want the bare CLI usable;
    reviews themselves run on each reviewer's own connected account either way.
-3. `RS_SECRET` is regenerated, so **every outstanding signed link is invalid** and every stored
-   user token is undecryptable — teammates sign in again and reconnect Claude.
+3. `RS_SECRET` is regenerated, so **every outstanding signed link is invalid**, every stored
+   user token is undecryptable, and **every device token and session cookie stops working** —
+   teammates sign in again and reconnect Claude, and phones and CLIs pair again.
 4. The team's review standard, its learnings and the repository profiles are gone. The team
    default re-seeds from `skills/global-review.md` in this repo, which is the starting point,
    not what your team had evolved.

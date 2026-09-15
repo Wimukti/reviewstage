@@ -23,6 +23,7 @@ Routes
 """
 import base64
 import calendar
+import contextlib
 import fcntl
 import hmac
 import html
@@ -108,7 +109,25 @@ def load_env():
 
 
 ENV = load_env()
+# The one key everything else hangs off: session cookies, every signed action link, the OAuth
+# state, and the key stored tokens are encrypted under. An empty or short RS_SECRET is not a
+# degraded mode, it is no security at all — HMAC(b"", …) is a key anyone can reproduce, so a
+# forged `rs_session=<anyone>:<exp>:<sig>` cookie verifies and hands out an admin session. The
+# server refuses to start without a real one (see secret_problem / the __main__ block).
 SECRET = ENV.get("RS_SECRET", "")
+MIN_SECRET_LEN = 32
+
+
+def secret_problem(secret):
+    """Why `secret` is unusable as RS_SECRET, or None. Shared by startup and the tests."""
+    if not (secret or "").strip():
+        return ("RS_SECRET is empty — sessions and every signed link would be signed with a "
+                "key anyone can reproduce, so a forged session cookie would be accepted as "
+                "any user. Set it in .env: RS_SECRET=$(openssl rand -hex 32)")
+    if len(secret.strip()) < MIN_SECRET_LEN:
+        return (f"RS_SECRET is only {len(secret.strip())} characters — it must be at least "
+                f"{MIN_SECRET_LEN}. Set it in .env: RS_SECRET=$(openssl rand -hex 32)")
+    return None
 # The SERVICE token: reads (diffs, PR metadata, the poller's searches) and the base clone.
 # Never used to post or approve — those use the signed-in user's own PAT, see user_pat().
 PAT = ENV.get("GITHUB_PAT", "")
@@ -246,21 +265,67 @@ def _users_key():
     return sha256(f"{SECRET}:users".encode()).hexdigest()
 
 
-def _openssl(mode, data):
-    r = subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-a", "-A",
-                        mode, "-pass", "env:RS_KEY"], input=data, capture_output=True,
-                       text=True, env={**os.environ, "RS_KEY": _users_key()})
+# PBKDF2 rounds for the at-rest encryption below. OpenSSL's built-in default is 10,000, which
+# is two orders of magnitude short of anything current; 600,000 matches OWASP's PBKDF2-SHA256
+# guidance. Ciphertext written before this change was derived at the old default, so dec()
+# falls back to it once — nobody has to re-paste a token to read this release.
+PBKDF2_ITERS = 600_000
+PBKDF2_ITERS_LEGACY = 10_000
+
+
+def _openssl(mode, data, iters):
+    """Fork openssl for one AES-256-CBC operation. The key goes down a pipe on fd 3, not
+    through the child's environment, so it never appears in /proc/<pid>/environ."""
+    r_fd, w_fd = os.pipe()
+    try:
+        os.write(w_fd, (_users_key() + "\n").encode())
+    finally:
+        os.close(w_fd)
+    try:
+        r = subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2",
+                            "-iter", str(iters), "-salt", "-a", "-A",
+                            mode, "-pass", "fd:3"], input=data, capture_output=True,
+                           text=True, pass_fds=(r_fd,))
+    finally:
+        os.close(r_fd)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or "openssl failed").strip()[:200])
     return r.stdout.strip()
 
 
 def enc(plain):
-    return _openssl("-e", plain)
+    return _openssl("-e", plain, PBKDF2_ITERS)
 
 
 def dec(cipher):
-    return _openssl("-d", cipher)
+    try:
+        return _openssl("-d", cipher, PBKDF2_ITERS)
+    except RuntimeError:
+        # Written before PBKDF2_ITERS was raised. Wrong key and wrong iteration count are
+        # indistinguishable here, so a genuinely undecryptable value costs one extra fork.
+        return _openssl("-d", cipher, PBKDF2_ITERS_LEGACY)
+
+
+# users.json has TWO writers: this process, and `rs_devices.py prune`, which pr-watch.sh runs
+# nightly and which does its own full read-modify-write. The in-process lock below keeps two
+# requests from losing each other's update; the fcntl lock on the sibling .lock file keeps the
+# prune from rolling back a sign-in that landed inside its window (the prune takes the same
+# lock). The lock is on a sibling file, not users.json, because both writers replace users.json
+# by rename — a lock held on its inode would be orphaned by the first swap.
+_users_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _users_file_lock():
+    lock = Path(rs_dev.lock_path(USERS))
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "a+") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            os.chmod(lock, 0o600)
+        except OSError:
+            pass
+        yield
 
 
 def load_users():
@@ -279,18 +344,49 @@ def save_users(users):
     tmp.replace(USERS)
 
 
-# All writers to users.json live in this one server process (pr-watch only reads it), so a
-# process-wide lock is enough to make the load → modify → save sequence atomic and keep two
-# simultaneous sign-ins / settings saves from losing each other's update.
-_users_lock = threading.Lock()
-
-
 def modify_users(fn):
     """Serialized read-modify-write of users.json. fn(users) mutates the dict in place."""
-    with _users_lock:
+    with _users_lock, _users_file_lock():
         users = load_users()
         fn(users)
         save_users(users)
+
+
+# --- the per-user credential epoch ------------------------------------------------------------
+# One integer on the user record that every credential that user holds is derived from: the
+# session cookie's HMAC and the key their device-token hashes are stored under. Bumping it
+# invalidates both at once, which is what "Sign out everywhere" has always claimed to do and
+# never did — before this, it deleted device hashes and left a stolen 30-day session cookie
+# working. RS_SECRET is folded in beside it, so rotating the secret revokes device tokens too.
+def user_epoch(u):
+    try:
+        return int((u or {}).get("epoch") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def login_epoch(login, users=None):
+    return user_epoch((users if users is not None else load_users()).get(login) or {})
+
+
+def device_key(login, u):
+    """The key device-token hashes for this user are stored under. Changing RS_SECRET or the
+    user's epoch changes every hash, so every existing device token stops resolving."""
+    return sha256(f"{SECRET}:device:{login}:{user_epoch(u)}".encode()).hexdigest()
+
+
+def bump_epoch(login):
+    """Invalidate every session cookie and device token this user holds. Returns the new
+    epoch."""
+    out = {"n": 0}
+
+    def apply(users):
+        u = users.get(login)
+        if u is None:
+            return
+        u["epoch"] = out["n"] = user_epoch(u) + 1
+    modify_users(apply)
+    return out["n"]
 
 
 def user_pat(login):
@@ -370,14 +466,82 @@ def oauth_check_state(state):
     return nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
 
 
-OAUTH_BLOCKED = ROOT / "oauth-blocked"
+OAUTH_BLOCKED = ROOT / "oauth-blocked.json"
+_BLOCKED_LOCK = threading.Lock()
+BLOCKED_TTL = 24 * 3600
+
+
+def _blocked_map():
+    try:
+        d = json.loads(OAUTH_BLOCKED.read_text())
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def record_oauth_block(login, kind):
+    """Remember that THIS login's GitHub sign-in worked but could not see the repository.
+
+    It used to be a single flag file, so one person whose account has no access to the repo
+    made the login page tell the entire team the org had not approved the app. It is a map
+    now, and only the "org-approval" kind — GitHub itself refusing the app — is a statement
+    about the install rather than about one person."""
+    with _BLOCKED_LOCK:
+        d = _blocked_map()
+        d[login or "?"] = {"at": int(time.time()), "kind": kind}
+        try:
+            OAUTH_BLOCKED.write_text(json.dumps(d))
+        except OSError:
+            pass
+
+
+def clear_oauth_block(login):
+    with _BLOCKED_LOCK:
+        d = _blocked_map()
+        if d.pop(login, None) is not None:
+            try:
+                OAUTH_BLOCKED.write_text(json.dumps(d))
+            except OSError:
+                pass
 
 
 def oauth_blocked():
-    """True after a GitHub sign-in that succeeded at GitHub but could not see the repo — the
-    org has not approved the app yet. Cleared by the first sign-in that can. Lets the login
-    page demote the GitHub button instead of walking every newcomer into the same error."""
-    return OAUTH_BLOCKED.exists()
+    """True only when a recent sign-in was refused BY THE ORG (not merely by repo access), so
+    the login page may demote the GitHub button for everyone. A per-person access problem no
+    longer speaks for the team."""
+    cutoff = time.time() - BLOCKED_TTL
+    return any(isinstance(v, dict) and v.get("kind") == "org-approval"
+               and (v.get("at") or 0) > cutoff
+               for v in _blocked_map().values())
+
+
+def who_from_token(token):
+    """The GitHub login behind a token, for the per-login block record. "?" when the lookup
+    fails — a name is nice to have here, not load-bearing."""
+    try:
+        r = gh(["api", "user", "-q", ".login"], token=token, timeout=10)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return "?"
+    return (r.stdout or "").strip() or "?"
+
+
+FIRST_RUN_PATH = "/integrations"
+
+
+def landing(nxt, first_sign_in):
+    """Where a fresh session lands.
+
+    `nxt` is consumed here, which it previously was not: the callback replaced it with
+    `/integrations?welcome=1&next=…`, and nothing in the SPA ever read either parameter — so a
+    teammate following a Slack link to a PR signed in and was stranded on Integrations. And the
+    old trigger (`not prev.get("slack_id")`) was true on EVERY sign-in forever for anyone who
+    does not use Slack, not just the first one. Now: a genuine first sign-in goes to
+    Integrations, where the setup actually is; everyone else goes where they were heading.
+    A device-pairing landing always wins, first sign-in or not."""
+    nxt = nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
+    if nxt.startswith("/device"):
+        return nxt
+    return FIRST_RUN_PATH if first_sign_in else nxt
 
 
 def oauth_authorize_url(nxt):
@@ -1689,28 +1853,91 @@ def save_profile_edit(repo, user, body):
     return ""
 
 
+def reconnect_banner(login):
+    """The banner shown when a user's stored GitHub token can no longer be read or used.
+
+    The old copy said "paste it again in settings" to everyone, which is dead advice for
+    someone who signed in through the device flow — they never had a token to paste, and the
+    "Reconnect with GitHub" button in Integrations only renders when the REDIRECT flow is
+    configured. So branch on how they signed in, and offer re-sign-in whenever either GitHub
+    path is on."""
+    u = load_users().get(login) or {}
+    via_github = bool(u.get("gh_token_enc"))
+    if via_github and (OAUTH_ENABLED or DEVICE_FLOW_ENABLED):
+        how = ("<a href='/oauth/start?next=%2Fintegrations'>Reconnect with GitHub</a>"
+               if OAUTH_ENABLED else "<a href='/login'>Sign in with GitHub again</a>")
+        return ("<div class='banner err'><span>🚫</span><div>Your GitHub sign-in has expired or "
+                f"was revoked — {how} to keep posting as yourself.</div></div>")
+    return ("<div class='banner err'><span>🚫</span><div>"
+            "Your stored GitHub token could not be read — "
+            "paste it again in <a href='/integrations'>settings</a>.</div></div>")
+
+
+# Unauthenticated sign-in forks `gh` subprocesses, so the two endpoints that can reach
+# verify_pat are both rate-limited (see RATE) and the work itself is bounded here: at most
+# VERIFY_SLOTS verifications run at once, and each one checks ONE repository instead of every
+# configured repository. The old code forked 1 + len(REPOS) processes per anonymous request
+# with a 20-second timeout each — an easy out-of-memory on a small box, and a frictionless
+# brute force besides.
+VERIFY_SLOTS = 4
+_verify_sem = threading.BoundedSemaphore(VERIFY_SLOTS)
+VERIFY_BUSY = ("The server is verifying several sign-ins already — try again in a moment.")
+
+
 def verify_pat(pat):
-    """(login, name, error). Proves the token is real and can see the repo before storing it."""
-    r = gh(["api", "user"], token=pat, timeout=20)
-    if r.returncode != 0:
-        return None, None, "GitHub did not accept that token."
+    """(login, name, error). Proves the token is real and can see the repo before storing it.
+
+    The error is a plain string for a bad token, and a (message, kind) pair when GitHub
+    accepted the token but it could not see the repository — `kind` is "org-approval" when
+    GitHub refused with a 403/SAML (the org has not approved this app, which is everyone's
+    problem) and "no-access" when the repository merely 404s for this person (which is only
+    theirs). See oauth_blocked_note."""
+    if not _verify_sem.acquire(timeout=10):
+        return None, None, VERIFY_BUSY
     try:
-        me = json.loads(r.stdout or "{}")
-    except json.JSONDecodeError:
-        return None, None, "Could not parse GitHub's response."
-    login = me.get("login")
-    if not login:
-        return None, None, "GitHub returned no login for that token."
-    visible = [r for r in REPOS if gh(["api", f"repos/{r}"], token=pat, timeout=20).returncode == 0]
-    if REPOS and not visible:
-        return None, None, (f"That token cannot see {', '.join(REPOS)} — it needs the `repo` "
-                            "scope (or access to at least one of them).")
-    return login, me.get("name") or "", None
+        r = gh(["api", "user"], token=pat, timeout=20)
+        if r.returncode != 0:
+            return None, None, "GitHub did not accept that token."
+        try:
+            me = json.loads(r.stdout or "{}")
+        except json.JSONDecodeError:
+            return None, None, "Could not parse GitHub's response."
+        login = me.get("login")
+        if not login:
+            return None, None, "GitHub returned no login for that token."
+        if REPOS:
+            probe = gh(["api", f"repos/{REPOS[0]}"], token=pat, timeout=20)
+            if probe.returncode != 0:
+                blocked = "org-approval" if _looks_org_blocked(probe.stderr) else "no-access"
+                return None, None, (repo_invisible_message(blocked), blocked)
+        return login, me.get("name") or "", None
+    finally:
+        _verify_sem.release()
+
+
+def _looks_org_blocked(stderr):
+    """GitHub answers an unapproved OAuth App with a 403 naming SAML / organization access;
+    a person who simply has no access to the repository gets a plain 404."""
+    t = (stderr or "").lower()
+    return ("403" in t or "saml" in t or "organization" in t or "not accessible by" in t)
+
+
+def repo_invisible_message(kind):
+    where = REPOS[0] if REPOS else "the repository"
+    if kind == "org-approval":
+        return (f"GitHub signed you in, but an org owner has not allowed this app on "
+                f"{where} yet (OAuth App: approve it under Third-party access; GitHub App: "
+                "install it on the org). Sign in with a token meanwhile.")
+    return (f"That token cannot see {where} — it needs the `repo` scope, and the account has "
+            "to have access to the repository.")
 
 
 # --- sessions ------------------------------------------------------------------------------
-def session_sig(login, exp):
-    return hmac.new(SECRET.encode(), f"session:{login}:{exp}".encode(), sha256).hexdigest()
+def session_sig(login, exp, epoch=0):
+    """The cookie's HMAC. The user's epoch is inside it, so bumping the epoch ("Sign out
+    everywhere") invalidates outstanding cookies as well as device tokens."""
+    return hmac.new(SECRET.encode(), f"session:{login}:{exp}:{epoch}".encode(),
+                    sha256).hexdigest()
 
 
 # Optional: a parent domain to scope the session cookie to, so one login works across several
@@ -1733,14 +1960,31 @@ def _cookie_domain(host):
     return ""
 
 
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]")
+
+
+def is_local_url(url):
+    """True only for a URL whose host is genuinely this machine. The container entrypoint sets
+    RS_COOKIE_SECURE=0 for any `http://` PUBLIC_URL, which quietly kept issuing insecure
+    cookies once an operator put a real domain in front of it — so the server decides for
+    itself rather than trusting that flag on a non-local host."""
+    host = (urlparse(url or "").hostname or "").lower()
+    return bool(host) and (host in LOCAL_HOSTS or host.endswith(".localhost"))
+
+
 # RS_COOKIE_SECURE=0 drops the Secure flag, for a plain-http local install (Docker on
-# localhost). Anything reachable from outside must stay behind TLS with the default.
-COOKIE_SECURE = " Secure;" if os.environ.get("RS_COOKIE_SECURE", "1") != "0" else ""
+# localhost). It is HONOURED ONLY when PUBLIC_URL is unset or points at localhost: anything
+# reachable from outside keeps Secure whatever the flag says.
+_COOKIE_SECURE_OFF = (os.environ.get("RS_COOKIE_SECURE", "1") == "0"
+                      and (not PUBLIC_URL or is_local_url(PUBLIC_URL)))
+COOKIE_SECURE = "" if _COOKIE_SECURE_OFF else " Secure;"
 
 
-def session_cookie(login, host=""):
+def session_cookie(login, host="", epoch=None):
     exp = int(time.time()) + SESSION_TTL
-    return (f"rs_session={login}:{exp}:{session_sig(login, exp)}; {_cookie_domain(host)}Path=/; "
+    ep = login_epoch(login) if epoch is None else epoch
+    return (f"rs_session={login}:{exp}:{session_sig(login, exp, ep)}; "
+            f"{_cookie_domain(host)}Path=/; "
             f"Max-Age={SESSION_TTL}; HttpOnly;{COOKIE_SECURE} SameSite=Lax")
 
 
@@ -1789,9 +2033,12 @@ def session_user(headers):
             return None
     except ValueError:
         return None
-    if not hmac.compare_digest(session_sig(login, exp), sig):
+    users = load_users()
+    if login not in users:
         return None
-    return login if login in load_users() else None
+    if not hmac.compare_digest(session_sig(login, exp, login_epoch(login, users)), sig):
+        return None
+    return login
 
 
 # --- device tokens (bearer) -----------------------------------------------------------------
@@ -1805,7 +2052,7 @@ def bearer_lookup(headers):
     tok = rs_dev.parse_bearer(headers)
     if not tok:
         return None, None
-    login, h, rec = rs_dev.lookup(load_users(), tok)
+    login, h, rec = rs_dev.lookup(load_users(), tok, keyer=device_key)
     if not login:
         return None, None
     if rs_dev.needs_bump(rec):
@@ -1826,13 +2073,48 @@ def request_user(headers):
     return session_user(headers) or bearer_user(headers)
 
 
+def cookie_value(headers, name):
+    m = SimpleCookie(headers.get("Cookie", "")).get(name)
+    return m.value if m else ""
+
+
 def server_url(headers):
-    """The URL a device should talk to afterwards: PUBLIC_URL, else what the browser used."""
-    if PUBLIC_URL:
-        return PUBLIC_URL
+    """The URL a device should talk to afterwards: PUBLIC_URL, else what the browser used.
+
+    A PUBLIC_URL of http://localhost:8899 is the container default nobody changed; handing it
+    to a phone gives it an address that resolves to the phone. So when PUBLIC_URL is local but
+    the browser reached us on something else, believe the browser."""
     host = headers.get("Host", "") or "localhost"
+    if PUBLIC_URL and not (is_local_url(PUBLIC_URL) and not is_local_url(f"//{host}")):
+        return PUBLIC_URL
     proto = headers.get("X-Forwarded-Proto") or ("https" if COOKIE_SECURE else "http")
     return f"{proto}://{host}"
+
+
+# --- device-flow browser binding --------------------------------------------------------------
+# A short-lived cookie set when a device sign-in starts and demanded back on every poll, so the
+# only browser that can finish a sign-in is the one that began it. HttpOnly: the page never
+# needs to read it, and the server matches it itself.
+DEVICE_NONCE_COOKIE = "rs_devnonce"
+DEVICE_NONCE_TTL = 20 * 60
+
+
+def device_nonce_cookie(nonce):
+    return (f"{DEVICE_NONCE_COOKIE}={nonce}; Path=/; Max-Age={DEVICE_NONCE_TTL}; "
+            f"HttpOnly;{COOKIE_SECURE} SameSite=Lax")
+
+
+def clear_device_nonce_cookie():
+    return (f"{DEVICE_NONCE_COOKIE}=; Path=/; Max-Age=0; HttpOnly;{COOKIE_SECURE} "
+            "SameSite=Lax")
+
+
+def split_verify_error(err):
+    """verify_pat's error is a string, or (message, kind) when GitHub accepted the token but
+    it could not see the repository. → (message, kind or "")."""
+    if isinstance(err, tuple):
+        return err[0], err[1]
+    return err, ""
 
 
 def guess_device_name(headers):
@@ -1958,10 +2240,24 @@ def verify(action, subject, exp, sig, legacy_pr=""):
 
 
 # --- github -------------------------------------------------------------------------------
-def gh(args, timeout=45, token=None):
-    """Runs gh with the service token, or with a specific user's PAT for writes-as-them."""
+SERVICE_TOKEN = object()   # sentinel: "this read is meant to use the service token"
+
+
+def gh(args, timeout=45, token=SERVICE_TOKEN):
+    """Run gh. `token` is either the SERVICE_TOKEN sentinel (reads and the base clone) or a
+    specific user's token (everything that acts as them).
+
+    An empty or None token is a bug, never a fallback. It used to mean `token or PAT`, so a
+    user whose stored token could not be decrypted would have had their comment or approval
+    posted by the SERVICE account instead — the one shape the "never post as a bot" property
+    depends on not existing. It raises now; callers that act as a user must check first."""
+    if token is SERVICE_TOKEN:
+        token = PAT
+    elif not token:
+        raise ValueError("gh() called with an empty token — pass SERVICE_TOKEN for a read, or "
+                         "refuse the action when the user's token cannot be read")
     return subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout,
-                          env={**os.environ, "GH_TOKEN": token or PAT})
+                          env={**os.environ, "GH_TOKEN": token})
 
 
 def gh_json(args, default=None):
@@ -2080,7 +2376,11 @@ def can_approve(repo, pr, login):
     it is not the user's own PR (GitHub forbids self-approval), and this box genuinely
     reviewed it — which, combined with the signed session and action token, is the control.
     """
-    r = gh(["api", f"repos/{repo}/pulls/{pr}"], token=user_pat(login))
+    tok = user_pat(login)
+    if not tok:
+        return False, ("Your stored GitHub token could not be read — sign in again, then "
+                       "retry.")
+    r = gh(["api", f"repos/{repo}/pulls/{pr}"], token=tok)
     if r.returncode != 0:
         err = (r.stderr or "unknown error").strip().splitlines()[-1][:250]
         return False, f"GitHub rejected the check: {err}"
@@ -2592,12 +2892,132 @@ def tab_of(st):
     return "todo"
 
 
+# --- rate limiting --------------------------------------------------------------------------
+# The unauthenticated endpoints (sign-in and the two device-flow steps) each fork `gh` or call
+# out to GitHub, so anyone who can reach the dashboard could previously spend the box's memory
+# and GitHub's rate limit for free — and brute-force sign-in with no friction. A token bucket
+# per source IP, per bucket name, in memory: cheap, and a restart forgiving.
+class RateLimiter:
+    def __init__(self, per_minute, burst=None, now=time.time):
+        self.rate = per_minute / 60.0
+        self.burst = burst if burst is not None else per_minute
+        self.now = now
+        self._buckets = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key):
+        """(ok, retry_after_seconds)."""
+        t = self.now()
+        with self._lock:
+            tokens, last = self._buckets.get(key, (self.burst, t))
+            tokens = min(self.burst, tokens + (t - last) * self.rate)
+            if tokens < 1:
+                self._buckets[key] = (tokens, t)
+                return False, max(1, int((1 - tokens) / self.rate) + 1)
+            self._buckets[key] = (tokens - 1, t)
+            if len(self._buckets) > 4096:            # bound the table; the oldest go first
+                for k in sorted(self._buckets, key=lambda k: self._buckets[k][1])[:1024]:
+                    self._buckets.pop(k, None)
+            return True, 0
+
+
+# Sign-in attempts are expensive (a `gh` fork each) and rare for a human; polling is cheap but
+# must not become a free proxy to GitHub either.
+RATE = {
+    "login": RateLimiter(10, burst=5),          # PAT sign-in
+    "device-start": RateLimiter(6, burst=3),    # starting a device sign-in
+    "device-poll": RateLimiter(60, burst=20),   # ~one every 5s per browser, with slack
+}
+
+# The largest request body accepted anywhere, checked BEFORE a byte is read. Nothing the API
+# takes is close to this; a review post is a few tens of KB.
+MAX_BODY = 2 * 1024 * 1024
+BODY_CHUNK = 64 * 1024
+
+QUERY_RE = re.compile(r"\?\S*")
+
+
 # --- handler ------------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     server_version = "reviewstage"
 
     def log_message(self, fmt, *args):
-        print(f"{self.address_string()} {fmt % args}", flush=True)
+        """Access log with query strings redacted. `/handoff?…&sig=…` and
+        `/oauth/callback?code=…` are single-use credentials; logging them put a replayable
+        secret into `docker logs`, which is neither encrypted nor access-controlled."""
+        print(f"{self.address_string()} {QUERY_RE.sub('?…', fmt % args)}", flush=True)
+
+    # -- request bodies ----------------------------------------------------------------------
+    def device_nonce(self):
+        return cookie_value(self.headers, DEVICE_NONCE_COOKIE)
+
+    def client_key(self):
+        """The rate-limit key: the real client when a reverse proxy tells us, else the peer."""
+        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return fwd or self.client_address[0]
+
+    def rate_ok(self, bucket):
+        ok, retry = RATE[bucket].allow(self.client_key())
+        if ok:
+            return True
+        self.send_response(429)
+        raw = json.dumps({"error": "Too many attempts from your address — wait a moment.",
+                          "retry_after": retry}).encode()
+        self.send_header("Retry-After", str(retry))
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+        return False
+
+    def read_body(self):
+        """(raw, error_sent). Bounded, chunked, and validated BEFORE anything is read.
+
+        Content-Length used to go straight into rfile.read(n) with no cap and before any auth,
+        so an anonymous request could ask the process to allocate a gigabyte; a non-numeric
+        header raised ValueError, which killed the connection and printed a traceback."""
+        head = self.headers.get("Content-Length")
+        if head is None:
+            return b"", False
+        try:
+            n = int(head.strip())
+        except ValueError:
+            self.reply(400, "bad Content-Length", "text/plain; charset=utf-8")
+            return b"", True
+        if n < 0:
+            self.reply(400, "bad Content-Length", "text/plain; charset=utf-8")
+            return b"", True
+        if n > MAX_BODY:
+            self.reply(413, f"body too large (max {MAX_BODY} bytes)",
+                       "text/plain; charset=utf-8")
+            return b"", True
+        chunks, left = [], n
+        while left > 0:
+            part = self.rfile.read(min(BODY_CHUNK, left))
+            if not part:
+                break
+            chunks.append(part)
+            left -= len(part)
+        return b"".join(chunks), False
+
+    def json_request_ok(self, route):
+        """True when this POST/PUT may be treated as a JSON API call.
+
+        `/api/login` parsed JSON whatever the Content-Type was, so a cross-site form posting
+        `text/plain` (which needs no CORS preflight) could sign a victim's browser in as the
+        ATTACKER's GitHub identity — after which a Claude connect on that page would attach the
+        victim's Claude token to the attacker's user record. A real fetch from our own page
+        always sends application/json; a cross-site form can never set it."""
+        if not route.startswith("/api/"):
+            return True
+        site = (self.headers.get("Sec-Fetch-Site") or "").lower()
+        if site and site not in ("same-origin", "none"):
+            return False
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        # Either header is enough, and neither can be forged by a cross-site <form>: setting
+        # Content-Type: application/json or an Authorization header makes the request
+        # preflighted, and our origin is the only one allowed to answer that preflight.
+        return ctype == "application/json" or bool(rs_dev.parse_bearer(self.headers))
 
     def reply(self, code, body, ctype="text/html; charset=utf-8", cookie=None):
         raw = body.encode()
@@ -3099,9 +3519,13 @@ class Handler(BaseHTTPRequestHandler):
         """PUT /api/settings — the admin saves runtime settings. Session cookie + the signed
         token from GET (same CSRF model as every POST) + admin check; validated ranges only;
         written atomically. Everything else is 404."""
-        n = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(n)
         route = urlparse(self.path).path.rstrip("/")
+        if not self.json_request_ok(route):
+            return self.api_json({"error": "Send this as a same-origin application/json "
+                                           "request."}, 415)
+        raw, sent = self.read_body()
+        if sent:
+            return None
         if route not in ("/api/settings", "/api/profile"):
             return self.reply(404, "not found", "text/plain; charset=utf-8")
         user = session_user(self.headers)
@@ -3136,7 +3560,13 @@ class Handler(BaseHTTPRequestHandler):
         connected = bool(u.get("claude_token_enc"))
         claude_url = ""
         if not connected:
-            claude_url, _ = claude_connect_start(user)
+            # Reuse the in-flight connect rather than minting a new one. A GET must not have
+            # this side effect: every page load (a refresh, a second tab, the SPA remounting)
+            # replaced the stored PKCE verifier, so the code the person had already pasted into
+            # Claude failed with "that code is from a different sign-in". Minting happens on
+            # POST /api/claude/start.
+            live = claude_connect_pending(user)
+            claude_url = (live or {}).get("url", "")
         vals, _src = runtime_settings()
         return {"token": {"exp": exp, "sig": sig},
                 "github": {"login": user,
@@ -3192,6 +3622,7 @@ class Handler(BaseHTTPRequestHandler):
                 # How this request was authenticated and how the GitHub token was obtained.
                 "auth": auth or "cookie",
                 "login_via": "oauth" if u.get("gh_token_enc") else "pat",
+                "tour_seen": bool(u.get("tour_seen")),
                 "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
                 "brand": BRAND, "oauth": OAUTH_ENABLED, "device_flow": DEVICE_FLOW_ENABLED,
                 "public_url": PUBLIC_URL, "logo": rs_assets.LOGO,
@@ -3216,7 +3647,7 @@ class Handler(BaseHTTPRequestHandler):
             u = users.get(user)
             if u is None:
                 return
-            tok, rec, evicted = rs_dev.add_device(u, name)
+            tok, rec, evicted = rs_dev.add_device(u, name, key=device_key(user, u))
             out.update({"token": tok, "id": rec["id"], "created": rec["created"],
                         "name": rec["name"]})
             if evicted:
@@ -3229,7 +3660,13 @@ class Handler(BaseHTTPRequestHandler):
         return out, 200
 
     def api_devices_revoke(self, user, body):
-        n = {"n": 0}
+        """Revoke one device, or everything.
+
+        "Sign out everywhere" also bumps the user's epoch, which is inside both the device-token
+        hash key and the session cookie's HMAC — so it now revokes session cookies too. Before
+        this it deleted device hashes only, and the lost laptop the person was worried about
+        stayed signed in for the rest of the 30-day cookie."""
+        n = {"n": 0, "epoch": 0}
         everything = bool(body.get("all"))
         did = str(body.get("id") or "")
         if not everything and not did:
@@ -3239,9 +3676,17 @@ class Handler(BaseHTTPRequestHandler):
             u = users.get(user)
             if u is not None:
                 n["n"] = rs_dev.revoke(u, device_id=did, all_devices=everything)
+                if everything:
+                    u["epoch"] = n["epoch"] = user_epoch(u) + 1
         modify_users(apply)
-        print(f"device token(s) revoked: {user} ({n['n']})", flush=True)
-        return {"ok": True, "revoked": n["n"]}, 200
+        print(f"device token(s) revoked: {user} ({n['n']}"
+              f"{', sessions too' if everything else ''})", flush=True)
+        out = {"ok": True, "revoked": n["n"], "sessions_revoked": everything}
+        if not everything:
+            return out, 200
+        # The browser that clicked keeps working: re-issue its cookie under the new epoch.
+        self._reissue = session_cookie(user, self.headers.get("Host", ""), epoch=n["epoch"])
+        return out, 200
 
     def api_queue(self, user, tab, sort):
         if tab not in dict(TABS):
@@ -3322,12 +3767,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_post(self, route, body):
         if route == "/api/login":
+            if not self.rate_ok("login"):
+                return None
             pat = (body.get("pat") or "").strip()
             if not pat:
                 return self.api_json({"error": "Paste a token."}, 400)
             login, name, err = verify_pat(pat)
             if err:
-                return self.api_json({"error": err}, 400)
+                msg, kind = split_verify_error(err)
+                if kind:
+                    # A pasted PAT tells us nothing about the app's org approval, so this is
+                    # only ever recorded against the person who pasted it.
+                    record_oauth_block(f"pat:{self.client_key()}", "no-access")
+                return self.api_json({"error": msg}, 400)
+            first = login not in load_users()
 
             def apply(users):
                 prev = users.get(login) or {}
@@ -3337,22 +3790,36 @@ class Handler(BaseHTTPRequestHandler):
                           "updated": int(time.time())})
                 users[login] = u
             modify_users(apply)
+            clear_oauth_block(login)
             print(f"login (api): {login}", flush=True)
-            return self.api_json({"ok": True, "login": login},
+            return self.api_json({"ok": True, "login": login, "welcome": first},
                                  cookie=session_cookie(login, self.headers.get("Host", "")))
-        if route == "/api/auth/device/start":
+        if route in ("/api/auth/device/start", "/api/auth/device/poll",
+                     "/api/auth/device/cancel"):
             if not DEVICE_FLOW_ENABLED:
                 return self.api_json({"error": "Device flow is not enabled on this server."},
                                      404)
-            payload, err = DEVICE_FLOW.start()
+        if route == "/api/auth/device/start":
+            if not self.rate_ok("device-start"):
+                return None
+            # Bind the flow to THIS browser. Without it, start and poll are two unauthenticated
+            # endpoints with nothing in common but a session id an attacker minted, so an
+            # attacker could start a sign-in here, talk a teammate into approving the code at
+            # github.com, poll, and be handed a session cookie as that teammate.
+            nonce = secrets.token_urlsafe(24)
+            payload, err = DEVICE_FLOW.start(nonce=nonce)
             if err:
                 return self.api_json({"error": err}, 502)
-            return self.api_json(payload)
+            return self.api_json(payload, cookie=device_nonce_cookie(nonce))
         if route == "/api/auth/device/poll":
-            if not DEVICE_FLOW_ENABLED:
-                return self.api_json({"error": "Device flow is not enabled on this server."},
-                                     404)
-            return self.device_poll(str(body.get("session") or ""))
+            if not self.rate_ok("device-poll"):
+                return None
+            return self.device_poll(str(body.get("session") or ""), self.device_nonce())
+        if route == "/api/auth/device/cancel":
+            # Let the browser hand the slot back when the person clicks Cancel, rather than
+            # leaving it parked until GitHub's 15-minute code expiry.
+            DEVICE_FLOW.forget(str(body.get("session") or ""), self.device_nonce())
+            return self.api_json({"ok": True}, cookie=clear_device_nonce_cookie())
         cookie_user = session_user(self.headers)
         user = cookie_user or bearer_user(self.headers)
         # Pre-session: the profile module answers /api/profile/auto itself.
@@ -3367,8 +3834,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_json({"error": "Sign in on the web to create a device token."},
                                      403)
             return self.api_json(*self.api_device_token(user, body))
+        if route == "/api/tour-seen":
+            # The tour's "seen" flag used to live in localStorage, which is per BROWSER: the
+            # second person to sign in on a shared box never saw it, and the same person on a
+            # new laptop saw it again. It belongs on the user record.
+            seen = bool(body.get("seen", True))
+
+            def mark(users):
+                u = users.get(user)
+                if u is not None:
+                    u["tour_seen"] = seen
+            modify_users(mark)
+            return self.api_json({"ok": True, "tour_seen": seen})
         if route == "/api/devices/revoke":
-            return self.api_json(*self.api_devices_revoke(user, body))
+            self._reissue = None
+            out, code = self.api_devices_revoke(user, body)
+            return self.api_json(out, code, cookie=self._reissue if cookie_user else None)
 
         # Settings-token actions with no PR: skills, integrations settings, Claude connect.
         def settings_gate():
@@ -3395,7 +3876,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_json({"error": err}, 403)
             form = {k: [str(v)] for k, v in body.items()}
             banner = self._claude_result(user, step, form)
-            return self.api_json({"bannerHtml": banner, "connected": claude_connected(user)})
+            out = {"bannerHtml": banner, "connected": claude_connected(user)}
+            if step == "start":
+                out["authUrl"] = (claude_connect_pending(user) or {}).get("url", "")
+            return self.api_json(out)
 
         # PR-scoped actions — all gated by the signed token in the body (same model as the forms).
         pr = str(body.get("pr") or "")
@@ -3511,15 +3995,19 @@ class Handler(BaseHTTPRequestHandler):
         return form
 
     def do_POST(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(n)
         route = urlparse(self.path).path.rstrip("/")
+        if not self.json_request_ok(route):
+            return self.api_json({"error": "Send this as a same-origin application/json "
+                                           "request."}, 415)
+        raw, sent = self.read_body()
+        if sent:
+            return None
         if route == "/webhooks/github":
             return self.webhook_github(raw)
         if route.startswith("/api/"):
             try:
                 body = json.loads(raw or b"{}")
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 body = {}
             return self.api_post(route, body if isinstance(body, dict) else {})
         return self.reply(404, "not found", "text/plain; charset=utf-8")
@@ -3566,25 +4054,25 @@ class Handler(BaseHTTPRequestHandler):
             return to_login_err("GitHub rejected the sign-in code. Try again.")
         login, name, err = verify_pat(d["access_token"])
         if err:
-            # Usually an org-side block, not a bad token: a GitHub App not installed on the org,
-            # or an OAuth App not approved under the org's third-party access settings.
-            OAUTH_BLOCKED.write_text(str(int(time.time())))
-            return to_login_err(
-                f"GitHub signed you in, but the token cannot see {', '.join(REPOS)}. An org owner needs to "
-                "allow this app once (OAuth App: approve under Third-party access; GitHub App: "
-                "install it on the org). Until then, sign in with a token.")
-        OAUTH_BLOCKED.unlink(missing_ok=True)
+            msg, kind = split_verify_error(err)
+            # Recorded against this login only. "org-approval" is GitHub refusing the app,
+            # which is the whole install's problem; "no-access" is one person's.
+            record_oauth_block(who_from_token(d["access_token"]), kind or "no-access")
+            return to_login_err(msg)
+        first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
         oauth_store(login, d, name, prev)
+        clear_oauth_block(login)
         print(f"login (github): {login}", flush=True)
-        if not prev.get("slack_id") and not nxt.startswith("/device"):
-            nxt = "/integrations?welcome=1&next=" + quote(nxt, safe="")
-        return self.redirect(nxt, cookie=session_cookie(login, self.headers.get("Host", "")))
+        return self.redirect(landing(nxt, first_sign_in),
+                             cookie=session_cookie(login, self.headers.get("Host", "")))
 
-    def device_poll(self, session):
+    def device_poll(self, session, nonce=""):
         """POST /api/auth/device/poll. Same landing as oauth_callback once GitHub hands over a
-        token: verify it can see a repo, store it encrypted, set the session cookie."""
-        res, d = DEVICE_FLOW.poll(session)
+        token: verify it can see a repo, store it encrypted, set the session cookie.
+
+        `nonce` must match the cookie set when the flow started — see api_post."""
+        res, d = DEVICE_FLOW.poll(session, nonce)
         st = res["status"]
         if st == "too_fast":
             self.send_response(429)
@@ -3602,18 +4090,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(res)
         login, name, err = verify_pat(d["access_token"])
         if err:
-            OAUTH_BLOCKED.write_text(str(int(time.time())))
-            return self.api_json({
-                "status": "error",
-                "error": f"GitHub signed you in, but the token cannot see {', '.join(REPOS)}. "
-                         "An org owner needs to approve this app once under Third-party "
-                         "access. Until then, sign in with a token."})
-        OAUTH_BLOCKED.unlink(missing_ok=True)
+            msg, kind = split_verify_error(err)
+            record_oauth_block(who_from_token(d["access_token"]), kind or "no-access")
+            return self.api_json({"status": "error", "error": msg})
+        first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
         oauth_store(login, d, name, prev)
+        clear_oauth_block(login)
         print(f"login (github device): {login}", flush=True)
-        return self.api_json({"status": "ok", "login": login,
-                              "welcome": not prev.get("slack_id")},
+        return self.api_json({"status": "ok", "login": login, "welcome": first_sign_in},
                              cookie=session_cookie(login, self.headers.get("Host", "")))
 
     def _claude_result(self, user, step, form):
@@ -3622,6 +4107,12 @@ class Handler(BaseHTTPRequestHandler):
         one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
         if step == "cancel":
             claude_connect_cancel(user)
+            return ""
+        if step == "start":
+            # Explicit, and idempotent while one is live — see api_integrations.
+            live = claude_connect_pending(user)
+            if not live:
+                claude_connect_start(user)
             return ""
         if step == "disconnect":
             def apply(users):
@@ -3748,7 +4239,7 @@ class Handler(BaseHTTPRequestHandler):
         if pat:
             login, name, err = verify_pat(pat)
             if err:
-                return err_b(html.escape(err))
+                return err_b(html.escape(split_verify_error(err)[0]))
             if login != user:
                 return err_b(f"That token belongs to <code>{html.escape(login)}</code>, not you.")
             new_pat_enc, new_name = enc(pat), name
@@ -4119,6 +4610,11 @@ if __name__ == "__main__":
     port = int(os.environ.get("RS_PORT", "8899"))
     if USERS.exists():
         os.chmod(USERS, 0o600)
+    if problem := secret_problem(SECRET):
+        # Same treatment REPOS gets, for the same reason: without it the server is not merely
+        # less secure, it is open. An empty secret makes every session cookie forgeable.
+        print(f"FATAL: {problem}", flush=True)
+        raise SystemExit(1)
     if not REPOS:
         print("FATAL: no repository configured in .env — set REPOS=owner/name[,owner/name…] "
               "(or the single-entry alias REPO=owner/name)", flush=True)

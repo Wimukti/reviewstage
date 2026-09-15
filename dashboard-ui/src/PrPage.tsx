@@ -15,7 +15,7 @@ import {
 } from "./api";
 import { Md } from "./Md";
 import { MdEditor } from "./MdEditor";
-import { fmtDuration, prLabel, prUrl } from "./pr";
+import { prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
 import { pokeRunning } from "./running";
@@ -1002,28 +1002,6 @@ function RerunSection({ data, onDone }: { data: PrData; onDone: () => void }) {
         <HistoryList pr={refOf(data)} runs={data.history} />
       </div>
     </div>
-  );
-}
-
-function usageChip(u: NonNullable<PrData["usage"]>): string {
-  const dur = fmtDuration(u.durationMs);
-  return `${u.model.replace(/^claude-/, "")} · ${u.realTokens.toLocaleString()} tokens${dur ? ` · ${dur}` : ""}`;
-}
-
-// Details on hover: the real breakdown, plus the API-list-price estimate clearly marked as NOT
-// what a Claude subscription is billed (it isn't per-token).
-function usageTitle(u: NonNullable<PrData["usage"]>): string {
-  const cache = u.cacheReadTokens + u.cacheCreationTokens;
-  const cost =
-    u.costUsd > 0
-      ? ` · ≈ $${u.costUsd.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })} at API list prices (not billed on your Claude subscription)`
-      : "";
-  return (
-    `${u.inputTokens.toLocaleString()} input · ${u.outputTokens.toLocaleString()} output · ` +
-    `${cache.toLocaleString()} cached context re-reads${cost}`
   );
 }
 

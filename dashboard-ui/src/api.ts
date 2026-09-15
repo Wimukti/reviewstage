@@ -345,7 +345,8 @@ export interface Usage {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
-  cacheCreationTokens: number;
+  // The QA build's usage record does not carry this one — only the review's does.
+  cacheCreationTokens?: number;
   realTokens: number;
   costUsd: number;
   durationMs?: number;

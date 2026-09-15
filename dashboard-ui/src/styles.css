@@ -619,6 +619,8 @@ color:var(--dim);font-size:.8rem;font-weight:600;cursor:pointer;padding:6px 10px
 /* QA guide */
 .qagen{display:flex;gap:9px;align-items:stretch;margin-top:4px}.qagen .in{flex:1;min-width:0}
 .qabar{display:flex;align-items:center;gap:10px;margin:14px 0 12px;flex-wrap:wrap}
+.qausage{margin:0}
+.qafail{margin-top:6px;font-family:var(--mono);font-size:.74rem;word-break:break-word}
 .qaguide{font-size:.92rem;line-height:1.62}
 .qaguide h1,.qaguide h2,.qaguide h4{margin:20px 0 8px;font-size:1.12rem;font-weight:700}
 .qaguide>h1:first-child,.qaguide>h2:first-child,.qaguide>h4:first-child{margin-top:0}

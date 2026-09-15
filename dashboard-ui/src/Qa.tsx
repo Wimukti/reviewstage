@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errMessage, type Me, type PrRef, type QaDetail, type QaGuide } from "./api";
 import { Md } from "./Md";
-import { parsePrRef, prLabel, prUrl } from "./pr";
+import { parsePrRef, prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { Link, navigate, useLocation } from "./router";
 import { pokeRunning, runningFor, useRunning } from "./running";
 
@@ -166,6 +166,42 @@ function QaDetailView({ pr }: { pr: PrRef }) {
   }, [d, starting, load]);
 
   if (!d) return <div className="muted">Loading…</div>;
+
+  // A failed or stopped run never hides a guide that is already on disk — the server keeps the
+  // state at "done" for exactly that reason. What went wrong rides above the guide as a warning,
+  // with the agent's own last words behind a disclosure.
+  const lastRun =
+    d.lastRunFailed || d.lastRunStopped || d.failed || (d.stopped && d.md) ? (
+      <div
+        className={"banner " + (d.lastRunStopped || d.stopped ? "warn" : "err")}
+        data-testid="qa-last-run"
+      >
+        <span>{d.lastRunStopped || d.stopped ? "🛑" : "🔴"}</span>
+        <div>
+          <b>
+            {d.lastRunStopped || d.stopped
+              ? "The last attempt was stopped."
+              : "The last attempt failed."}
+          </b>{" "}
+          {d.md
+            ? "The guide below is the one already on disk — it is unchanged, not a result of that run."
+            : "No guide was written."}
+          {d.failed && <div className="qafail">{d.failed}</div>}
+          {d.logTail && d.logTail.length > 0 && (
+            <details className="proferr-log" data-testid="qa-log">
+              <summary>Last {d.logTail.length} lines of the log</summary>
+              <pre>{d.logTail.join("\n")}</pre>
+            </details>
+          )}
+        </div>
+      </div>
+    ) : null;
+
+  const chip = d.usage ? (
+    <span className="sideusage qausage" title={usageTitle(d.usage)} data-testid="qa-usage">
+      {usageChip(d.usage)}
+    </span>
+  ) : null;
 
   const header = (
     <>
@@ -358,8 +394,10 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     return (
       <>
         {header}
+        {lastRun}
         <div className="qabar">
           <span className="muted sm">Guide ready — hand it to QA.</span>
+          {chip}
           <span className="spacer" />
           {d.connected && (
             <button className="btn soft" type="button" disabled={busy} onClick={gen}>
@@ -388,26 +426,23 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     );
   }
 
-  // failed / stopped / none
+  // failed / stopped / none — no guide on disk, so the strip is all there is to show.
   const note =
-    d.state === "stopped" ? (
-      <div className="banner warn">
+    lastRun ??
+    (d.state === "stopped" ? (
+      <div className="banner warn" data-testid="qa-last-run">
         <span>🛑</span>
         <div>
           <b>Stopped.</b> Generate a new guide below.
         </div>
       </div>
-    ) : d.failed ? (
-      <div className="banner err">
-        <span>🔴</span>
-        <div>{d.failed}</div>
-      </div>
-    ) : null;
+    ) : null);
 
   return (
     <>
       {header}
       {note}
+      {chip}
       {err && (
         <div className="banner err" data-testid="qa-error">
           <span>🚫</span>

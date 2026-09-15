@@ -23,6 +23,7 @@ Routes
 """
 import base64
 import calendar
+import contextlib
 import fcntl
 import hmac
 import html
@@ -264,21 +265,67 @@ def _users_key():
     return sha256(f"{SECRET}:users".encode()).hexdigest()
 
 
-def _openssl(mode, data):
-    r = subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-a", "-A",
-                        mode, "-pass", "env:RS_KEY"], input=data, capture_output=True,
-                       text=True, env={**os.environ, "RS_KEY": _users_key()})
+# PBKDF2 rounds for the at-rest encryption below. OpenSSL's built-in default is 10,000, which
+# is two orders of magnitude short of anything current; 600,000 matches OWASP's PBKDF2-SHA256
+# guidance. Ciphertext written before this change was derived at the old default, so dec()
+# falls back to it once — nobody has to re-paste a token to read this release.
+PBKDF2_ITERS = 600_000
+PBKDF2_ITERS_LEGACY = 10_000
+
+
+def _openssl(mode, data, iters):
+    """Fork openssl for one AES-256-CBC operation. The key goes down a pipe on fd 3, not
+    through the child's environment, so it never appears in /proc/<pid>/environ."""
+    r_fd, w_fd = os.pipe()
+    try:
+        os.write(w_fd, (_users_key() + "\n").encode())
+    finally:
+        os.close(w_fd)
+    try:
+        r = subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2",
+                            "-iter", str(iters), "-salt", "-a", "-A",
+                            mode, "-pass", "fd:3"], input=data, capture_output=True,
+                           text=True, pass_fds=(r_fd,))
+    finally:
+        os.close(r_fd)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or "openssl failed").strip()[:200])
     return r.stdout.strip()
 
 
 def enc(plain):
-    return _openssl("-e", plain)
+    return _openssl("-e", plain, PBKDF2_ITERS)
 
 
 def dec(cipher):
-    return _openssl("-d", cipher)
+    try:
+        return _openssl("-d", cipher, PBKDF2_ITERS)
+    except RuntimeError:
+        # Written before PBKDF2_ITERS was raised. Wrong key and wrong iteration count are
+        # indistinguishable here, so a genuinely undecryptable value costs one extra fork.
+        return _openssl("-d", cipher, PBKDF2_ITERS_LEGACY)
+
+
+# users.json has TWO writers: this process, and `rs_devices.py prune`, which pr-watch.sh runs
+# nightly and which does its own full read-modify-write. The in-process lock below keeps two
+# requests from losing each other's update; the fcntl lock on the sibling .lock file keeps the
+# prune from rolling back a sign-in that landed inside its window (the prune takes the same
+# lock). The lock is on a sibling file, not users.json, because both writers replace users.json
+# by rename — a lock held on its inode would be orphaned by the first swap.
+_users_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _users_file_lock():
+    lock = Path(rs_dev.lock_path(USERS))
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "a+") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            os.chmod(lock, 0o600)
+        except OSError:
+            pass
+        yield
 
 
 def load_users():
@@ -297,18 +344,49 @@ def save_users(users):
     tmp.replace(USERS)
 
 
-# All writers to users.json live in this one server process (pr-watch only reads it), so a
-# process-wide lock is enough to make the load → modify → save sequence atomic and keep two
-# simultaneous sign-ins / settings saves from losing each other's update.
-_users_lock = threading.Lock()
-
-
 def modify_users(fn):
     """Serialized read-modify-write of users.json. fn(users) mutates the dict in place."""
-    with _users_lock:
+    with _users_lock, _users_file_lock():
         users = load_users()
         fn(users)
         save_users(users)
+
+
+# --- the per-user credential epoch ------------------------------------------------------------
+# One integer on the user record that every credential that user holds is derived from: the
+# session cookie's HMAC and the key their device-token hashes are stored under. Bumping it
+# invalidates both at once, which is what "Sign out everywhere" has always claimed to do and
+# never did — before this, it deleted device hashes and left a stolen 30-day session cookie
+# working. RS_SECRET is folded in beside it, so rotating the secret revokes device tokens too.
+def user_epoch(u):
+    try:
+        return int((u or {}).get("epoch") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def login_epoch(login, users=None):
+    return user_epoch((users if users is not None else load_users()).get(login) or {})
+
+
+def device_key(login, u):
+    """The key device-token hashes for this user are stored under. Changing RS_SECRET or the
+    user's epoch changes every hash, so every existing device token stops resolving."""
+    return sha256(f"{SECRET}:device:{login}:{user_epoch(u)}".encode()).hexdigest()
+
+
+def bump_epoch(login):
+    """Invalidate every session cookie and device token this user holds. Returns the new
+    epoch."""
+    out = {"n": 0}
+
+    def apply(users):
+        u = users.get(login)
+        if u is None:
+            return
+        u["epoch"] = out["n"] = user_epoch(u) + 1
+    modify_users(apply)
+    return out["n"]
 
 
 def user_pat(login):

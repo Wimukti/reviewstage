@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  errMessage,
   type Device,
   type Me,
   type MintedDevice,
@@ -238,10 +239,13 @@ export function Devices({ me }: { me: Me }) {
   const [err, setErr] = useState("");
   const load = useCallback(
     () =>
-      api.devices().then((d) => {
-        setRows(d.devices);
-        setMeta({ max: d.max, ttl_days: d.ttl_days });
-      }),
+      api
+        .devices()
+        .then((d) => {
+          setRows(d.devices);
+          setMeta({ max: d.max, ttl_days: d.ttl_days });
+        })
+        .catch((e: unknown) => setErr(errMessage(e, "Couldn't load your devices."))),
     [],
   );
   useEffect(() => {
@@ -396,18 +400,30 @@ export function Settings({ me }: { me: Me }) {
   const [form, setForm] = useState<RuntimeSettings | null>(null);
   const [banner, setBanner] = useState("");
   const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
   const load = useCallback(
     () =>
-      api.settings().then((r) => {
-        setD(r);
-        setForm(r.settings);
-      }),
+      api
+        .settings()
+        .then((r) => {
+          setErr("");
+          setD(r);
+          setForm(r.settings);
+        })
+        .catch((e: unknown) => setErr(errMessage(e, "Couldn't load your settings."))),
     [],
   );
   useEffect(() => {
     load();
   }, [load]);
 
+  if (err && !d)
+    return (
+      <div className="banner err" data-testid="settings-error">
+        <span>🚫</span>
+        <div>{err}</div>
+      </div>
+    );
   if (!d || !form) return <div className="muted">Loading…</div>;
   const ro = !d.is_admin;
   const dirty = JSON.stringify(form) !== JSON.stringify(d.settings);

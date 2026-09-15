@@ -81,7 +81,7 @@ export function App() {
         </div>
       </main>
       <CommandPalette me={me} />
-      <Tour />
+      <Tour me={me} />
     </div>
   );
 }

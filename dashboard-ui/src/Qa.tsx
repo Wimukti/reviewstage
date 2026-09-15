@@ -10,13 +10,18 @@ function QaIndex({ me }: { me: Me }) {
   const [repos, setRepos] = useState<string[]>(me.repos || []);
   const [pr, setPr] = useState("");
   const [pickRepo, setPickRepo] = useState("");
+  const [err, setErr] = useState("");
   const jobs = useRunning();
   const runKey = jobs.map((j) => `${j.kind}:${j.repo}#${j.num}`).join(",");
   useEffect(() => {
-    api.qaIndex().then((d) => {
-      setGuides(d.guides);
-      if (d.repos?.length) setRepos(d.repos);
-    });
+    api
+      .qaIndex()
+      .then((d) => {
+        setErr("");
+        setGuides(d.guides);
+        if (d.repos?.length) setRepos(d.repos);
+      })
+      .catch((e: unknown) => setErr(errMessage(e, "Couldn't load your QA guides.")));
     // A guide starting or finishing changes this list — re-read it then, no timer of our own.
   }, [runKey]);
   const multi = repos.length > 1;
@@ -66,6 +71,12 @@ function QaIndex({ me }: { me: Me }) {
           or generate a new one.
         </div>
       </div>
+      {err && (
+        <div className="banner err" data-testid="qa-index-error">
+          <span>🚫</span>
+          <div>{err}</div>
+        </div>
+      )}
       {guides.length > 0 ? (
         <>
           <h2>Recent guides</h2>
@@ -142,14 +153,26 @@ function QaDetailView({ pr }: { pr: PrRef }) {
   // to spawn, so arming the timer on state === "running" alone meant the first-ever Generate
   // never polled: the page sat on "No guide yet" while the guide was being written.
   const [starting, setStarting] = useState(false);
+  const [loadErr, setLoadErr] = useState("");
   const timer = useRef<number | undefined>(undefined);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const load = useCallback(() => api.qaDetail(pr).then(setD), [pr.repo, pr.num]);
+  const load = useCallback(
+    () =>
+      api
+        .qaDetail(pr)
+        .then((x) => {
+          setLoadErr("");
+          setD(x);
+        })
+        .catch((e: unknown) => setLoadErr(errMessage(e, "Couldn't load this QA guide."))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pr.repo, pr.num],
+  );
 
   useEffect(() => {
     setD(null);
     setStarting(false);
     setErr("");
+    setLoadErr("");
   }, [pr.repo, pr.num]);
   useEffect(() => {
     load();
@@ -165,6 +188,13 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     return () => window.clearInterval(timer.current);
   }, [d, starting, load]);
 
+  if (loadErr && !d)
+    return (
+      <div className="banner err" data-testid="qa-load-error">
+        <span>🚫</span>
+        <div>{loadErr}</div>
+      </div>
+    );
   if (!d) return <div className="muted">Loading…</div>;
 
   // A failed or stopped run never hides a guide that is already on disk — the server keeps the

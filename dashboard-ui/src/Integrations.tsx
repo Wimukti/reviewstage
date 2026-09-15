@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errBanner, type IntegrationsData, type Me } from "./api";
+import { api, errBanner, errMessage, type IntegrationsData, type Me } from "./api";
 import { BrandIcon } from "./icons";
 
 function Banner({ html }: { html: string }) {
@@ -336,7 +336,18 @@ function ClaudeCtl({
 export function Integrations({ me }: { me: Me }) {
   const [d, setD] = useState<IntegrationsData | null>(null);
   const [banner, setBanner] = useState("");
-  const load = useCallback(() => api.integrations().then(setD), []);
+  const [err, setErr] = useState("");
+  const load = useCallback(
+    () =>
+      api
+        .integrations()
+        .then((x) => {
+          setErr("");
+          setD(x);
+        })
+        .catch((e: unknown) => setErr(errMessage(e, "Couldn't load your integrations."))),
+    [],
+  );
   useEffect(() => {
     load();
   }, [load]);
@@ -345,6 +356,13 @@ export function Integrations({ me }: { me: Me }) {
     load();
   };
 
+  if (err && !d)
+    return (
+      <div className="banner err" data-testid="integrations-error">
+        <span>🚫</span>
+        <div>{err}</div>
+      </div>
+    );
   if (!d) return <div className="muted">Loading…</div>;
   const hasSlack = !!d.slack.id;
   const hasDiscord = !!d.discord.id;
@@ -379,7 +397,10 @@ export function Integrations({ me }: { me: Me }) {
         }
       >
         {d.github.via === "oauth" ? (
-          d.oauth ? (
+          // Someone who signed in through GitHub has no token to paste. The button only rendered
+          // when the REDIRECT flow was configured, so on a device-flow install they were told to
+          // reconnect with nothing to click. Either GitHub path can re-authenticate them.
+          d.oauth || me.device_flow ? (
             <a className="btn soft" href="/oauth/start?next=%2Fintegrations">
               Reconnect with GitHub
             </a>

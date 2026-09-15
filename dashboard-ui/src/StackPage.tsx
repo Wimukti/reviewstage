@@ -18,8 +18,21 @@ export function StackPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const load = useCallback(() => (pr ? api.stack(ref).then(setD) : Promise.resolve()), [pr, repo]);
+  const [loadErr, setLoadErr] = useState("");
+  const load = useCallback(
+    () =>
+      pr
+        ? api
+            .stack(ref)
+            .then((x) => {
+              setLoadErr("");
+              setD(x);
+            })
+            .catch((e: unknown) => setLoadErr(errMessage(e, "Couldn't load this stack.")))
+        : Promise.resolve(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pr, repo],
+  );
   useEffect(() => {
     load();
   }, [load]);
@@ -53,6 +66,16 @@ export function StackPage() {
     </>
   );
 
+  if (loadErr && !d)
+    return (
+      <>
+        {head}
+        <div className="banner err" data-testid="stack-error">
+          <span>🚫</span>
+          <div>{loadErr}</div>
+        </div>
+      </>
+    );
   if (!d) return <>{head}<div className="muted">Loading…</div></>;
 
   if (!d.isStack)

@@ -104,12 +104,7 @@ function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
     // Hand the pending slot back to the server instead of parking it until GitHub's 15-minute
     // code expiry — the table is capped, and the cap is what a flood attacks.
     if (session) {
-      void fetch("/api/auth/device/cancel", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session }),
-      }).catch(() => {
+      void api.deviceCancel(session).catch(() => {
         /* best effort: the session expires on its own */
       });
     }

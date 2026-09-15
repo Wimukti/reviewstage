@@ -12,10 +12,16 @@
 
 # --- secrets you paste in yourself (bootstrap leaves them empty) ------------------------------
 
-# A GitHub classic PAT with `repo` scope, belonging to YOU. Every comment, review and
-# approval the dashboard posts is attributed to this account — that is the whole design.
-# Do not add `read:org`: the only call that needed it was `gh pr view --json reviewRequests`,
-# which resolves through GraphQL. The REST endpoints carry the same data under `repo` alone.
+# The SERVICE token. It reads PR metadata and diffs, clones the repositories, and runs the
+# poller's searches — it never posts. Every comment, review and approval goes out under the
+# signed-in reviewer's OWN token, which the dashboard stores encrypted per user.
+#
+# Fine-grained PAT (recommended): Repository access = every repo in REPOS (or "All
+# repositories" under the owner when using REPO_ALLOW_ORG); Permissions = Pull requests: Read
+# and write, Contents: Read, Metadata: Read. Read and write is what GitHub requires for this
+# path to reach review threads; nothing in the service path writes with it.
+# A classic PAT with `repo` scope also works. Do not add `read:org`: the only call that needed
+# it was `gh pr view --json reviewRequests`, and the REST endpoints carry the same data.
 GITHUB_PAT=
 
 # A Slack incoming webhook. Point it at a private channel — the cards name PR titles and
@@ -113,10 +119,14 @@ RS_MAX_PR_AGE_DAYS=45
 # in the dashboard's Settings page (written to ~/.reviewstage/settings.json, read by the
 # poller every cycle). settings.json > .env > default for every key it carries.
 
-# Refuse to start a review below this much available RAM, in MB.
+# Refuse to start a review below this much AVAILABLE RAM, in MB. The default means a 1 GB box
+# cannot run a single review; give the machine at least 2 GB rather than lowering this.
 MIN_FREE_MB=800
 
 # The port the server listens on (127.0.0.1 only — put your reverse proxy in front of it).
+# From source this is the whole story. On a DOCKER install do NOT set RS_PORT in .env: compose
+# reads the same file to interpolate the published port and to build the container environment,
+# so the server moves while the publish does not. There, use `RS_PORT=9000 docker compose up -d`.
 RS_PORT=8899
 
 # Signed links now carry the repository (HMAC over action:owner/name#pr:expiry). Links minted

@@ -1,8 +1,8 @@
 ---
 import { withBase } from "../../content/site-links";
 const steps = [
-  { n: 1, t: "Bring it up", d: "docker compose up -d and open http://localhost:8899. bin/doctor.sh checks Docker, the .env, and that Claude Code can sign in." },
-  { n: 2, t: "Sign in as yourself", d: "A fine-grained GitHub token scoped to the repo, then Connect Claude in the browser. Both are stored encrypted and only used for actions you click." },
+  { n: 1, t: "Bring it up", d: "docker compose up -d and open http://localhost:8899. Then docker compose exec app doctor checks the config, the CLIs, the service token and the server, from inside the container. Needs 2 GB of RAM." },
+  { n: 2, t: "Sign in as yourself", d: "Sign in with GitHub (a short device code, nothing to register) or paste a fine-grained token, then Connect Claude in the browser. Both are stored encrypted and only used for actions you click." },
   { n: 3, t: "Paste a PR URL", d: "Pick Quick, Standard or Deep, optionally a focus note and a model, and run. Read the findings, tick, edit, post. Approve is its own click." },
 ];
 ---

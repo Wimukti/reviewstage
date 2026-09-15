@@ -9,7 +9,20 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Docker Compose (recommended)
 
-You need Docker with Compose v2, a GitHub account, and a Claude **Pro, Max, Team or Enterprise** plan for anyone who will run reviews.
+### Before you start
+
+- **Docker with Compose v2** (`docker compose version`). Apple Silicon, Intel and arm64 Linux all build.
+- **A host with at least 2 GB of RAM.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*, not total — so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Raise `MIN_FREE_MB` only if you know the host can take it.
+- **About 3 GB of free disk** for the image, plus room for one blobless clone per repository. The doctor FAILs below 1 GB free on the data volume.
+- **Outbound network during the build.** The image fetches Debian packages, the GitHub CLI apt repository, Node 24 and the Claude Code CLI from npm. Behind a corporate proxy, export `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` and pass them to the build (`docker compose build --build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTPS_PROXY`), and configure the Docker daemon's own proxy so the base images can be pulled. At run time the container needs to reach `api.github.com`, `github.com` and Anthropic.
+- **A GitHub account**, and a Claude **Pro, Max, Team or Enterprise** plan for anyone who will run reviews.
+
+<Aside type="caution" title="Read the security model first">
+ReviewStage checks out branches and runs an agent over code that, on a public repository, an
+external contributor wrote. Before you point it at a pull request that is not your own, read
+[Security](/reviewstage/security/): what is stored, what each token can do, and what is
+deliberately not defended against.
+</Aside>
 
 ```bash
 git clone https://github.com/Wimukti/reviewstage && cd reviewstage
@@ -19,11 +32,15 @@ docker compose up -d
 
 Open **http://localhost:8899**. The first visit is the login page.
 
-Before you sign in, run the doctor. It checks Docker, the `.env`, that the `reviewstage` service is healthy, and that the container can reach GitHub:
+Before you sign in, run the doctor **inside the container**:
 
 ```bash
-bin/doctor.sh
+docker compose exec app doctor
 ```
+
+It prints one PASS / WARN / FAIL line per check: the `.env` it actually reads, the repositories in `REPOS`, whether the service token can see each of them, whether `git`, `gh`, `claude`, `jq`, `flock`, `openssl` and `curl` are on `PATH`, free disk and free RAM, whether `/health` answers, the installed skills, and who has signed in and connected Claude. It writes nothing and is safe to run at any time.
+
+Run it inside the container, not on the host. Everything it checks — the `.env` the server reads, the CLIs, the data volume, `/proc/meminfo` — lives in the container; on the host it reads a different `.env`, finds no `claude`, and reports FAILs against a healthy install. On macOS it cannot pass at all. Use `docker compose run --rm app doctor` if `app` will not start. It does not check Docker itself; `docker compose ps` is that check.
 
 ### What to put in `.env`
 
@@ -31,8 +48,10 @@ Only two values are required to start:
 
 | Key | What |
 | --- | --- |
-| `REPO` | `owner/name` of the repository to review. |
-| `GITHUB_PAT` | A **service token** used for reads only: listing review requests and cloning the base repo. A fine-grained PAT with *Contents: read*, *Pull requests: read*, *Metadata: read* on that repository is enough. It never posts or approves. |
+| `REPOS` | The repositories to review, as `owner/name`, comma-separated — one install reviews many. `REPO=owner/name` still works as a single-entry alias. |
+| `GITHUB_PAT` | The **service token**. A fine-grained PAT whose *Repository access* covers every repo in `REPOS`, with **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read**. Read and write is what GitHub requires to reach review threads through this path; nothing in the service or review path ever writes to GitHub with it. Posting and approving always use the signed-in reviewer's own token. |
+
+Do **not** put `RS_PORT` in `.env`. Compose reads that same file to interpolate the published port *and* passes it into the container, so setting it there moves the server off the port the publish targets and the dashboard stops answering. To change the host port, set it in the shell for that command instead: `RS_PORT=9000 docker compose up -d`.
 
 Everything else has a sensible default. `DRY_RUN=1` ships on by default: the dashboard works end to end but refuses to write to GitHub until you flip it. See [Configuration](/reviewstage/operations/configuration/) for every knob.
 
@@ -111,7 +130,7 @@ Summary of what `bin/bootstrap.sh` does, so you know what to expect:
 
 1. Installs `gh` and `claude` if missing.
 2. Copies the scripts to `~/.reviewstage/bin/` and creates `~/.reviewstage/.env` (chmod 600), **adding only missing keys** so re-running never overwrites your values.
-3. Makes a blobless base clone of `REPO` for worktrees.
+3. Makes one blobless base clone per repository in `REPOS` for worktrees.
 4. Installs the built-in review skill and seeds the editable team default.
 5. Writes and starts a systemd unit, `reviewstage.service`, that binds the dashboard to `127.0.0.1:8899`.
 6. Installs the cron entry for the poller (every 3 minutes).
@@ -121,7 +140,7 @@ Then:
 ```bash
 sudo -iu <service-user>          # the user the unit runs as
 claude                           # sign Claude Code in as that user, interactively
-~/reviewstage/bin/bootstrap.sh   # prompts for REPO and your GitHub login
+~/reviewstage/bin/bootstrap.sh   # prompts for REPOS and your GitHub login
 # paste GITHUB_PAT (and SLACK_WEBHOOK if wanted) into ~/.reviewstage/.env
 ~/reviewstage/bin/bootstrap.sh   # re-run to finish; safe at any point
 curl -s localhost:8899/health    # -> ok

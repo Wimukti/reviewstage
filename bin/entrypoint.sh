@@ -53,7 +53,7 @@ write_env() {
   set_key REPO_ALLOW_ORG ""
   set_key GITHUB_PAT ""
   set_key DRY_RUN 1
-  set_key PUBLIC_URL "http://localhost:${RS_PORT:-8899}"
+  set_key PUBLIC_URL "http://localhost:${RS_HOST_PORT:-${RS_PORT:-8899}}"
   set_key SLACK_WEBHOOK ""
   set_key SLACK_BOT_TOKEN ""
   set_key SLACK_CHANNEL ""
@@ -148,10 +148,17 @@ ensure_base_clones() {
   done
 }
 
-# Plain http (the localhost quick start) cannot carry a Secure cookie; drop the flag there.
+# Plain http on LOOPBACK (the localhost quick start) cannot carry a Secure cookie; drop the
+# flag only there. Matching every http:// URL dropped it for real remote installs too — a
+# session cookie then travelled in the clear over any plain-http hop.
 cookie_flag() {
   local url; url=$(sed -n 's/^PUBLIC_URL=//p' "$ROOT/.env")
-  case "$url" in http://*) export RS_COOKIE_SECURE=0;; esac
+  case "$url" in
+    http://localhost*|http://127.0.0.1*|http://*.localhost*|http://\[::1\]*)
+      export RS_COOKIE_SECURE=0 ;;
+    http://*)
+      log "PUBLIC_URL is plain http on a non-local host — keeping Secure cookies; serve it over https" ;;
+  esac
 }
 
 mkdir -p "$ROOT"

@@ -8,6 +8,24 @@
 # Configuration comes from ./.env (copy .env.example). The dashboard listens on
 # 127.0.0.1:8899 only — put Caddy / Tailscale / Cloudflare in front for anything remote
 # (deploy/README.md).
+#
+# To publish it on a different HOST port, set RS_HOST_PORT (NOT RS_PORT) in .env:
+#
+#     RS_HOST_PORT=9100
+#
+# Compose reads .env twice — once to interpolate ${...} here and once as env_file for the
+# container — so RS_PORT in .env used to do both at once: it moved the server inside the
+# container AND the publish target, but only one of them consistently, and the install broke
+# with nothing listening. The container's port is pinned to 8899 below and is not
+# configurable from .env; RS_HOST_PORT only changes where it is published.
+
+x-logging: &logging
+  # Docker's default json-file driver is unbounded: a container left running for months fills
+  # the disk with its own stdout.
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
 
 x-app: &app
   build: .
@@ -15,17 +33,22 @@ x-app: &app
   env_file:
     - path: .env
       required: false
+  environment:
+    # Pinned: the listen port inside the container is part of the image contract (healthcheck,
+    # EXPOSE, the port published below). An RS_PORT in .env must not move it.
+    RS_PORT: "8899"
   volumes:
     - reviewstage-data:/home/reviewstage/.reviewstage
   restart: unless-stopped
   init: true
+  logging: *logging
 
 services:
   app:
     <<: *app
     command: server
     ports:
-      - "127.0.0.1:${RS_PORT:-8899}:8899"
+      - "127.0.0.1:${RS_HOST_PORT:-8899}:8899"
 
   # Optional: finds PRs awaiting each signed-in user's review and posts the Slack cards.
   # Without it the dashboard still works — you just open it yourself.
@@ -48,11 +71,14 @@ services:
     image: reviewstage:local
     command: demo
     profiles: [demo]
+    environment:
+      RS_PORT: "8899"
     ports:
-      - "127.0.0.1:${RS_PORT:-8899}:8899"
+      - "127.0.0.1:${RS_HOST_PORT:-8899}:8899"
     volumes:
       - reviewstage-demo:/home/reviewstage/.reviewstage
     init: true
+    logging: *logging
 
 volumes:
   reviewstage-data:

@@ -299,21 +299,30 @@ Everything lives in `~/.reviewstage/.env` (chmod 600).
 | -------------------- | ----------- | -------------------------------------------------------------- |
 | `GITHUB_PAT`         | you         | Fine-grained PAT (PRs r/w, Contents r, Metadata r) or classic `repo`. Acts as **you** |
 | `SLACK_WEBHOOK`      | you         | Private channel. Optional                                      |
-| `REPO`               | prompt      | The repository to review, `owner/name`. **Required**           |
+| `REPOS`              | prompt      | The repositories to review, `owner/name`, comma-separated. One install reviews many. **Required** (`REPO=owner/name` still works as a single-entry alias) |
+| `REPO_ALLOW_ORG`     | default ""  | Also accept any repository under this owner where a signed-in user is asked to review |
 | `REVIEWER`           | prompt      | Your GitHub login. Must match the PAT's account                |
 | `PUBLIC_URL`         | prompt      | Where browsers reach the dashboard. **Required**               |
-| `RS_SECRET`       | generated   | Signs every dashboard link                                     |
+| `RS_SECRET`       | generated   | Signs every dashboard link and session, and derives the at-rest key. At least 32 characters, or the server refuses to start |
 | `DRY_RUN`            | default 1   | `1` = dashboard works fully but refuses to write to GitHub     |
 | `SKIP_BOT_PRS`       | default 0   | `1` ignores PRs authored by bots                               |
-| `MIN_FREE_MB`        | default 800 | Refuse to start a review below this much free RAM              |
+| `MIN_FREE_MB`        | default 800 | Refuse to start a review below this much available RAM         |
+| `MIN_FREE_DISK_MB`   | default 500 | Refuse to start a review, QA guide or profiling run below this much free disk on `ROOT` (`bin/doctor.sh` reads the same key but defaults it to 1024) |
+| `RS_RETENTION_DAYS`  | default 30  | How long per-run logs are kept before the once-a-day sweep     |
+| `RS_PORT`            | default 8899 | The port the server binds. From source this is the whole story |
 | `RISK_PATHS`         | default ""  | `label:pattern` rules for the risk-area banner. Empty = off    |
 | `RS_HOST_ALIASES` | default ""  | Extra hostnames that are this instance (cross-host SSO)        |
 | `RS_DOMAIN`       | default ""  | Parent domain to scope the session cookie to. Empty = host-only |
 
 Per-person data is not in `.env`. It lives in `~/.reviewstage/users.json` (chmod 600):
 `{login: {pat_enc, slack_id, name, added}}`, written by the dashboard on sign-in. Tokens are
-AES-256 encrypted with a key derived from `RS_SECRET`. To remove someone, delete their
-key from that file — their session dies on the next request.
+encrypted with **unauthenticated AES-256-CBC** under a key derived from `RS_SECRET` by PBKDF2
+at 600,000 iterations — see [SECURITY.md](SECURITY.md) for why authenticated encryption was
+deliberately not adopted. Ciphertext written at the old iteration count still reads. Both the
+dashboard and the poller's nightly device prune take an exclusive lock on a sibling
+`users.json.lock` for the whole read-modify-write, so a sign-in landing inside the prune's
+window is no longer overwritten. To remove someone, delete their key from that file — their
+session dies on the next request.
 
 > **Gotcha:** `server.py` reads `.env` **once, at startup**. After editing any value —
 > especially `DRY_RUN` — run `sudo systemctl restart reviewstage` or the change silently does

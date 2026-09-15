@@ -2688,12 +2688,132 @@ def tab_of(st):
     return "todo"
 
 
+# --- rate limiting --------------------------------------------------------------------------
+# The unauthenticated endpoints (sign-in and the two device-flow steps) each fork `gh` or call
+# out to GitHub, so anyone who can reach the dashboard could previously spend the box's memory
+# and GitHub's rate limit for free — and brute-force sign-in with no friction. A token bucket
+# per source IP, per bucket name, in memory: cheap, and a restart forgiving.
+class RateLimiter:
+    def __init__(self, per_minute, burst=None, now=time.time):
+        self.rate = per_minute / 60.0
+        self.burst = burst if burst is not None else per_minute
+        self.now = now
+        self._buckets = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key):
+        """(ok, retry_after_seconds)."""
+        t = self.now()
+        with self._lock:
+            tokens, last = self._buckets.get(key, (self.burst, t))
+            tokens = min(self.burst, tokens + (t - last) * self.rate)
+            if tokens < 1:
+                self._buckets[key] = (tokens, t)
+                return False, max(1, int((1 - tokens) / self.rate) + 1)
+            self._buckets[key] = (tokens - 1, t)
+            if len(self._buckets) > 4096:            # bound the table; the oldest go first
+                for k in sorted(self._buckets, key=lambda k: self._buckets[k][1])[:1024]:
+                    self._buckets.pop(k, None)
+            return True, 0
+
+
+# Sign-in attempts are expensive (a `gh` fork each) and rare for a human; polling is cheap but
+# must not become a free proxy to GitHub either.
+RATE = {
+    "login": RateLimiter(10, burst=5),          # PAT sign-in
+    "device-start": RateLimiter(6, burst=3),    # starting a device sign-in
+    "device-poll": RateLimiter(60, burst=20),   # ~one every 5s per browser, with slack
+}
+
+# The largest request body accepted anywhere, checked BEFORE a byte is read. Nothing the API
+# takes is close to this; a review post is a few tens of KB.
+MAX_BODY = 2 * 1024 * 1024
+BODY_CHUNK = 64 * 1024
+
+QUERY_RE = re.compile(r"\?\S*")
+
+
 # --- handler ------------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     server_version = "reviewstage"
 
     def log_message(self, fmt, *args):
-        print(f"{self.address_string()} {fmt % args}", flush=True)
+        """Access log with query strings redacted. `/handoff?…&sig=…` and
+        `/oauth/callback?code=…` are single-use credentials; logging them put a replayable
+        secret into `docker logs`, which is neither encrypted nor access-controlled."""
+        print(f"{self.address_string()} {QUERY_RE.sub('?…', fmt % args)}", flush=True)
+
+    # -- request bodies ----------------------------------------------------------------------
+    def device_nonce(self):
+        return cookie_value(self.headers, DEVICE_NONCE_COOKIE)
+
+    def client_key(self):
+        """The rate-limit key: the real client when a reverse proxy tells us, else the peer."""
+        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return fwd or self.client_address[0]
+
+    def rate_ok(self, bucket):
+        ok, retry = RATE[bucket].allow(self.client_key())
+        if ok:
+            return True
+        self.send_response(429)
+        raw = json.dumps({"error": "Too many attempts from your address — wait a moment.",
+                          "retry_after": retry}).encode()
+        self.send_header("Retry-After", str(retry))
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+        return False
+
+    def read_body(self):
+        """(raw, error_sent). Bounded, chunked, and validated BEFORE anything is read.
+
+        Content-Length used to go straight into rfile.read(n) with no cap and before any auth,
+        so an anonymous request could ask the process to allocate a gigabyte; a non-numeric
+        header raised ValueError, which killed the connection and printed a traceback."""
+        head = self.headers.get("Content-Length")
+        if head is None:
+            return b"", False
+        try:
+            n = int(head.strip())
+        except ValueError:
+            self.reply(400, "bad Content-Length", "text/plain; charset=utf-8")
+            return b"", True
+        if n < 0:
+            self.reply(400, "bad Content-Length", "text/plain; charset=utf-8")
+            return b"", True
+        if n > MAX_BODY:
+            self.reply(413, f"body too large (max {MAX_BODY} bytes)",
+                       "text/plain; charset=utf-8")
+            return b"", True
+        chunks, left = [], n
+        while left > 0:
+            part = self.rfile.read(min(BODY_CHUNK, left))
+            if not part:
+                break
+            chunks.append(part)
+            left -= len(part)
+        return b"".join(chunks), False
+
+    def json_request_ok(self, route):
+        """True when this POST/PUT may be treated as a JSON API call.
+
+        `/api/login` parsed JSON whatever the Content-Type was, so a cross-site form posting
+        `text/plain` (which needs no CORS preflight) could sign a victim's browser in as the
+        ATTACKER's GitHub identity — after which a Claude connect on that page would attach the
+        victim's Claude token to the attacker's user record. A real fetch from our own page
+        always sends application/json; a cross-site form can never set it."""
+        if not route.startswith("/api/"):
+            return True
+        site = (self.headers.get("Sec-Fetch-Site") or "").lower()
+        if site and site not in ("same-origin", "none"):
+            return False
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        # Either header is enough, and neither can be forged by a cross-site <form>: setting
+        # Content-Type: application/json or an Authorization header makes the request
+        # preflighted, and our origin is the only one allowed to answer that preflight.
+        return ctype == "application/json" or bool(rs_dev.parse_bearer(self.headers))
 
     def reply(self, code, body, ctype="text/html; charset=utf-8", cookie=None):
         raw = body.encode()
@@ -3195,9 +3315,13 @@ class Handler(BaseHTTPRequestHandler):
         """PUT /api/settings — the admin saves runtime settings. Session cookie + the signed
         token from GET (same CSRF model as every POST) + admin check; validated ranges only;
         written atomically. Everything else is 404."""
-        n = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(n)
         route = urlparse(self.path).path.rstrip("/")
+        if not self.json_request_ok(route):
+            return self.api_json({"error": "Send this as a same-origin application/json "
+                                           "request."}, 415)
+        raw, sent = self.read_body()
+        if sent:
+            return None
         if route not in ("/api/settings", "/api/profile"):
             return self.reply(404, "not found", "text/plain; charset=utf-8")
         user = session_user(self.headers)
@@ -3607,15 +3731,19 @@ class Handler(BaseHTTPRequestHandler):
         return form
 
     def do_POST(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(n)
         route = urlparse(self.path).path.rstrip("/")
+        if not self.json_request_ok(route):
+            return self.api_json({"error": "Send this as a same-origin application/json "
+                                           "request."}, 415)
+        raw, sent = self.read_body()
+        if sent:
+            return None
         if route == "/webhooks/github":
             return self.webhook_github(raw)
         if route.startswith("/api/"):
             try:
                 body = json.loads(raw or b"{}")
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 body = {}
             return self.api_post(route, body if isinstance(body, dict) else {})
         return self.reply(404, "not found", "text/plain; charset=utf-8")

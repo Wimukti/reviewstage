@@ -45,10 +45,18 @@ USED="$ROOT/used-nonces"          # burned approve links (single-use enforcement
 # --- repo dimension --------------------------------------------------------------------------
 # Mirrors rs_paths.py exactly — the two must agree on every path.
 # repos_list: one configured owner/name per line (REPOS ∪ REPO), de-duplicated, order kept.
-repos_list() {
-  printf '%s %s' "$REPOS" "$REPO" | tr ',' ' ' | tr -s '[:space:]' '\n' | sed 's#^https://github.com/##; s#^/##; s#/$##' \
-    | awk 'NF && !seen[tolower($0)]++'
+#
+# The list is SNAPSHOT at load time, before any caller can touch REPO. run-review.sh, run-qa.sh
+# and profile-repo.sh all assign `REPO="$1"` — the repo they were asked to work on — and that fed
+# straight back into this function: the repo under test was therefore always in its own
+# allowlist, so repo_allowed could never fail inside a job script, and on a multi-repo install an
+# org-discovered repo also flipped repo_count and mislabelled every notification card.
+_repos_list_from() {
+  printf '%s %s' "$1" "$2" | tr ',' ' ' | tr -s '[:space:]' '\n' \
+    | sed 's#^https://github.com/##; s#^/##; s#/$##' | awk 'NF && !seen[tolower($0)]++'
 }
+RS_REPOS_CONFIGURED="$(_repos_list_from "$REPOS" "$REPO")"
+repos_list() { [ -n "$RS_REPOS_CONFIGURED" ] && printf '%s\n' "$RS_REPOS_CONFIGURED" || true; }
 repo_count() { repos_list | wc -l | tr -d ' '; }
 # single_repo: the one configured repo, or empty when zero or several are configured.
 single_repo() { [ "$(repo_count)" = 1 ] && repos_list || true; }
@@ -92,17 +100,48 @@ DRY_RUN="${DRY_RUN:-1}"
 # Refuse to start a review below this much available RAM (MB). An agent run needs headroom,
 # and a small server usually shares the box with whatever else you run on it.
 MIN_FREE_MB="${MIN_FREE_MB:-800}"
+# …and below this much free disk on $ROOT (MB). A full volume used to be a SILENT success: the
+# agent wrote nothing, every `>` redirection failed unnoticed and the dashboard announced a
+# ready review with no findings. Guard at the front, and check every write that matters.
+MIN_FREE_DISK_MB="${MIN_FREE_DISK_MB:-500}"
 
-# have_free_mem — 0 when at least MIN_FREE_MB of RAM is available, 1 otherwise. Reads
-# MemAvailable from /proc/meminfo (falls back to `free -m`), so the check only runs on Linux;
-# on macOS or a box with neither source it returns 0 rather than blocking every review.
-have_free_mem() {
-  local free_mb=""
-  if [ -r /proc/meminfo ]; then
-    free_mb=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)
-  elif command -v free >/dev/null 2>&1; then
-    free_mb=$(free -m 2>/dev/null | awk '/^Mem:/ {print ($7 != "" ? $7 : $4)}')
+# free_mem_mb — memory available to THIS container/host, in MB, or "" when unknowable.
+#
+# Docker is the primary install, and inside a container /proc/meminfo is the HOST's memory: on
+# any box bigger than the container limit the guard could never fire and the agent was
+# OOM-killed instead of being told to wait. The cgroup v2 files are the container's own budget,
+# so they come first; v1 next; only then the host view, for a bare-metal install.
+free_mem_mb() {
+  local max cur
+  if [ -r /sys/fs/cgroup/memory.max ] && [ -r /sys/fs/cgroup/memory.current ]; then
+    max=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)
+    cur=$(cat /sys/fs/cgroup/memory.current 2>/dev/null)
+    case "$max$cur" in ''|*[!0-9]*) max="" ;; esac   # "max" (unlimited) or unreadable
+    if [ -n "$max" ] && [ "$max" -gt 0 ] 2>/dev/null; then
+      echo $(( (max - cur) / 1048576 )); return 0
+    fi
   fi
+  if [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ] \
+     && [ -r /sys/fs/cgroup/memory/memory.usage_in_bytes ]; then
+    max=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
+    cur=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null)
+    case "$max$cur" in ''|*[!0-9]*) max="" ;; esac
+    # v1 reports a sentinel near 2^63 when there is no limit; under 1 TB is a real cap.
+    if [ -n "$max" ] && [ "$max" -gt 0 ] 2>/dev/null && [ "$max" -lt 1099511627776 ]; then
+      echo $(( (max - cur) / 1048576 )); return 0
+    fi
+  fi
+  if [ -r /proc/meminfo ]; then
+    awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo
+  elif command -v free >/dev/null 2>&1; then
+    free -m 2>/dev/null | awk '/^Mem:/ {print ($7 != "" ? $7 : $4)}'
+  fi
+}
+
+# have_free_mem — 0 when at least MIN_FREE_MB of RAM is available, 1 otherwise. On a platform
+# with no readable source (macOS) it returns 0 rather than blocking every review.
+have_free_mem() {
+  local free_mb; free_mb=$(free_mem_mb)
   case "$free_mb" in
     ''|*[!0-9]*) return 0 ;;   # unknown platform: skip rather than block
   esac
@@ -112,6 +151,80 @@ have_free_mem() {
   fi
   return 0
 }
+
+# have_free_disk [dir] — 0 when at least MIN_FREE_DISK_MB is free where we write, 1 otherwise.
+have_free_disk() {
+  local dir="${1:-$ROOT}" free_mb=""
+  [ -d "$dir" ] || dir="$(dirname "$dir")"
+  free_mb=$(df -Pm "$dir" 2>/dev/null | awk 'NR==2 {print $4}')
+  case "$free_mb" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  if [ "$free_mb" -lt "$MIN_FREE_DISK_MB" ]; then
+    echo "==> low disk: ${free_mb} MB free on $dir, MIN_FREE_DISK_MB=${MIN_FREE_DISK_MB}" >&2
+    return 1
+  fi
+  return 0
+}
+
+# --- the agent's environment -------------------------------------------------------------------
+# WHY THIS EXISTS. "The review step has no GitHub write path at all" is a design property, and it
+# used to be enforced only by a sentence in the prompt. The agent got unrestricted Bash and
+# inherited GH_TOKEN — a write-scoped PAT belonging to the human reviewer — so anything the agent
+# READ (the PR description, a CLAUDE.md, a test fixture) could talk it into
+# `gh pr review N --approve`, and the approval would land under the reviewer's own identity. The
+# same environment also held the reviewer's Claude OAuth token and the install's HMAC secret,
+# both exfiltratable with one curl.
+#
+# So the agent runs with every credential-shaped variable removed. The job scripts fetch the PR
+# metadata and check out the branch themselves BEFORE the agent starts; the agent never needs gh.
+#
+# CLAUDE_CODE_OAUTH_TOKEN is the one secret that stays. The `claude` CLI takes that credential
+# only from the environment — there is no --token flag and no per-run credentials path — so
+# dropping it would make every review run on the box account, breaking "reviews run on the
+# clicking user's connected Claude account". It authorises Claude, not GitHub: it cannot post.
+AGENT_SCRUB_VARS=(
+  GH_TOKEN GITHUB_TOKEN GITHUB_PAT GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
+  GH_HOST GH_REPO GH_PATH GH_CLIENT_ID GH_CLIENT_SECRET GITHUB_WEBHOOK_SECRET
+  GIT_ASKPASS SSH_ASKPASS GIT_CONFIG_PARAMETERS SSH_AUTH_SOCK
+  RS_SECRET SLACK_BOT_TOKEN SLACK_WEBHOOK SLACK_CHANNEL DISCORD_WEBHOOK
+  WEBHOOK_URL WEBHOOK_SECRET
+)
+
+# Tools the agent may never reach, whatever the prompt or a file it reads says. The env scrub
+# above is the real barrier; this is the second one, and it also keeps an honest agent from
+# wasting a turn discovering that gh is dead.
+# shellcheck disable=SC2034  # consumed by the job scripts that source this file
+AGENT_DENY_TOOLS="Bash(gh:*) Bash(git push:*) Bash(git remote:*) Bash(git config:*) \
+Bash(curl:*) Bash(wget:*) Bash(nc:*) Bash(ssh:*) Bash(scp:*) Bash(env:*) Bash(printenv:*) \
+WebFetch WebSearch"
+
+# agent_env — the NUL-separated `env …` prefix to launch an agent with. Unsets every credential
+# above and points GH_CONFIG_DIR at an empty directory, so a gh call inside the agent finds
+# neither a token in the environment nor the box owner's stored login: it fails unauthenticated.
+agent_env() {
+  local empty="$ROOT/agent-gh-config" v
+  mkdir -p "$empty" 2>/dev/null || true
+  printf '%s\0' env
+  for v in "${AGENT_SCRUB_VARS[@]}"; do printf '%s\0%s\0' -u "$v"; done
+  printf '%s\0%s\0' "GH_CONFIG_DIR=$empty" "GIT_TERMINAL_PROMPT=0"
+}
+
+# agent_env_args — fill the global array AGENT_ENV with that prefix. A fixed array name rather
+# than a nameref: `local -n` needs bash 4.3 and the test suite runs on macOS bash 3.2.
+AGENT_ENV=()
+agent_env_args() {
+  AGENT_ENV=()
+  local x
+  while IFS= read -r -d '' x; do AGENT_ENV+=("$x"); done < <(agent_env)
+}
+
+# --- write guards ------------------------------------------------------------------------------
+# A failed write is a real failure, not a quiet one. The job scripts deliberately do not run
+# under `set -e` (they handle their own errors), so every write the dashboard later reads goes
+# through one of these and is followed by `|| fail …`.
+write_file() { printf '%s\n' "$2" > "$1" 2>/dev/null; }
+copy_file()  { cp "$1" "$2" 2>/dev/null && [ -s "$2" ]; }
 
 # --- skill files -----------------------------------------------------------------------------
 # skill_body <file>: the file with a leading YAML front-matter block (a `---` … `---` header)
@@ -133,7 +246,21 @@ mkdir -p "$WT" "$STATE" "$REPOS_DIR"; touch "$SEEN" "$USED"
 # and approval on GitHub is attributed to the human, not a bot account.
 export GH_TOKEN="${GITHUB_PAT:-}"
 
-die() { echo "FATAL: $*" >&2; exit 1; }
+# RS_STATUS_FILE — the status file of the job currently running, set by each job script as soon
+# as it knows its own directory. Without it a run that died BEFORE its first status() (a bad
+# .env, a repo_allowed failure) left the status file empty: the dashboard spun for 90 seconds
+# and then showed a "stalled" card with an empty log tail, the same as a hang. Now every exit
+# path — die, and each script's fail — records the reason where the page will read it.
+RS_STATUS_FILE="${RS_STATUS_FILE:-}"
+
+# set_status_file <path> — route die()'s message to this job's status file from here on.
+set_status_file() { RS_STATUS_FILE="$1"; }
+
+die() {
+  echo "FATAL: $*" >&2
+  [ -n "$RS_STATUS_FILE" ] && printf 'failed: %s\n' "$*" > "$RS_STATUS_FILE" 2>/dev/null
+  exit 1
+}
 
 require_env() {
   [ -n "${GITHUB_PAT:-}" ]   || die "GITHUB_PAT not set in $ENV_FILE"

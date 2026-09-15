@@ -8,14 +8,14 @@
 # edits findings in the dashboard and posts from there. Approval is a separate click again.
 set -uo pipefail
 . "$(dirname "$0")/lib-common.sh"
-require_env
 
 # Backward compatibility: a single argument is a PR number in the one configured repo.
 if [ $# -eq 1 ] && [ -n "$(single_repo)" ]; then set -- "$(single_repo)" "$1"; fi
 REPO="${1:?usage: run-review.sh <owner/name> <pr-number>}"
 PR="${2:?usage: run-review.sh <owner/name> <pr-number>}"
-repo_allowed "$REPO" || die "$REPO is not a repository this install reviews (REPOS / REPO_ALLOW_ORG)"
-BASE=$(base_dir "$REPO")
+# Shape first, so the directory names below can never be built from a traversing string.
+valid_repo "$REPO" || die "'$REPO' is not owner/name shaped"
+case "$PR" in ''|*[!0-9]*) die "'$PR' is not a PR number";; esac
 # Reviews are per reviewer: each person's run + review.json live under users/<actor>, so one
 # reviewer running never touches (or blocks) another's. Only meta.json (PR title/author/size,
 # identical for everyone) stays shared in PRDIR.
@@ -23,12 +23,36 @@ PRDIR=$(prdir "$REPO" "$PR")
 ACTOR="${RS_ACTOR:-}"
 DIR="$PRDIR"
 [ -n "$ACTOR" ] && DIR="$PRDIR/users/$ACTOR"
-mkdir -p "$DIR"
+mkdir -p "$DIR" || die "cannot create $DIR"
+# From here every die() also lands in the status file the dashboard polls. The checks below
+# (a broken .env, a repo this install does not review) used to exit to stderr only, so the page
+# spun for 90 seconds and then showed a "stalled" card with an empty log tail.
+set_status_file "$DIR/status"
+require_env
+repo_allowed "$REPO" || die "$REPO is not a repository this install reviews (REPOS / REPO_ALLOW_ORG)"
+BASE=$(base_dir "$REPO")
 exec 9>"$DIR/.lock"
 flock -n 9 || { echo "review for $REPO#$PR already running"; exit 0; }
 
-status() { echo "$1" > "$DIR/status"; echo "[$REPO#$PR] $1"; }
+status() {
+  printf '%s\n' "$1" > "$DIR/status" 2>/dev/null \
+    || echo "[$REPO#$PR] WARN: cannot write $DIR/status (disk full?)" >&2
+  echo "[$REPO#$PR] $1"
+}
 fail() { status "failed: $1"; notify_fail "$1"; exit 1; }
+
+# The worktree and its review-<pr>-<login> branch are removed on EVERY exit path. `fail` exits
+# straight away, so before this trap existed a failed run left both behind for good: the branch
+# then blocked the next `worktree add -B`, and the abandoned worktrees filled the disk.
+WT_PATH=""; WT_BRANCH=""
+cleanup() {
+  [ -n "$WT_PATH" ] && { git -C "$BASE" worktree remove --force "$WT_PATH" >/dev/null 2>&1 \
+                           || rm -rf "$WT_PATH"; }
+  [ -n "$WT_BRANCH" ] && git -C "$BASE" branch -D "$WT_BRANCH" >/dev/null 2>&1
+  [ -n "$WT_PATH" ] && git -C "$BASE" worktree prune >/dev/null 2>&1
+  return 0
+}
+trap cleanup EXIT
 
 notify_fail() {
   notify_card review_stopped "$(jq -n --arg repo "$REPO" --arg p "$PR" --arg m "$1" --arg a "$ACTOR" \
@@ -40,6 +64,7 @@ notify_fail() {
 }
 
 have_free_mem || fail "not enough free memory to start a review"
+have_free_disk "$ROOT" || fail "not enough free disk to start a review (MIN_FREE_DISK_MB=$MIN_FREE_DISK_MB)"
 # Reviews run on the clicker's OWN Claude account — never the shared box login. The dashboard
 # gates on this, so this is defence in depth.
 [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || fail "connect your Claude account in the dashboard to review"
@@ -61,24 +86,36 @@ DEPTH="${RS_DEPTH:-$FALLBACK}"
 MODEL="${RS_MODEL:-}"
 MODEL_ARG=()
 [ -n "$MODEL" ] && MODEL_ARG=(--model "$MODEL")
-echo "$EFFORT" > "$DIR/effort"
+echo "$EFFORT" > "$DIR/effort" || fail "cannot write to $DIR (disk full?)"
 
 status "fetching"
 meta=$(gh pr view "$PR" --repo "$REPO" \
-        --json headRefName,headRefOid,title,url,author,createdAt,updatedAt,additions,deletions,changedFiles,files \
+        --json headRefName,headRefOid,title,url,author,createdAt,updatedAt,additions,deletions,changedFiles,files,isDraft,state \
         2>/dev/null) || fail "PR not found"
 branch=$(echo "$meta" | jq -r .headRefName)
 title=$(echo "$meta"  | jq -r .title)
 url=$(echo "$meta"    | jq -r .url)
+head_oid=$(echo "$meta" | jq -r '.headRefOid // ""')
+[ -n "$branch" ] && [ "$branch" != null ] || fail "the PR has no head branch"
+case "$branch" in -*) fail "refusing a head branch name that starts with '-'";; esac
 # Cache the PR's identity next to the review. queue.json only holds PRs currently awaiting
 # review, so once you submit (or the request moves to someone else) the PR drops out of it —
 # without this the dashboard would lose the title of a review you just ran.
+#
+# `head` MUST be in this projection. fetch_pr_meta (server.py) writes the same file WITH a head;
+# this write used to clobber it with a copy that had none, and three things downstream read it:
+# the re-run cache key (a force-push then served the previous commit's findings under a banner
+# claiming they were current), the stale-on-push badge (which could therefore never fire), and
+# the anchor cache (keyed on an empty string).
 echo "$meta" | jq --arg n "$PR" --arg r "$REPO" '{repo:$r, number:($n|tonumber), title, url,
-     author:.author.login, createdAt, updatedAt, additions, deletions, changedFiles}' \
-  > "$PRDIR/meta.json"
+     author:.author.login, createdAt, updatedAt, additions, deletions, changedFiles,
+     head:(.headRefOid // ""), isDraft:(.isDraft // false), state:(.state // ""),
+     merged:(.state == "MERGED")}' \
+  > "$PRDIR/meta.json.tmp" && mv "$PRDIR/meta.json.tmp" "$PRDIR/meta.json" \
+  || fail "cannot write $PRDIR/meta.json (disk full?)"
 # Record the head SHA this review ran against, so the dashboard can flag the review as stale
 # once the author pushes new commits (a new head SHA) — without auto-spending tokens to re-run.
-echo "$meta" | jq -r .headRefOid > "$DIR/head"
+printf '%s\n' "$head_oid" > "$DIR/head" || fail "cannot write $DIR/head (disk full?)"
 # Risk-area labels for a context banner in the dashboard — a path-based heuristic that says
 # "this touches an area the team has flagged, look harder". Never a gate, never routing.
 # RISK_PATHS (in .env) is a comma-separated list of `label:pattern` rules; a rule matches when
@@ -118,30 +155,42 @@ for rule in "${RISK_RULES[@]+"${RISK_RULES[@]}"}"; do
 done
 echo "$risk" | xargs > "$DIR/risk" 2>/dev/null || true
 
+# One heavy job at a time, box-wide. The per-PR lock above stops duplicates of the SAME review;
+# this one stops two DIFFERENT jobs from sharing a box that OOMs with two agents on it.
+# It is taken BEFORE the fetch/worktree block below: those two jobs would otherwise race on the
+# shared base clone's .git/index.lock and one of them would die with "could not fetch".
+# The dashboard shows "reviewing" (the per-PR lock is held) with this text as the status.
+status "queued — waiting for another review to finish"
+exec 8>"$ROOT/review.lock"
+# Bounded: an eternal wait is indistinguishable from a hang on the dashboard.
+flock -w 3600 8 || fail "another review held the box lock for over an hour"
+
+# Re-check the guards now we are actually about to spend the memory. The pre-wait check can be
+# minutes old — the job ahead of us was holding the lock precisely because it was using the box.
+have_free_mem || fail "not enough free memory to start a review"
+have_free_disk "$ROOT" || fail "not enough free disk to start a review (MIN_FREE_DISK_MB=$MIN_FREE_DISK_MB)"
+
 # Base clones live under $ROOT/repos, in $HOME — deliberately outside any directory a deploy or
 # sync job of yours might rsync over, which would otherwise wipe a worktree mid-review. A repo
 # accepted via REPO_ALLOW_ORG (or added after bootstrap) is cloned here on first use.
 status "checking out the branch"
 [ -d "$BASE/.git" ] || ensure_base_clone "$REPO" >>"$ROOT/clone.log" 2>&1 \
   || fail "could not clone $REPO (see $ROOT/clone.log)"
-git -C "$BASE" fetch -q origin "$branch" || fail "could not fetch $branch"
+# `--` before the branch: it comes from the GitHub API, and a ref called `--upload-pack=…` would
+# otherwise be read as an option to git fetch.
+git -C "$BASE" fetch -q origin -- "$branch" || fail "could not fetch $branch"
 slug="${ACTOR:-shared}"
 wt="$WT/$(repo_slug "$REPO")-$PR-$slug"   # per repo + reviewer — no cross-reviewer collisions
 git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
+git -C "$BASE" worktree prune >/dev/null 2>&1 || true   # drop records left by an earlier crash
 git -C "$BASE" worktree add -q --force -B "review-$PR-$slug" "$wt" "origin/$branch" \
   || fail "could not create worktree"
-
-# One review at a time, box-wide. The per-PR lock above stops duplicates of the SAME review;
-# this one stops two DIFFERENT reviews from sharing a box that OOMs with two agents on it.
-# The dashboard shows "reviewing" (the per-PR lock is held) with this text as the status.
-status "queued — waiting for another review to finish"
-exec 8>"$ROOT/review.lock"
-flock 8
+WT_PATH="$wt"; WT_BRANCH="review-$PR-$slug"   # the EXIT trap removes both, however we leave
 
 status "reviewing the diff"
 # Whose Claude account this runs on: the dashboard sets RS_RUN_AS (and, for a connected
 # user, CLAUDE_CODE_OAUTH_TOKEN) when it spawns us. Recorded so the page can say so.
-echo "${RS_RUN_AS:-shared}" > "$DIR/runner"
+echo "${RS_RUN_AS:-shared}" > "$DIR/runner" || fail "cannot write to $DIR (disk full?)"
 echo "[$REPO#$PR] running on: ${RS_RUN_AS:-shared}"
 rm -f "$DIR/cached"          # a fresh run replaces any reused (cached) result
 rm -f "$wt/review.json"
@@ -238,17 +287,57 @@ $FOCUSBLOCK$STACKBLOCK$PROFILE_BLOCK
 ${CONTRACT}"
 fi
 
+# --- the GitHub write path that must not exist ------------------------------------------------
+# A cheap before/after fingerprint of everything the agent could conceivably post, taken by THIS
+# script with the service token — never inside the agent's environment. One GraphQL call.
+pr_write_fingerprint() {
+  gh api graphql -F owner="${REPO%%/*}" -F name="${REPO#*/}" -F pr="$PR" -f query='
+    query($owner:String!,$name:String!,$pr:Int!){
+      repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+        reviews{totalCount} comments{totalCount} reviewThreads{totalCount} }}}' \
+    --jq '[.data.repository.pullRequest
+           | .reviews.totalCount, .comments.totalCount, .reviewThreads.totalCount]
+          | map(tostring) | join(":")' 2>/dev/null
+}
+gh_before=$(pr_write_fingerprint)
+
 # The prompt goes in on stdin, never as an argument: a skill that begins with `---` (or any
 # `-`) would otherwise be parsed as an option, and argv has a length limit a long skill can hit.
-(cd "$wt" && printf '%s' "$PROMPT" | timeout "$TIMEOUT" claude -p \
+#
+# `agent_env` strips every GitHub credential from the environment first (see lib-common.sh): the
+# diff and the branch are already on disk, so the agent has no reason to touch gh, and a PR
+# description or CLAUDE.md that tells it to `gh pr review --approve` now hits an unauthenticated
+# CLI instead of the reviewer's write-scoped PAT. AGENT_DENY_TOOLS is the second barrier.
+agent_env_args
+(cd "$wt" && printf '%s' "$PROMPT" | "${AGENT_ENV[@]}" timeout "$TIMEOUT" claude -p \
   ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} \
   --output-format stream-json --verbose \
-  --allowedTools "Bash Read Glob Grep Write") >"$DIR/agent.log" 2>&1
+  --allowedTools "Bash Read Glob Grep Write" \
+  --disallowedTools "$AGENT_DENY_TOOLS") >"$DIR/agent.log" 2>&1
+rc=$?
 
-[ -s "$wt/review.json" ] || fail "agent produced no review.json (see $DIR/agent.log)"
-jq -e . "$wt/review.json" >/dev/null 2>&1 || fail "review.json is not valid JSON"
+# Defence in depth: whatever the agent did, prove nothing landed on the PR. A difference here is
+# a security incident, not a bad review — say so loudly and keep the evidence.
+gh_after=$(pr_write_fingerprint)
+if [ -n "$gh_before" ] && [ -n "$gh_after" ] && [ "$gh_before" != "$gh_after" ]; then
+  printf 'reviews:comments:threads before=%s after=%s\n' "$gh_before" "$gh_after" \
+    > "$DIR/security-violation" 2>/dev/null
+  echo "[$REPO#$PR] SECURITY: the review agent wrote to GitHub ($gh_before -> $gh_after)" >&2
+  fail "SECURITY: the review agent created a review or comment on the PR ($gh_before -> $gh_after). The review step must never write to GitHub — see $DIR/agent.log"
+fi
+
+[ "$rc" = 124 ] && fail "the review timed out after $TIMEOUT (see $DIR/agent.log)"
+[ -s "$wt/review.json" ] || fail "agent produced no review.json (exit $rc, see $DIR/agent.log)"
+# Shape, not just "is JSON". `jq -e .` accepts a bare array, and the dashboard then threw on
+# .comments for every page load of that PR — permanently, since the file is what it re-reads.
+# jq's own output re-encodes invalid UTF-8 as U+FFFD, so this copy is always decodable.
+jq -e 'if type == "object" then (.comments |= (. // []))
+       | if (.comments | type) == "array" then . else empty end
+       else empty end' "$wt/review.json" > "$DIR/review.json.tmp" 2>/dev/null \
+  || fail "review.json is not a review object with a comments array (see $DIR/agent.log)"
+[ -s "$DIR/review.json.tmp" ] || fail "could not re-encode review.json (disk full?)"
 # Copy out before the worktree is removed — this is the artefact the dashboard renders.
-cp "$wt/review.json" "$DIR/review.json"
+mv "$DIR/review.json.tmp" "$DIR/review.json" || fail "cannot write $DIR/review.json"
 
 # Token usage + model, parsed from the stream-json log. Best-effort: if anything is missing or
 # unparseable we simply write no usage.json and the dashboard omits the usage line.
@@ -284,7 +373,7 @@ if [ -n "$CACHE_KEY" ]; then
          effort:$eff, focus:$foc, model:$mdl, created_at:$created}' \
     > "$DIR/cache/$CACHE_KEY.json" 2>/dev/null || rm -f "$DIR/cache/$CACHE_KEY.json"
 fi
-git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
+cleanup; WT_PATH=""; WT_BRANCH=""   # done with the checkout; the EXIT trap then has nothing to do
 
 # Ping ONLY the person who triggered this run — your run, your ping. The drafted review is
 # shared (any requested reviewer can open it), but starting a run must not ping other reviewers
@@ -299,7 +388,9 @@ event=$(jq -r '.event // "COMMENT"' "$DIR/review.json")
 n=$(jq '.comments | length' "$DIR/review.json")
 blockers=$(jq '[.comments[]? | select(.severity == "blocker")] | length' "$DIR/review.json")
 should_fix=$(jq '[.comments[]? | select(.severity == "should-fix")] | length' "$DIR/review.json")
-summary=$(jq -r '.summary // ""' "$DIR/review.json" | head -c 2500)
+# Truncate by CHARACTER, not by byte: `head -c 2500` split multi-byte characters, and the half
+# character then made the notify payload invalid UTF-8 for jq — no card at all.
+summary=$(jq -r '(.summary // "") | .[0:2500]' "$DIR/review.json")
 detail=$(signed_link pr "$REPO" "$PR" 604800)
 author=$(echo "$meta" | jq -r '.author.login // ""')
 status "done ($n findings)"

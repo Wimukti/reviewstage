@@ -171,9 +171,23 @@ Parse the JSON only after the signature checks out, and sign over the bytes you 
 
 Set `NOTIFY_BACKENDS=none` (or tick *None* in Settings, or configure no URLs at all). The poller still keeps the queue fresh; you open the dashboard and work the *To review* tab. Everything else — per-reviewer runs, posting, approval — is identical.
 
-## Dedup
+## Dedup, retries and suppression
 
-Each reviewer is notified **once per PR** and never again for that PR: pushing new commits does not re-ping anyone, on any backend. The webhook receiver and the poller share the same `seen` file and the same `<repo>:<pr>:<login>` key, so a request that arrives by webhook and is then found by the next poll (or the other way round) still produces exactly one card. The dashboard always reflects the live queue regardless of what was announced; a card is a nudge, not the source of truth. To re-announce, see [Troubleshooting](/reviewstage/operations/troubleshooting/#re-notifying-stale-cards).
+Each reviewer is notified **once per PR** and never again for that PR: pushing new commits does not re-ping anyone, on any backend. The webhook receiver and the poller share the same `seen` file and the same `<repo>:<pr>:<login>` key, so a request that arrives by webhook and is then found by the next poll (or the other way round) still produces exactly one card.
+
+**A `seen` line now means a card was sent.** Both paths notify first and write `seen` only on a confirmed send; a failed send is counted in `notify-fails.json` and retried on the next cycle, and only after **five** consecutive failures is the pair marked seen so it stops retrying for ever. Previously the webhook wrote `seen` first and the poller wrote it last, so whether a failed card was ever retried depended on which path happened to win.
+
+**Draft, bot-authored and over-age pull requests are not marked seen at all.** They go into `suppressed` with the reason and are re-evaluated on every cycle, so a PR that was a draft the first time anyone looked at it pings by itself the moment it is marked ready. It used to be marked seen, permanently, and could never ping again.
+
+**A blackholed endpoint cannot wedge discovery.** Every card is sent under a 20-second watchdog and every `curl` in `notify.sh` carries `--connect-timeout 5 --max-time 10`. Without them a Slack endpoint that accepted a connection and never answered held the poller's own lock indefinitely, with nothing in the log to say why.
+
+The dashboard always reflects the live queue regardless of what was announced; a card is a nudge, not the source of truth. To re-announce, see [Troubleshooting](/reviewstage/operations/troubleshooting/#re-notifying-stale-cards).
+
+## Limits the platforms impose
+
+- **Discord rejects an embed title over 256 characters**, and used to reject the whole card with a `400` visible only in a log line. Titles and descriptions are truncated by character — never mid-character — with an ellipsis.
+- **Slack rejects a section whose text is empty**, so a review that produced no summary used to lose its entire card. That block is emitted only when there is something to put in it, and is clamped to Slack's 3,000-character limit.
+- **The Slack bot token is not passed on the command line.** It goes in on stdin, so it is not readable out of `ps` for the lifetime of the request.
 
 ## Privacy
 

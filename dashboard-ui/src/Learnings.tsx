@@ -5,12 +5,17 @@ function Pill({ kind, label }: { kind: string; label?: string }) {
   return <span className={"pill " + kind}>{label || kind}</span>;
 }
 
+// What a review actually reads back, per rs_learn: the most recent N of each outcome, capped
+// separately. The old copy said "the last 40 decisions", which is neither number.
+const WINDOW = { dropped: 24, edited: 12 };
+
 export function Learnings({ me }: { me: Me }) {
   const [d, setD] = useState<LearningsData | null>(null);
   useEffect(() => {
     api.learnings().then(setD);
   }, []);
   if (!d) return <div className="muted">Loading…</div>;
+  const win = d.windows ?? WINDOW;
 
   return (
     <>
@@ -44,8 +49,10 @@ export function Learnings({ me }: { me: Me }) {
           <h2>What is hardening into a rule</h2>
           <p className="muted sm">
             The same complaint, rejected again and again. While it is a <b>rolling preference</b> it
-            only lives in the last 40 decisions {me.brand} reads before a review; once you promote it
-            on the Skills page it becomes a Team rule and leaves that window for good.
+            survives only as long as it stays inside the window {me.brand} reads before a review —
+            the most recent <b>{win.dropped} drops</b> and <b>{win.edited} rewordings</b>, counted
+            separately. Once you promote it on the Skills page it becomes a Team rule and leaves
+            that window for good.
           </p>
           <div className="list" data-testid="learning-clusters">
             {d.clusters.map((c) => (
@@ -110,8 +117,10 @@ export function Learnings({ me }: { me: Me }) {
             ))}
           </div>
           <p className="fine">
-            Shared across the team for this repo. These are preferences, not hard rules — {me.brand}{" "}
-            still raises a genuine higher-severity issue even if it resembles a past drop.
+            One log for the whole install: every repository, every reviewer. {me.brand} weighs
+            decisions from the repository under review first, but nothing here is scoped to a
+            single repo. These are preferences, not hard rules — it still raises a genuine
+            higher-severity issue even if it resembles a past drop.
           </p>
         </>
       )}

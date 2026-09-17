@@ -107,6 +107,22 @@ class DeviceFlow:
             idle.remove(newest)
         return len(self._pending) < self.max_pending
 
+    def has_pending(self, nonce):
+        """True when `nonce` still binds at least one live sign-in.
+
+        The browser binding is a cookie at `Path=/`, so there is exactly one of it per browser:
+        minting a fresh nonce on a second `start` silently orphaned the first sign-in, whose
+        stored nonce no longer matched what the browser would present, and poll() reports a
+        mismatch as `unknown` — which the page shows as "That code expired before GitHub saw
+        it." server.py asks this so it can keep the nonce the browser already holds whenever
+        that nonce is still good for something, instead of overwriting it."""
+        if not nonce:
+            return False
+        with self._lock:
+            self._purge()
+            return any(secrets.compare_digest(v.get("nonce") or "", nonce)
+                       for v in self._pending.values())
+
     def pending_count(self):
         with self._lock:
             self._purge()

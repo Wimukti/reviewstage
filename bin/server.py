@@ -4654,7 +4654,18 @@ class Handler(BaseHTTPRequestHandler):
             # endpoints with nothing in common but a session id an attacker minted, so an
             # attacker could start a sign-in here, talk a teammate into approving the code at
             # github.com, poll, and be handed a session cookie as that teammate.
-            nonce = secrets.token_urlsafe(24)
+            #
+            # Reuse the nonce the browser already presents while it still binds a live sign-in.
+            # There is one nonce cookie per browser (Path=/), so minting a fresh one here
+            # overwrote it, and every sign-in started before that moment became unpollable —
+            # poll() saw a nonce mismatch, answered `unknown`, and the page said "That code
+            # expired before GitHub saw it." A second start must not break the first, whatever
+            # caused it. Reuse changes no security property: the value is only ever accepted
+            # from the browser the server gave it to, and only while that browser has a sign-in
+            # in flight; anyone else still gets `unknown`.
+            nonce = self.device_nonce()
+            if not DEVICE_FLOW.has_pending(nonce):
+                nonce = secrets.token_urlsafe(24)
             payload, err = DEVICE_FLOW.start(nonce=nonce)
             if err:
                 return self.api_json({"error": err}, 502)

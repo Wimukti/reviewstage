@@ -148,13 +148,21 @@ if ! command -v pnpm >/dev/null 2>&1; then
 fi
 
 echo "==> dashboard-ui build"
-# esbuild writes app.js/app.css to ../bin/static (i.e. $SRC/static). The server reads its
-# bundle from $BIN/static, so copy the freshly built files across after the build.
+# The build writes the fingerprinted bundle (app-<hash>.js/.css plus assets.json naming them)
+# to ../bin/static, i.e. $SRC/static. The server reads its bundle from $BIN/static, so copy the
+# freshly built files across after the build — and clear the old fingerprinted pair first, or
+# every upgrade leaves another dead copy of the bundle behind.
 UI="$SRC/../dashboard-ui"
 if [ -d "$UI" ]; then
   ( cd "$UI" && pnpm install --frozen-lockfile && pnpm build )
+  # Replace the directory rather than copying into it: the bundle is fingerprinted, so an
+  # in-place copy leaves every previous release's app-<hash>.* behind for ever. This also
+  # unbreaks the copy itself — it used `install "$SRC/static/"*`, which under `set -e` aborted
+  # bootstrap the moment the PWA build started emitting a static/icons/ subdirectory.
+  rm -rf "$BIN/static"
   mkdir -p "$BIN/static"
-  install -m 0644 "$SRC/static/"* "$BIN/static/"
+  cp -R "$SRC/static/." "$BIN/static/"
+  chmod -R a+rX "$BIN/static"
   echo "   built SPA bundle -> $BIN/static ($(ls -1 "$BIN/static" | tr '\n' ' '))"
 else
   echo "   !! dashboard-ui not found at $UI — the SPA will not load (set RS_SPA=0 to fall"

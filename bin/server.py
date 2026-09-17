@@ -3621,11 +3621,40 @@ class RateLimiter:
 
 # Sign-in attempts are expensive (a `gh` fork each) and rare for a human; polling is cheap but
 # must not become a free proxy to GitHub either.
+#
+# Two tiers, because "per source IP" was a fiction on the shipped topology. Docker publishes
+# the port through a bridge, so every request arrives from the gateway address (172.x.0.1) and
+# one bucket was the whole world: a team of five signing in together, or one person retrying,
+# locked everyone out — and it takes about 55 requests to do it. The tight limit is now per
+# BROWSER (the address plus an opaque per-browser cookie), which is the thing these limits were
+# always trying to describe. The address keeps a much looser ceiling behind it, so a flood from
+# one place is still bounded even if it rotates its cookie on every request.
 RATE = {
     "login": RateLimiter(10, burst=5),          # PAT sign-in
     "device-start": RateLimiter(6, burst=3),    # starting a device sign-in
     "device-poll": RateLimiter(60, burst=20),   # ~one every 5s per browser, with slack
 }
+RATE_ADDR = {
+    "login": RateLimiter(200, burst=100),
+    "device-start": RateLimiter(120, burst=60),
+    "device-poll": RateLimiter(1200, burst=400),
+}
+
+# A reverse proxy in front of the server is the only thing allowed to say who the client is:
+# X-Forwarded-For is a request header, so trusting it unconditionally let anyone pick their own
+# rate-limit bucket (or someone else's). List the proxy addresses in RS_TRUSTED_PROXIES.
+TRUSTED_PROXIES = {h.strip() for h in ENV.get("RS_TRUSTED_PROXIES", "").split(",") if h.strip()}
+
+# An opaque, HttpOnly, long-lived cookie whose only job is to tell two browsers apart behind one
+# address. It is not a credential and grants nothing: worst case someone clears it and lands in
+# a fresh bucket, which the per-address ceiling still covers.
+CLIENT_COOKIE = "rs_client"
+CLIENT_COOKIE_TTL = 365 * 24 * 3600
+
+
+def client_cookie(value):
+    return (f"{CLIENT_COOKIE}={value}; Path=/; Max-Age={CLIENT_COOKIE_TTL}; "
+            f"HttpOnly;{COOKIE_SECURE} SameSite=Lax")
 
 # The largest request body accepted anywhere, checked BEFORE a byte is read. Nothing the API
 # takes is close to this; a review post is a few tens of KB.
@@ -3649,13 +3678,37 @@ class Handler(BaseHTTPRequestHandler):
     def device_nonce(self):
         return cookie_value(self.headers, DEVICE_NONCE_COOKIE)
 
+    def client_addr(self):
+        """The client's address. X-Forwarded-For is believed only when the peer is a configured
+        trusted proxy, and then only for the right-most hop the proxy itself added — everything
+        to the left of that is whatever the client chose to send."""
+        peer = self.client_address[0]
+        if peer not in TRUSTED_PROXIES:
+            return peer
+        hops = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",")
+                if h.strip()]
+        for h in reversed(hops):
+            if h not in TRUSTED_PROXIES:
+                return h
+        return peer
+
     def client_key(self):
-        """The rate-limit key: the real client when a reverse proxy tells us, else the peer."""
-        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-        return fwd or self.client_address[0]
+        """The tight rate-limit key: one browser, not one address.
+
+        Behind Docker's published port every request shares the gateway address, so keying on
+        the address alone put a whole team — and every retry — into a single bucket."""
+        return f"{self.client_addr()}|{cookie_value(self.headers, CLIENT_COOKIE) or '-'}"
+
+    def client_cookie_header(self):
+        """A Set-Cookie for a browser that has no rate-limit cookie yet, else None."""
+        if cookie_value(self.headers, CLIENT_COOKIE):
+            return None
+        return client_cookie(secrets.token_urlsafe(16))
 
     def rate_ok(self, bucket):
         ok, retry = RATE[bucket].allow(self.client_key())
+        if ok:
+            ok, retry = RATE_ADDR[bucket].allow(self.client_addr())
         if ok:
             return True
         self.send_response(429)
@@ -3717,13 +3770,18 @@ class Handler(BaseHTTPRequestHandler):
         # preflighted, and our origin is the only one allowed to answer that preflight.
         return ctype == "application/json" or bool(rs_dev.parse_bearer(self.headers))
 
+    def set_cookies(self, cookie):
+        """`cookie` is one Set-Cookie value, or a list of them (Nones ignored)."""
+        for c in (cookie if isinstance(cookie, (list, tuple)) else [cookie]):
+            if c:
+                self.send_header("Set-Cookie", c)
+
     def reply(self, code, body, ctype="text/html; charset=utf-8", cookie=None):
         raw = body.encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(raw)))
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
+        self.set_cookies(cookie)
         self.end_headers()
         self.wfile.write(raw)
 
@@ -3731,8 +3789,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(303)
         self.send_header("Location", to)
         self.send_header("Content-Length", "0")
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
+        self.set_cookies(cookie)
         self.end_headers()
 
     def to_login(self):
@@ -3819,7 +3876,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.redirect(f"https://{sib}/handoff?next=" + quote(accept, safe=""))
         user = session_user(self.headers)
         ck = session_cookie(user, host) if user else None
-        return self.reply(200, index_html(), cookie=ck)
+        # Every browser picks up its rate-limit cookie here, on the page it must load before it
+        # can sign in at all — so the first sign-in attempt is already in its own bucket.
+        return self.reply(200, index_html(), cookie=[ck, self.client_cookie_header()])
 
     # -- POST --------------------------------------------------------------------------------
     # --- JSON API + static (React frontend) -------------------------------------------------
@@ -4669,7 +4728,8 @@ class Handler(BaseHTTPRequestHandler):
             payload, err = DEVICE_FLOW.start(nonce=nonce)
             if err:
                 return self.api_json({"error": err}, 502)
-            return self.api_json(payload, cookie=device_nonce_cookie(nonce))
+            return self.api_json(payload, cookie=[device_nonce_cookie(nonce),
+                                                  self.client_cookie_header()])
         if route == "/api/auth/device/poll":
             if not self.rate_ok("device-poll"):
                 return None

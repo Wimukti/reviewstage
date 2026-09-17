@@ -157,10 +157,26 @@ approval being worth anything to the person who sent it.
 **Locking the team out.** `start` is unauthenticated and the pending table is capped, which
 used to be a denial of service in one line of `curl`: the cap evicted the **oldest** pending
 sign-in, i.e. exactly the one a real person was part-way through, so a flood locked everybody
-out of GitHub sign-in. Now `start` is rate-limited per source IP, eviction takes the *newest*
-never-polled session rather than the oldest, a sign-in someone has begun polling is never
-evicted, and slots are reserved for those. A flood gets an error; your teammates keep signing
-in.
+out of GitHub sign-in. Now `start` is rate-limited, eviction takes the *newest* never-polled
+session rather than the oldest, a sign-in someone has begun polling is never evicted, and slots
+are reserved for those. A flood gets an error; your teammates keep signing in.
+
+**What a rate limit is keyed on.** "Per source IP" was a fiction on the shipped topology:
+Docker publishes the port through a bridge, so every request arrives from the gateway address
+and one bucket covered everybody — five people signing in together, or one person retrying,
+locked the rest out. The tight limits on `/api/login` and the two device-flow steps are keyed
+per **browser** (the address plus an opaque, HttpOnly `rs_client` cookie that grants nothing and
+carries no identity), with a much looser ceiling behind it per address so a flood that rotates
+its cookie is still bounded. `X-Forwarded-For` is believed only when the peer is listed in
+`RS_TRUSTED_PROXIES`, and only for the hop that proxy added: it is a request header, so
+trusting it from anyone let a client choose its own bucket, or somebody else's.
+
+**One browser, one binding.** The nonce cookie that ties `start` to `poll` lives at `Path=/`,
+so there is one per browser. `start` used to mint a fresh one every time, which silently
+orphaned every sign-in begun before it — `poll` then saw a mismatch, answered `unknown`, and
+the page said the code had expired. `start` now keeps the nonce the browser already holds while
+it still binds a live sign-in. A second start cannot break the first, and the property that
+matters is untouched: the value is only ever accepted from the browser the server gave it to.
 
 Either way the stored token is **the working token**: `user_pat()` prefers the OAuth token and
 falls back to a PAT, and post / approve / review-state reads all go through it. An OAuth user

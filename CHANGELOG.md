@@ -4,6 +4,61 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+### Upgrading, sign-in and rate limits — 09/18/26
+
+Four things found by running a real install rather than by reading the code.
+
+- **Upgrading signs everyone out, once.** This is expected and it is not a
+  fault: the session cookie's signature now covers a per-user credential
+  epoch, so cookies minted by an earlier release no longer verify. Everyone
+  signs in again after the first `docker compose up -d --build` that crosses
+  this release, and phones and CLIs pair again. Nothing breaks on the way:
+  the stale cookie simply does not verify, `/api/me` answers `authed: false`
+  and the sign-in page renders — no error, no broken page, and a deep link
+  still loads the app shell before showing sign-in.
+- **The browser no longer keeps the previous release's interface after an
+  upgrade.** This one *was* a fault, and every upgrading user hit it: the
+  sign-in page showed the old copy until a hard reload. Two causes, both
+  closed. The bundle had fixed names (`app.js`, `app.css`), so two releases
+  served different bytes under the same two URLs — it is now
+  `app-<hash>.js`, fingerprinted from the content, which is the only thing
+  that makes a release visible to a cache. And the service worker's cache
+  version was a hardcoded `rs-v1` that had never changed, so the handler
+  that drops old caches never found one to drop; it is now stamped from the
+  same fingerprint at build time. Alongside that: everything served under a
+  stable URL is revalidated rather than held for an hour, only the
+  fingerprinted bundle is cached long (a year, correctly), the worker serves
+  unfingerprinted files network-first so a reachable server always wins, and
+  a tab left open checks for a new release when you return to it and reloads
+  itself once when one takes over. If you are upgrading *from* an affected
+  release, that last release's worker is still the one in charge for one
+  more load — the new fingerprinted bundle is fetched anyway, because its
+  URL is one no cache has seen.
+- **"Sign in with GitHub" works again on a Docker install.** Every device
+  sign-in failed with *"That code expired before GitHub saw it."* The browser
+  binding that ties `start` to `poll` is one cookie at `Path=/`, and `start`
+  minted a fresh one every time, so a second `start` orphaned the first
+  sign-in — `poll` saw a nonce that no longer matched and reported the flow
+  as unknown, which the page renders as expired. `start` now keeps the nonce
+  the browser already holds while it still binds a live sign-in, so a second
+  start cannot break the first whatever caused it. The page also refuses to
+  have two starts in flight at once, and treats a rate-limit refusal as
+  *wait and ask again* rather than a failed sign-in. Nothing widens: a flow
+  can still only be polled by the browser that began it.
+- **A rate limit is about one browser, not one address.** `client_key()` fell
+  back to the peer address, which behind Docker's published port is the
+  bridge gateway for *every* client — so the limits on `/api/login` and the
+  two device-flow steps were a single bucket shared by everybody. Five people
+  signing in together, or one person retrying, locked the rest out; about 55
+  requests did it. The tight limit is now keyed per browser (the address plus
+  an opaque, HttpOnly `rs_client` cookie that carries no identity and grants
+  nothing), with a much looser ceiling per address behind it so a flood is
+  still bounded. `X-Forwarded-For` is a request header and was believed from
+  anyone, which let a client pick its own bucket or someone else's; it is now
+  believed only when the peer is listed in the new `RS_TRUSTED_PROXIES`, and
+  only for the hop that proxy added. You do not need to set it for Docker's
+  own published port.
+
 ### Remediation gaps — 09/15/26
 
 The documentation pass that followed the audit remediation verified 254 claims

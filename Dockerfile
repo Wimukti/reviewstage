@@ -15,7 +15,8 @@ RUN pnpm install --frozen-lockfile
 COPY dashboard-ui/ ./
 # scripts/icons.mjs (the tail of "build") renders the PWA icons from ../assets/logo-light.svg.
 COPY assets/logo-light.svg /build/assets/logo-light.svg
-# esbuild writes app.js / app.css to ../bin/static (see package.json "build").
+# esbuild writes the bundle to ../bin/static, which scripts/icons.mjs then fingerprints as
+# app-<hash>.js / app-<hash>.css and records in assets.json (see package.json "build").
 RUN pnpm build && ls -1 /build/bin/static
 
 # ---- stage 2: runtime ------------------------------------------------------------------------

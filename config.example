@@ -191,6 +191,17 @@ RS_HOST_ALIASES=
 # Empty = host-only cookies, which is right for a single hostname.
 RS_DOMAIN=
 
+# The addresses of any reverse proxy sitting in front of ReviewStage, comma-separated. Only a
+# peer listed here has its X-Forwarded-For believed, and only for the hop it added itself — the
+# header is a request header, so trusting it from anyone lets a client choose its own
+# rate-limit bucket, or someone else's. Empty (the default) = never believe it, which is right
+# when nothing is in front of the container.
+#
+# You do NOT need this for Docker's own published port. Every request then arrives from the
+# bridge gateway, and the sign-in rate limits are keyed per browser rather than per address for
+# exactly that reason.
+RS_TRUSTED_PROXIES=
+
 # --- legacy keys ------------------------------------------------------------------------------
 
 # Earlier versions derived the public hostname as reviewstage-<RS_ENV>.<RS_DOMAIN>. An .env

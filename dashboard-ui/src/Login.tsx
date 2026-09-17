@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type DeviceStart, type Me } from "./api";
+import { ApiError, api, type DeviceStart, type Me } from "./api";
 
 // Fine-grained PAT (recommended): Pull requests read/write, Contents read, Metadata read on
 // the repositories you review. A classic token with `repo` also works.
@@ -34,6 +34,11 @@ function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
   const waiting = useRef(false);
+  // A start already in flight. `disabled` on the button depends on rendered state, which two
+  // triggers and a slow commit can race; this cannot be raced. A second start no longer breaks
+  // the first (the server reuses the browser's binding), but it still spends a pending slot
+  // and a GitHub call for nothing.
+  const starting = useRef(false);
 
   useEffect(() => {
     alive.current = true;
@@ -79,7 +84,16 @@ function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
     }
   }
 
-  async function begin() {
+  /** Seconds to wait before retrying, for a 429; 0 for anything else. */
+  function backoff(x: unknown): number {
+    if (!(x instanceof ApiError) || x.status !== 429) return 0;
+    const n = Number(x.data?.retry_after);
+    return Math.min(Number.isFinite(n) && n > 0 ? n : 5, 30);
+  }
+
+  async function begin(retry = false) {
+    if (starting.current) return;
+    starting.current = true;
     if (timer.current) clearTimeout(timer.current);
     setCopied(false);
     waiting.current = false;
@@ -92,7 +106,17 @@ function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
       schedule(start.session, Math.max(start.interval || 5, 1));
     } catch (x) {
       if (!alive.current) return;
+      // A 429 is "not yet", not "no". Sit on the spinner and ask again once; only a second
+      // refusal is worth telling the reviewer about.
+      const wait = retry ? 0 : backoff(x);
+      if (wait) {
+        starting.current = false;
+        timer.current = setTimeout(() => void begin(true), wait * 1000);
+        return;
+      }
       fail("error", x instanceof Error ? x.message : "Could not reach GitHub.");
+    } finally {
+      starting.current = false;
     }
   }
 

@@ -275,6 +275,40 @@ class DeviceFlowTests(unittest.TestCase):
         res, _ = self.flow.poll(s, "browser-A")
         self.assertEqual(res["status"], "pending")
 
+    def test_has_pending_reports_a_live_binding_only(self):
+        self.assertFalse(self.flow.has_pending(""))
+        self.assertFalse(self.flow.has_pending("browser-A"))
+        s = self.flow.start(nonce="browser-A")[0]["session"]
+        self.assertTrue(self.flow.has_pending("browser-A"))
+        self.assertFalse(self.flow.has_pending("browser-B"))
+        self.flow.forget(s, "browser-A")
+        self.assertFalse(self.flow.has_pending("browser-A"))
+
+    def test_a_reused_nonce_keeps_the_earlier_signin_pollable(self):
+        """Start A, start B from the same browser, poll A.
+
+        This is the shipped bug in miniature. server.py minted a new nonce on every start and
+        set it at Path=/, so the browser could only ever present the newest one; A's stored
+        nonce no longer matched, poll(A) answered `unknown`, and the page rendered that as
+        "That code expired before GitHub saw it." Reusing the live nonce keeps both pollable.
+        """
+        a = self.flow.start(nonce="browser-A")[0]["session"]
+        b = self.flow.start(nonce="browser-A")[0]["session"]
+        self.assertNotEqual(a, b)
+        self.clock.t += 5
+        FakeGitHub.script = [{"error": "authorization_pending"},
+                             {"error": "authorization_pending"}]
+        self.assertEqual(self.flow.poll(a, "browser-A")[0]["status"], "pending")
+        self.assertEqual(self.flow.poll(b, "browser-A")[0]["status"], "pending")
+
+    def test_a_shared_nonce_is_still_no_use_to_another_browser(self):
+        """The reuse must not widen who can finish a sign-in."""
+        a = self.flow.start(nonce="browser-A")[0]["session"]
+        self.flow.start(nonce="browser-A")
+        self.clock.t += 5
+        self.assertEqual(self.flow.poll(a, "browser-B")[0], {"status": "unknown"})
+        self.assertEqual(self.flow.poll(a, "")[0], {"status": "unknown"})
+
     def test_forget(self):
         s = self.start()["session"]
         self.flow.forget(s)

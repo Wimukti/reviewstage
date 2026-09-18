@@ -703,6 +703,7 @@ border-radius:var(--r-s);cursor:pointer;flex:none}
   .commit-bar .inner{row-gap:8px}
   .commit-bar .inner>.muted{flex:1 1 100%}
   .commit-bar .rqtoggle{flex:1;min-height:36px}
+}
 
 /* ---- lane Q: queue, command palette, QA index, learnings ------------------------------------ */
 /* page header: title on the left, the paste-a-PR field as a quiet input on the right */

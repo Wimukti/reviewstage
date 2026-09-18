@@ -1,8 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+// Self-hosted type (design.md §2): a LAN install never fetches a font. Latin subsets only —
+// esbuild copies the woff2 files next to the bundle.
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
+import "./tokens.css";
 import "./styles.css";
-import "./mobile.css";
 
 const el = document.getElementById("root");
 if (el) {

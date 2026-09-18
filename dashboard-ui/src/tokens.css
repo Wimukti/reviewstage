@@ -1,0 +1,42 @@
+/* One identity — the design tokens. This file is the contract in
+   openspec/changes/one-identity-redesign/design.md §1 and is shared verbatim with the website.
+   No other colour literal may appear in any stylesheet. */
+:root {
+  --paper:    #F6F6F9;  --panel:    #FFFFFF;  --raised:  #FFFFFF;
+  --ink:      #171922;  --graphite: #5A5F73;  --hairline:#E1E3EA;
+  --blue:     #3947FF;  --blue-ink: #FFFFFF;           /* text on a blue fill */
+  --amber:    #8F5D0A;  --red:      #C93A52;  --green:  #187149;
+  --amber-bg: rgba(143,93,10,.08); --red-bg: rgba(201,58,82,.08); --green-bg: rgba(24,113,73,.08);
+  --blue-bg:  rgba(57,71,255,.08);
+  --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(23,25,34,.25);
+  --r-s: 4px; --r-m: 8px; --r-full: 999px;
+  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --dur: 120ms; --ease: cubic-bezier(.2,.7,.2,1);
+  --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem;
+  --t-26: 1.857rem; --t-34: 2.429rem;
+  color-scheme: light;
+}
+/* dark: the mark's own light-ink variant */
+:root[data-theme="dark"] {
+  --paper: #101117; --panel: #171922; --raised: #1C1F2B;
+  --ink: #E8E9F0; --graphite: #9AA0B4; --hairline: #262A38;
+  --blue: #7A83FF; --blue-ink: #101117;
+  --amber: #E0A63A; --red: #F0718A; --green: #3DD98F;
+  --amber-bg: rgba(224,166,58,.12); --red-bg: rgba(240,113,138,.12); --green-bg: rgba(61,217,143,.12);
+  --blue-bg: rgba(122,131,255,.14);
+  --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(0,0,0,.6);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #101117; --panel: #171922; --raised: #1C1F2B;
+    --ink: #E8E9F0; --graphite: #9AA0B4; --hairline: #262A38;
+    --blue: #7A83FF; --blue-ink: #101117;
+    --amber: #E0A63A; --red: #F0718A; --green: #3DD98F;
+    --amber-bg: rgba(224,166,58,.12); --red-bg: rgba(240,113,138,.12); --green-bg: rgba(61,217,143,.12);
+    --blue-bg: rgba(122,131,255,.14);
+    --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+}

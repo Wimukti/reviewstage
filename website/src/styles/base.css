@@ -1,22 +1,45 @@
+/* Site-level scale and layout on top of tokens.css: type scale (rem, base 14px), section
+ * rhythm, the Tailwind theme bridge, and the one focus ring. No colour literals here. */
+:root {
+  --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem; --t-26: 1.857rem; --t-34: 2.429rem;
+  /* Landing display size: 34 on the phone, up to 48 on a wide screen (see design.md §2 note). */
+  --t-display: clamp(2.429rem, 1.6rem + 2.2vw, 3.429rem);
+  --nav-height: 4rem;
+  --container-max: 76rem;
+  --page-gutter: clamp(1.143rem, 3vw, 2.5rem);
+  --section-pad: clamp(3rem, 5vw, 5rem);
+  --section-gap: clamp(1.75rem, 2.5vw, 2.5rem);
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-graphite: var(--graphite);
+  --color-hairline: var(--hairline);
+  --color-blue: var(--blue);
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+}
+
 @layer base {
   html {
-    scroll-behavior: smooth;
+    font-size: 14px;
     scroll-padding-top: calc(var(--nav-height) + 1.5rem);
     -webkit-text-size-adjust: 100%;
   }
   body {
-    background-color: var(--background);
-    color: var(--foreground);
-    font-family: var(--font-sans);
+    margin: 0;
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: var(--t-14);
+    line-height: 1.5;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
-  code, kbd, samp, pre { font-family: var(--font-mono); }
-  ::selection { background-color: color-mix(in oklab, var(--primary) 30%, transparent); }
-  :focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 0.35rem; }
-  * { scrollbar-color: var(--border) transparent; }
-}
-@keyframes rise-in { from { opacity: 0; translate: 0 0.5rem; } to { opacity: 1; translate: 0 0; } }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  code, kbd, samp, pre { font-family: var(--mono); }
+  ::selection { background-color: var(--blue-bg); }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  * { scrollbar-color: var(--hairline) transparent; }
 }

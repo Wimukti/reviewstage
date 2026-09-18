@@ -12,12 +12,12 @@ const revisions = [
   { v: 1, who: "jon", when: "08/22/26", what: "Forked from built-in" },
 ];
 ---
-<MockFrame label="skills · team default · v3" right="kept 71.4%">
+<MockFrame label="skills · team default · v3" right="Kept 71.4%">
   <ul class="mk-list">
     {skills.map((s) => (
-      <li class:list={["mk-row", "skill", s.on && "on"]}>
+      <li class:list={["mk-row", "skill", s.on && "is-staged"]}>
         <div class="mk-meter">
-          <span class="mk-line"><span class="mk-title">{s.n}</span>{s.on && <span class="mk-pill mk-pill-accent">runs by default</span>}</span>
+          <span class="mk-line"><span class="mk-title">{s.n}</span>{s.on && <span class="status is-blue"><i aria-hidden="true"></i>Runs by default</span>}</span>
           <span class="mk-mono"><b>{s.w.toFixed(1)}%</b> kept · {s.runs} reviews</span>
           <span class="mk-meter-bar" aria-hidden="true"><i style={`--w:${s.w}%`}></i></span>
         </div>
@@ -28,20 +28,18 @@ const revisions = [
     <span class="mk-label">Quick-add a rule</span>
     <div class="mk-h">
       <div class="mk-input grow">don't ask for a ticket link in code comments</div>
-      <span class="mk-btn mk-btn-ghost">Add rule</span>
+      <span class="mk-btn">Add rule</span>
     </div>
-    <span class="mk-dim hint">Tidied into the skill's Team rules section, committed under your name.</span>
+    <span class="mk-dim">Tidied into the skill's Team rules section, committed under your name.</span>
   </div>
   <ol class="mk-list rev">
     {revisions.map((r) => (
-      <li class="mk-meta"><span class="mk-mono">v{r.v}</span><span><b>{r.who}</b> · {r.when}</span><span>{r.what}</span></li>
+      <li class="mk-meta rev-row"><span class="mk-mono">v{r.v}</span><span><b>{r.who}</b> · {r.when}</span><span>{r.what}</span></li>
     ))}
   </ol>
 </MockFrame>
 <style>
   .skill { grid-template-columns: 1fr; }
-  .skill.on { border-color: color-mix(in oklab, var(--primary) 40%, var(--border)); }
   .grow { flex: 1; min-width: 0; }
-  .hint { font-size: 0.72rem; }
-  .rev { gap: 0.25rem; font-size: 0.74rem; }
+  .rev-row { padding: 0.45rem 0.75rem; }
 </style>

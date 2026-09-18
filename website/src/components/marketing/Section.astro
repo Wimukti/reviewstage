@@ -1,13 +1,12 @@
 ---
-interface Props { id?: string; eyebrow?: string; title?: string; lede?: string; align?: "start" | "center"; tone?: "plain" | "sunken"; }
-const { id, eyebrow, title, lede, align = "start", tone = "plain" } = Astro.props;
+interface Props { id?: string; title?: string; lede?: string; align?: "start" | "center"; }
+const { id, title, lede, align = "start" } = Astro.props;
 const titleId = id ? `${id}-title` : undefined;
 ---
-<section id={id} class:list={["section-block", tone === "sunken" && "tone-sunken"]} aria-labelledby={title ? titleId : undefined}>
+<section id={id} class="section-block" aria-labelledby={title ? titleId : undefined}>
   <div class="container-page section-inner">
-    {(eyebrow || title || lede) && (
+    {(title || lede) && (
       <div class:list={["section-header", align === "center" && "section-header-center"]}>
-        {eyebrow && <p class="eyebrow">{eyebrow}</p>}
         {title && <h2 id={titleId} class="section-title">{title}</h2>}
         {lede && <p class="lede">{lede}</p>}
       </div>
@@ -16,9 +15,9 @@ const titleId = id ? `${id}-title` : undefined;
   </div>
 </section>
 <style>
-  .section-block { padding-block: var(--section-pad); }
+  .section-block { padding-block: var(--section-pad); border-bottom: 1px solid var(--hairline); }
   .section-block[id] { scroll-margin-top: calc(var(--nav-height) + 1rem); }
   .section-inner { display: grid; gap: var(--section-gap); }
-  .section-header { display: flex; flex-direction: column; gap: 1rem; max-width: 46rem; }
+  .section-header { display: flex; flex-direction: column; gap: 0.85rem; max-width: 46rem; }
   .section-header-center { align-items: center; margin-inline: auto; text-align: center; }
 </style>

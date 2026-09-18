@@ -15,9 +15,9 @@ import { docsFooterColumns as columns, withBase } from "../../content/site-links
 <style>
   .site-map { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.75rem; margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--hairline); }
   @media (min-width: 50rem) { .site-map { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .site-map h2 { margin: 0 0 0.7rem; color: var(--foreground); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
-  .site-map ul { display: grid; gap: 0.45rem; margin: 0; padding: 0; list-style: none; }
-  .site-map a { color: var(--muted-foreground); font-size: 0.875rem; text-decoration: none; }
-  .site-map a:hover { color: var(--foreground); }
-  .fine { margin-top: 1.5rem; color: var(--muted-foreground); font-size: 0.8rem; }
+  .site-map h2 { margin: 0 0 0.6rem; color: var(--ink); font-size: var(--t-13); font-weight: 600; }
+  .site-map ul { display: grid; gap: 0.2rem; margin: 0; padding: 0; list-style: none; }
+  .site-map a { display: inline-flex; align-items: center; min-height: 32px; color: var(--graphite); font-size: var(--t-14); text-decoration: none; }
+  .site-map a:hover { color: var(--ink); }
+  .fine { margin-top: 1.5rem; color: var(--graphite); font-size: var(--t-13); }
 </style>

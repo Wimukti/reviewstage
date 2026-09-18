@@ -7,7 +7,7 @@ import { marketingFooterColumns as columns, withBase } from "../../content/site-
     <div class="grid gap-10 py-14 md:grid-cols-[1.2fr_2.6fr]">
       <div class="max-w-xs">
         <a class="brand" href={withBase("/")}><Mark size={20} /><span>ReviewStage</span></a>
-        <p class="body-text mt-4 text-[0.925rem]">A human-gated PR review assistant. Drafts the review from the real diff; you decide what reaches GitHub, as yourself.</p>
+        <p class="body-text mt-4">A human-gated PR review assistant. Drafts the review from the real diff; you decide what reaches GitHub, as yourself.</p>
       </div>
       <nav class="footer-grid" aria-label="Footer">
         {columns.map((c) => (
@@ -25,14 +25,15 @@ import { marketingFooterColumns as columns, withBase } from "../../content/site-
   </div>
 </footer>
 <style>
-  .site-footer { border-top: 1px solid var(--hairline); background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--card) 55%, transparent)); }
-  .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--primary); font-family: var(--font-display); font-size: 1rem; font-weight: 700; letter-spacing: -0.03em; text-decoration: none; }
-  .brand span { color: var(--foreground); }
+  .site-footer { border-top: 1px solid var(--hairline); }
+  .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); font-size: var(--t-16); font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
   .footer-grid { display: grid; gap: 2rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   @media (min-width: 768px) { .footer-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .footer-heading { margin: 0 0 0.85rem; color: var(--foreground); font-size: var(--text-eyebrow); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
-  .footer-grid ul { display: grid; gap: 0.55rem; margin: 0; padding: 0; list-style: none; }
-  .footer-grid a { color: var(--muted-foreground); font-size: 0.925rem; text-decoration: none; transition: color 200ms var(--ease-out-expo); }
-  .footer-grid a:hover { color: var(--foreground); }
+  .footer-heading { margin: 0 0 0.75rem; color: var(--ink); font-size: var(--t-13); font-weight: 600; }
+  .footer-grid ul { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+  .footer-grid a { display: inline-flex; align-items: center; min-height: 32px; color: var(--graphite); font-size: var(--t-14); text-decoration: none; }
+  .footer-grid a:hover { color: var(--ink); }
   .footer-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.5rem 2.5rem; border-top: 1px solid var(--hairline); }
+  .footer-base p { margin: 0; }
+  @media (max-width: 40rem) { .footer-grid a { min-height: 44px; } }
 </style>

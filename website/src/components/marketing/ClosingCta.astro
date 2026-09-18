@@ -4,17 +4,18 @@ import { repo, withBase } from "../../content/site-links";
 ---
 <section class="cta">
   <div class="container-page cta-inner">
-    <p class="eyebrow">Stage it. Then post it as yourself.</p>
     <h2 class="section-title">One command to a staged review.</h2>
+    <p class="lede">Stage it. Then post it as yourself.</p>
     <InstallCommand />
     <div class="actions">
-      <a class="btn btn-primary" href={withBase("/start/install/")}>Install guide <span aria-hidden="true">→</span></a>
-      <a class="btn btn-ghost" href={repo}>Star on GitHub</a>
+      <a class="btn btn-primary" href={withBase("/start/install/")}>Install guide</a>
+      <a class="btn btn-secondary" href={repo}>Star on GitHub</a>
     </div>
   </div>
 </section>
 <style>
   .cta { padding-block: var(--section-pad); }
   .cta-inner { display: grid; justify-items: center; gap: 1.25rem; max-width: 46rem; text-align: center; }
+  .cta-inner :global(.install) { justify-self: stretch; text-align: left; }
   .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; }
 </style>

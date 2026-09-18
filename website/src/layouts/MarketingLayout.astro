@@ -6,6 +6,7 @@ interface Props { title: string; description: string; noindex?: boolean; }
 const { title, description, noindex = false } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const ogImage = new URL(`${base}/og.png`, Astro.site).href;
 const ld = {
   "@context": "https://schema.org", "@type": "SoftwareApplication", name: "ReviewStage", description,
   applicationCategory: "DeveloperApplication", operatingSystem: "Linux, macOS (Docker)",
@@ -13,30 +14,41 @@ const ld = {
 };
 ---
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex" />}
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#26231f" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf8f3" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F6F9" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#101117" />
+    <link rel="icon" href={`${base}/favicon.ico`} sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
+    <link rel="icon" type="image/png" sizes="192x192" href={`${base}/favicon-192.png`} />
+    <link rel="icon" type="image/png" sizes="512x512" href={`${base}/favicon-512.png`} />
+    <link rel="apple-touch-icon" sizes="180x180" href={`${base}/apple-touch-icon.png`} />
     <link rel="canonical" href={canonical} />
     <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
+    <meta property="og:site_name" content="ReviewStage" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical} />
-    <meta name="twitter:card" content="summary" />
-    <title>{title}</title>
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
     <script is:inline>
       (() => {
         let s = null; try { s = localStorage.getItem("starlight-theme"); } catch {}
         const pref = s === "light" || s === "dark" ? s : "auto";
-        const resolved = pref === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : pref;
+        const resolved = pref === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : pref;
         document.documentElement.dataset.theme = resolved;
-        document.documentElement.style.setProperty("--switch-index", String(["light", "dark", "auto"].indexOf(pref)));
+        document.documentElement.dataset.themePreference = pref;
       })();
     </script>
     <script is:inline type="application/ld+json" set:html={JSON.stringify(ld)} />
@@ -51,7 +63,7 @@ const ld = {
       initTheme();
     </script>
     <style>
-      .skip-link { position: absolute; left: 50%; top: 0.5rem; z-index: 100; translate: -50% -200%; padding: 0.6rem 1rem; border: 1px solid var(--hairline); border-radius: 0.6rem; background: var(--card); color: var(--foreground); font-size: 0.9rem; font-weight: 600; text-decoration: none; }
+      .skip-link { position: absolute; left: 50%; top: 0.5rem; z-index: 100; translate: -50% -200%; padding: 0.6rem 1rem; border: 1px solid var(--hairline); border-radius: var(--r-s); background: var(--panel); color: var(--ink); font-size: var(--t-14); font-weight: 500; text-decoration: none; }
       .skip-link:focus-visible { translate: -50% 0; }
     </style>
   </body>

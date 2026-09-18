@@ -8,24 +8,24 @@ references are to `audit.md`.
 
 ## Lane P — PR page and Stack page
 Files: `dashboard-ui/src/PrPage.tsx`, `StackPage.tsx`, their e2e specs.
-- [ ] Restructure to the proposal wireframe: breadcrumb → title → one Actions menu
+- [x] (09710b9) Restructure to the proposal wireframe: breadcrumb → title → one Actions menu
       (replaces the three side cards) → verdict line + key points → findings → a row of
       four collapsed sections (Full summary, What this PR does, Approve, Re-run) → commit
       bar sticky at the bottom (bottom sheet on phone). (audit should-fix 1)
-- [ ] Collapse the banner stack: dry run, stale, head moved, Claude disconnected, merged,
+- [x] (09710b9) Collapse the banner stack: dry run, stale, head moved, Claude disconnected, merged,
       placement-unknown become one status line under the title with dot-plus-word items,
       ordered by what the reviewer must act on; never more than one full-width banner,
       and only for an error. (should-fix 2)
-- [ ] After Post: the commit bar switches in place to the posted state (count → "Posted
+- [x] (09710b9) After Post: the commit bar switches in place to the posted state (count → "Posted
       as <login>", button disabled, progress step ticked) without a full reload; the
       green banner is the only other change. (should-fix 3)
-- [ ] Unknown PR: keep the breadcrumb and the typed reference as the title; "Back to
+- [x] (09710b9) Unknown PR: keep the breadcrumb and the typed reference as the title; "Back to
       queue" and "Try another" actions; no bare red page. (should-fix 5)
-- [ ] Finding card: path on its own line under the title, full and copyable; Explain
+- [x] (09710b9) Finding card: path on its own line under the title, full and copyable; Explain
       becomes a disclosure that can collapse; "View / edit comment" keeps one verb;
       the head row carries checkbox, severity status, placement status only. (nit 5)
-- [ ] Stack page: same title pattern as the PR page; rows use `.status`. (nit 8)
-- [ ] Severity words `Blocker / Should fix / Nit / Question` everywhere on both pages.
+- [x] (190e8e9) Stack page: same title pattern as the PR page; rows use `.status`. (nit 8)
+- [x] (09710b9, 190e8e9) Severity words `Blocker / Should fix / Nit / Question` everywhere on both pages.
 
 ## Lane Q — Queue, command palette, QA index, Learnings
 Files: `Queue.tsx`, `CommandPalette.tsx`, `Qa.tsx`, `Learnings.tsx`, their e2e specs.

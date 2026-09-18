@@ -339,27 +339,7 @@ display:inline-flex;align-items:center;justify-content:center;font-size:var(--t-
 .conv-summary{font-size:var(--t-13);color:var(--graphite);margin:0 0 12px;max-width:72ch}
 .conv-summary b{color:var(--ink)}
 
-/* ---- PR detail: main column + a quiet right rail ------------------------------------------ */
-.prlayout{display:flex;gap:32px;align-items:flex-start;margin-top:8px}
-.prmain{flex:1;min-width:0}
-.prside{width:240px;flex:none}
-.prside-inner{display:flex;flex-direction:column;position:sticky;top:24px}
-.sidecard{padding:12px 0;border-top:1px solid var(--hairline)}
-.sidecard:first-child{border-top:0;padding-top:0}
-.sideact{display:flex;align-items:center;gap:10px;min-height:36px;color:var(--ink);font-weight:500}
-.sideact:hover{color:var(--blue);text-decoration:none}
-.sideact svg{width:16px;height:16px;color:var(--graphite);flex:none}
-.siderow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .sideusage{font-family:var(--mono);font-size:var(--t-13);color:var(--graphite);margin:8px 0 0}
-.sidemeta{font-size:var(--t-13);color:var(--graphite);margin-top:6px}
-.sidesteps{display:flex;flex-direction:column;gap:6px}
-.sidestep{display:flex;gap:8px;align-items:baseline;font-size:var(--t-13);color:var(--graphite)}
-.sidestep.hit{color:var(--ink)}
-.sidetick{flex:none;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
-border:1px solid var(--graphite);border-radius:var(--r-full);align-self:center}
-.sidestep.hit .sidetick{border-color:var(--green);background:var(--green);color:var(--panel)}
-.sidestep.hit .sidetick svg{width:10px;height:10px}
-.prside .revcard{margin-top:10px}
 .stackrow .fsel{margin:0 2px 0 14px}
 
 /* ---- integrations -------------------------------------------------------------------------- */
@@ -614,9 +594,6 @@ border-radius:var(--r-m);padding:16px 18px;box-shadow:var(--shadow-raised)}
   .app{flex-direction:column}
   .main .wrap{padding:20px 16px calc(80px + env(safe-area-inset-bottom,0px))}
   h1{font-size:var(--t-20)}
-  .prlayout{flex-direction:column;gap:12px;padding-bottom:120px}
-  .prside{width:auto;order:1}
-  .prside-inner{position:static}
   .row{flex-wrap:wrap}
   .rowlink{flex:1 1 100%;padding:12px 14px 4px}
   .rowmeta{flex:1 1 100%;padding:0 8px 8px 14px;justify-content:flex-end}

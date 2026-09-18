@@ -1,13 +1,13 @@
 ---
 const items = ["Open source (MIT)", "Self-hosted", "Human-gated", "Runs on your Claude subscription", "Never posts as a bot"];
 ---
-<div class="trust tone-sunken">
+<div class="trust">
   <div class="container-page">
-    <ul>{items.map((t) => <li>{t}</li>)}</ul>
+    <ul>{items.map((t) => <li class="status is-green"><i aria-hidden="true"></i>{t}</li>)}</ul>
   </div>
 </div>
 <style>
-  ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem 2.2rem; margin: 0; padding: 1.1rem 0; list-style: none; color: var(--muted-foreground); font-size: 0.875rem; font-weight: 500; letter-spacing: 0.01em; }
-  li { display: inline-flex; align-items: center; gap: 0.55rem; }
-  li::before { content: ""; width: 0.4rem; height: 0.4rem; border-radius: 999px; background: var(--success); }
+  .trust { border-bottom: 1px solid var(--hairline); }
+  ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 2rem; margin: 0; padding: 1rem 0; list-style: none; }
+  li.status { color: var(--graphite); font-weight: 500; }
 </style>

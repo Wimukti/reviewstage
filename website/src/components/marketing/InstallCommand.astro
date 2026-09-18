@@ -16,10 +16,11 @@ const cmd = "git clone https://github.com/Wimukti/reviewstage && cd reviewstage 
   }
 </script>
 <style>
-  .install { display: flex; align-items: center; gap: 0.6rem; max-width: 100%; padding: 0.55rem 0.6rem 0.55rem 0.9rem; border: 1px solid var(--hairline); border-radius: var(--radius-device); background: var(--background); box-shadow: var(--shadow-soft); font-family: var(--font-mono); font-size: 0.82rem; }
-  .prompt { color: var(--primary); font-weight: 600; }
-  code { flex: 1; min-width: 0; contain: inline-size; overflow-x: auto; white-space: nowrap; color: var(--foreground); scrollbar-width: none; }
-  .copy { flex: none; display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--hairline); border-radius: 999px; background: color-mix(in oklab, var(--card) 88%, transparent); color: var(--muted-foreground); cursor: pointer; }
-  .copy:hover { color: var(--primary); }
-  .copy[data-done] { color: var(--success); border-color: var(--success); }
+  .install { display: flex; align-items: center; width: 100%; min-width: 0; box-sizing: border-box; gap: 0.6rem; max-width: 100%; padding: 0.35rem 0.35rem 0.35rem 0.85rem; border: 1px solid var(--hairline); border-radius: var(--r-s); background: var(--panel); font-family: var(--mono); font-size: var(--t-13); }
+  .prompt { color: var(--blue); font-weight: 500; }
+  code { flex: 1; min-width: 0; contain: inline-size; overflow-x: auto; white-space: nowrap; color: var(--ink); scrollbar-width: none; }
+  .copy { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: var(--r-s); background: transparent; color: var(--graphite); cursor: pointer; }
+  .copy:hover { color: var(--ink); background: var(--paper); }
+  .copy[data-done] { color: var(--green); }
+  @media (max-width: 40rem) { .copy { width: 44px; height: 44px; } }
 </style>

@@ -1,14 +1,14 @@
 ---
-/* The staging area: one finding card expanded, with the plain-words explanation. */
+/* The staging area: one finding expanded, with the plain-words explanation. */
 import MockFrame from "./MockFrame.astro";
 ---
-<MockFrame label="finding · should-fix · src/orders/cutoff.ts:142" right="stale · 1 new commit">
-  <div class="mk-card">
+<MockFrame label="finding · src/orders/cutoff.ts:142" right="Stale · 1 new commit">
+  <div class="mk-card staged">
     <div class="mk-line">
       <span class="mk-check" aria-hidden="true"></span>
-      <span class="mk-sev mk-sev-should-fix">should-fix</span>
+      <span class="status is-amber"><i aria-hidden="true"></i>Should fix</span>
       <span class="mk-title">Cut-off uses the server's clock, not the customer's</span>
-      <span class="mk-pill mk-pill-ok">confirmed ×2</span>
+      <span class="status is-green"><i aria-hidden="true"></i>Confirmed ×2</span>
     </div>
     <p class="why">A customer in Perth can miss the 5 pm cut-off at 2 pm because the comparison runs in UTC.</p>
     <details class="detail">
@@ -19,7 +19,7 @@ import MockFrame from "./MockFrame.astro";
 <span class="mk-add">+ const now = zonedNow(customer.timezone);</span>
   return now.getHours() &lt; CUTOFF_HOUR;</pre>
     <div class="mk-sub">
-      <div class="mk-h"><b>Explain simply &amp; how to verify</b><span class="mk-pill mk-pill-accent">your claude</span></div>
+      <div class="mk-h"><b>Explain simply &amp; how to verify</b><span class="mk-dim">Your Claude</span></div>
       <p class="mk-dim simple">The order deadline is checked on the server's clock. For a shop in another timezone the deadline lands at the wrong hour.</p>
       <ol>
         <li>Set a customer's timezone to Australia/Perth.</li>
@@ -29,15 +29,15 @@ import MockFrame from "./MockFrame.astro";
     </div>
     <div class="mk-foot">
       <span class="mk-dim">Original kept for the learnings loop.</span>
-      <span class="mk-foot-actions"><span class="mk-btn mk-btn-ghost">Edit</span><span class="mk-btn mk-btn-ghost">Drop</span></span>
+      <span class="mk-foot-actions"><span class="mk-btn">Edit</span><span class="mk-btn mk-btn-quiet">Drop</span></span>
     </div>
   </div>
 </MockFrame>
 <style>
-  .why { margin: 0; color: var(--muted-foreground); }
-  .detail { font-size: 0.76rem; }
+  .staged { box-shadow: inset 3px 0 0 var(--blue); }
+  .why { margin: 0; color: var(--graphite); }
   .detail summary { cursor: default; list-style: none; }
   .detail summary::before { content: "▸ "; }
   .detail p { margin: 0.3rem 0 0; }
-  .simple { margin: 0; font-size: 0.78rem; }
+  .simple { margin: 0; }
 </style>

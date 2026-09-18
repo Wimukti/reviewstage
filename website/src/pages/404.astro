@@ -2,10 +2,10 @@
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 import { withBase } from "../content/site-links";
 ---
-<MarketingLayout title="Not found — ReviewStage" description="That page does not exist." noindex>
+<MarketingLayout title="Not found – ReviewStage" description="That page does not exist." noindex>
   <section class="container-page" style="padding-block: var(--section-pad); display: grid; gap: 1rem; max-width: 40rem;">
-    <p class="eyebrow">404</p>
+    <p class="meta-text" style="margin: 0; font-family: var(--mono);">404</p>
     <h1 class="section-title">Nothing staged here.</h1>
-    <p class="lede">The page moved or never existed. Start from the <a href={withBase("/")} style="color: var(--primary)">home page</a> or the <a href={withBase("/start/")} style="color: var(--primary)">docs</a>.</p>
+    <p class="lede">The page moved or never existed. Start from the <a class="link" href={withBase("/")}>home page</a> or the <a class="link" href={withBase("/start/")}>docs</a>.</p>
   </section>
 </MarketingLayout>

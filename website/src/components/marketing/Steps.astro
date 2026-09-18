@@ -6,21 +6,24 @@ const steps = [
   { n: 3, t: "Paste a PR URL", d: "Pick Quick, Standard or Deep, optionally a focus note and a model, and run. Read the findings, tick, edit, post. Approve is its own click." },
 ];
 ---
-<ol class="steps">
+<ol class="steps panel">
   {steps.map((s) => (
-    <li class="surface-card step">
-      <span class="step-n">{s.n}</span>
+    <li class="step">
+      <span class="step-n">{String(s.n).padStart(2, "0")}</span>
       <h3 class="card-title">{s.t}</h3>
       <p class="body-text">{s.d}</p>
     </li>
   ))}
 </ol>
-<p class="body-text team-note">Add <code class="kbd">--profile team</code> for the review-request poller and Slack cards, so teammates are pinged when a PR is waiting on them. Run <code class="kbd">docker compose up -d demo</code> to see the dashboard with sample runs before wiring anything up. Details in <a href={withBase("/start/team-mode/")}>Team mode</a>.</p>
+<p class="body-text team-note">Add <code class="kbd">--profile team</code> for the review-request poller and Slack cards, so teammates are pinged when a PR is waiting on them. Run <code class="kbd">docker compose up -d demo</code> to see the dashboard with sample runs before wiring anything up. Details in <a class="link" href={withBase("/start/team-mode/")}>Team mode</a>.</p>
 <style>
-  .steps { display: grid; gap: 1rem; margin: 0; padding: 0; list-style: none; counter-reset: step; }
-  @media (min-width: 48rem) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  .step { display: grid; gap: 0.7rem; padding: 1.5rem; }
-  .step-n { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; background: color-mix(in oklab, var(--primary) 18%, transparent); color: var(--primary); font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600; }
-  .team-note { max-width: 46rem; }
-  .team-note a { color: var(--primary); }
+  .steps { display: grid; margin: 0; padding: 0; list-style: none; text-align: left; }
+  .step { display: grid; gap: 0.6rem; align-content: start; padding: 1.5rem; }
+  .step + .step { border-top: 1px solid var(--hairline); }
+  @media (min-width: 48rem) {
+    .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .step + .step { border-top: 0; border-left: 1px solid var(--hairline); }
+  }
+  .step-n { color: var(--blue); font-family: var(--mono); font-size: var(--t-13); font-weight: 500; }
+  .team-note { max-width: 46rem; margin-inline: auto; }
 </style>

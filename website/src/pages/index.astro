@@ -14,15 +14,15 @@ import TeamMock from "../components/marketing/mocks/TeamMock.astro";
 import LearnMock from "../components/marketing/mocks/LearnMock.astro";
 import QaMock from "../components/marketing/mocks/QaMock.astro";
 
-const title = "ReviewStage — stage your PR review, post it as yourself";
+const title = "ReviewStage";
 const description =
-  "An open-source, self-hosted, human-gated PR review assistant built on Claude Code. Drafts the review from the real diff on your own Claude plan; you pick what reaches GitHub.";
+  "ReviewStage drafts your PR review from the real diff, on your own Claude plan, and stages every finding privately. Nothing posts until you click.";
 ---
 <MarketingLayout {title} {description}>
   <Hero />
   <TrustBar />
 
-  <Section id="gate" eyebrow="The gate" title="Nothing posts until you click"
+  <Section id="gate" title="Nothing posts until you click"
     lede="The review step has no GitHub write path at all: the agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before-and-after count of the pull request that fails the run if anything landed on it. It reads the diff and produces a file the dashboard renders. Every write to GitHub is a separate, deliberate click by a signed-in person, using that person's own token.">
     <Feature shot="gate" alt="The Post to GitHub bar with four of six findings selected, and the separate Approve panel below it, greyed out until comments are posted."
       label="post · 4 of 6 selected · COMMENT review"
@@ -39,7 +39,7 @@ const description =
     </Feature>
   </Section>
 
-  <Section id="staging" tone="sunken" eyebrow="The staging area" title="A review is a staging area"
+  <Section id="staging" title="A review is a staging area"
     lede="Findings arrive as cards, not as comments. You decide which ones deserve your name on them, reword the ones that are almost right, and drop the rest without anyone seeing.">
     <Feature flip shot="staging" alt="A finding card: a plain-language title, a one-line why-it-matters, the collapsed technical detail, a suggestion block, and the Explain simply button."
       label="finding · should-fix · src/orders/cutoff.ts:142"
@@ -57,7 +57,7 @@ const description =
     </Feature>
   </Section>
 
-  <Section id="plan" eyebrow="Billing" title="Runs on your own Claude plan"
+  <Section id="plan" title="Runs on your own Claude plan"
     lede="ReviewStage runs the genuine Claude Code CLI. Each reviewer connects their own Claude account in the browser, and the reviews they start are billed to their plan and bound by their plan's limits.">
     <Feature shot="run" alt="The run form: Quick, Standard and Deep effort with the auto-suggested one highlighted, a model choice, a free-text focus note, and a Start review button."
       label="run · effort standard · model default · focus: cutoff maths"
@@ -75,7 +75,7 @@ const description =
     </Feature>
   </Section>
 
-  <Section id="team" tone="sunken" eyebrow="Team mode" title="One server, every reviewer, their own name"
+  <Section id="team" title="One server, every reviewer, their own name"
     lede="One instance serves the whole team. Each person signs in once; from then on their queue, their runs, their posts and their approvals are theirs, under their own GitHub identity.">
     <Feature flip shot="team" alt="The queue: To review, Reviewed, Posted and Approved tabs, with rows showing author, diff size, dates and severity chips. A Slack card is inset alongside."
       label="queue · to review (4) · reviewed (2) · posted (7)"
@@ -92,7 +92,7 @@ const description =
     </Feature>
   </Section>
 
-  <Section id="learn" eyebrow="The loop" title="It learns what your team drops"
+  <Section id="learn" title="It learns what your team drops"
     lede="Every post records which findings were kept, reworded or dropped. Recent decisions are fed into the next review of the same repository, so the agent stops raising what your team has already rejected. Not machine learning: in-context steering with your own recent choices.">
     <Feature shot="learnings" alt="The Skills page: a selector between the team default and your own skill, a keep-rate score per skill, a quick-add rule box, and the revision history of the team standard."
       label="skills · team default · kept 71.4% · 3 revisions"
@@ -109,7 +109,7 @@ const description =
     </Feature>
   </Section>
 
-  <Section id="qa" tone="sunken" eyebrow="Beyond the review" title="From PR to QA guide"
+  <Section id="qa" title="From PR to QA guide"
     lede="The same server can turn a PR into a tester-ready QA guide: what to set up, what to test first, where the change must not appear, and what not to file as a bug.">
     <Feature flip shot="qa" alt="A QA guide: P0 test-first cases, P1 feature cases and P2 regression cases, each numbered with steps and explicit pass and fail conditions."
       label="qa guide · pr #482 · 11 cases · P0 3 · P1 5 · P2 3"
@@ -125,12 +125,12 @@ const description =
     </Feature>
   </Section>
 
-  <Section id="who" eyebrow="Who it's for" title="One developer, one team, or the whole company"
+  <Section id="who" title="One developer, one team, or the whole company"
     lede="The same container at every size. Start on a laptop, move it to a server when a second reviewer wants in, and add repositories when the organisation does.">
     <Tiers />
   </Section>
 
-  <Section id="start" eyebrow="Ready when you are" title="Three steps to a staged review" align="center">
+  <Section id="start" title="Three steps to a staged review" align="center">
     <Steps />
   </Section>
 

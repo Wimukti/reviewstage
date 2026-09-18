@@ -1,6 +1,7 @@
 ---
 /* Beyond the review: a QA guide with risk-tiered cases and the must-not-appear rows. */
 import MockFrame from "./MockFrame.astro";
+import { sev } from "./severity";
 const cases = [
   { p: "p0", n: 1, t: "Refund after a gateway timeout is issued exactly once", pass: "one refund row, one gateway call" },
   { p: "p0", n: 2, t: "Retry reuses the original idempotency key", pass: "same key on every attempt in the gateway log" },
@@ -14,7 +15,7 @@ const cases = [
   <ul class="mk-list">
     {cases.map((c) => (
       <li class="mk-row qa">
-        <span class={`mk-sev mk-sev-${c.p}`}>{c.p}</span>
+        <span class={`status is-${sev(c.p).tone}`}><i aria-hidden="true"></i>{sev(c.p).word}</span>
         <div>
           <div class="mk-line"><span class="mk-mono mk-dim">{String(c.n).padStart(2, "0")}</span><span class="mk-title">{c.t}</span></div>
           <div class="mk-meta"><span><b>Pass:</b> {c.pass}</span></div>
@@ -24,13 +25,13 @@ const cases = [
     <li class="mk-dim more">+ 3 P1 and 2 P2 cases</li>
   </ul>
   <div class="mk-card">
-    <div class="mk-h"><b>Must not appear</b><span class="mk-pill mk-pill-muted">surface matrix</span></div>
+    <div class="mk-h"><b>Must not appear</b><span class="mk-dim">Surface matrix</span></div>
     <div class="mk-meta"><span>Card refunds</span><span class="mk-mono">no retry banner</span><span>·</span><span>Admin export</span><span class="mk-mono">no new column</span></div>
     <div class="mk-h"><b>Known non-defects</b><span class="mk-dim">1 · the retry counter resets per deploy</span></div>
   </div>
 </MockFrame>
 <style>
   .qa { align-items: start; }
-  .qa .mk-sev { margin-top: 0.15rem; }
-  .more { padding-inline: 0.65rem; font-size: 0.74rem; }
+  .qa .status { margin-top: 0.1rem; }
+  .more { padding: 0.5rem 0.75rem; }
 </style>

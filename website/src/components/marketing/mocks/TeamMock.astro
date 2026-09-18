@@ -1,6 +1,7 @@
 ---
 /* Team mode: the shared queue, two repositories, two reviewers with their own runs. */
 import MockFrame from "./MockFrame.astro";
+import { sev } from "./severity";
 const rows = [
   { n: 482, t: "Refund flow: retry on gateway timeout", repo: "payments", by: "mira", size: "+412 −38", sev: ["high", "medium"], who: ["a", "b"] },
   { n: 479, t: "Cut-off check in the customer's timezone", repo: "web", by: "dev-bot", size: "+96 −12", sev: ["medium"], who: ["a"] },
@@ -18,7 +19,7 @@ const rows = [
   <div class="mk-chips">
     <span class="mk-chip-opt mk-chip-on">acme/payments</span>
     <span class="mk-chip-opt mk-chip-on">acme/web</span>
-    <span class="mk-chip-opt">+ add repository</span>
+    <span class="mk-chip-opt">+ Add repository</span>
   </div>
   <ul class="mk-list">
     {rows.map((r) => (
@@ -27,7 +28,7 @@ const rows = [
         <div>
           <div class="mk-line">
             <span class="mk-title">{r.t}</span>
-            {r.sev.map((s) => <span class={`mk-sev mk-sev-${s}`}>{s}</span>)}
+            {r.sev.map((s) => <span class={`status is-${sev(s).tone}`}><i aria-hidden="true"></i>{sev(s).word}</span>)}
           </div>
           <div class="mk-meta">
             <span>acme/{r.repo} · by {r.by}</span>
@@ -37,7 +38,7 @@ const rows = [
         </div>
         <span class="mk-avatars" aria-label="Reviewers with their own run">
           {r.who.map((w) => <span class={`mk-avatar mk-avatar-${w}`}>{w === "a" ? "Y" : "M"}</span>)}
-          {r.who.length === 0 && <span class="mk-dim mk-mono">no run yet</span>}
+          {r.who.length === 0 && <span class="mk-dim">No run yet</span>}
         </span>
       </li>
     ))}

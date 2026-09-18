@@ -1,5 +1,5 @@
-/* One identity — the design tokens. This file is the contract in
-   openspec/changes/one-identity-redesign/design.md §1 and is shared verbatim with the website.
+/* ReviewStage tokens. Shared verbatim by the app (dashboard-ui/src/tokens.css) and the site
+   (website/src/styles/tokens.css); the contract is openspec/changes/one-identity-redesign/design.md §1.
    No other colour literal may appear in any stylesheet. */
 :root {
   --paper:    #F6F6F9;  --panel:    #FFFFFF;  --raised:  #FFFFFF;

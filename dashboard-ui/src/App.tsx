@@ -10,20 +10,19 @@ import { Learnings } from "./Learnings";
 import { Queue } from "./Queue";
 import { Rollup } from "./Rollup";
 import { Settings } from "./Settings";
-import { Sidebar } from "./Sidebar";
+import { PhoneShell, Sidebar } from "./Sidebar";
 import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
 import { Tour } from "./Tour";
 import { useLocation } from "./router";
 import { setRunning } from "./running";
+import { applyTheme, useIsPhone } from "./theme";
 
 function NotFound() {
   return (
     <>
       <h1>Not found</h1>
-      <div className="card">
-        <p className="muted">That page doesn't exist. Head back to your queue.</p>
-      </div>
+      <p className="muted">That page doesn't exist. Head back to your queue.</p>
     </>
   );
 }
@@ -45,6 +44,10 @@ function Routed({ me }: { me: Me }) {
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
+  const phone = useIsPhone();
+  // The shell applied the pinned theme before first paint; re-applying here keeps the meta
+  // tags in step if the bundle and the shell ever disagree.
+  useEffect(() => applyTheme(), []);
   // /api/me carries this user's in-flight jobs; hand them to the store so the sidebar has
   // them from the first paint and the poller only starts when there is something to watch.
   const load = useCallback(
@@ -74,7 +77,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar me={me} onSignOut={signOut} />
+      {phone ? <PhoneShell me={me} onSignOut={signOut} /> : <Sidebar me={me} onSignOut={signOut} />}
       <main className="main">
         <div className="wrap">
           <Routed me={me} />

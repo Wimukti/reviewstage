@@ -37,6 +37,12 @@ The same file is used verbatim by the app (`dashboard-ui/src/tokens.css`) and th
 }
 ```
 
+Measured at build time (`tokens.test.ts`, 09/18/26): every value above passes as written —
+no hex changed. Lowest margins: light `--red` on `--paper` 4.6:1, light `--blue` on `--paper`
+5.6:1, dark `--blue-ink` on `--blue` 6.1:1. The app's copy of the file also carries the type
+scale (`--t-13` … `--t-34`, §2) on `:root`, since the app reaches them as tokens; the website
+may add the same six lines or keep its own scale.
+
 Contrast rule, enforced by `dashboard-ui/src/tokens.test.ts`: every text token (`ink`,
 `graphite`, `blue`, `amber`, `red`, `green`) must reach **4.5:1** on both `paper` and
 `panel` in its theme, and `blue-ink` must reach 4.5:1 on `blue`. The values above are the
@@ -150,3 +156,49 @@ descriptor), all rendered from `assets/logo.svg`; `<head>` links all of them plu
   `grep -c 'fonts.googleapis' bin/server.py` is 0; the number of distinct `border-radius`
   values in the stylesheet is 3.
 - All 95 existing browser tests pass, because behaviour did not change.
+
+## 9. Foundation build notes (dashboard-ui, 09/18/26)
+
+Where the build settled something the contract left open, or had to deviate:
+
+- **Theme persistence is per device, in `localStorage` (`rs-theme`), not a user preference on
+  the server.** The shell has to apply the pin before first paint with a synchronous read, and
+  a theme is a property of the screen in front of you (a dark laptop and a light desktop are
+  both right), so the `tour_seen`-style server preference was the wrong layer. The account
+  card's System / Light / Dark control writes the key; `bin/server.py`'s inline script reads
+  it. Nothing else in `bin/` changed beyond the shell head and `serve_static` (font type,
+  immutable cache for the hashed woff2).
+- **Fonts are latin subsets only** (`@fontsource/*/latin-{400,500,600}.css`): five woff2 files,
+  ~100 KB, instead of every script the family ships.
+- **The mark is bundled twice**: the dark-ink `assets/logo.svg` for light paper, the server's
+  light-ink `rs_assets.LOGO` for dark; CSS shows whichever matches the theme (`Logo.tsx`).
+- **Status words** are sentence case everywhere (`Reviewed`, `Merged`, `Polling only`); the
+  `done` review state reads `Reviewed`. Severity counts in the verdict and queue rows keep the
+  server's label after the number (`1 should fix`) so no copy changed.
+- **Running indicator**: on desktop a `.runlink` row under Review a PR (dot pulses, no pill);
+  on the phone the 28px `.runstrip` under the header. Both carry `data-testid="running-pill"`
+  for the existing tests; only one is ever in the DOM (`useIsPhone` picks the shell).
+- **Phone shell**: the tab bar is Queue / QA / Skills / More; More is a sheet with the rest of
+  the navigation, Take a tour, the account card (theme control) and Sign out. Sign out is
+  therefore one tap away rather than in the header; `pwa.spec` opens More before asserting it.
+- **Buttons**: `.btn.soft` → `.secondary`, `.ghost` → `.quiet`, `.warn` → `.destructive`; a
+  bare `.btn` is secondary. Spinners are gone; `SlowBusy` shows the pulsing dot only after 1 s.
+  The indeterminate progress bar under a running review is removed (it was a fourth animation).
+- **Focus**: the old `a:focus, button:focus … { outline: none }` reset is deleted; the ring is
+  `:focus-visible` on everything, with `.eff` cards and `.switch` taking the ring for their
+  hidden inputs. A browser test Tab-walks the PR page.
+- **Tour**: a real dialog — focus moves in, Tab cycles inside, Escape closes, focus returns to
+  the trigger, and the last step ends in place ("Done"); "Go to Integrations" is offered as a
+  secondary link rather than being the only exit.
+- **PR page sections**: "Approve" and "Re-run" stay as 16/600 section titles for now; the
+  "Findings (n)" heading and the Actions / Details / Review progress eyebrows are gone, the
+  right rail is plain content with hairline dividers. The PR lane folds these into the four
+  collapsed sections. `.finding.is-staged` and `.commit-bar` (with `.is-entering` for the
+  first-stage slide) are in place for it.
+- **Server-rendered banners** (`bannerHtml` from the API) still open with an emoji `<span>`;
+  that markup lives in `bin/` and is out of this lane. The client hides nothing — the CSS
+  simply gives that first span the same 16px slot the SVG icon uses.
+- **Proof greps** on this branch: uppercase 0 · emoji 0 · googleapis 0 · distinct radii 3 ·
+  `transition:|@keyframes` 3 · colour literals in `styles.css` 0. Screenshots: `after/foundation/`
+  (42, both themes, 1440 and 390) beside `before/` (the audit set).
+

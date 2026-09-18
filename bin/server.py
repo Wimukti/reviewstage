@@ -2933,6 +2933,8 @@ PWA_ROOT_FILES = ("/sw.js", "/manifest.webmanifest", "/offline.html")
 # names were fixed and a released change could sit behind an hour of `max-age` and a service
 # worker cache that had no reason to expire.
 HASHED_ASSET = re.compile(r"^app-[0-9a-f]{8,}\.(?:js|css)$")
+# The self-hosted fonts are emitted by esbuild's file loader as <name>-<HASH>.woff2.
+HASHED_FONT = re.compile(r"^[a-z0-9-]+-[A-Z0-9]{8}\.woff2$")
 UNHASHED_BUNDLE = ("/static/app.js", "/static/app.css")
 _ASSETS = {"key": False, "urls": UNHASHED_BUNDLE}
 
@@ -2976,17 +2978,23 @@ def index_html():
         f"<title>{html.escape(BRAND)}</title>"
         f"<link rel=icon href='{rs_assets.FAVICON}'>"
         "<link rel=manifest href='/manifest.webmanifest'>"
-        "<meta name=theme-color content='#0a0b12'>"
-        "<meta name=color-scheme content='dark'>"
+        # Light is the default; dark follows the system unless pinned. The pin lives in this
+        # browser's localStorage (a per-device choice) and is applied here, before the first
+        # paint, so a pinned theme never flashes the other one. Fonts are bundled (fontsource),
+        # so nothing is fetched from a CDN.
+        "<meta name=theme-color content='#F6F6F9'>"
+        "<meta name=color-scheme content='light dark'>"
+        "<script>(function(){try{var t=localStorage.getItem('rs-theme');"
+        "var d=document.documentElement,m=document.querySelector('meta[name=color-scheme]'),"
+        "c=document.querySelector('meta[name=theme-color]');"
+        "if(t==='light'||t==='dark'){d.setAttribute('data-theme',t);m.content=t;}"
+        "var dark=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);"
+        "c.content=dark?'#101117':'#F6F6F9';}catch(e){}})()</script>"
         "<meta name=mobile-web-app-capable content='yes'>"
         "<meta name=apple-mobile-web-app-capable content='yes'>"
-        "<meta name=apple-mobile-web-app-status-bar-style content='black-translucent'>"
+        "<meta name=apple-mobile-web-app-status-bar-style content='default'>"
         f"<meta name=apple-mobile-web-app-title content='{html.escape(BRAND)}'>"
         "<link rel=apple-touch-icon href='/icons/apple-touch-icon.png'>"
-        "<link rel=preconnect href='https://fonts.googleapis.com'>"
-        "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
-        "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
-        "family=Inter:wght@400;500;600;700&display=swap'>"
         f"<link rel=stylesheet href='{css}'>"
         "</head><body><div id=root></div>"
         f"<script src='{js}'></script></body></html>")
@@ -3893,6 +3901,7 @@ class Handler(BaseHTTPRequestHandler):
                  if name.endswith(".webmanifest")
                  else "text/html; charset=utf-8" if name.endswith(".html")
                  else "image/png" if name.endswith(".png")
+                 else "font/woff2" if name.endswith(".woff2")
                  else "application/octet-stream")
         f = STATIC_DIR / name
         # basic traversal guard + must sit under STATIC_DIR
@@ -3914,7 +3923,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control",
-                         "public, max-age=31536000, immutable" if HASHED_ASSET.match(name)
+                         "public, max-age=31536000, immutable"
+                         if HASHED_ASSET.match(name) or HASHED_FONT.match(name)
                          else "public, max-age=3600" if name.startswith("icons/")
                          else "no-cache")
         self.end_headers()

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type DeviceStart, type Me } from "./api";
+import { Logo } from "./Logo";
+import { Banner, SlowBusy } from "./ui";
 
 // Fine-grained PAT (recommended): Pull requests read/write, Contents read, Metadata read on
 // the repositories you review. A classic token with `repo` also works.
@@ -230,12 +232,12 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
         />
       </div>
       <button
-        className={"btn block " + (github ? "soft" : "primary")}
+        className={"btn block " + (github ? "secondary" : "primary")}
         type="submit"
         disabled={busy || !pat.trim()}
         aria-busy={busy}
       >
-        {busy && <span className="spin" aria-hidden="true" />} {busy ? "Verifying with GitHub…" : "Sign in with token"}
+        <SlowBusy busy={busy} />{busy ? "Verifying with GitHub…" : "Sign in with token"}
       </button>
       <p className="authfine">
         Need a token?{" "}
@@ -269,7 +271,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
               {st.start.user_code}
             </output>
             <div className="devflow-actions">
-              <button type="button" className="btn soft" onClick={() => void flow.copy(st.start.user_code)}>
+              <button type="button" className="btn secondary" onClick={() => void flow.copy(st.start.user_code)}>
                 {flow.copied ? "Copied" : "Copy code"}
               </button>
               <a className="btn primary" href={st.start.verification_uri} target="_blank" rel="noopener">
@@ -277,7 +279,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
               </a>
             </div>
             <p className="devflow-wait" role="status" aria-live="polite" aria-label="Waiting for GitHub…">
-              <span className="spin" aria-hidden="true" /> Waiting for GitHub…
+              <span className="rundot" aria-hidden="true" /> Waiting for GitHub…
             </p>
             <p className="authfine">
               GitHub asks for the code, then to authorise <b>{me.brand}</b>. This page signs you in by
@@ -303,21 +305,18 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
 
   const deviceFailed =
     st.step === "failed" ? (
-      <div className="banner err" role="alert">
-        <span>🚫</span>
-        <div>
+      <Banner kind="err" role="alert">
           {st.message}{" "}
           <button type="button" className="linkbtn" onClick={() => void flow.begin()}>
             Try again
           </button>
-        </div>
-      </div>
+        </Banner>
     ) : null;
 
   return (
     <div className="auth">
       <div className="authcard">
-        {me.logo && <img className="authlogo" src={me.logo} alt="" />}
+        <Logo me={me} className="authlogo" />
         <h1>{me.brand}</h1>
         <p className="authsub">Stage your PR review. Post it as yourself.</p>
         <p className="authlead">
@@ -326,10 +325,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
             : "Every comment and approval posts under your own name — nothing is ever posted for you."}
         </p>
         {err && (
-          <div className="banner err">
-            <span>🚫</span>
-            <div>{err}</div>
-          </div>
+          <Banner kind="err">{err}</Banner>
         )}
         {github ? (
           <>
@@ -348,7 +344,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
                 disabled={st.step === "starting"}
                 aria-busy={st.step === "starting"}
               >
-                {st.step === "starting" && <span className="spin" aria-hidden="true" />}{" "}
+                <SlowBusy busy={st.step === "starting"} />
                 {st.step === "starting" ? "Asking GitHub for a code…" : "Sign in with GitHub"}
               </button>
             )}

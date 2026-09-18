@@ -27,7 +27,7 @@ test.describe("a running review stays visible", () => {
     await expect(row).toBeVisible();
     await expect(row.getByTestId("row-running")).toContainText(/reviewing the diff/i);
     await expect(row.locator(".rundot")).toBeVisible();
-    await expect(row.locator(".pill")).toHaveText("reviewing");
+    await expect(row.locator(".status")).toHaveText("Reviewing");
     await expect(pill).toBeVisible();
 
     // 4. Back to the PR page — the progress panel is there again, still polling.

@@ -158,14 +158,14 @@ test.describe("signed in", () => {
     await expect(inline.locator(".offdiff")).toHaveCount(0);
     await expect(off.locator(".offdiff")).toHaveText("in summary");
     await expect(off.locator(".offdiff")).toHaveAttribute("title", /not part of the PR's diff/);
-    // Both are selected by default, so the post bar splits them.
-    const bar = page.locator(".bar .inner .muted");
-    await expect(bar).toContainText("2 selected");
+    // Both are staged by default, so the commit bar splits them.
+    const bar = page.locator(".commit-bar .inner .muted");
+    await expect(bar).toContainText("2 staged");
     await expect(bar).toContainText("1 inline");
     await expect(bar).toContainText("1 in the summary");
     // Unselecting the off-diff one drops the split entirely.
     await off.locator("input.fsel").uncheck();
-    await expect(bar).toContainText("1 selected");
+    await expect(bar).toContainText("1 staged");
     await expect(bar).not.toContainText("in the summary");
   });
 

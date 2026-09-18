@@ -35,7 +35,8 @@ test.describe("pwa", () => {
     await page.goto("/");
     await expect(page.locator("link[rel=manifest]")).toHaveAttribute("href", "/manifest.webmanifest");
     await expect(page.locator("link[rel=apple-touch-icon]")).toHaveCount(1);
-    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#0a0b12");
+    // Light is the default; the inline shell script flips this to the dark paper when dark renders.
+    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#F6F6F9");
   });
 
   test.describe("phone width", () => {
@@ -50,8 +51,10 @@ test.describe("pwa", () => {
         await page.goto(path);
         if (heading) await expect(page.getByRole("heading", { name: heading })).toBeVisible();
         else await expect(page.locator("h1.prtitle")).toBeVisible();
-        // Sign out must be reachable, not clipped off the end of the header row.
+        // Sign out must be reachable: it lives in the More sheet on the phone.
+        await page.getByTestId("more-tab").click();
         await expect(page.getByRole("button", { name: /sign out/i })).toBeInViewport();
+        await page.getByRole("button", { name: /^close$/i }).click();
         const { scrollWidth, innerWidth } = await page.evaluate(() => ({
           scrollWidth: document.documentElement.scrollWidth,
           innerWidth: window.innerWidth,

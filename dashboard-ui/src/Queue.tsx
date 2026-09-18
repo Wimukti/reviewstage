@@ -4,6 +4,9 @@ import { parsePrRef, prUrl } from "./pr";
 import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
 import { Link, navigate, useLocation } from "./router";
 import { runningFor, useRunning } from "./running";
+import { Banner } from "./ui";
+import { Icon } from "./icons";
+import { Status } from "./ui";
 
 const SORTS: [string, string][] = [
   ["newest", "Newest"],
@@ -13,11 +16,11 @@ const SORTS: [string, string][] = [
 ];
 
 const EMPTY: Record<string, [string, string, string]> = {
-  todo: ["🎉", "You're all caught up", "No PRs are waiting on your review."],
-  reviewed: ["📝", "Nothing to post", "Reviews you've run and not yet posted show here."],
-  posted: ["💬", "Nothing pending approval", "PRs you've commented on but not approved."],
-  approved: ["✅", "Nothing approved yet", "PRs you approve will be listed here."],
-  archived: ["🗂️", "No archived PRs", "Archived PRs are hidden from your working set."],
+  todo: ["check", "You're all caught up", "No PRs are waiting on your review."],
+  reviewed: ["inbox", "Nothing to post", "Reviews you've run and not yet posted show here."],
+  posted: ["chat", "Nothing pending approval", "PRs you've commented on but not approved."],
+  approved: ["check", "Nothing approved yet", "PRs you approve will be listed here."],
+  archived: ["inbox", "No archived PRs", "Archived PRs are hidden from your working set."],
 };
 
 
@@ -79,16 +82,14 @@ function Row({
             <span key={i}>{w}</span>
           ))}
           {dead && (
-            <span className={"pill " + (row.merged ? "posted" : "archived")} data-testid="pr-state">
-              {row.merged ? "merged" : "closed"}
-            </span>
+            <Status kind={row.merged ? "merged" : "closed"} data-testid="pr-state" />
           )}
           {row.sev.length > 0 && (
             <span className="chipwrap">
               {row.sev.map((s) => (
-                <span key={s.kind} className={"pill " + s.kind}>
+                <Status key={s.kind} kind={s.kind}>
                   {s.n} {s.label}
-                </span>
+                </Status>
               ))}
             </span>
           )}
@@ -96,7 +97,7 @@ function Row({
         )}
       </Link>
       <div className="rowmeta">
-        <span className={"pill " + row.state}>{status ? "reviewing" : row.state}</span>
+        <Status kind={status ? "reviewing" : row.state} live={!!status} />
         {row.canApprove === false && !status && (
           <span className="rownote" data-testid="no-approve" title={
             row.merged
@@ -115,8 +116,8 @@ function Row({
         >
           {busy ? "…" : row.archived ? "restore" : "archive"}
         </button>
-        <Link className="chev" to={prUrl(ref)} aria-hidden="true">
-          ›
+        <Link className="chev" to={prUrl(ref)} aria-hidden="true" tabIndex={-1}>
+          <Icon name="chevron-right" />
         </Link>
       </div>
     </div>
@@ -219,13 +220,10 @@ export function Queue({ me }: { me: Me }) {
 
   if (err && !data)
     return (
-      <div className="banner err" data-testid="queue-error">
-        <span>🚫</span>
-        <div>{err}</div>
-      </div>
+      <Banner kind="err" data-testid="queue-error">{err}</Banner>
     );
   if (!data) return <div className="wrap-load muted">Loading…</div>;
-  const empty = EMPTY[tab] || ["📭", "Nothing here yet", "This view is empty."];
+  const empty = EMPTY[tab] || ["inbox", "Nothing here yet", "This view is empty."];
   const filtering = !!(query.trim() || activeFilter);
   const rows = data.rows;
   // Every count here is the server's, computed over the SAME filter that produced the rows —
@@ -260,7 +258,6 @@ export function Queue({ me }: { me: Me }) {
           goReview();
         }}
       >
-        <span className="ra-ico">✨</span>
         <input
           className="in"
           type="text"
@@ -290,13 +287,10 @@ export function Queue({ me }: { me: Me }) {
         </div>
       )}
       {!data.slackOk && (
-        <div className="banner warn">
-          <span>💬</span>
-          <div>
+        <Banner kind="warn">
             No Slack member ID yet — review requests won't ping you.{" "}
             <Link to="/integrations">Add it in Integrations.</Link>
-          </div>
-        </div>
+          </Banner>
       )}
 
       <div className="stats">
@@ -382,10 +376,7 @@ export function Queue({ me }: { me: Me }) {
 
 
       {err && (
-        <div className="banner err" data-testid="queue-error">
-          <span>🚫</span>
-          <div>{err}</div>
-        </div>
+        <Banner kind="err" data-testid="queue-error">{err}</Banner>
       )}
 
       <div data-tour="queue">
@@ -411,9 +402,9 @@ export function Queue({ me }: { me: Me }) {
                   </div>
                 </Link>
                 <div className="rowmeta">
-                  <span className="pill reviewed">{j.kind === "qa" ? "QA guide" : "review"}</span>
-                  <Link className="chev" to={j.href} aria-hidden="true">
-                    ›
+                  <Status kind="reviewing" live>{j.kind === "qa" ? "QA guide" : "Review"}</Status>
+                  <Link className="chev" to={j.href} aria-hidden="true" tabIndex={-1}>
+                    <Icon name="chevron-right" />
                   </Link>
                 </div>
               </div>
@@ -421,7 +412,7 @@ export function Queue({ me }: { me: Me }) {
           </div>
         ) : (
           <div className="empty">
-            <span className="ic">✅</span>
+            <Icon name="check" />
             <b>Nothing running</b>
             Every review and QA guide you started has finished.
           </div>
@@ -441,31 +432,36 @@ export function Queue({ me }: { me: Me }) {
         </div>
       ) : filtering ? (
         <div className="empty">
-          <span className="ic">🔍</span>
+          <Icon name="search" />
           <b>No matches</b>
           Nothing in this view matches your {query ? "search" : "repository filter"}.
         </div>
       ) : notSetUp && tab === "todo" ? (
         <div className="empty" data-testid="setup-needed">
-          <span className="ic">🧭</span>
+          <Icon name="compass" />
           <b>Finish setting {me.brand} up</b>
           Your queue is empty because this install isn't ready yet, not because you're caught up.
           <ul className="setuplist">
             <li>
-              {me.claude_connected === false ? "○" : "✓"} Connect your Claude account —{" "}
-              <Link to="/integrations">Integrations</Link>. Reviews run on it; nothing runs
-              without it.
+              <Icon name={me.claude_connected === false ? "circle" : "check"} />
+              <span>
+                Connect your Claude account — <Link to="/integrations">Integrations</Link>. Reviews
+                run on it; nothing runs without it.
+              </span>
             </li>
             <li>
-              {me.poller_ran === false ? "○" : "✓"} Let the poller run once so it can find the PRs
-              that name you as a reviewer — <Link to="/settings">Settings</Link>.
+              <Icon name={me.poller_ran === false ? "circle" : "check"} />
+              <span>
+                Let the poller run once so it can find the PRs that name you as a reviewer —{" "}
+                <Link to="/settings">Settings</Link>.
+              </span>
             </li>
           </ul>
           You can review any PR right now with the box at the top of this page.
         </div>
       ) : (
         <div className="empty">
-          <span className="ic">{empty[0]}</span>
+          <Icon name={empty[0]} />
           <b>{empty[1]}</b>
           {empty[2]}
         </div>

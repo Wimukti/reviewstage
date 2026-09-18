@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --minify --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --define:process.env.NODE_ENV='\"production\"' && node scripts/icons.mjs",
-    "dev": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --sourcemap --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --define:process.env.NODE_ENV='\"development\"' --watch",
+    "build": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --minify --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --loader:.svg=dataurl --loader:.woff2=file --loader:.woff=empty --define:process.env.NODE_ENV='\"production\"' && node scripts/icons.mjs",
+    "dev": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --sourcemap --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --loader:.svg=dataurl --loader:.woff2=file --loader:.woff=empty --define:process.env.NODE_ENV='\"development\"' --watch",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/*.test.ts",
     "test:browser": "playwright test",
@@ -12,6 +12,8 @@
     "brand": "node scripts/brand.mjs"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "react-markdown": "^10.1.0",

@@ -4,6 +4,8 @@ import { Md } from "./Md";
 import { parsePrRef, prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { Link, navigate, useLocation } from "./router";
 import { pokeRunning, runningFor, useRunning } from "./running";
+import { Banner } from "./ui";
+import { BrandIcon, Icon } from "./icons";
 
 function QaIndex({ me }: { me: Me }) {
   const [guides, setGuides] = useState<QaGuide[]>([]);
@@ -36,7 +38,7 @@ function QaIndex({ me }: { me: Me }) {
         straight to QA.
       </p>
       <div className="card">
-        <h4 style={{ marginTop: 0 }}>Generate a guide</h4>
+        <h2 style={{ marginTop: 0 }}>Generate a guide</h2>
         <form
           className="qagen"
           onSubmit={(e) => {
@@ -72,10 +74,7 @@ function QaIndex({ me }: { me: Me }) {
         </div>
       </div>
       {err && (
-        <div className="banner err" data-testid="qa-index-error">
-          <span>🚫</span>
-          <div>{err}</div>
-        </div>
+        <Banner kind="err" data-testid="qa-index-error">{err}</Banner>
       )}
       {guides.length > 0 ? (
         <>
@@ -103,8 +102,8 @@ function QaIndex({ me }: { me: Me }) {
                   )}
                 </Link>
                 <div className="rowmeta">
-                  <Link className="chev" to={prUrl({ repo: g.repo, num: g.num }, "/qa")} aria-hidden="true">
-                    ›
+                  <Link className="chev" to={prUrl({ repo: g.repo, num: g.num }, "/qa")} aria-hidden="true" tabIndex={-1}>
+                    <Icon name="chevron-right" />
                   </Link>
                 </div>
               </div>
@@ -114,7 +113,7 @@ function QaIndex({ me }: { me: Me }) {
         </>
       ) : (
         <div className="empty">
-          <span className="ic">🧪</span>
+          <Icon name="flask" />
           <b>No guides yet</b>
           Paste a PR URL or number above to build the first one.
         </div>
@@ -190,10 +189,7 @@ function QaDetailView({ pr }: { pr: PrRef }) {
 
   if (loadErr && !d)
     return (
-      <div className="banner err" data-testid="qa-load-error">
-        <span>🚫</span>
-        <div>{loadErr}</div>
-      </div>
+      <Banner kind="err" data-testid="qa-load-error">{loadErr}</Banner>
     );
   if (!d) return <div className="muted">Loading…</div>;
 
@@ -202,12 +198,8 @@ function QaDetailView({ pr }: { pr: PrRef }) {
   // with the agent's own last words behind a disclosure.
   const lastRun =
     d.lastRunFailed || d.lastRunStopped || d.failed || (d.stopped && d.md) ? (
-      <div
-        className={"banner " + (d.lastRunStopped || d.stopped ? "warn" : "err")}
-        data-testid="qa-last-run"
-      >
-        <span>{d.lastRunStopped || d.stopped ? "🛑" : "🔴"}</span>
-        <div>
+      <Banner kind={d.lastRunStopped || d.stopped ? "warn" : "err"} icon="stop" data-testid="qa-last-run">
+        <>
           <b>
             {d.lastRunStopped || d.stopped
               ? "The last attempt was stopped."
@@ -223,8 +215,8 @@ function QaDetailView({ pr }: { pr: PrRef }) {
               <pre>{d.logTail.join("\n")}</pre>
             </details>
           )}
-        </div>
-      </div>
+        </>
+      </Banner>
     ) : null;
 
   const chip = d.usage ? (
@@ -259,12 +251,12 @@ function QaDetailView({ pr }: { pr: PrRef }) {
 
   const gate = (
     <div className="claudegate">
-      <div className="cg-ico">✳</div>
+      <div className="cg-ico">{BrandIcon.claude}</div>
       <div className="cg-body">
         <b>Connect your Claude account to generate a QA guide</b>
         <p className="muted sm">Generating a QA guide runs on your own Claude subscription.</p>
         <Link className="btn primary" to="/integrations">
-          Connect Claude →
+          Connect Claude
         </Link>
       </div>
     </div>
@@ -363,13 +355,10 @@ function QaDetailView({ pr }: { pr: PrRef }) {
           </div>
           <ul className="prog">
             <li className="now">
-              <span className="pm spin" />
+              <span className="pm"><span className="rundot" aria-hidden="true" /></span>
               Starting the job
             </li>
           </ul>
-          <div className="progbar">
-            <div className="progfill" />
-          </div>
           <div className="hint" style={{ marginTop: 10 }}>
             This page refreshes itself; the phases appear as soon as the job is picked up.
           </div>
@@ -390,28 +379,22 @@ function QaDetailView({ pr }: { pr: PrRef }) {
           <ul className="prog">
             {r.phases.map((ph, j) => (
               <li key={ph} className={j < r.cur ? "done" : j === r.cur ? "now" : ""}>
-                <span className={"pm" + (j === r.cur ? " spin" : "")}>
-                  {j < r.cur ? "✓" : j === r.cur ? "" : "○"}
+                <span className="pm">
+                  {j < r.cur ? <Icon name="check" /> : j === r.cur ? <span className="rundot" aria-hidden="true" /> : <Icon name="circle" />}
                 </span>
                 {ph}
               </li>
             ))}
           </ul>
-          <div className="progbar">
-            <div className="progfill" />
-          </div>
           {r.queued && <div className="hint">Waiting for another job to finish first.</div>}
           <div className="hint" style={{ marginTop: 10 }}>
             This page refreshes itself; reading the diff and review history takes a few minutes.
           </div>
           {err && (
-            <div className="banner err" data-testid="qa-error">
-              <span>🚫</span>
-              <div>{err}</div>
-            </div>
+            <Banner kind="err" data-testid="qa-error">{err}</Banner>
           )}
           <div style={{ marginTop: 12 }}>
-            <button className="btn soft" type="button" disabled={busy} onClick={stop}>
+            <button className="btn secondary" type="button" disabled={busy} onClick={stop}>
               {busy ? "Stopping…" : "Stop"}
             </button>
           </div>
@@ -430,28 +413,23 @@ function QaDetailView({ pr }: { pr: PrRef }) {
           {chip}
           <span className="spacer" />
           {d.connected && (
-            <button className="btn soft" type="button" disabled={busy} onClick={gen}>
+            <button className="btn secondary" type="button" disabled={busy} onClick={gen}>
               {busy ? "Starting…" : "Regenerate"}
             </button>
           )}
-          <button className="btn soft" type="button" onClick={download} data-testid="qa-download">
+          <button className="btn secondary" type="button" onClick={download} data-testid="qa-download">
             Download .md
           </button>
           <button className="btn primary" type="button" onClick={copy}>
-            {copied ? "Copied ✓" : "Copy guide"}
+            {copied ? "Copied" : "Copy guide"}
           </button>
         </div>
         {err && (
-          <div className="banner err" data-testid="qa-error">
-            <span>🚫</span>
-            <div>{err}</div>
-          </div>
+          <Banner kind="err" data-testid="qa-error">{err}</Banner>
         )}
-        <div className="card">
-          <Md className="qaguide" tasks>
-            {d.md}
-          </Md>
-        </div>
+        <Md className="qaguide" tasks>
+          {d.md}
+        </Md>
       </>
     );
   }
@@ -460,12 +438,9 @@ function QaDetailView({ pr }: { pr: PrRef }) {
   const note =
     lastRun ??
     (d.state === "stopped" ? (
-      <div className="banner warn" data-testid="qa-last-run">
-        <span>🛑</span>
-        <div>
+      <Banner kind="warn" icon="stop" data-testid="qa-last-run">
           <b>Stopped.</b> Generate a new guide below.
-        </div>
-      </div>
+        </Banner>
     ) : null);
 
   return (
@@ -474,13 +449,10 @@ function QaDetailView({ pr }: { pr: PrRef }) {
       {note}
       {chip}
       {err && (
-        <div className="banner err" data-testid="qa-error">
-          <span>🚫</span>
-          <div>{err}</div>
-        </div>
+        <Banner kind="err" data-testid="qa-error">{err}</Banner>
       )}
       <div className="card top">
-        {d.state === "none" && !note && <h4 style={{ marginTop: 0 }}>No guide yet</h4>}
+        {d.state === "none" && !note && <h2 style={{ marginTop: 0 }}>No guide yet</h2>}
         {d.state === "none" && !note && (
           <p className="muted sm">
             Build a tester-ready QA guide from this PR's diff, review threads and history.

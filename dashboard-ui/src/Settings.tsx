@@ -11,16 +11,13 @@ import {
   type SettingSource,
   type WebhooksStatus,
 } from "./api";
+import { Banner, RawBanner } from "./ui";
+import { Status } from "./ui";
 
 // Runtime settings — the knobs an operator changes without editing .env or restarting
 // anything. They live in $ROOT/settings.json (settings.json > .env > default); the poller and
 // the scripts re-read the file every cycle. Admin-only to save; everyone else sees a read-only
 // view. DRY_RUN is deliberately absent: it stays in .env as a restart-gated safety.
-
-function Banner({ html }: { html: string }) {
-  if (!html) return null;
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-}
 
 const SRC_LABEL: Record<SettingSource, string> = {
   settings: "Settings",
@@ -30,7 +27,7 @@ const SRC_LABEL: Record<SettingSource, string> = {
 
 function Source({ s }: { s: SettingSource }) {
   return (
-    <span className={"setsrc " + s} title={`Where the current value comes from: ${SRC_LABEL[s]}`}>
+    <span className="chip setsrc" title={`Where the current value comes from: ${SRC_LABEL[s]}`}>
       {SRC_LABEL[s]}
     </span>
   );
@@ -105,7 +102,7 @@ function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: nu
   const minutes = Math.round(pollSeconds / 60);
   return (
     <div className="card" data-testid="webhooks-card">
-      <h2>Webhooks</h2>
+      <h2 style={{ marginTop: 0 }}>Webhooks</h2>
       <p className="muted sm">
         GitHub can tell this install about a review request the moment it happens, instead of
         waiting for the next poll. The receiver only updates the queue and sends the card — it
@@ -123,9 +120,9 @@ function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: nu
           </div>
         </div>
         <div className="setctl">
-          <span className={"pill " + (wh.active ? "ok" : "warn")} data-testid="webhooks-status">
-            {wh.active ? "webhooks active" : "polling only"}
-          </span>
+          <Status kind={wh.active ? "ok" : "warn"} data-testid="webhooks-status">
+            {wh.active ? "Webhooks active" : "Polling only"}
+          </Status>
         </div>
       </div>
       <div className="setrow">
@@ -141,7 +138,7 @@ function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: nu
           <b>Secret</b>
           <div className="hint">
             {wh.configured ? (
-              <span className="hint ok">✓ configured</span>
+              <Status tone="green">Configured</Status>
             ) : (
               <>
                 not set · <code>GITHUB_WEBHOOK_SECRET</code> in <code>.env</code> (restart the server after adding it)
@@ -174,7 +171,7 @@ function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: nu
           </pre>
         </div>
         <div className="setctl">
-          <button className="btn ghost" type="button" onClick={copy}>
+          <button className="btn quiet" type="button" onClick={copy}>
             {copied ? "Copied" : "Copy instructions"}
           </button>
         </div>
@@ -287,31 +284,26 @@ export function Devices({ me }: { me: Me }) {
 
   return (
     <div className="card" id="devices">
-      <h2>Devices</h2>
+      <h2 style={{ marginTop: 0 }}>Devices</h2>
       <p className="muted sm">
         Phones, the CLI and other browsers that hold a token for your account. Each one can post
         and approve as you and nothing more — it can never read your GitHub or Claude token.
         Unused for {meta.ttl_days} days, a token expires on its own; up to {meta.max} per person.
       </p>
       {err && (
-        <div className="banner err">
-          <span>🚫</span>
-          <div>{err}</div>
-        </div>
+        <Banner kind="err">{err}</Banner>
       )}
       {minted && (
-        <div className="banner warn" role="status">
-          <span>🔑</span>
-          <div>
+        <Banner kind="warn" icon="key" role="status">
             <b>Token for “{minted.name}” — copy it now.</b> It is shown once and cannot be
             recovered; the server keeps only a hash. Anyone holding it can act as you until you
             revoke it here.
             <pre className="devtok" data-testid="device-token">{minted.token}</pre>
             <div className="devnew">
-              <button className="btn soft" type="button" onClick={copy}>
-                {copied ? "Copied ✓" : "Copy token"}
+              <button className="btn secondary" type="button" onClick={copy}>
+                {copied ? "Copied" : "Copy token"}
               </button>
-              <button className="btn ghost" type="button" onClick={() => setMinted(null)}>
+              <button className="btn quiet" type="button" onClick={() => setMinted(null)}>
                 I have saved it
               </button>
             </div>
@@ -319,8 +311,7 @@ export function Devices({ me }: { me: Me }) {
               Use it as <code>Authorization: Bearer &lt;token&gt;</code> on any <code>/api/*</code>{" "}
               call.{minted.warning ? ` ${minted.warning}` : ""}
             </div>
-          </div>
-        </div>
+          </Banner>
       )}
       {rows === null ? (
         <div className="muted">Loading…</div>
@@ -338,7 +329,7 @@ export function Devices({ me }: { me: Me }) {
                 </div>
               </div>
               <button
-                className="btn ghost"
+                className="btn quiet"
                 type="button"
                 disabled={busy}
                 aria-label={`Revoke ${d.name}`}
@@ -366,7 +357,7 @@ export function Devices({ me }: { me: Me }) {
         </button>
         {rows && rows.length > 0 && (
           <button
-            className="btn ghost"
+            className="btn quiet"
             type="button"
             disabled={busy}
             onClick={() => {
@@ -419,10 +410,7 @@ export function Settings({ me }: { me: Me }) {
 
   if (err && !d)
     return (
-      <div className="banner err" data-testid="settings-error">
-        <span>🚫</span>
-        <div>{err}</div>
-      </div>
+      <Banner kind="err" data-testid="settings-error">{err}</Banner>
     );
   if (!d || !form) return <div className="muted">Loading…</div>;
   const ro = !d.is_admin;
@@ -447,7 +435,7 @@ export function Settings({ me }: { me: Me }) {
       setBanner(r.bannerHtml || "");
     } catch (e) {
       setBanner(
-        `<div class='banner err'><span>🚫</span><div>${String((e as Error).message || e)
+        `<div class='banner err'><div>${String((e as Error).message || e)
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")}</div></div>`,
       );
@@ -465,18 +453,15 @@ export function Settings({ me }: { me: Me }) {
         over the default.
       </p>
       {ro && (
-        <div className="banner info">
-          <span>👁</span>
-          <div>
+        <Banner kind="info" icon="eye">
             Read-only: only the admin (<code>{d.admin || "the REVIEWER in .env"}</code>) can change
             these. You can see what is in effect.
-          </div>
-        </div>
+          </Banner>
       )}
-      <Banner html={banner} />
+      <RawBanner html={banner} />
 
       <div className="card">
-        <h2>Poller</h2>
+        <h2 style={{ marginTop: 0 }}>Poller</h2>
         <div className="setrow">
           <div className="setlbl">
             <b>Poll GitHub for review requests</b>
@@ -548,7 +533,7 @@ export function Settings({ me }: { me: Me }) {
       <WebhooksCard wh={d.webhooks} pollSeconds={form.poll_interval_seconds} />
 
       <div className="card">
-        <h2>Notifications</h2>
+        <h2 style={{ marginTop: 0 }}>Notifications</h2>
         <p className="muted sm">
           Which backends fire for review requested / review ready / stopped / QA ready. URLs come
           from <code>.env</code> and are shown here as configured or not — they cannot be edited
@@ -572,7 +557,7 @@ export function Settings({ me }: { me: Me }) {
               </span>
               {meta.envLabel && (
                 <span className={"envnote" + (configured ? " on" : "")}>
-                  {configured ? "✓ configured" : "not set"} · <code>{meta.envLabel}</code>
+                  {configured ? "Configured" : "Not set"} · <code>{meta.envLabel}</code>
                 </span>
               )}
             </label>
@@ -585,7 +570,7 @@ export function Settings({ me }: { me: Me }) {
       </div>
 
       <div className="card">
-        <h2>PR filters</h2>
+        <h2 style={{ marginTop: 0 }}>PR filters</h2>
         <div className="setrow">
           <div className="setlbl">
             <b>Ignore review requests on PRs older than</b>
@@ -634,7 +619,7 @@ export function Settings({ me }: { me: Me }) {
             {saving ? "Saving…" : "Save settings"}
           </button>
           <button
-            className="btn ghost"
+            className="btn quiet"
             type="button"
             disabled={!dirty || saving}
             onClick={() => setForm(d.settings)}

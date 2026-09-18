@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Me } from "./api";
-import { navigate } from "./router";
+import { Link } from "./router";
 
 interface TourStep {
   sel?: string;
@@ -11,7 +11,7 @@ interface TourStep {
 
 const TOUR: TourStep[] = [
   {
-    title: "Welcome to ReviewStage 👋",
+    title: "Welcome to ReviewStage",
     text: "ReviewStage drafts the PR reviews you owe your team. You tick what's worth saying and post it — as yourself. Here's the 30-second setup.",
   },
   {
@@ -31,7 +31,7 @@ const TOUR: TourStep[] = [
     text: "PRs waiting on your review land here. Open one, choose an effort level, and ReviewStage drafts the review — nothing posts to GitHub without your click.",
   },
   {
-    title: "You're set 🎉",
+    title: "You're set",
     text: "Open a PR from your queue to run your first review. You stay the reviewer — ReviewStage just does the reading and drafting.",
     cta: { label: "Go to Integrations", to: "/integrations" },
   },
@@ -41,6 +41,7 @@ const EVT = "reviewstage:start-tour";
 // The queue renders after its data loads, so the auto-start waits for the target this long.
 const AUTO_START_SEL = '[data-tour="queue"]';
 const AUTO_START_WAIT_MS = 5000;
+const FOCUSABLE = 'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 // Comma-separated selectors are tried in order: the first that matches wins (unlike
 // querySelector, which picks document order).
@@ -89,12 +90,15 @@ export function Tour({ me }: { me: Me }) {
   const [seen, setSeen] = useState(me.tour_seen !== false);
   const ringRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Whatever had focus when the tour opened gets it back when it closes.
+  const trigger = useRef<HTMLElement | null>(null);
 
   const end = useCallback(() => {
     setSeen(true);
     setOpen(false);
     // Best effort: a server that cannot record it costs the person one repeat, not an error.
     void api.tourSeen().catch(() => {});
+    trigger.current?.focus();
   }, []);
 
   // Open on demand, and auto-start once on the queue for first-timers. `tour_seen` absent means
@@ -102,6 +106,7 @@ export function Tour({ me }: { me: Me }) {
   // every load, so we only ever offer it from the Help menu there.
   useEffect(() => {
     const onStart = () => {
+      trigger.current = document.activeElement as HTMLElement | null;
       setI(0);
       setOpen(true);
     };
@@ -159,13 +164,45 @@ export function Tour({ me }: { me: Me }) {
     return () => window.removeEventListener("resize", place);
   }, [open, place]);
 
+  // A dialog: focus moves into it, Tab cycles inside it, Escape closes it.
+  useEffect(() => {
+    if (!open) return;
+    const card = cardRef.current;
+    (card?.querySelector<HTMLElement>(".btn.primary") ?? card?.querySelector<HTMLElement>(FOCUSABLE))?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        end();
+        return;
+      }
+      if (e.key !== "Tab" || !card) return;
+      const items = [...card.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (items.length === 0) return;
+      const head = items[0];
+      const tail = items[items.length - 1];
+      const cur = document.activeElement as HTMLElement | null;
+      if (!cur || !card.contains(cur)) {
+        e.preventDefault();
+        head.focus();
+      } else if (e.shiftKey && cur === head) {
+        e.preventDefault();
+        tail.focus();
+      } else if (!e.shiftKey && cur === tail) {
+        e.preventDefault();
+        head.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, i, end]);
+
   if (!open) return null;
   const s = TOUR[i];
   const dimmed = !s.sel;
   const last = i === TOUR.length - 1;
 
   return (
-    <div className={"tourv" + (dimmed ? " dim" : "")} data-testid="tour" role="dialog" aria-label="Guided tour">
+    <div className={"tourv" + (dimmed ? " dim" : "")} data-testid="tour" role="dialog" aria-modal="true" aria-label="Guided tour">
       <div className="tourmask" onClick={end} />
       <div className="tourring" ref={ringRef} />
       <div className="tourcard" ref={cardRef}>
@@ -177,33 +214,24 @@ export function Tour({ me }: { me: Me }) {
           ))}
         </div>
         <div className="tourbtns">
-          <button className="btn ghost" onClick={end}>
+          <button className="btn quiet" type="button" onClick={end}>
             Skip
           </button>
           <span className="spacer" />
           {i > 0 && (
-            <button className="btn soft" onClick={() => setI((n) => n - 1)}>
+            <button className="btn secondary" type="button" onClick={() => setI((n) => n - 1)}>
               Back
             </button>
           )}
-          {s.cta ? (
-            <button
-              className="btn primary"
-              onClick={() => {
-                navigate(s.cta!.to);
-                end();
-              }}
-            >
+          {/* The tour ends where it started; the CTA is an offer, not the exit. */}
+          {s.cta && (
+            <Link className="btn secondary" to={s.cta.to} onClick={end}>
               {s.cta.label}
-            </button>
-          ) : (
-            <button
-              className="btn primary"
-              onClick={() => (last ? end() : setI((n) => n + 1))}
-            >
-              {last ? "Done" : "Next"}
-            </button>
+            </Link>
           )}
+          <button className="btn primary" type="button" onClick={() => (last ? end() : setI((n) => n + 1))}>
+            {last ? "Done" : "Next"}
+          </button>
         </div>
       </div>
     </div>

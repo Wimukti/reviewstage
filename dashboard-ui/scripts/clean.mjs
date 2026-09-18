@@ -18,5 +18,8 @@ try {
   process.exit(0); // nothing built yet
 }
 for (const f of names) {
-  if (f === "assets.json" || /^app-[0-9a-f]{8,}\.(js|css)$/.test(f)) await rm(join(out, f));
+  // The self-hosted fonts are emitted by esbuild's file loader with their own content hash.
+  if (f === "assets.json" || /^app-[0-9a-f]{8,}\.(js|css)$/.test(f) || /\.woff2$/.test(f)) {
+    await rm(join(out, f));
+  }
 }

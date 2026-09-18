@@ -11,10 +11,9 @@ import {
   type Token,
 } from "./api";
 import { MdEditor } from "./MdEditor";
-
-function Banner({ html }: { html: string }) {
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-}
+import { Banner, RawBanner, SlowBusy } from "./ui";
+import { Icon } from "./icons";
+import { Status } from "./ui";
 
 // Fallback only: every stat the server sends carries its own sample floor, and one definition
 // of "enough data to rate" ships in this product.
@@ -69,7 +68,7 @@ function RuleForm({
           value={rule}
           onChange={(e) => setRule(e.target.value)}
         />
-        <button className="btn soft" type="submit" disabled={busy}>
+        <button className="btn secondary" type="submit" disabled={busy}>
           {busy ? "Adding…" : "Add rule"}
         </button>
       </form>
@@ -154,7 +153,7 @@ function SkillEditor({
           </button>
           {!isGlobal && value && (
             <button
-              className="btn soft"
+              className="btn secondary"
               type="button"
               disabled={busy}
               onClick={() =>
@@ -196,7 +195,7 @@ function SkillEditor({
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />
-            <button className="btn warn" type="submit" disabled={busy}>
+            <button className="btn destructive" type="submit" disabled={busy}>
               {busy ? "Restoring…" : "Restore"}
             </button>
           </form>
@@ -234,7 +233,7 @@ function DepthEditor({ token, level, d, onDone }: {
     <details className="skilled">
       <summary>
         {d.name} depth{" "}
-        <span className={d.edited ? "tag-on" : "tag-off"}>{d.edited ? "Edited" : "Default"}</span>
+        <Status kind={d.edited ? "edited" : "archived"}>{d.edited ? "Edited" : "Default"}</Status>
       </summary>
       <div className="dbody">
         <p className="muted sm" style={{ marginTop: 0 }}>
@@ -268,7 +267,7 @@ function DepthEditor({ token, level, d, onDone }: {
             </button>
             {d.edited && (
               <button
-                className="btn soft"
+                className="btn secondary"
                 type="button"
                 disabled={busy}
                 onClick={() =>
@@ -336,7 +335,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
       <details className="skilled" data-testid="repo-profile">
         <summary>
           Profile for <code>{repo}</code>{" "}
-          {err ? <span className="tag-req">Unavailable</span> : <span className="tag-off">Loading</span>}
+          {err ? <Status tone="red">Unavailable</Status> : <Status tone="graphite">Loading</Status>}
         </summary>
         {err && (
           <div className="dbody">
@@ -361,13 +360,13 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
       // an error.
       else if (r.started === false && r.state === "running")
         onBanner(
-          `<div class='banner warn'><span>⏳</span><div>Already profiling this repository — that click did not start a second build.</div></div>`
+          `<div class='banner warn'><div>Already profiling this repository — that click did not start a second build.</div></div>`
         );
       else if (r.started === false && r.reason)
-        onBanner(`<div class='banner err'><span>⏳</span><div>Not started: ${r.reason}.</div></div>`);
+        onBanner(`<div class='banner err'><div>Not started: ${r.reason}.</div></div>`);
     } catch (e) {
       onBanner(
-        `<div class='banner err'><span>🚫</span><div>${(e as Error).message || "That didn't work."}</div></div>`
+        `<div class='banner err'><div>${(e as Error).message || "That didn't work."}</div></div>`
       );
     } finally {
       setBusy(false);
@@ -375,13 +374,13 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
   };
   const tag =
     d.state === "running" ? (
-      <span className="tag-req">Profiling</span>
+      <Status tone="amber" live>Profiling</Status>
     ) : d.state === "done" ? (
-      <span className="tag-on">Profiled</span>
+      <Status tone="green">Profiled</Status>
     ) : d.state === "failed" ? (
-      <span className="tag-req">Failed</span>
+      <Status tone="red">Failed</Status>
     ) : (
-      <span className="tag-off">Never run</span>
+      <Status tone="graphite">Never run</Status>
     );
   const usage = d.last?.usage;
   const c = d.counts;
@@ -402,14 +401,10 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
       <summary>
         Profile for <code>{repo}</code> {tag}
         {drifted && (
-          <span className="tag-req" data-testid="profile-stale" style={{ marginLeft: 6 }}>
-            Stale
-          </span>
+          <Status kind="stale" data-testid="profile-stale">Stale</Status>
         )}
         {d.invalid && (
-          <span className="tag-req" style={{ marginLeft: 6 }}>
-            Unreadable
-          </span>
+          <Status tone="red">Unreadable</Status>
         )}
       </summary>
       <div className="dbody">
@@ -422,9 +417,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
           </div>
         )}
         {drifted && st && (
-          <div className="banner warn" data-testid="profile-stale-note">
-            <span>🔄</span>
-            <div>
+          <Banner kind="warn" data-testid="profile-stale-note">
               <b>This profile is out of date with the checkout.</b>{" "}
               {st.head !== st.currentHead && (
                 <>
@@ -441,19 +434,15 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
                   it is re-profiled or edited.
                 </>
               )}
-            </div>
-          </div>
+            </Banner>
         )}
         {unchecked && (
-          <div className="banner warn" data-testid="profile-unvalidated">
-            <span>⚠️</span>
-            <div>
+          <Banner kind="warn" data-testid="profile-unvalidated">
               <b>These paths were never checked against the repository.</b> The profile was saved
               with no clone of <code>{repo}</code> on this box, so nothing confirmed the globs
               match real files — and reviews are handed it as fact.
               {meta?.validated_note ? <> ({meta.validated_note})</> : null}
-            </div>
-          </div>
+            </Banner>
         )}
         {degraded.length > 0 && (
           <div className="hint" data-testid="profile-degraded">
@@ -476,7 +465,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
                 : `${d.running.phases[d.running.cur]} (${d.running.cur + 1}/${d.running.phases.length})`}
             </span>
             <button
-              className="btn soft"
+              className="btn secondary"
               type="button"
               disabled={busy}
               onClick={() => act(() => api.profileStop(repo, d.token))}
@@ -573,7 +562,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
                     </button>
                     <button
                       type="button"
-                      className="btn soft"
+                      className="btn secondary"
                       data-testid="profile-restore"
                       disabled={busy || running}
                       onClick={() => {
@@ -612,7 +601,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
             title={d.connected ? "" : "Connect your Claude account in Integrations first"}
             onClick={() => act(() => api.profileRun(repo, d.token))}
           >
-            {running && <span className="spin" aria-hidden="true" />}{" "}
+            <SlowBusy busy={running} />
             {running
               ? `Profiling… (${d.running?.text || "starting"})`
               : d.state === "failed" || d.failed
@@ -685,7 +674,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
             </div>
             <div className="inrow" style={{ marginTop: 10 }}>
               <button
-                className={"btn " + (confirmEmpty ? "warn" : "primary")}
+                className={"btn " + (confirmEmpty ? "destructive" : "primary")}
                 type="submit"
                 disabled={busy || md === d.md}
               >
@@ -749,7 +738,7 @@ function Suggestion({
     } catch (e) {
       onDone(
         null as unknown as SkillsData,
-        `<div class='banner err'><span>🚫</span><div>${(e as Error).message || "That didn't work."}</div></div>`,
+        `<div class='banner err'><div>${(e as Error).message || "That didn't work."}</div></div>`,
       );
     } finally {
       setBusy(false);
@@ -764,8 +753,8 @@ function Suggestion({
     <div className="row" data-testid="rule-suggestion">
       <div className="rowlink">
         <div className="rowtop">
-          <span className="pill blocker">Suggested rule</span>
-          <span className={"pill " + s.severity} />
+          <Status tone="blue">Suggested rule</Status>
+          <Status kind={s.severity} />
           {s.repos.length === 1 && <span className="repochip">{s.repos[0]}</span>}
           <span className="muted sm">{evidence}</span>
         </div>
@@ -804,7 +793,7 @@ function Suggestion({
                   never on a page load — this page used to burn two model calls per render. */}
               {s.connected ? (
                 <button
-                  className="btn soft"
+                  className="btn secondary"
                   type="button"
                   data-testid="rule-draft"
                   disabled={busy || s.drafting}
@@ -853,7 +842,7 @@ function Suggestion({
         </details>
         <div className="inrow" style={{ marginTop: 10 }}>
           {s.dismissed ? (
-            <button className="btn soft" type="button" disabled={busy} onClick={() => act("undismiss")}>
+            <button className="btn secondary" type="button" disabled={busy} onClick={() => act("undismiss")}>
               Undo dismiss
             </button>
           ) : (
@@ -867,7 +856,7 @@ function Suggestion({
               >
                 Accept — add to {s.targetLabel}
               </button>
-              <button className="btn soft" type="button" disabled={busy} onClick={() => act("dismiss")}>
+              <button className="btn secondary" type="button" disabled={busy} onClick={() => act("dismiss")}>
                 Dismiss
               </button>
             </>
@@ -909,7 +898,7 @@ function SuggestedRules({
       {dismissed.length > 0 && (
         <>
           <button
-            className="btn soft"
+            className="btn secondary"
             type="button"
             style={{ marginTop: 10 }}
             data-testid="show-dismissed"
@@ -955,10 +944,7 @@ export function Skills() {
 
   if (err && !d)
     return (
-      <div className="banner err" data-testid="skills-error">
-        <span>🚫</span>
-        <div>{err}</div>
-      </div>
+      <Banner kind="err" data-testid="skills-error">{err}</Banner>
     );
   if (!d) return <div className="muted">Loading…</div>;
 
@@ -991,10 +977,10 @@ export function Skills() {
         below. Quick / Standard / Deep all use the same skill — they differ only in the review-depth
         instructions, which you can edit too.
       </p>
-      {banner && <Banner html={banner} />}
+      {banner && <RawBanner html={banner} />}
 
       <div className="card">
-        <h4 style={{ marginTop: 0 }}>Which skill runs your reviews?</h4>
+        <h2 style={{ marginTop: 0 }}>Which skill runs your reviews?</h2>
         <div className="skillsel">
           {opt("team", "Team default", "the shared reviewing approach", false)}
           {opt(
@@ -1038,12 +1024,12 @@ export function Skills() {
               not evidence of an edit. "Edited" requires the server to have compared the bytes
               against the shipped skill, which it can only do when that skill is on this box. */}
           {d.globalEdited === true ? (
-            <span className="tag-on">Edited</span>
+            <Status kind="edited">Edited</Status>
           ) : d.globalEdited === false ? (
-            <span className="tag-off">Built-in</span>
+            <Status tone="graphite">Built-in</Status>
           ) : (
-            <span
-              className="tag-off"
+            <Status
+              tone="graphite"
               title={
                 d.builtinAvailable === false
                   ? "The shipped skill is not on this box, so there is nothing to compare this one against."
@@ -1051,7 +1037,7 @@ export function Skills() {
               }
             >
               In use
-            </span>
+            </Status>
           )}
         </summary>
         <div className="dbody">
@@ -1086,7 +1072,7 @@ export function Skills() {
       <details className="skilled">
         <summary>
           Edit your own skill{" "}
-          <span className={d.hasMySkill ? "tag-on" : "tag-off"}>{d.hasMySkill ? "Custom" : "None yet"}</span>
+          <Status tone={d.hasMySkill ? "green" : "graphite"}>{d.hasMySkill ? "Custom" : "None yet"}</Status>
         </summary>
         <div className="dbody">
           <SkillEditor token={d.token} target="me" value={d.mySkill} onDone={onDone} />
@@ -1104,7 +1090,7 @@ export function Skills() {
             <details className="skilled" key={r.repo} data-testid="repo-skill">
               <summary>
                 Team default for <code>{r.repo}</code>{" "}
-                <span className={r.has ? "tag-on" : "tag-off"}>{r.has ? "Override" : "Shared default"}</span>
+                <Status tone={r.has ? "green" : "graphite"}>{r.has ? "Override" : "Shared default"}</Status>
               </summary>
               <div className="dbody">
                 <SkillEditor token={d.token} target={`repo:${r.repo}`} value={r.content} onDone={onDone} />
@@ -1146,7 +1132,7 @@ export function Skills() {
       </p>
       {d.stats.length === 0 ? (
         <div className="empty">
-          <span className="ic">🧭</span>
+          <Icon name="compass" />
           <b>No scores yet</b>
           Post a few reviews and each skill's kept-rate will show up here.
         </div>
@@ -1158,9 +1144,9 @@ export function Skills() {
                 <div className="rowtop">
                   <span className="ttl">
                     {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
-                    {s.skill === d.user && <span className="tag-on" style={{ marginLeft: 6 }}>you</span>}
+                    {s.skill === d.user && <span className="chip" style={{ marginLeft: 6 }}>you</span>}
                   </span>
-                  <span className="num" style={{ WebkitTextFillColor: "var(--fg)" }}>
+                  <span className="num" style={{ color: "var(--ink)" }}>
                     {ratable(s)
                       ? `${s.rate.toFixed(1)}% kept or reworded`
                       : `n = ${s.total} of ${floorOf(s)} — too few to rate`}

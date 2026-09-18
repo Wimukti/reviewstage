@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Me, type QueueRow } from "./api";
 import { parsePrRef, prUrl } from "./pr";
 import { navigate } from "./router";
+import { Icon, NavIcon } from "./icons";
 
 // The command palette is the one place to search + review any PR. Opened by the sidebar's
 // "Review a PR" button, by ⌘K / Ctrl-K anywhere, or by the reviewstage:open-palette event.
@@ -20,16 +21,16 @@ interface Cmd {
   author?: string;
   label?: string; // action / nav rows
   sub?: string;
-  icon?: string;
+  icon?: React.ReactNode;
 }
 
-const SECTIONS: [string, string, string][] = [
-  ["Queue", "/", "◧"],
-  ["QA guides", "/qa", "◑"],
-  ["Learnings", "/learnings", "✦"],
-  ["Skills", "/skills", "◇"],
-  ["Integrations", "/integrations", "▦"],
-  ["How it works", "/how", "?"],
+const SECTIONS: [string, string, React.ReactNode][] = [
+  ["Queue", "/", NavIcon.queue],
+  ["QA guides", "/qa", NavIcon.qa],
+  ["Learnings", "/learnings", NavIcon.learnings],
+  ["Skills", "/skills", NavIcon.skills],
+  ["Integrations", "/integrations", NavIcon.integrations],
+  ["How it works", "/how", NavIcon.how],
 ];
 
 export function CommandPalette({ me }: { me: Me }) {
@@ -99,7 +100,7 @@ export function CommandPalette({ me }: { me: Me }) {
         group: "Review",
         label: `Review PR #${parsed.number}`,
         sub: multi ? `in ${parsed.repo}` : "open the review page",
-        icon: "✨",
+        icon: <Icon name="git" />,
         run: () => go(prUrl({ repo: parsed.repo, num: parsed.number })),
       });
     } else if (parsed) {
@@ -110,7 +111,7 @@ export function CommandPalette({ me }: { me: Me }) {
           group: "Review",
           label: `Review PR #${parsed.number} in ${r}`,
           sub: "open the review page",
-          icon: "✨",
+          icon: <Icon name="git" />,
           run: () => go(prUrl({ repo: r, num: parsed.number })),
         });
       }
@@ -167,7 +168,7 @@ export function CommandPalette({ me }: { me: Me }) {
     <div className="cmdk-back" onMouseDown={close}>
       <div className="cmdk" role="dialog" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}>
         <div className="cmdk-inwrap">
-          <span className="cmdk-search" aria-hidden="true">⌕</span>
+          <span className="cmdk-search" aria-hidden="true"><Icon name="search" /></span>
           <input
             ref={inputRef}
             className="cmdk-in"

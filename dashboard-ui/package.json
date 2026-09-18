@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --minify --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --loader:.woff2=file --loader:.woff=empty --define:process.env.NODE_ENV='\"production\"' && node scripts/icons.mjs",
-    "dev": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --sourcemap --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --loader:.woff2=file --loader:.woff=empty --define:process.env.NODE_ENV='\"development\"' --watch",
+    "build": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --minify --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --loader:.svg=dataurl --loader:.woff2=file --loader:.woff=empty --define:process.env.NODE_ENV='\"production\"' && node scripts/icons.mjs",
+    "dev": "node scripts/clean.mjs && esbuild src/main.tsx --bundle --sourcemap --jsx=automatic --outdir=../bin/static --entry-names=app --loader:.png=dataurl --loader:.svg=dataurl --loader:.woff2=file --loader:.woff=empty --define:process.env.NODE_ENV='\"development\"' --watch",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/*.test.ts",
     "test:browser": "playwright test",

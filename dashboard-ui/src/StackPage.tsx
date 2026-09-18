@@ -2,10 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { api, errMessage, type StackData } from "./api";
 import { prLabel, prUrl } from "./pr";
 import { Link, useLocation } from "./router";
-
-function Pill({ kind }: { kind: string }) {
-  return <span className={"pill " + kind}>{kind}</span>;
-}
+import { Banner } from "./ui";
+import { BrandIcon, Icon } from "./icons";
+import { Status } from "./ui";
 
 export function StackPage() {
   const { search } = useLocation();
@@ -70,10 +69,7 @@ export function StackPage() {
     return (
       <>
         {head}
-        <div className="banner err" data-testid="stack-error">
-          <span>🚫</span>
-          <div>{loadErr}</div>
-        </div>
+        <Banner kind="err" data-testid="stack-error">{loadErr}</Banner>
       </>
     );
   if (!d) return <>{head}<div className="muted">Loading…</div></>;
@@ -94,12 +90,12 @@ export function StackPage() {
 
   const gate = (
     <div className="claudegate">
-      <div className="cg-ico">✳</div>
+      <div className="cg-ico">{BrandIcon.claude}</div>
       <div className="cg-body">
         <b>Connect your Claude account to run reviews</b>
         <p className="muted sm">Reviews run on your own Claude subscription.</p>
         <Link className="btn primary" to="/integrations">
-          Connect Claude →
+          Connect Claude
         </Link>
       </div>
     </div>
@@ -146,15 +142,15 @@ export function StackPage() {
                 </div>
                 <div className="muted sm rowsub">
                   <span>
-                    <code>{it.base}</code> ← <code>{it.head}</code>
+                    <code>{it.head}</code> into <code>{it.base}</code>
                   </span>
                   {pos && <span>{pos} of stack</span>}
                 </div>
               </Link>
               <div className="rowmeta">
-                <Pill kind={it.state} />
-                <Link className="chev" to={prUrl({ repo: d.repo, num: it.num })} aria-hidden="true">
-                  ›
+                <Status kind={it.state} />
+                <Link className="chev" to={prUrl({ repo: d.repo, num: it.num })} aria-hidden="true" tabIndex={-1}>
+                  <Icon name="chevron-right" />
                 </Link>
               </div>
             </div>
@@ -163,19 +159,13 @@ export function StackPage() {
       </div>
       <div className="card top">
         {err && (
-          <div className="banner err">
-            <span>🚫</span>
-            <div>{err}</div>
-          </div>
+          <Banner kind="err">{err}</Banner>
         )}
         {started !== null && (
-          <div className="banner ok">
-            <span>✓</span>
-            <div>
+          <Banner kind="ok">
               Queued {started.toLocaleString()} review{started === 1 ? "" : "s"}. They run one at a
               time on the box.
-            </div>
-          </div>
+            </Banner>
         )}
         {d.connected ? (
           <>

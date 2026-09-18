@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, errMessage, type KeepBlock, type RollupData, type RollupSeriesPoint } from "./api";
 import { Link } from "./router";
+import { Banner } from "./ui";
 
 // Insights — ReviewStage's activity, precision and agreement, aggregated from files it already writes.
 // All charts are hand-rolled SVG (no chart dependency), matching ReviewStage's no-framework style.
 
+// Chart colours are the tokens, so the charts follow the theme like everything else.
 const C = {
-  accent: "#7c83f0",
-  green: "#34a86e",
-  amber: "#d9a441",
-  red: "#e5658a",
-  blue: "#4c9be8",
-  dim: "#8a8f98",
-  faint: "#3a3f4a",
+  accent: "var(--blue)",
+  green: "var(--green)",
+  amber: "var(--amber)",
+  red: "var(--red)",
+  blue: "var(--blue)",
+  dim: "var(--graphite)",
+  faint: "var(--hairline)",
+  ink: "var(--ink)",
 };
 
 // Below this many observations a percentage is noise with a decimal point on it. Show the
@@ -123,7 +126,7 @@ function Donut({ segments, center, sub }:
             offset += len;
             return el;
           })}
-        <text x={cx} y={cy - 2} textAnchor="middle" fontSize={22} fontWeight={700} fill="#e8eaf0">
+        <text x={cx} y={cy - 2} textAnchor="middle" fontSize={22} fontWeight={600} fill={C.ink}>
           {center}
         </text>
         <text x={cx} y={cy + 16} textAnchor="middle" fontSize={9} fill={C.dim}>{sub}</text>
@@ -167,7 +170,7 @@ function Kpi({ label, value, sub, allTime }:
       <div className="kpi-l">
         {label}
         {allTime && (
-          <span className="kpi-tag" title="Not affected by the range pills above">
+          <span className="chip kpi-tag" title="Not affected by the range pills above">
             all-time
           </span>
         )}
@@ -219,10 +222,7 @@ export function Rollup() {
 
   if (err)
     return (
-      <div className="banner err" data-testid="insights-error">
-        <span>🚫</span>
-        <div>{err}</div>
-      </div>
+      <Banner kind="err" data-testid="insights-error">{err}</Banner>
     );
   if (!d || !period) return <div className="wrap-load muted">Loading…</div>;
 
@@ -282,9 +282,7 @@ export function Rollup() {
       )}
 
       {dry > 0 && (
-        <div className="banner info" data-testid="dry-banner">
-          <span>🧪</span>
-          <div>
+        <Banner kind="info" icon="flask" data-testid="dry-banner">
             <b>
               {num(dry)} finding decision(s) were made while <code>DRY_RUN=1</code>
               {allDecided === 0 ? " — and none outside it yet" : ""}.
@@ -293,8 +291,7 @@ export function Rollup() {
             that is why those can read as empty on a pilot. They are not lost —{" "}
             <Link to="/learnings">What has been learned</Link> lists them, and every review
             weighs them. Turn <code>DRY_RUN</code> off to start rating.
-          </div>
-        </div>
+          </Banner>
       )}
 
       <div className="kpirow">

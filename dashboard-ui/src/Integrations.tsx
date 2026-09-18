@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, errBanner, errMessage, type IntegrationsData, type Me } from "./api";
 import { BrandIcon } from "./icons";
-
-function Banner({ html }: { html: string }) {
-  if (!html) return null;
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-}
+import { Banner, RawBanner, SlowBusy } from "./ui";
+import { Status } from "./ui";
 
 function Card({
   icon,
@@ -40,9 +37,9 @@ function Card({
   );
 }
 
-const ON = <span className="tag-on">Connected</span>;
-const OFF = <span className="tag-off">Not connected</span>;
-const REQ = <span className="tag-req">Required</span>;
+const ON = <Status tone="green">Connected</Status>;
+const OFF = <Status tone="graphite">Not connected</Status>;
+const REQ = <Status tone="amber">Required</Status>;
 
 function GithubCtl({ token, onDone }: { token: IntegrationsData["token"]; onDone: (b: string) => void }) {
   const [show, setShow] = useState(false);
@@ -133,7 +130,7 @@ function SlackCtl({
         </button>
       </div>
       <div className="hint">
-        In Slack: your <b>profile picture</b> → <b>Profile</b> → the <b>⋮</b> menu →{" "}
+        In Slack: your <b>profile picture</b>, then <b>Profile</b>, then the <b>more</b> menu, then{" "}
         <b>Copy member ID</b>.
       </div>
     </form>
@@ -184,8 +181,8 @@ function DiscordCtl({
         </button>
       </div>
       <div className="hint">
-        In Discord: <b>User Settings</b> → <b>Advanced</b> → turn on <b>Developer Mode</b>, then
-        right-click your name → <b>Copy User ID</b>.
+        In Discord: <b>User Settings</b>, then <b>Advanced</b>, turn on <b>Developer Mode</b>, then
+        right-click your name and <b>Copy User ID</b>.
       </div>
     </form>
   );
@@ -199,7 +196,7 @@ function WebhookInfo({ notify }: { notify: IntegrationsData["notify"] }) {
       <div className="hint">
         {e.webhook_url ? (
           <span className="ok">
-            ✓ <code>WEBHOOK_URL</code> is set{e.webhook_secret ? " and requests are signed (WEBHOOK_SECRET)" : " — unsigned; set WEBHOOK_SECRET to sign requests"}.
+            <code>WEBHOOK_URL</code> is set{e.webhook_secret ? " and requests are signed (WEBHOOK_SECRET)" : " — unsigned; set WEBHOOK_SECRET to sign requests"}.
           </span>
         ) : (
           <>
@@ -212,7 +209,7 @@ function WebhookInfo({ notify }: { notify: IntegrationsData["notify"] }) {
         Every event POSTs one JSON object with header <code>X-ReviewStage-Event</code> and, when
         signed, <code>X-ReviewStage-Signature: sha256=HMAC-SHA256(secret, body)</code>.
       </div>
-      <button className="btn sm soft" type="button" style={{ marginTop: 10 }} onClick={() => setOpen((o) => !o)}>
+      <button className="btn sm secondary" type="button" style={{ marginTop: 10 }} onClick={() => setOpen((o) => !o)}>
         {open ? "Hide payload schema" : "Show payload schema"}
       </button>
       {open && <pre className="schema">{JSON.stringify(notify.payloadSchema, null, 2)}</pre>}
@@ -236,7 +233,7 @@ function ClaudeCtl({
     return (
       <>
         <div className="hint ok">
-          ✓ Connected — reviews you start run on your own Claude account.
+          Connected — reviews you start run on your own Claude account.
         </div>
         <button
           className="discbtn"
@@ -308,7 +305,7 @@ function ClaudeCtl({
                 onChange={(e) => setCode(e.target.value)}
               />
               <button className="btn primary" type="submit" disabled={pending || !code.trim()}>
-                {pending && <span className="spin" aria-hidden="true" />} {pending ? "Verifying…" : "Connect"}
+                <SlowBusy busy={pending} />{pending ? "Verifying…" : "Connect"}
               </button>
             </div>
             {pending && (
@@ -320,10 +317,7 @@ function ClaudeCtl({
               err.trimStart().startsWith("<") ? (
                 <div role="alert" dangerouslySetInnerHTML={{ __html: err }} />
               ) : (
-                <div className="banner err" role="alert">
-                  <span>🚫</span>
-                  <div>{err}</div>
-                </div>
+                <Banner kind="err" role="alert">{err}</Banner>
               )
             )}
           </form>
@@ -358,10 +352,7 @@ export function Integrations({ me }: { me: Me }) {
 
   if (err && !d)
     return (
-      <div className="banner err" data-testid="integrations-error">
-        <span>🚫</span>
-        <div>{err}</div>
-      </div>
+      <Banner kind="err" data-testid="integrations-error">{err}</Banner>
     );
   if (!d) return <div className="muted">Loading…</div>;
   const hasSlack = !!d.slack.id;
@@ -375,7 +366,7 @@ export function Integrations({ me }: { me: Me }) {
         The services {me.brand} connects to. Everything is stored encrypted on this box and used
         only on your behalf.
       </p>
-      <Banner html={banner} />
+      <RawBanner html={banner} />
       <Card
         icon={BrandIcon.gh}
         cls="gh"
@@ -401,7 +392,7 @@ export function Integrations({ me }: { me: Me }) {
           // when the REDIRECT flow was configured, so on a device-flow install they were told to
           // reconnect with nothing to click. Either GitHub path can re-authenticate them.
           d.oauth || me.device_flow ? (
-            <a className="btn soft" href="/oauth/start?next=%2Fintegrations">
+            <a className="btn secondary" href="/oauth/start?next=%2Fintegrations">
               Reconnect with GitHub
             </a>
           ) : null

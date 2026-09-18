@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errMessage, type HowData } from "./api";
+import { Banner } from "./ui";
 
 interface Step {
   n: number;
@@ -53,17 +54,17 @@ const STEPS: Step[] = [
 ];
 
 const GUARANTEES = [
-  { t: "🧑 Always you", d: "Every comment and approval posts under your own GitHub account." },
+  { t: "Always you", d: "Every comment and approval posts under your own GitHub account." },
   {
-    t: "🖱️ Nothing automatic",
+    t: "Nothing automatic",
     d: "Nothing reaches GitHub without your click. The review step can't write to GitHub at all.",
   },
   {
-    t: "💬 Comments, not blocks",
+    t: "Comments, not blocks",
     d: "ReviewStage posts plain review comments — it never requests changes or blocks a merge.",
   },
   {
-    t: "🔒 Your credentials, encrypted",
+    t: "Your credentials, encrypted",
     d: "Your GitHub and Claude tokens are encrypted on the box and used only for your actions.",
   },
 ];
@@ -79,10 +80,7 @@ export function HowItWorks() {
   }, []);
   if (err)
     return (
-      <div className="banner err" data-testid="how-error">
-        <span>🚫</span>
-        <div>{err}</div>
-      </div>
+      <Banner kind="err" data-testid="how-error">{err}</Banner>
     );
   if (!d) return <div className="muted">Loading…</div>;
 

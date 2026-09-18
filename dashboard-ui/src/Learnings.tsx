@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, errMessage, type LearningsData, type Me } from "./api";
-
-function Pill({ kind, label }: { kind: string; label?: string }) {
-  return <span className={"pill " + kind}>{label || kind}</span>;
-}
+import { Banner } from "./ui";
+import { Icon } from "./icons";
+import { Status, wordOf } from "./ui";
 
 export function Learnings({ me }: { me: Me }) {
   const [d, setD] = useState<LearningsData | null>(null);
@@ -16,10 +15,7 @@ export function Learnings({ me }: { me: Me }) {
   }, []);
   if (err)
     return (
-      <div className="banner err" data-testid="learnings-error">
-        <span>🚫</span>
-        <div>{err}</div>
-      </div>
+      <Banner kind="err" data-testid="learnings-error">{err}</Banner>
     );
   if (!d) return <div className="muted">Loading…</div>;
   // How many rows of each outcome a review actually reads back. These are the server's numbers
@@ -63,17 +59,14 @@ export function Learnings({ me }: { me: Me }) {
         )}
       </div>
       {dry > 0 && (
-        <div className="banner info" data-testid="dry-banner">
-          <span>🧪</span>
-          <div>
+        <Banner kind="info" icon="flask" data-testid="dry-banner">
             <b>
               {dry.toLocaleString()} of these decisions were made while <code>DRY_RUN=1</code>.
             </b>{" "}
             Nothing was posted to GitHub, so they are in none of the keep rates here or on
             Insights — but {me.brand} still reads them before every review, so they teach the
             reviewer exactly as a live decision does. They are marked <b>dry run</b> below.
-          </div>
-        </div>
+          </Banner>
       )}
 
       {d.clusters.length > 0 && (
@@ -97,14 +90,14 @@ export function Learnings({ me }: { me: Me }) {
               <div className="row" key={c.signature}>
                 <div className="rowlink">
                   <div className="rowtop">
-                    <span className={"pill " + (c.status === "promoted" ? "posted" : "archived")}>
+                    <Status kind={c.status === "promoted" ? "promoted" : c.status === "dismissed" ? "dismissed" : "preference"}>
                       {c.status === "promoted"
                         ? "Promoted to a rule"
                         : c.status === "dismissed"
                         ? "Dismissed"
                         : "Rolling preference"}
-                    </span>
-                    <Pill kind={c.severity} />
+                    </Status>
+                    <Status kind={c.severity} />
                     <span className="muted sm">
                       {c.count} {c.outcome === "dropped" ? "drops" : "rewordings"} across {c.prs} PRs
                     </span>
@@ -125,7 +118,7 @@ export function Learnings({ me }: { me: Me }) {
       )}
       {d.rows.length === 0 ? (
         <div className="empty">
-          <span className="ic">🧠</span>
+          <Icon name="bulb" />
           <b>Nothing learned yet</b>
           Post or drop a few findings and they'll show up here.
         </div>
@@ -137,18 +130,16 @@ export function Learnings({ me }: { me: Me }) {
               <div className="row" key={i}>
                 <div className="rowlink">
                   <div className="rowtop">
-                    <Pill kind={r.kind} label={r.label} />
+                    <Status kind={r.kind}>{wordOf(r.label || r.kind)}</Status>
                     {r.repo && d.repos.length > 1 && <span className="repochip">{r.repo}</span>}
                     <span className="loc">{r.loc}</span>
-                    <Pill kind={r.severity} />
+                    <Status kind={r.severity} />
                     {r.dry && (
-                      <span
-                        className="pill dry"
+                      <Status
+                        kind="dry"
                         data-testid="dry-row"
                         title="Decided while DRY_RUN=1 — never posted to GitHub, and in no rate. It still teaches the reviewer."
-                      >
-                        dry run
-                      </span>
+                      />
                     )}
                   </div>
                   <div className="muted sm" style={{ marginTop: 5 }}>
@@ -156,7 +147,7 @@ export function Learnings({ me }: { me: Me }) {
                   </div>
                   {r.editedGist && (
                     <div className="muted sm" style={{ marginTop: 4 }}>
-                      → {r.editedGist}
+                      Reworded to: {r.editedGist}
                     </div>
                   )}
                 </div>

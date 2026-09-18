@@ -699,3 +699,8 @@ border-radius:0 0 var(--r-m) var(--r-m);background:var(--panel)}
   .setrow input[type=range]{flex:1;min-width:120px;width:auto}
   .chk .envnote{margin-left:28px;flex:1 1 100%}
 }
+
+/* ---- lane S: integrations --------------------------------------------------------------------- */
+.intglist{margin-top:0}
+.intglist .intg{border:0;border-radius:0;margin:0}
+.intglist .intg+.intg{border-top:1px solid var(--hairline)}

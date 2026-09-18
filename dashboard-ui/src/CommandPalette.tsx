@@ -33,11 +33,16 @@ const SECTIONS: [string, string, React.ReactNode][] = [
   ["How it works", "/how", NavIcon.how],
 ];
 
+const optId = (i: number) => `cmdk-opt-${i}`;
+
 export function CommandPalette({ me }: { me: Me }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const [rows, setRows] = useState<QueueRow[]>([]);
+  // A bare number the queue does not know, with several repositories configured: the single
+  // "Review PR #n" offer expands into one row per repository only once it is chosen.
+  const [pickFor, setPickFor] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -45,6 +50,7 @@ export function CommandPalette({ me }: { me: Me }) {
     setOpen(false);
     setQ("");
     setSel(0);
+    setPickFor("");
   }, []);
   const go = useCallback(
     (to: string) => {
@@ -83,6 +89,11 @@ export function CommandPalette({ me }: { me: Me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Typing again leaves the repository step behind.
+  useEffect(() => {
+    setPickFor("");
+  }, [q]);
+
   const repos = useMemo(() => {
     const set = new Set<string>(me.repos || []);
     for (const r of rows) if (r.repo) set.add(r.repo);
@@ -94,32 +105,55 @@ export function CommandPalette({ me }: { me: Me }) {
 
   const cmds: Cmd[] = useMemo(() => {
     const out: Cmd[] = [];
-    if (parsed && parsed.repo) {
-      out.push({
-        id: "review",
-        group: "Review",
-        label: `Review PR #${parsed.number}`,
-        sub: multi ? `in ${parsed.repo}` : "open the review page",
-        icon: <Icon name="git" />,
-        run: () => go(prUrl({ repo: parsed.repo, num: parsed.number })),
-      });
-    } else if (parsed) {
-      // A bare number with several repositories configured: one row per repo — the picker.
+    if (pickFor) {
       for (const r of repos) {
         out.push({
           id: `review-${r}`,
           group: "Review",
-          label: `Review PR #${parsed.number} in ${r}`,
+          label: `Review PR #${pickFor} in ${r}`,
           sub: "open the review page",
           icon: <Icon name="git" />,
-          run: () => go(prUrl({ repo: r, num: parsed.number })),
+          run: () => go(prUrl({ repo: r, num: pickFor })),
+        });
+      }
+      return out;
+    }
+    const matched: QueueRow[] = [];
+    for (const r of rows) {
+      if (needle && !`${r.repo} ${r.repo}#${r.num} #${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle)) continue;
+      if (matched.length >= 6) break;
+      matched.push(r);
+    }
+    // "Review PR #n" is offered once, and only when what was typed no longer matches a row the
+    // queue already knows — a partial number still has its rows to open.
+    if (parsed && matched.length === 0) {
+      if (parsed.repo) {
+        out.push({
+          id: "review",
+          group: "Review",
+          label: `Review PR #${parsed.number}`,
+          sub: multi ? `in ${parsed.repo}` : "open the review page",
+          icon: <Icon name="git" />,
+          run: () => go(prUrl({ repo: parsed.repo, num: parsed.number })),
+        });
+      } else {
+        const num = parsed.number;
+        out.push({
+          id: "review",
+          group: "Review",
+          label: `Review PR #${num}`,
+          sub: multi ? "choose the repository" : "open the review page",
+          icon: <Icon name="git" />,
+          run: () => {
+            if (multi) {
+              setPickFor(num);
+              setSel(0);
+            } else go(prUrl({ repo: repos[0] || "", num }));
+          },
         });
       }
     }
-    let n = 0;
-    for (const r of rows) {
-      if (needle && !`${r.repo} ${r.repo}#${r.num} #${r.num} ${r.title} ${r.author}`.toLowerCase().includes(needle)) continue;
-      if (n++ >= 6) break;
+    for (const r of matched) {
       out.push({
         id: `pr-${r.repo}-${r.num}`,
         group: "Your PRs",
@@ -135,7 +169,7 @@ export function CommandPalette({ me }: { me: Me }) {
       out.push({ id: `go-${to}`, group: "Go to", label, icon, run: () => go(to) });
     }
     return out;
-  }, [parsed?.repo, parsed?.number, multi, repos, needle, rows, go]);
+  }, [parsed?.repo, parsed?.number, multi, repos, needle, rows, go, pickFor]);
 
   useEffect(() => {
     setSel((s) => Math.max(0, Math.min(s, cmds.length - 1)));
@@ -150,8 +184,10 @@ export function CommandPalette({ me }: { me: Me }) {
   if (!open) return null;
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") close();
-    else if (e.key === "ArrowDown") {
+    if (e.key === "Escape") {
+      if (pickFor) setPickFor("");
+      else close();
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setSel((s) => Math.min(s + 1, cmds.length - 1));
     } else if (e.key === "ArrowUp") {
@@ -163,7 +199,14 @@ export function CommandPalette({ me }: { me: Me }) {
     }
   };
 
-  let lastGroup = "";
+  // Options are grouped so the group name is read once, not on every row.
+  const groups: { name: string; items: { c: Cmd; i: number }[] }[] = [];
+  cmds.forEach((c, i) => {
+    const last = groups[groups.length - 1];
+    if (last && last.name === c.group) last.items.push({ c, i });
+    else groups.push({ name: c.group, items: [{ c, i }] });
+  });
+
   return (
     <div className="cmdk-back" onMouseDown={close}>
       <div className="cmdk" role="dialog" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}>
@@ -175,44 +218,53 @@ export function CommandPalette({ me }: { me: Me }) {
             type="text"
             autoComplete="off"
             spellCheck={false}
+            role="combobox"
+            aria-expanded="true"
+            aria-autocomplete="list"
+            aria-controls="cmdk-listbox"
+            aria-activedescendant={cmds.length ? optId(sel) : undefined}
             placeholder="PR URL, owner/name#123, or a number, or jump to…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
           />
         </div>
-        <div className="cmdk-list" ref={listRef}>
+        <div className="cmdk-list" ref={listRef} role="listbox" id="cmdk-listbox" aria-label="Results">
           {cmds.length === 0 && (
             <div className="cmdk-empty">No matches — paste a PR URL, owner/name#123, or a number to review it.</div>
           )}
-          {cmds.map((c, i) => {
-            const header = c.group !== lastGroup ? c.group : null;
-            lastGroup = c.group;
+          {groups.map((g) => {
+            const hid = `cmdk-group-${g.name.replace(/\W+/g, "-").toLowerCase()}`;
             return (
-              <div key={c.id}>
-                {header && <div className="cmdk-grouphead">{header}</div>}
-                <button
-                  type="button"
-                  data-i={i}
-                  className={"cmdk-row" + (i === sel ? " sel" : "")}
-                  onMouseEnter={() => setSel(i)}
-                  onClick={c.run}
-                >
-                  {c.num ? (
-                    <>
-                      <span className="cmdk-num">#{c.num}</span>
-                      {c.repo && <span className="cmdk-repo">{c.repo}</span>}
-                      <span className="cmdk-title">{c.title}</span>
-                      {c.author && <span className="cmdk-sub">{c.author}</span>}
-                    </>
-                  ) : (
-                    <>
-                      {c.icon && <span className="cmdk-ico">{c.icon}</span>}
-                      <span className="cmdk-title">{c.label}</span>
-                      {c.sub && <span className="cmdk-sub">{c.sub}</span>}
-                    </>
-                  )}
-                </button>
+              <div key={g.name} role="group" aria-labelledby={hid}>
+                <div className="cmdk-grouphead" id={hid} role="presentation">{g.name}</div>
+                {g.items.map(({ c, i }) => (
+                  <div
+                    key={c.id}
+                    id={optId(i)}
+                    role="option"
+                    aria-selected={i === sel}
+                    data-i={i}
+                    className={"cmdk-row" + (i === sel ? " sel" : "")}
+                    onMouseEnter={() => setSel(i)}
+                    onClick={c.run}
+                  >
+                    {c.num ? (
+                      <>
+                        <span className="cmdk-num">#{c.num}</span>
+                        {c.repo && <span className="cmdk-repo">{c.repo}</span>}
+                        <span className="cmdk-title">{c.title}</span>
+                        {c.author && <span className="cmdk-sub">{c.author}</span>}
+                      </>
+                    ) : (
+                      <>
+                        {c.icon && <span className="cmdk-ico">{c.icon}</span>}
+                        <span className="cmdk-title">{c.label}</span>
+                        {c.sub && <span className="cmdk-sub">{c.sub}</span>}
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
             );
           })}

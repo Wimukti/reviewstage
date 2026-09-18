@@ -26,7 +26,7 @@ test.describe("a running review stays visible", () => {
     const row = page.locator(".row", { hasText: `#${PR4}` });
     await expect(row).toBeVisible();
     await expect(row.getByTestId("row-running")).toContainText(/reviewing the diff/i);
-    await expect(row.locator(".rundot")).toBeVisible();
+    await expect(row.locator(".status.is-live i")).toBeVisible();
     await expect(row.locator(".status")).toHaveText("Reviewing");
     await expect(pill).toBeVisible();
 

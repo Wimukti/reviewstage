@@ -29,17 +29,21 @@ Files: `dashboard-ui/src/PrPage.tsx`, `StackPage.tsx`, their e2e specs.
 
 ## Lane Q — Queue, command palette, QA index, Learnings
 Files: `Queue.tsx`, `CommandPalette.tsx`, `Qa.tsx`, `Learnings.tsx`, their e2e specs.
-- [ ] Queue: remove the four stat tiles (the tabs carry the counts); move the paste-a-PR
+- [x] Queue: remove the four stat tiles (the tabs carry the counts); move the paste-a-PR
       field into the page header as a quiet input; rows become two lines — repo, number,
       title / state as dot-plus-phrase, with author · age right-aligned and archive as an
       icon button revealed on hover and focus; sort as a segmented control. (nit 2, nit 3)
-- [ ] Command palette: `role=listbox` / `option` with `aria-activedescendant`; offer
+      — `14d9c41`
+- [x] Command palette: `role=listbox` / `option` with `aria-activedescendant`; offer
       "Review PR #n" once, only when the input no longer matches an existing row. (nit 7)
-- [ ] QA index: title renders the PR title only when one exists (fix `#n — PR #n`);
-      empty state is an invitation to act. (should-fix 4)
-- [ ] Learnings: rows as a table with columns (decision, repo, path, severity, when);
+      — `13630d8`
+- [x] QA index: title renders the PR title only when one exists (fix `#n — PR #n`);
+      empty state is an invitation to act. (should-fix 4) — `2a6e511`
+- [x] Learnings: rows as a table with columns (decision, repo, path, severity, when);
       the retention footnote becomes an info disclosure; dry-run rows keep their marker
-      via `.status`. (nit 9)
+      via `.status`. (nit 9) — `4b5d29d`. No "when" column: `/api/learnings` rows carry no
+      timestamp (`bin/`, out of lane); the columns are decision, finding, repository, path,
+      severity.
 
 ## Lane S — Skills, Insights, Settings, Integrations, How it works, Tour
 Files: `Skills.tsx`, `Rollup.tsx`, `Settings.tsx`, `Integrations.tsx`, `HowItWorks.tsx`,
@@ -74,6 +78,7 @@ Files: `Skills.tsx`, `Rollup.tsx`, `Settings.tsx`, `Integrations.tsx`, `HowItWor
 - [ ] Colour meaning: amber only for needs-you, red only for blocker / failed /
       destructive, green only for done, blue only for staged / primary, graphite for
       neutral — including Learnings, where "dropped" is neutral, not red. (should-fix 7)
+      — Learnings part done in `4b5d29d`; other pages' lanes tick the rest.
 
 ## Done when
 - Every checkbox above is ticked with a commit reference.

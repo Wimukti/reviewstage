@@ -418,12 +418,25 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+k");
     await expect(page.locator(".cmdk")).toBeVisible();
-    // A bare number with two repos configured lists one row per repo (the picker).
+    // A number the queue already knows lists that row — no "Review PR" offer beside it.
     await page.locator(".cmdk-in").fill(PR);
-    await expect(page.getByText(`Review PR #${PR} in ${REPO}`)).toBeVisible();
-    await expect(page.getByText(`Review PR #${PR} in ${REPO2}`)).toBeVisible();
+    await expect(page.getByRole("option", { name: new RegExp(`#${PR}`) })).toBeVisible();
+    await expect(page.getByText(`Review PR #${PR}`, { exact: false })).toHaveCount(0);
     await page.locator(".cmdk-in").press("Enter");
     await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO)}&pr=${PR}`));
+    // A bare number the queue does not know is offered once; with two repos configured, choosing
+    // it asks which repository, one row per repo.
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.locator(".cmdk-in").fill("424242");
+    await expect(page.getByRole("option", { name: /^Review PR #424242/ })).toHaveCount(1);
+    await page.locator(".cmdk-in").press("Enter");
+    await expect(page.getByText(`Review PR #424242 in ${REPO}`)).toBeVisible();
+    await expect(page.getByText(`Review PR #424242 in ${REPO2}`)).toBeVisible();
+    // Escape steps back out of the repository choice; a second one closes the palette.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("option", { name: /^Review PR #424242 choose/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cmdk")).toHaveCount(0);
     // A GitHub URL needs no picker.
     await page.keyboard.press("ControlOrMeta+k");
     await page.locator(".cmdk-in").fill(`https://github.com/${REPO2}/pull/${PR3}`);

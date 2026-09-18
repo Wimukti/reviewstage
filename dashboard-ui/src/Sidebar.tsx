@@ -227,6 +227,7 @@ const MORE: [string, string, string][] = [
   ["dashboard", "Insights", "/dashboard"],
   ["integrations", "Integrations", "/integrations"],
   ["settings", "Settings", "/settings"],
+  ["devices", "Devices", "/settings#devices"],
   ["how", "How it works", "/how"],
 ];
 

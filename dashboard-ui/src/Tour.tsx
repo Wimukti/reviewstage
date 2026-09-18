@@ -130,31 +130,57 @@ export function Tour({ me }: { me: Me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Position the ring + card against the current step's target.
+  // Position the ring + card against the current step's target. The card never covers what it
+  // points at: on the phone it sits over the header and the target is scrolled to start beneath
+  // it (so a list that runs past the fold is still clear of it); on the desktop it goes to the
+  // right of the target when there is room, otherwise below, otherwise above.
   const place = useCallback(() => {
     const s = TOUR[i];
     const ring = ringRef.current;
     const card = cardRef.current;
     if (!ring || !card) return;
+    card.classList.remove("at-top");
     const tgt = s.sel ? findTarget(s.sel) : null;
-    if (tgt) {
-      tgt.scrollIntoView({ block: "center", behavior: "smooth" });
-      const r = tgt.getBoundingClientRect();
-      const pad = 6;
-      ring.style.display = "block";
-      ring.style.left = `${r.left - pad}px`;
-      ring.style.top = `${r.top - pad}px`;
-      ring.style.width = `${r.width + pad * 2}px`;
-      ring.style.height = `${r.height + pad * 2}px`;
-      card.style.left = `${Math.min(window.innerWidth - 360, Math.max(16, r.right + 14))}px`;
-      card.style.top = `${Math.max(16, r.top)}px`;
-      card.style.transform = "none";
-    } else {
+    if (!tgt) {
       ring.style.display = "none";
       card.style.left = "50%";
       card.style.top = "50%";
       card.style.transform = "translate(-50%,-50%)";
+      return;
     }
+    const phone = window.innerWidth < 900;
+    const cardH = card.offsetHeight || 220;
+    const pad = 6;
+    if (phone) {
+      card.classList.add("at-top");
+      const under = 16 + cardH + 12 + pad;
+      window.scrollBy({ top: tgt.getBoundingClientRect().top - under, behavior: "auto" });
+    } else {
+      tgt.scrollIntoView({ block: "center", behavior: "auto" });
+    }
+    const r = tgt.getBoundingClientRect();
+    ring.style.display = "block";
+    ring.style.left = `${r.left - pad}px`;
+    ring.style.top = `${r.top - pad}px`;
+    ring.style.width = `${r.width + pad * 2}px`;
+    ring.style.height = `${r.height + pad * 2}px`;
+    if (phone) return;
+    const W = 340;
+    const gap = 14;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left: number;
+    let top: number;
+    if (r.right + gap + W <= vw - 16) {
+      left = r.right + gap;
+      top = Math.min(Math.max(16, r.top), Math.max(16, vh - cardH - 16));
+    } else {
+      left = Math.max(16, Math.min(r.left, vw - W - 16));
+      top = r.bottom + gap + cardH <= vh - 16 ? r.bottom + gap : Math.max(16, r.top - gap - cardH);
+    }
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+    card.style.transform = "none";
   }, [i]);
 
   useEffect(() => {

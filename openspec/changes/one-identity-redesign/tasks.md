@@ -48,22 +48,22 @@ Files: `Queue.tsx`, `CommandPalette.tsx`, `Qa.tsx`, `Learnings.tsx`, their e2e s
 ## Lane S — Skills, Insights, Settings, Integrations, How it works, Tour
 Files: `Skills.tsx`, `Rollup.tsx`, `Settings.tsx`, `Integrations.tsx`, `HowItWorks.tsx`,
 `Tour.tsx`, their e2e specs.
-- [ ] Skills: six tabs — Which skill, Suggested rules, Editors, Per repository, Profiles,
+- [x] (4b65863) Skills: six tabs — Which skill, Suggested rules, Editors, Per repository, Profiles,
       Depth — each one screen; the suggested-rule card is the only primary action on its
       tab. (should-fix 10)
-- [ ] Insights: tiles show number + two-word label only; every methodology paragraph
+- [x] (2ae2795) Insights: tiles show number + two-word label only; every methodology paragraph
       moves into one "How these are measured" disclosure at the foot; the dry-run notice
       is one sentence; at 390 the bar chart's axis labels are legible or hidden. (should-fix 11)
-- [ ] Settings: one "Save settings" that visibly applies to every editable card, placed
+- [x] (87b9a5d) Settings: one "Save settings" that visibly applies to every editable card, placed
       where the eye lands; read-only cards say so; phone label rows never wrap one word
       per line; Devices gets a nav entry under More / Settings. (should-fix 12)
-- [ ] Tour: `aria-modal`, focus trap, initial focus, Escape closes and returns focus, the
+- [x] (811fc57) Tour: `aria-modal`, focus trap, initial focus, Escape closes and returns focus, the
       final step ends on the queue it explains; step 4 never covers the list it points at
       on the phone. (should-fix 13)
-- [ ] Integrations: cards to panels; connected state as `.status`; the Claude card's
+- [x] (9e74729) Integrations: cards to panels; connected state as `.status`; the Claude card's
       primary is the one primary on the page. Help moves into the account card / More.
       (nit 4)
-- [ ] How it works: regenerate the embedded images from the fixture on the new UI, or
+- [x] (ed15959) How it works: regenerate the embedded images from the fixture on the new UI, or
       replace them with the live mock components so they cannot drift again. (nit 10)
 
 ## Lane W addenda (already sent to the website lane)

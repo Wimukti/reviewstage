@@ -79,7 +79,7 @@ function GithubCtl({ token, onDone }: { token: IntegrationsData["token"]; onDone
           value={pat}
           onChange={(e) => setPat(e.target.value)}
         />
-        <button className="btn primary" type="submit" disabled={busy}>
+        <button className="btn secondary" type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save"}
         </button>
       </div>
@@ -125,7 +125,7 @@ function SlackCtl({
           value={slack}
           onChange={(e) => setSlack(e.target.value)}
         />
-        <button className="btn primary" type="submit" disabled={busy}>
+        <button className="btn secondary" type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save"}
         </button>
       </div>
@@ -176,7 +176,7 @@ function DiscordCtl({
           value={id}
           onChange={(e) => setId(e.target.value)}
         />
-        <button className="btn primary" type="submit" disabled={busy}>
+        <button className="btn secondary" type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save"}
         </button>
       </div>
@@ -254,7 +254,7 @@ function ClaudeCtl({
   return (
     <>
       <a
-        className="btn primary block"
+        className={"btn block " + (reveal ? "secondary" : "primary")}
         target="_blank"
         rel="noopener"
         href={d.claude.authUrl}
@@ -367,6 +367,7 @@ export function Integrations({ me }: { me: Me }) {
         only on your behalf.
       </p>
       <RawBanner html={banner} />
+      <div className="list intglist" data-testid="integrations-list">
       <Card
         icon={BrandIcon.gh}
         cls="gh"
@@ -452,6 +453,7 @@ export function Integrations({ me }: { me: Me }) {
       >
         <ClaudeCtl d={d} onDone={onDone} />
       </Card>
+      </div>
     </>
   );
 }

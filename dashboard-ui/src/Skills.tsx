@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -128,7 +128,7 @@ function SkillEditor({
         <textarea
           className="in"
           spellCheck={false}
-          style={{ minHeight: 150, fontSize: "12.5px" }}
+          style={{ minHeight: 150 }}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={
@@ -191,7 +191,7 @@ function SkillEditor({
             <input
               className="in"
               autoComplete="off"
-              placeholder="Type RESTORE to confirm"
+              placeholder="Type restore to confirm"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />
@@ -230,65 +230,60 @@ function DepthEditor({ token, level, d, onDone }: {
     }
   };
   return (
-    <details className="skilled">
-      <summary>
-        {d.name} depth{" "}
+    <div className="depthed" data-testid="depth-editor">
+      <p className="muted sm" style={{ marginTop: 0 }}>
+        What ReviewStage does on a <b>{d.name}</b> review ({d.meta}). Appended to whichever skill runs.{" "}
         <Status kind={d.edited ? "edited" : "archived"}>{d.edited ? "Edited" : "Default"}</Status>
-      </summary>
-      <div className="dbody">
-        <p className="muted sm" style={{ marginTop: 0 }}>
-          What ReviewStage does on a <b>{d.name}</b> review ({d.meta}). Appended to whichever skill runs.
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            act(
-              () =>
-                api.skillAction("save", {
-                  ...token,
-                  target: `effort_${level}`,
-                  from: "skills",
-                  skill: text,
-                }),
-              "Couldn't save that depth.",
-            );
-          }}
-        >
-          <textarea
-            className="in"
-            spellCheck={false}
-            style={{ minHeight: 150, fontSize: "12.5px" }}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <div className="inrow" style={{ marginTop: 10 }}>
-            <button className="btn primary" type="submit" disabled={busy}>
-              {busy ? "Saving…" : "Save depth"}
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          act(
+            () =>
+              api.skillAction("save", {
+                ...token,
+                target: `effort_${level}`,
+                from: "skills",
+                skill: text,
+              }),
+            "Couldn't save that depth.",
+          );
+        }}
+      >
+        <textarea
+          className="in"
+          spellCheck={false}
+          style={{ minHeight: 150 }}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="inrow" style={{ marginTop: 10 }}>
+          <button className="btn primary" type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save depth"}
+          </button>
+          {d.edited && (
+            <button
+              className="btn secondary"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                act(
+                  () =>
+                    api.skillAction("reset", {
+                      ...token,
+                      target: `effort_${level}`,
+                      from: "skills",
+                    }),
+                  "Couldn't reset that depth.",
+                )
+              }
+            >
+              Reset to default
             </button>
-            {d.edited && (
-              <button
-                className="btn secondary"
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  act(
-                    () =>
-                      api.skillAction("reset", {
-                        ...token,
-                        target: `effort_${level}`,
-                        from: "skills",
-                      }),
-                    "Couldn't reset that depth.",
-                  )
-                }
-              >
-                Reset to default
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-    </details>
+          )}
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -593,7 +588,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
 
         <div className="inrow">
           <button
-            className="btn primary"
+            className={"btn " + (d.state === "done" ? "secondary" : "primary")}
             type="button"
             data-testid="profile-run"
             disabled={busy || running || !d.connected}
@@ -856,7 +851,7 @@ function Suggestion({
               >
                 Accept — add to {s.targetLabel}
               </button>
-              <button className="btn secondary" type="button" disabled={busy} onClick={() => act("dismiss")}>
+              <button className="btn quiet" type="button" disabled={busy} onClick={() => act("dismiss")}>
                 Dismiss
               </button>
             </>
@@ -877,23 +872,29 @@ function SuggestedRules({
   const [showDismissed, setShowDismissed] = useState(false);
   const live = d.suggestions.filter((s) => !s.dismissed);
   const dismissed = d.suggestions.filter((s) => s.dismissed);
-  if (live.length === 0 && dismissed.length === 0) return null;
 
   return (
     <div data-testid="suggested-rules">
-      <h2>Suggested rules</h2>
-      <p className="muted sm">
+      <p className="tabdesc">
         A finding the team drops once is a preference; one dropped {d.suggestMin} times across
-        different PRs is a standard nobody has written down. These are drafted from your own
-        rejections — nothing is added to a skill until you accept it.
+        different PRs is a standard nobody has written down. Drafted from your own rejections —
+        nothing reaches a skill until you accept it.
       </p>
-      <div className="list">
-        {live.map((s) => (
-          <Suggestion key={s.signature} s={s} token={d.token} onDone={onDone} />
-        ))}
-      </div>
+      {live.length > 0 && (
+        <div className="list" style={{ marginTop: 0 }}>
+          {live.map((s) => (
+            <Suggestion key={s.signature} s={s} token={d.token} onDone={onDone} />
+          ))}
+        </div>
+      )}
       {live.length === 0 && (
-        <div className="muted sm">Nothing pending — every suggestion has been accepted or dismissed.</div>
+        <div className="empty" data-testid="rules-empty">
+          <Icon name="bulb" />
+          <b>{dismissed.length > 0 ? "Nothing pending" : "No suggestions yet"}</b>
+          {dismissed.length > 0
+            ? "Every suggestion has been accepted or dismissed."
+            : `Drop the same kind of finding ${d.suggestMin} times across different PRs and a rule is drafted here.`}
+        </div>
       )}
       {dismissed.length > 0 && (
         <>
@@ -919,10 +920,120 @@ function SuggestedRules({
   );
 }
 
+// The six tabs, each one screen. The hash is the tab, so a link from Learnings or a
+// notification (`/skills#rules`) lands on the right one and Back returns to the last.
+const TABS: [string, string][] = [
+  ["which", "Which skill"],
+  ["rules", "Suggested rules"],
+  ["editors", "Editors"],
+  ["repos", "Per repository"],
+  ["profiles", "Profiles"],
+  ["depth", "Depth"],
+];
+const TAB_KEYS = TABS.map(([k]) => k);
+
+function useHashTab(): [string, (k: string) => void] {
+  const read = () => {
+    const h = window.location.hash.replace(/^#/, "");
+    return TAB_KEYS.includes(h) ? h : "which";
+  };
+  const [tab, setTab] = useState(read);
+  useEffect(() => {
+    const on = () => setTab(read());
+    window.addEventListener("hashchange", on);
+    window.addEventListener("reviewstage:navigate", on);
+    return () => {
+      window.removeEventListener("hashchange", on);
+      window.removeEventListener("reviewstage:navigate", on);
+    };
+  }, []);
+  const go = (k: string) => {
+    if (window.location.hash !== `#${k}`) window.location.hash = k;
+    setTab(k);
+  };
+  return [tab, go];
+}
+
+function SkillTabs({ tab, go, counts }: { tab: string; go: (k: string) => void; counts: Record<string, number> }) {
+  const refs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  // Arrow keys move between tabs and select as they go; Tab leaves the list for the panel.
+  const onKey = (e: React.KeyboardEvent, i: number) => {
+    let j = -1;
+    if (e.key === "ArrowRight") j = (i + 1) % TABS.length;
+    else if (e.key === "ArrowLeft") j = (i + TABS.length - 1) % TABS.length;
+    else if (e.key === "Home") j = 0;
+    else if (e.key === "End") j = TABS.length - 1;
+    if (j < 0) return;
+    e.preventDefault();
+    const k = TABS[j][0];
+    go(k);
+    refs.current[k]?.focus();
+  };
+  return (
+    <div className="tabs skilltabs" role="tablist" aria-label="Skills" data-testid="skill-tabs">
+      {TABS.map(([k, label], i) => (
+        <a
+          key={k}
+          href={`#${k}`}
+          id={`tab-${k}`}
+          role="tab"
+          aria-selected={tab === k}
+          aria-controls={`panel-${k}`}
+          tabIndex={tab === k ? 0 : -1}
+          className={"tab" + (tab === k ? " on" : "")}
+          ref={(el) => {
+            refs.current[k] = el;
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            go(k);
+          }}
+          onKeyDown={(e) => onKey(e, i)}
+        >
+          {label}
+          {counts[k] ? <span className="cnt">{counts[k]}</span> : null}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function Seg<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: T;
+  options: [T, React.ReactNode][];
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  return (
+    <div className="seg" role="group" aria-label={label}>
+      {options.map(([k, text]) => (
+        <button
+          key={k}
+          type="button"
+          aria-pressed={value === k}
+          className={value === k ? "on" : ""}
+          onClick={() => onChange(k)}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Skills() {
   const [d, setD] = useState<SkillsData | null>(null);
   const [banner, setBanner] = useState("");
   const [err, setErr] = useState("");
+  const [tab, go] = useHashTab();
+  const [editor, setEditor] = useState<"global" | "me">("global");
+  const [repo, setRepo] = useState("");
+  const [depth, setDepth] = useState("standard");
   const load = useCallback(
     () =>
       api
@@ -969,201 +1080,293 @@ export function Skills() {
     </label>
   );
 
+  const live = d.suggestions.filter((s) => !s.dismissed).length;
+  const counts: Record<string, number> = { rules: live };
+  const repos = d.repoSkills;
+  const curRepo = repos.find((r) => r.repo === repo) ?? repos[0];
+  const panel = (k: string, children: React.ReactNode) => (
+    <div
+      role="tabpanel"
+      id={`panel-${k}`}
+      aria-labelledby={`tab-${k}`}
+      className="tabpanel"
+      hidden={tab !== k}
+      data-testid={`panel-${k}`}
+    >
+      {tab === k && children}
+    </div>
+  );
+
   return (
     <>
       <h1>Review skills</h1>
       <p className="lead">
-        The skill is the reviewing approach ReviewStage follows. Pick which one runs your reviews; edit it
-        below. Quick / Standard / Deep all use the same skill — they differ only in the review-depth
-        instructions, which you can edit too.
+        The skill is the reviewing approach ReviewStage follows. Pick which one runs your reviews,
+        accept the rules your rejections suggest, and edit the skill, its per-repository
+        overrides and the depth instructions.
       </p>
       {banner && <RawBanner html={banner} />}
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Which skill runs your reviews?</h2>
-        <div className="skillsel">
-          {opt("team", "Team default", "the shared reviewing approach", false)}
-          {opt(
-            "own",
-            "My own skill",
-            d.hasMySkill ? "your personal skill" : "add a skill below to use it",
-            !d.hasMySkill
-          )}
-        </div>
-        <div className="hint">
-          Reviews run with <b>{d.effLabel}</b>. Learnings sharpen whichever skill runs — every
-          finding you keep or drop feeds the next review.
-          {d.repoSkills.some((r) => r.has) && (
-            <>
-              {" "}
-              Repositories with a <b>team default for that repo</b> below use it instead:{" "}
-              {d.repoSkills.filter((r) => r.has).map((r) => (
-                <span key={r.repo} className="repochip" style={{ marginRight: 4 }}>
-                  {r.repo}
-                </span>
-              ))}
-            </>
-          )}
-        </div>
-      </div>
+      <SkillTabs tab={tab} go={go} counts={counts} />
 
-      <SuggestedRules
-        d={d}
-        onDone={(fresh, b) => {
-          setBanner(b);
-          if (fresh) setD(fresh);
-          else load();
-        }}
-      />
-
-      <h2>The skill</h2>
-      <details className="skilled">
-        <summary>
-          Edit the team default skill{" "}
-          {/* The file exists on every install — bootstrap writes it — so its mere presence is
-              not evidence of an edit. "Edited" requires the server to have compared the bytes
-              against the shipped skill, which it can only do when that skill is on this box. */}
-          {d.globalEdited === true ? (
-            <Status kind="edited">Edited</Status>
-          ) : d.globalEdited === false ? (
-            <Status tone="graphite">Built-in</Status>
-          ) : (
-            <Status
-              tone="graphite"
-              title={
-                d.builtinAvailable === false
-                  ? "The shipped skill is not on this box, so there is nothing to compare this one against."
-                  : undefined
-              }
-            >
-              In use
-            </Status>
-          )}
-        </summary>
-        <div className="dbody">
-          <p className="muted sm" style={{ marginTop: 0 }}>
-            The shared skill everyone falls back to. Editing it changes reviews for everyone without
-            their own.
+      {panel(
+        "which",
+        <>
+          <p className="tabdesc">
+            Quick, Standard and Deep all run the same skill — they differ only in the depth
+            instructions on the Depth tab.
           </p>
-          <SkillEditor
-            token={d.token}
-            target="global"
-            value={d.teamSkill}
-            onDone={onDone}
-            builtinAvailable={d.builtinAvailable}
-          />
-          {d.teamHistory && d.teamHistory.length > 0 && (
-            <div className="skillhist">
-              <div className="skillhist-h">Revision history — how the team standard evolved</div>
-              <ul>
-                {d.teamHistory.map((h) => (
-                  <li key={h.hash}>
-                    <span className="skillhist-msg">{h.msg}</span>
-                    <span className="skillhist-meta">
-                      {h.author} · {new Date(h.at * 1000).toLocaleDateString("en-US")}
-                    </span>
-                  </li>
+          <div className="skillsel">
+            {opt("team", "Team default", "the shared reviewing approach", false)}
+            {opt(
+              "own",
+              "My own skill",
+              d.hasMySkill ? "your personal skill" : "add one on the Editors tab to use it",
+              !d.hasMySkill
+            )}
+          </div>
+          <div className="hint">
+            Reviews run with <b>{d.effLabel}</b>. Learnings sharpen whichever skill runs — every
+            finding you keep or drop feeds the next review.
+            {repos.some((r) => r.has) && (
+              <>
+                {" "}
+                Repositories with their own team default use it instead:{" "}
+                {repos.filter((r) => r.has).map((r) => (
+                  <span key={r.repo} className="repochip" style={{ marginRight: 4 }}>
+                    {r.repo}
+                  </span>
                 ))}
-              </ul>
+              </>
+            )}
+          </div>
+
+          <h2>How each skill scores</h2>
+          <p className="muted sm">
+            The share of a skill's findings that were posted at all — kept as-is or reworded.
+            Insights' &ldquo;kept as-is&rdquo; is stricter and reads lower.
+          </p>
+          {d.stats.length === 0 ? (
+            <div className="empty">
+              <Icon name="compass" />
+              <b>No scores yet</b>
+              Post a few reviews and each skill's kept-rate will show up here.
+            </div>
+          ) : (
+            <div className="list">
+              {d.stats.map((s) => (
+                <div className="row" key={s.skill}>
+                  <div className="rowlink">
+                    <div className="rowtop">
+                      <span className="ttl">
+                        {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
+                        {s.skill === d.user && <span className="chip" style={{ marginLeft: 6 }}>you</span>}
+                      </span>
+                      {ratable(s) ? (
+                        <span className="num" style={{ color: "var(--ink)" }}>
+                          {s.rate.toFixed(1)}% kept or reworded
+                        </span>
+                      ) : (
+                        <span className="muted sm">
+                          n = {s.total} of {floorOf(s)} — too few to rate
+                        </span>
+                      )}
+                    </div>
+                    {ratable(s) && (
+                      <div className="ratebar">
+                        <div className="ratefill" style={{ width: `${s.rate}%` }} />
+                      </div>
+                    )}
+                    <div className="muted sm" style={{ marginTop: 6 }}>
+                      {s.kept} kept · {s.edited} reworded · {s.dropped} dropped · {s.total} findings
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-        </div>
-      </details>
-      <details className="skilled">
-        <summary>
-          Edit your own skill{" "}
-          <Status tone={d.hasMySkill ? "green" : "graphite"}>{d.hasMySkill ? "Custom" : "None yet"}</Status>
-        </summary>
-        <div className="dbody">
-          <SkillEditor token={d.token} target="me" value={d.mySkill} onDone={onDone} />
-        </div>
-      </details>
-
-      {d.repoSkills.length > 0 && (
-        <>
-          <h2>Team default per repository</h2>
-          <p className="muted sm">
-            Optional. A repository with its own team default is reviewed with it — ahead of personal
-            skills and the shared default. Leave it empty to use the shared default.
-          </p>
-          {d.repoSkills.map((r) => (
-            <details className="skilled" key={r.repo} data-testid="repo-skill">
-              <summary>
-                Team default for <code>{r.repo}</code>{" "}
-                <Status tone={r.has ? "green" : "graphite"}>{r.has ? "Override" : "Shared default"}</Status>
-              </summary>
-              <div className="dbody">
-                <SkillEditor token={d.token} target={`repo:${r.repo}`} value={r.content} onDone={onDone} />
-              </div>
-            </details>
-          ))}
-        </>
+        </>,
       )}
 
-      {d.repoSkills.length > 0 && (
-        <>
-          <h2>Repository profile</h2>
-          <p className="muted sm">
-            A profile names the paths where a mistake hurts most in each repository. When a PR touches one,
-            Standard and Deep reviews are told to verify it explicitly — callers, contracts, migrations,
-            tests — and findings on it carry a <span className="cpbadge">critical path</span> badge. Its
-            risk paths join the context banners.
-          </p>
-          {d.repoSkills.map((r) => (
-            <RepoProfile key={r.repo} repo={r.repo} onBanner={setBanner} />
-          ))}
-        </>
+      {panel(
+        "rules",
+        <SuggestedRules
+          d={d}
+          onDone={(fresh, b) => {
+            setBanner(b);
+            if (fresh) setD(fresh);
+            else load();
+          }}
+        />,
       )}
 
-      <h2>Review depth</h2>
-      <p className="muted sm">
-        How deep each level goes. Deep is a thorough, whole-repo analysis. All three run the skill
-        above.
-      </p>
-      {["quick", "standard", "deep"].map((lv) => (
-        <DepthEditor key={lv} token={d.token} level={lv} d={d.depths[lv]} onDone={onDone} />
-      ))}
-
-      <h2>How each skill scores</h2>
-      <p className="muted sm">
-        The share of a skill's findings that were <b>posted at all</b> — kept as-is or reworded
-        first. Insights' &ldquo;kept as-is&rdquo; is a stricter measure and will read lower. A
-        skill with too few decided findings to rate gets a sample instead of a percentage.
-      </p>
-      {d.stats.length === 0 ? (
-        <div className="empty">
-          <Icon name="compass" />
-          <b>No scores yet</b>
-          Post a few reviews and each skill's kept-rate will show up here.
-        </div>
-      ) : (
-        <div className="list">
-          {d.stats.map((s) => (
-            <div className="row" key={s.skill}>
-              <div className="rowlink">
-                <div className="rowtop">
-                  <span className="ttl">
-                    {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
-                    {s.skill === d.user && <span className="chip" style={{ marginLeft: 6 }}>you</span>}
-                  </span>
-                  <span className="num" style={{ color: "var(--ink)" }}>
-                    {ratable(s)
-                      ? `${s.rate.toFixed(1)}% kept or reworded`
-                      : `n = ${s.total} of ${floorOf(s)} — too few to rate`}
-                  </span>
+      {panel(
+        "editors",
+        <>
+          <p className="tabdesc">
+            The team default is what everyone without their own skill runs. Your own skill runs
+            only the reviews you start. ReviewStage always appends its output format.
+          </p>
+          <div className="rowtop" style={{ marginBottom: 12 }}>
+            <Seg
+              label="Which skill to edit"
+              value={editor}
+              onChange={setEditor}
+              options={[
+                [
+                  "global",
+                  <>
+                    Team default{" "}
+                    {d.globalEdited === true ? (
+                      <Status kind="edited">Edited</Status>
+                    ) : d.globalEdited === false ? (
+                      <Status tone="graphite">Built-in</Status>
+                    ) : null}
+                  </>,
+                ],
+                [
+                  "me",
+                  <>
+                    My own skill{" "}
+                    <Status tone={d.hasMySkill ? "green" : "graphite"}>{d.hasMySkill ? "Custom" : "None yet"}</Status>
+                  </>,
+                ],
+              ]}
+            />
+          </div>
+          {editor === "global" ? (
+            <div data-testid="editor-global">
+              <SkillEditor
+                token={d.token}
+                target="global"
+                value={d.teamSkill}
+                onDone={onDone}
+                builtinAvailable={d.builtinAvailable}
+              />
+              {d.teamHistory && d.teamHistory.length > 0 && (
+                <div className="skillhist">
+                  <div className="skillhist-h">Revision history — how the team standard evolved</div>
+                  <ul>
+                    {d.teamHistory.map((h) => (
+                      <li key={h.hash}>
+                        <span className="skillhist-msg">{h.msg}</span>
+                        <span className="skillhist-meta">
+                          {h.author} · {new Date(h.at * 1000).toLocaleDateString("en-US")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                {ratable(s) && (
-                  <div className="ratebar">
-                    <div className="ratefill" style={{ width: `${s.rate}%` }} />
-                  </div>
-                )}
-                <div className="muted sm" style={{ marginTop: 6 }}>
-                  {s.kept} kept · {s.edited} reworded · {s.dropped} dropped · {s.total} findings
-                </div>
-              </div>
+              )}
             </div>
-          ))}
-        </div>
+          ) : (
+            <div data-testid="editor-me">
+              <SkillEditor token={d.token} target="me" value={d.mySkill} onDone={onDone} />
+            </div>
+          )}
+        </>,
+      )}
+
+      {panel(
+        "repos",
+        repos.length === 0 ? (
+          <div className="empty">
+            <Icon name="git" />
+            <b>No repositories configured</b>
+            Add repositories to <code>REPOS</code> in <code>.env</code> and each gets its own team default here.
+          </div>
+        ) : (
+          <>
+            <p className="tabdesc">
+              Optional. A repository with its own team default is reviewed with it — ahead of
+              personal skills and the shared default. Leave it empty to use the shared default.
+            </p>
+            <div className="list" style={{ marginTop: 0 }} data-testid="repo-skill-list">
+              {repos.map((r) => {
+                const on = curRepo?.repo === r.repo;
+                return (
+                  <div className={"row" + (on ? " is-current" : "")} key={r.repo} data-testid="repo-skill">
+                    <div className="rowlink">
+                      <div className="rowtop">
+                        <span className="repochip big">{r.repo}</span>
+                        <Status tone={r.has ? "green" : "graphite"}>{r.has ? "Override" : "Shared default"}</Status>
+                      </div>
+                    </div>
+                    <div className="rowmeta">
+                      <button
+                        type="button"
+                        className="rowact"
+                        aria-pressed={on}
+                        onClick={() => setRepo(r.repo)}
+                      >
+                        {on ? "Editing" : "Edit"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {curRepo && (
+              <div className="repoed" data-testid="repo-skill-editor">
+                <h2>
+                  Team default for <code>{curRepo.repo}</code>
+                </h2>
+                <SkillEditor
+                  key={curRepo.repo}
+                  token={d.token}
+                  target={`repo:${curRepo.repo}`}
+                  value={curRepo.content}
+                  onDone={onDone}
+                />
+              </div>
+            )}
+          </>
+        ),
+      )}
+
+      {panel(
+        "profiles",
+        repos.length === 0 ? (
+          <div className="empty">
+            <Icon name="target" />
+            <b>No repositories configured</b>
+            A profile names the paths where a mistake hurts most; there is nothing to profile yet.
+          </div>
+        ) : (
+          <>
+            <p className="tabdesc">
+              A profile names the paths where a mistake hurts most in each repository. When a PR
+              touches one, Standard and Deep reviews verify it explicitly and its findings carry a{" "}
+              <span className="cpbadge">critical path</span> badge.
+            </p>
+            <div className="stack">
+              {repos.map((r) => (
+                <RepoProfile key={r.repo} repo={r.repo} onBanner={setBanner} />
+              ))}
+            </div>
+          </>
+        ),
+      )}
+
+      {panel(
+        "depth",
+        <>
+          <p className="tabdesc">
+            How deep each level goes. Deep is a thorough, whole-repo analysis. All three run the
+            skill you picked.
+          </p>
+          <div className="rowtop" style={{ marginBottom: 12 }}>
+            <Seg
+              label="Which depth to edit"
+              value={depth}
+              onChange={setDepth}
+              options={["quick", "standard", "deep"].map((lv) => [lv, d.depths[lv]?.name ?? lv] as [string, React.ReactNode])}
+            />
+          </div>
+          {d.depths[depth] && (
+            <DepthEditor key={depth} token={d.token} level={depth} d={d.depths[depth]} onDone={onDone} />
+          )}
+        </>,
       )}
     </>
   );

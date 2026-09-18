@@ -282,7 +282,7 @@ test.describe("drafting a rule", () => {
       skills = body;
       return { suggestions: [SUGGESTION] };
     });
-    await page.goto("/skills");
+    await page.goto("/skills#rules");
 
     const s = page.getByTestId("rule-suggestion").first();
     await expect(s.getByTestId("rule-sentence")).toHaveCount(0);
@@ -315,7 +315,7 @@ test.describe("drafting a rule", () => {
     await patchJson(page, "**/api/skills", () => ({
       suggestions: [{ ...SUGGESTION, draftError: "Claude did not answer within 90 seconds." }],
     }));
-    await page.goto("/skills");
+    await page.goto("/skills#rules");
     await expect(page.getByTestId("rule-draft-error")).toContainText(
       /did not answer within 90 seconds/i,
     );
@@ -326,7 +326,7 @@ test.describe("drafting a rule", () => {
     await patchJson(page, "**/api/skills", () => ({
       suggestions: [{ ...SUGGESTION, connected: false }],
     }));
-    await page.goto("/skills");
+    await page.goto("/skills#rules");
     await expect(page.getByTestId("rule-draft")).toHaveCount(0);
     await expect(page.getByTestId("rule-pending")).toContainText(/connect your claude account/i);
   });
@@ -335,7 +335,7 @@ test.describe("drafting a rule", () => {
     await patchJson(page, "**/api/skills", () => ({
       suggestions: [{ ...SUGGESTION, drafting: true }],
     }));
-    await page.goto("/skills");
+    await page.goto("/skills#rules");
     const draft = page.getByTestId("rule-draft");
     await expect(draft).toBeDisabled();
     await expect(draft).toHaveText(/drafting/i);
@@ -346,7 +346,7 @@ test.describe("a profile that has drifted from the checkout", () => {
   test("is badged stale and names both commits", async ({ page }) => {
     // Real: the fixture ships a base clone whose HEAD is not the commit the profile was built
     // against, which is the only way the server will answer anything but "cannot tell".
-    await page.goto("/skills");
+    await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
     await expect(card.getByTestId("profile-stale")).toHaveText("Stale");
     await card.locator("> summary").click();
@@ -356,13 +356,13 @@ test.describe("a profile that has drifted from the checkout", () => {
   });
 
   test("a repository with no profile at all is not called stale", async ({ page }) => {
-    await page.goto("/skills");
+    await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO2 }).first();
     await expect(card.getByTestId("profile-stale")).toHaveCount(0);
   });
 
   test("the earlier versions the card counts are reachable, and restorable", async ({ page }) => {
-    await page.goto("/skills");
+    await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
     await card.locator("> summary").click();
 

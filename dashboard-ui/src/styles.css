@@ -756,3 +756,77 @@ line-height:1.5;padding-top:3px}
   .ltable table{display:table;min-width:640px}
   .ltable .loc{max-width:none}
 }
+
+/* ---- lane S: skills tabs ---------------------------------------------------------------------- */
+.skilltabs{margin-top:0}
+.skilltabs .cnt{margin-left:2px}
+.tabpanel{margin-top:4px}
+.tabpanel>.tabdesc{margin:12px 0 14px;max-width:72ch}
+.tabpanel h2:first-child{margin-top:16px}
+/* a list of like collapsibles is one panel with dividers, not a stack of panels */
+.stack{border:1px solid var(--hairline);border-radius:var(--r-m);background:var(--panel)}
+.stack>.skilled{border:0;border-radius:0;margin:0;background:none}
+.stack>.skilled+.skilled{border-top:1px solid var(--hairline)}
+.row.is-current{background:var(--blue-bg)}
+.rowact[aria-pressed="true"]{color:var(--ink);font-weight:500}
+.repoed h2{margin-top:24px}
+.depthed .rulebox{display:none}
+
+/* ---- lane S: insights ------------------------------------------------------------------------- */
+.kpi-h{margin:20px 0 4px;font-size:var(--t-13);font-weight:500;color:var(--graphite)}
+.kpi-h+.kpirow{margin-bottom:8px}
+.kpi .kpi-l{margin:2px 0 0}
+.kpi-v.kpi-thin{font-size:var(--t-14);font-weight:500;color:var(--graphite);line-height:1.5;padding:4px 0}
+.kpi-thin-note{font-weight:400}
+.agreebig.kpi-thin{font-size:var(--t-14)}
+.barchart{margin-top:6px}
+.barchart .chart{height:130px}
+.axis-max{margin-bottom:4px;font-family:var(--mono)}
+.axis-x{display:flex;justify-content:space-between;margin-top:4px;font-family:var(--mono)}
+.axis-x span:nth-child(2){text-align:center}
+.axis-x span:last-child{text-align:right}
+.method{margin-top:24px;border-top:1px solid var(--hairline);padding-top:8px}
+.method>summary{color:var(--graphite)}
+.method .dbody{padding:0 0 8px}
+.method .dbody p{margin-top:4px}
+.method li{color:var(--graphite)}
+.method li b{color:var(--ink)}
+
+/* ---- lane S: settings ------------------------------------------------------------------------- */
+.cardhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.setform .card{margin:12px 0 0}
+.setform .setfoot{margin:0;padding:14px 20px;border:1px solid var(--hairline);border-top:0;
+border-radius:0 0 var(--r-m) var(--r-m);background:var(--panel)}
+.setform .card:last-of-type{border-radius:var(--r-m) var(--r-m) 0 0}
+.setform+.card{margin-top:20px}
+.card.is-target{outline:2px solid var(--blue);outline-offset:2px}
+.schema{overflow-wrap:anywhere;max-width:100%}
+/* phone: label above control; a wrapping column flexbox sizes its line to the widest item, so no wrap */
+@media (max-width:899px){
+  .setrow{flex-direction:column;align-items:stretch;gap:8px;flex-wrap:nowrap}
+  .setrow .setlbl{min-width:0}
+  .setrow .setctl{justify-content:flex-start}
+  .setrow input[type=range]{flex:1;min-width:120px;width:auto}
+  .chk .envnote{margin-left:28px;flex:1 1 100%}
+}
+
+/* ---- lane S: integrations --------------------------------------------------------------------- */
+.intglist{margin-top:0}
+.intglist .intg{border:0;border-radius:0;margin:0}
+.intglist .intg+.intg{border-top:1px solid var(--hairline)}
+
+/* ---- lane S: how it works — live mocks built from the same classes as the pages they explain --- */
+.shot.mock{width:100%;max-width:480px;padding:14px;background:var(--paper);pointer-events:none}
+.shot.mock .commit-bar{position:static;margin:0}
+.shot.mock .finding{margin:0}
+.shot.mock .prog{margin-bottom:6px}
+.howslack{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-m);padding:12px 14px}
+.howslack-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.howslack-top .howapp{font-size:var(--t-13);color:var(--graphite);border:1px solid var(--hairline);border-radius:var(--r-s);padding:0 4px;line-height:18px}
+.howslack-t{font-weight:500;margin:4px 0}
+.howslack-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.howapprove{display:flex;flex-direction:column;gap:10px}
+.howapprove pre{margin:0}
+
+/* ---- lane S: tour — on the phone the card sits over the header, clear of what it points at ---- */
+@media (max-width:899px){.tourcard.at-top{top:16px!important;bottom:auto}}

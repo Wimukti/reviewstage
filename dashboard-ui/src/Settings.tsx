@@ -102,7 +102,13 @@ function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: nu
   const minutes = Math.round(pollSeconds / 60);
   return (
     <div className="card" data-testid="webhooks-card">
-      <h2 style={{ marginTop: 0 }}>Webhooks</h2>
+      <div className="cardhead">
+        <h2 style={{ margin: 0 }}>Webhooks</h2>
+        <Status tone="graphite">Read-only</Status>
+      </div>
+      <p className="muted sm" data-testid="webhooks-readonly">
+        Nothing to save here: the secret lives in <code>.env</code> and the hook is configured on GitHub.
+      </p>
       <p className="muted sm">
         GitHub can tell this install about a review request the moment it happens, instead of
         waiting for the next poll. The receiver only updates the queue and sends the card — it
@@ -228,6 +234,21 @@ function dateText(ts: number): string {
 // exactly once, on creation; the server keeps only its hash.
 export function Devices({ me }: { me: Me }) {
   const [rows, setRows] = useState<Device[] | null>(null);
+  const [devOnly, setDevOnly] = useState(false);
+  useEffect(() => {
+    const on = () => {
+      const here = window.location.hash === "#devices";
+      setDevOnly(here);
+      if (here) document.getElementById("devices")?.scrollIntoView({ block: "start" });
+    };
+    on();
+    window.addEventListener("hashchange", on);
+    window.addEventListener("reviewstage:navigate", on);
+    return () => {
+      window.removeEventListener("hashchange", on);
+      window.removeEventListener("reviewstage:navigate", on);
+    };
+  }, []);
   const [meta, setMeta] = useState({ max: 10, ttl_days: 180 });
   const [name, setName] = useState("");
   const [minted, setMinted] = useState<MintedDevice | null>(null);
@@ -283,7 +304,7 @@ export function Devices({ me }: { me: Me }) {
   const viaBearer = me.auth === "bearer";
 
   return (
-    <div className="card" id="devices">
+    <div className={"card" + (devOnly ? " is-target" : "")} id="devices" tabIndex={-1}>
       <h2 style={{ marginTop: 0 }}>Devices</h2>
       <p className="muted sm">
         Phones, the CLI and other browsers that hold a token for your account. Each one can post
@@ -450,7 +471,7 @@ export function Settings({ me }: { me: Me }) {
       <p className="lead">
         Runtime knobs for this {me.brand} install. Changes apply on the next poller cycle — no
         restart, no <code>.env</code> edit. Saved values win over <code>.env</code>, which wins
-        over the default.
+        over the default. Your <a href="#devices">devices</a> are at the foot of this page.
       </p>
       {ro && (
         <Banner kind="info" icon="eye">
@@ -460,6 +481,7 @@ export function Settings({ me }: { me: Me }) {
       )}
       <RawBanner html={banner} />
 
+      <div className="setform" data-testid="settings-form">
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Poller</h2>
         <div className="setrow">
@@ -529,8 +551,6 @@ export function Settings({ me }: { me: Me }) {
           in the docs.
         </div>
       </div>
-
-      <WebhooksCard wh={d.webhooks} pollSeconds={form.poll_interval_seconds} />
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Notifications</h2>
@@ -614,7 +634,7 @@ export function Settings({ me }: { me: Me }) {
       </div>
 
       {!ro && (
-        <div className="setfoot">
+        <div className={"setfoot" + (dirty ? " is-dirty" : "")} data-testid="settings-save">
           <button className="btn primary" type="button" disabled={!dirty || saving} onClick={save}>
             {saving ? "Saving…" : "Save settings"}
           </button>
@@ -626,12 +646,19 @@ export function Settings({ me }: { me: Me }) {
           >
             Reset
           </button>
-          <span className="muted">
-            Stored in <code>settings.json</code> on the server. <code>DRY_RUN</code> stays in{" "}
-            <code>.env</code> on purpose.
-          </span>
+          {dirty ? (
+            <Status tone="amber" data-testid="settings-dirty">Unsaved changes</Status>
+          ) : (
+            <span className="muted sm">
+              Saves Poller, Notifications and PR filters to <code>settings.json</code> on the server.{" "}
+              <code>DRY_RUN</code> stays in <code>.env</code> on purpose.
+            </span>
+          )}
         </div>
       )}
+      </div>
+
+      <WebhooksCard wh={d.webhooks} pollSeconds={form.poll_interval_seconds} />
 
       <Devices me={me} />
     </>

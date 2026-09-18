@@ -114,3 +114,6 @@ export function Icon({ name, className, size }: { name: string; className?: stri
 // Lane Q additions: the queue row's archive control is an icon button, not a text link.
 ICONS.archive = <><path d="M3 5h18v4H3z" /><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" /><path d="M10 13h4" /></>;
 ICONS.unarchive = <><path d="M3 5h18v4H3z" /><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" /><path d="M12 18v-6M9.5 14.5 12 12l2.5 2.5" /></>;
+
+// Lane S: the Devices entry in the phone's More sheet.
+NavIcon.devices = svg(<><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></>);

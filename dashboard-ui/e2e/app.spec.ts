@@ -184,13 +184,13 @@ test.describe("signed in", () => {
   });
 
   test("skills page offers a team default per repository", async ({ page }) => {
-    await page.goto("/skills");
+    await page.goto("/skills#repos");
     await expect(page.getByTestId("repo-skill")).toHaveCount(3);
     await expect(page.getByTestId("repo-skill").first()).toContainText(REPO);
   });
 
   test("skills page shows a repository profile per repo with status and counts", async ({ page }) => {
-    await page.goto("/skills");
+    await page.goto("/skills#profiles");
     const profiles = page.getByTestId("repo-profile");
     await expect(profiles).toHaveCount(3);
     const first = profiles.filter({ hasText: REPO }).first();
@@ -208,7 +208,7 @@ test.describe("signed in", () => {
   });
 
   test("a failed profile run shows the error, its log tail and an enabled Retry", async ({ page }) => {
-    await page.goto("/skills");
+    await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO3 }).first();
     await expect(card).toContainText(/failed/i);
     await card.locator("> summary").click(); // the card's own summary, not the log tail's
@@ -263,7 +263,7 @@ test.describe("signed in", () => {
       await route.fulfill({ status: 200, contentType: "application/json", json });
     });
 
-    await page.goto("/skills");
+    await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO3 }).first();
     await card.locator("> summary").click();
     const retry = card.getByTestId("profile-run");
@@ -295,7 +295,7 @@ test.describe("signed in", () => {
   });
 
   test("repository profile editor round-trips an edit", async ({ page }) => {
-    await page.goto("/skills");
+    await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
     await card.locator("> summary").click();
     await card.getByRole("button", { name: "Edit" }).click();

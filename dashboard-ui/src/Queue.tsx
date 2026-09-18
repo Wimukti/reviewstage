@@ -23,6 +23,46 @@ const EMPTY: Record<string, [string, string, string]> = {
   archived: ["inbox", "No archived PRs", "Archived PRs are hidden from your working set."],
 };
 
+// The second line of a row: the PR's state as a dot and a phrase, then what the review found.
+// A run in flight replaces it — the findings and timings it would show are not written yet,
+// and what the reviewer wants is "still going, and where".
+function RowState({ row, status }: { row: QueueRow; status: string }) {
+  const dead = row.prState === "merged" || row.prState === "closed";
+  if (status) {
+    return (
+      <div className="rowsub rowrun" data-testid="row-running">
+        <Status kind="reviewing" live />
+        <span>{status}</span>
+        <span className="runback">— open to watch</span>
+      </div>
+    );
+  }
+  return (
+    <div className="rowsub">
+      <Status kind={row.state} />
+      {dead && <Status kind={row.merged ? "merged" : "closed"} data-testid="pr-state" />}
+      {row.sev.map((s) => (
+        <Status key={s.kind} kind={s.kind}>
+          {s.n} {s.label}
+        </Status>
+      ))}
+      {row.size && <span className="muted sm">{row.size}</span>}
+      {row.canApprove === false && (
+        <span
+          className="rownote"
+          data-testid="no-approve"
+          title={
+            row.merged
+              ? "This PR is merged — GitHub will not take an approval on it."
+              : "This PR is closed — an approval on it would not be actionable."
+          }
+        >
+          can't approve
+        </span>
+      )}
+    </div>
+  );
+}
 
 function Row({
   row,
@@ -39,8 +79,8 @@ function Row({
 }) {
   const [busy, setBusy] = useState(false);
   const ref = { repo: row.repo, num: row.num };
-  // The PR's own state on GitHub. "no longer requested" is true of a merged PR too, and saying
-  // only that made a shipped PR look like one someone quietly dropped you from.
+  // "no longer requested" is true of a merged PR too, and saying only that made a shipped PR
+  // look like one someone quietly dropped you from.
   const dead = row.prState === "merged" || row.prState === "closed";
   const when = dead ? row.when.filter((w) => w !== "no longer requested") : row.when;
   async function toggleArchive(e: React.MouseEvent) {
@@ -58,6 +98,7 @@ function Row({
       setBusy(false);
     }
   }
+  const label = row.archived ? `Restore #${row.num}` : `Archive #${row.num}`;
   return (
     <div className={"row" + (status ? " running" : "")}>
       <Link className="rowlink" to={prUrl(ref)}>
@@ -66,59 +107,24 @@ function Row({
           <span className="num">#{row.num}</span>
           <span className="ttl">{row.title}</span>
         </div>
-        {status ? (
-          // A run in flight replaces the meta line: the findings and timings it would show
-          // are not written yet, and what the reviewer wants is "still going, and where".
-          <div className="rowrun" data-testid="row-running">
-            <span className="rundot" aria-hidden="true" />
-            <span>{status}</span>
-            <span className="runback">— open to watch</span>
-          </div>
-        ) : (
-        <div className="muted sm rowsub">
-          {row.author && <span>{row.author}</span>}
-          {row.size && <span>{row.size}</span>}
-          {when.map((w, i) => (
+        <RowState row={row} status={status} />
+      </Link>
+      <div className="rowside">
+        <span className="rowby">
+          {[row.author, ...when].filter(Boolean).map((w, i) => (
             <span key={i}>{w}</span>
           ))}
-          {dead && (
-            <Status kind={row.merged ? "merged" : "closed"} data-testid="pr-state" />
-          )}
-          {row.sev.length > 0 && (
-            <span className="chipwrap">
-              {row.sev.map((s) => (
-                <Status key={s.kind} kind={s.kind}>
-                  {s.n} {s.label}
-                </Status>
-              ))}
-            </span>
-          )}
-        </div>
-        )}
-      </Link>
-      <div className="rowmeta">
-        <Status kind={status ? "reviewing" : row.state} live={!!status} />
-        {row.canApprove === false && !status && (
-          <span className="rownote" data-testid="no-approve" title={
-            row.merged
-              ? "This PR is merged — GitHub will not take an approval on it."
-              : "This PR is closed — an approval on it would not be actionable."
-          }>
-            can't approve
-          </span>
-        )}
+        </span>
         <button
           type="button"
           className="rowact"
           onClick={toggleArchive}
           disabled={busy}
-          aria-label={row.archived ? `Restore #${row.num}` : `Archive #${row.num}`}
+          aria-label={label}
+          title={label}
         >
-          {busy ? "…" : row.archived ? "restore" : "archive"}
+          <Icon name={row.archived ? "unarchive" : "archive"} />
         </button>
-        <Link className="chev" to={prUrl(ref)} aria-hidden="true" tabIndex={-1}>
-          <Icon name="chevron-right" />
-        </Link>
       </div>
     </div>
   );
@@ -157,9 +163,8 @@ export function Queue({ me }: { me: Me }) {
   const runKey = jobs.map((j) => `${j.kind}:${j.repo}#${j.num}`).join(",");
   useEffect(() => {
     let live = true;
-    // The filters go to the server, which applies them to EVERY tab and tile — not just to the
-    // rows it sends back. The page used to receive one tab's rows and could not honestly count
-    // anything else, so it labelled the other counts "all" and hoped.
+    // The filters go to the server, which applies them to EVERY tab — not just to the rows it
+    // sends back — so a tab number and the list under it describe one set of PRs.
     api
       .queue(tab, sort, repoFilter, query)
       .then((d) => {
@@ -226,9 +231,6 @@ export function Queue({ me }: { me: Me }) {
   const empty = EMPTY[tab] || ["inbox", "Nothing here yet", "This view is empty."];
   const filtering = !!(query.trim() || activeFilter);
   const rows = data.rows;
-  // Every count here is the server's, computed over the SAME filter that produced the rows —
-  // so a tab number and the list under it now describe one set of PRs.
-  const countFor = (k: string) => data.stats[k] ?? 0;
   // Per-repo counts for the open tab, so the picker says how much is behind each option.
   const repoCount = (r: string) => data.repoCounts?.[r]?.[tab];
   // A brand-new install has nothing in the queue because nothing is set up yet, which is not the
@@ -237,39 +239,43 @@ export function Queue({ me }: { me: Me }) {
 
   return (
     <>
-      <h1>Your review queue</h1>
-      <p className="muted sm">
-        Reviews requested from you across{" "}
-        {multi ? (
-          <>
-            <b>{repos.length} repositories</b>
-            {me.allowOrg ? <> (and any under <code>{me.allowOrg}</code>)</> : null}
-          </>
-        ) : (
-          <code>{repos[0] || me.repo}</code>
-        )}
-        . Nothing reaches GitHub without your click.
-      </p>
-
-      <form
-        className="reviewany"
-        onSubmit={(e) => {
-          e.preventDefault();
-          goReview();
-        }}
-      >
-        <input
-          className="in"
-          type="text"
-          autoComplete="off"
-          placeholder="Review any PR — PR URL, owner/name#123, or a number…"
-          value={rv}
-          onChange={(e) => setRv(e.target.value)}
-        />
-        <button className="btn primary" type="submit" disabled={!parsed}>
-          Review
-        </button>
-      </form>
+      <div className="pagehead">
+        <div className="pagehead-t">
+          <h1>Your review queue</h1>
+          <p className="muted sm">
+            Reviews requested from you across{" "}
+            {multi ? (
+              <>
+                <b>{repos.length} repositories</b>
+                {me.allowOrg ? <> (and any under <code>{me.allowOrg}</code>)</> : null}
+              </>
+            ) : (
+              <code>{repos[0] || me.repo}</code>
+            )}
+            . Nothing reaches GitHub without your click.
+          </p>
+        </div>
+        <form
+          className="reviewany"
+          onSubmit={(e) => {
+            e.preventDefault();
+            goReview();
+          }}
+        >
+          <input
+            className="in"
+            type="text"
+            autoComplete="off"
+            aria-label="Review any PR"
+            placeholder="Review any PR — PR URL, owner/name#123, or a number…"
+            value={rv}
+            onChange={(e) => setRv(e.target.value)}
+          />
+          <button className="btn quiet" type="submit" disabled={!parsed}>
+            Review
+          </button>
+        </form>
+      </div>
       {needsPick && (
         <div className="repopick" data-testid="repo-pick">
           <span className="lbl">Which repository is #{parsed!.number} in?</span>
@@ -292,27 +298,6 @@ export function Queue({ me }: { me: Me }) {
             <Link to="/integrations">Add it in Integrations.</Link>
           </Banner>
       )}
-
-      <div className="stats">
-        {(["todo", "reviewed", "posted", "approved"] as const).map((k, i) => (
-          <Link
-            key={k}
-            className={"stat" + (i === 0 ? " hot" : "") + (tab === k ? " on" : "")}
-            to={`/?tab=${k}&sort=${sort}`}
-          >
-            <div className="k">{countFor(k).toLocaleString("en-US")}</div>
-            <div className="l">
-              {k === "todo"
-                ? "Awaiting your review"
-                : k === "reviewed"
-                ? "Ready to post"
-                : k === "posted"
-                ? "Pending approval"
-                : "Approved"}
-            </div>
-          </Link>
-        ))}
-      </div>
 
       <div className="tabs">
         {data.tabs.map((t) => (
@@ -364,10 +349,14 @@ export function Queue({ me }: { me: Me }) {
             </select>
           </label>
         )}
-        <div className="sortbar">
-          <span className="muted sm">Sort</span>
+        <div className="seg sortseg" role="group" aria-label="Sort">
           {SORTS.map(([k, lbl]) => (
-            <Link key={k} className={"sortopt" + (sort === k ? " on" : "")} to={`/?tab=${tab}&sort=${k}`}>
+            <Link
+              key={k}
+              className={"sortopt" + (sort === k ? " on" : "")}
+              aria-current={sort === k ? "true" : undefined}
+              to={`/?tab=${tab}&sort=${k}`}
+            >
               {lbl}
             </Link>
           ))}
@@ -395,18 +384,12 @@ export function Queue({ me }: { me: Me }) {
                     <span className="num">#{j.num}</span>
                     <span className="ttl">{j.title || `PR #${j.num}`}</span>
                   </div>
-                  <div className="rowrun" data-testid="row-running">
-                    <span className="rundot" aria-hidden="true" />
+                  <div className="rowsub rowrun" data-testid="row-running">
+                    <Status kind="reviewing" live>{j.kind === "qa" ? "QA guide" : "Review"}</Status>
                     <span>{j.status || (j.kind === "qa" ? "building" : "reviewing")}</span>
                     <span className="runback">— open to watch</span>
                   </div>
                 </Link>
-                <div className="rowmeta">
-                  <Status kind="reviewing" live>{j.kind === "qa" ? "QA guide" : "Review"}</Status>
-                  <Link className="chev" to={j.href} aria-hidden="true" tabIndex={-1}>
-                    <Icon name="chevron-right" />
-                  </Link>
-                </div>
               </div>
             ))}
           </div>

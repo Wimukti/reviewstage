@@ -646,3 +646,55 @@ border-radius:var(--r-m);padding:16px 18px;box-shadow:var(--shadow-raised)}
   .commit-bar.is-entering{animation:rise-bar 200ms var(--ease) both}
   @keyframes rise-bar{from{transform:translateY(100%)}to{transform:translateY(0)}}
 }
+
+/* ---- lane Q: queue, command palette, QA index, learnings ------------------------------------ */
+/* page header: title on the left, the paste-a-PR field as a quiet input on the right */
+.pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px 32px;flex-wrap:wrap;margin-bottom:4px}
+.pagehead-t{flex:1 1 280px;min-width:0}
+.pagehead-t p{margin-top:0}
+.pagehead .reviewany,.pagehead .qagen{flex:1 1 420px;max-width:560px;margin:4px 0 0}
+.reviewany .in{background:transparent;border-color:transparent;border-bottom-color:var(--hairline);border-radius:0;padding:0 4px}
+.reviewany .in:hover{border-bottom-color:var(--graphite)}
+/* two-line rows: state and findings on the second line, author and age on the right */
+.list .rowsub{gap:12px}
+.list .rowsub>span:not(.chipwrap):not(:last-child)::after{content:none;margin:0}
+.rowsub.rowrun{margin-top:3px}
+.rowsub.rowrun>span:not(.status){color:var(--amber)}
+.rowsub.rowrun>.runback{color:var(--graphite)}
+.rowside{display:flex;align-items:center;gap:8px;flex:none;align-self:flex-start;padding:10px 8px 0 12px;max-width:45%}
+.rowby{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;text-align:right;font-size:var(--t-13);color:var(--graphite);
+line-height:1.5;padding-top:3px}
+.rowby>span:not(:last-child)::after{content:"·";margin-left:6px}
+.rowact{width:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;opacity:0}
+.row:hover .rowact,.rowact:focus-visible,.rowact:disabled,.list:focus-within .rowact:focus{opacity:1}
+.rowact svg{width:16px;height:16px}
+.sortseg .sortopt{height:28px;font-weight:500}
+/* command palette: a listbox the input points into */
+.cmdk-row[aria-selected="true"]{background:var(--blue-bg)}
+.cmdk-row[aria-selected="true"] .cmdk-ico{color:var(--blue)}
+/* QA index: the form is plain content; the empty state carries it as the invitation */
+.qagen .btn{flex:none}
+.empty .qagen{max-width:520px;margin:14px auto 0;justify-content:center;text-align:left}
+.empty .qagen .in{flex:1 1 220px}
+/* learnings: the decision log is a table inside one panel */
+.ltable{margin-top:14px;overflow-x:auto}
+.ltable table{font-size:var(--t-13)}
+.ltable th:first-child,.ltable td:first-child{padding-left:16px}
+.ltable th:last-child,.ltable td:last-child{padding-right:16px}
+.ltable td{vertical-align:top}
+.ltable .lgist{min-width:16rem;max-width:40ch;color:var(--ink)}
+.ltable .lgist .sub{color:var(--graphite);margin-top:2px}
+.ltable .lcell{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.infodisc{margin:12px 0 0}
+.infodisc>summary{font-size:var(--t-13);font-weight:400;color:var(--graphite);min-height:28px;display:inline-flex}
+.infodisc>summary::after{margin-left:0}
+.infodisc>summary svg{width:14px;height:14px}
+.infodisc .fine{margin:4px 0 0 22px}
+@media (max-width:899px){
+  .pagehead .reviewany,.pagehead .qagen{max-width:none}
+  .rowside{flex:1 1 100%;max-width:none;align-self:auto;padding:0 8px 8px 14px;justify-content:space-between}
+  .rowby{justify-content:flex-start;text-align:left;padding-top:0}
+  .rowact{opacity:1;width:44px;min-height:44px}
+  .ltable table{display:table;min-width:640px}
+  .ltable .loc{max-width:none}
+}

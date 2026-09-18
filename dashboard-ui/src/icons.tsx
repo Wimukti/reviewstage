@@ -110,3 +110,7 @@ export function Icon({ name, className, size }: { name: string; className?: stri
     </svg>
   );
 }
+
+// Lane Q additions: the queue row's archive control is an icon button, not a text link.
+ICONS.archive = <><path d="M3 5h18v4H3z" /><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" /><path d="M10 13h4" /></>;
+ICONS.unarchive = <><path d="M3 5h18v4H3z" /><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" /><path d="M12 18v-6M9.5 14.5 12 12l2.5 2.5" /></>;

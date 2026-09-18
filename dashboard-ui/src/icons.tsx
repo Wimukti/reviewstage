@@ -110,3 +110,6 @@ export function Icon({ name, className, size }: { name: string; className?: stri
     </svg>
   );
 }
+
+// Lane S: the Devices entry in the phone's More sheet.
+NavIcon.devices = svg(<><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></>);

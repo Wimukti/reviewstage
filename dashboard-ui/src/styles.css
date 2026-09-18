@@ -681,3 +681,21 @@ border-radius:var(--r-m);padding:16px 18px;box-shadow:var(--shadow-raised)}
 .method .dbody p{margin-top:4px}
 .method li{color:var(--graphite)}
 .method li b{color:var(--ink)}
+
+/* ---- lane S: settings ------------------------------------------------------------------------- */
+.cardhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.setform .card{margin:12px 0 0}
+.setform .setfoot{margin:0;padding:14px 20px;border:1px solid var(--hairline);border-top:0;
+border-radius:0 0 var(--r-m) var(--r-m);background:var(--panel)}
+.setform .card:last-of-type{border-radius:var(--r-m) var(--r-m) 0 0}
+.setform+.card{margin-top:20px}
+.card.is-target{outline:2px solid var(--blue);outline-offset:2px}
+.schema{overflow-wrap:anywhere;max-width:100%}
+/* phone: label above control; a wrapping column flexbox sizes its line to the widest item, so no wrap */
+@media (max-width:899px){
+  .setrow{flex-direction:column;align-items:stretch;gap:8px;flex-wrap:nowrap}
+  .setrow .setlbl{min-width:0}
+  .setrow .setctl{justify-content:flex-start}
+  .setrow input[type=range]{flex:1;min-width:120px;width:auto}
+  .chk .envnote{margin-left:28px;flex:1 1 100%}
+}

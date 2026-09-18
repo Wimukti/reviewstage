@@ -151,7 +151,7 @@ test.describe("a merged pull request", () => {
     await page.goto("/?tab=posted");
     const row = page.locator(".row").filter({ hasText: `#${PR5}` }).first();
     await expect(row).toBeVisible();
-    await expect(row.getByTestId("pr-state")).toHaveText("merged");
+    await expect(row.getByTestId("pr-state")).toHaveText("Merged");
     await expect(row.getByTestId("no-approve")).toBeVisible();
     // "no longer requested" is true of every merged PR and told the reviewer nothing.
     await expect(row).not.toContainText(/no longer requested/i);
@@ -170,7 +170,7 @@ test.describe("a merged pull request", () => {
     // on a merged PR and the server's refusal only arrived once it had been pressed.
     await page.goto(prPath(REPO, PR5));
     await expect(page.getByTestId("pr-closed-banner")).toContainText(/merged/i);
-    await expect(page.getByTestId("pr-state").first()).toHaveText("merged");
+    await expect(page.getByTestId("pr-state").first()).toHaveText("Merged");
   });
 
   test("an open PR's detail page shows no such banner", async ({ page }) => {
@@ -411,6 +411,6 @@ test.describe("an older server that sends none of this", () => {
     await expect(page.locator("body")).not.toContainText("undefined");
     await expect(page.locator("body")).not.toContainText("NaN");
     // With no pre-selection from the server, the old rule still applies: everything not low.
-    await expect(page.locator(".finding.sel")).toHaveCount(1);
+    await expect(page.locator(".finding.is-staged")).toHaveCount(1);
   });
 });

@@ -646,3 +646,61 @@ border-radius:var(--r-m);padding:16px 18px;box-shadow:var(--shadow-raised)}
   .commit-bar.is-entering{animation:rise-bar 200ms var(--ease) both}
   @keyframes rise-bar{from{transform:translateY(100%)}to{transform:translateY(0)}}
 }
+
+/* ---- Lane P: PR page — header, status line, sections row, finding card, commit bar states ---- */
+.prpage{min-width:0}
+.prhead{display:flex;align-items:flex-start;gap:16px;margin:0 0 10px}
+.prhead .prtitle{flex:1;min-width:0;margin:0}
+.actwrap{position:relative;flex:none;margin-top:2px}
+.actmenu{position:absolute;top:calc(100% + 6px);right:0;min-width:220px;padding:4px;background:var(--panel);
+border:1px solid var(--hairline);border-radius:var(--r-m);display:flex;flex-direction:column;z-index:50}
+.actitem{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 10px;border-radius:var(--r-s);color:var(--ink);
+font-weight:500;white-space:nowrap}
+.actitem:hover{background:var(--paper);text-decoration:none}
+.actitem svg{width:16px;height:16px;color:var(--graphite);flex:none}
+.statusline{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;margin:0 0 6px;min-height:24px}
+.statusline .meta-t{font-size:var(--t-13);color:var(--graphite)}
+.statusline a{color:inherit}
+.statusline a:hover{text-decoration:none}
+.statusline a:hover .status{color:var(--blue)}
+.steps{display:flex;gap:6px 16px;flex-wrap:wrap;align-items:center;margin:0 0 18px;font-size:var(--t-13);color:var(--graphite)}
+.step{display:inline-flex;align-items:center;gap:6px}
+.step.hit{color:var(--ink)}
+.step .tick{flex:none;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+border:1px solid var(--graphite);border-radius:var(--r-full)}
+.step.hit .tick{border-color:var(--green);background:var(--green);color:var(--panel)}
+.step.hit .tick svg{width:10px;height:10px}
+.secrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:18px 0 0}
+.secbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:0 12px;font:inherit;
+font-weight:500;color:var(--graphite);background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-s);
+cursor:pointer;text-align:left;min-width:0}
+.secbtn:hover{color:var(--ink)}
+.secbtn[aria-expanded="true"]{color:var(--ink);border-color:var(--blue)}
+.secbtn svg{width:14px;height:14px;flex:none;color:var(--graphite)}
+.secbtn[aria-expanded="true"] svg{transform:rotate(180deg)}
+.secpanel{margin-top:10px;padding:16px 18px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-m)}
+.secpanel>h2:first-child{margin-top:0}
+.secpanel .dbody{padding:0}
+.approve-verdict{margin:0 0 10px}
+.approve-verdict .status{white-space:normal}
+.fpath{display:flex;align-items:center;gap:8px;margin-top:6px;min-width:0}
+.fpath code{font-size:var(--t-13);color:var(--graphite);background:none;border:0;padding:0;user-select:all;overflow-wrap:anywhere}
+.copybtn{font:inherit;font-size:var(--t-13);color:var(--graphite);background:none;border:0;padding:0 4px;height:24px;
+border-radius:var(--r-s);cursor:pointer;flex:none}
+.copybtn:hover{color:var(--ink)}
+.fmeta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.explain{margin:12px 0 0}
+.explain>summary{font-size:var(--t-13);color:var(--blue);min-height:32px;padding:0;width:fit-content}
+.explain>summary::after{margin-left:2px;background:var(--blue)}
+.explain .explainbox{margin-top:4px}
+.commit-bar.is-posted .status{font-size:var(--t-14)}
+.practions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+@media (max-width:899px){
+  .prhead{flex-wrap:wrap}
+  .actmenu{right:auto;left:0}
+  .secrow{grid-template-columns:1fr 1fr}
+  .prpage{padding-bottom:200px}
+  .commit-bar .inner{row-gap:8px}
+  .commit-bar .inner>.muted{flex:1 1 100%}
+  .commit-bar .rqtoggle{flex:1;min-height:36px}
+}

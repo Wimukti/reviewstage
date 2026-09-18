@@ -13,6 +13,7 @@ import {
   type RunFormData,
   type Token,
 } from "./api";
+import { openPalette } from "./CommandPalette";
 import { Md } from "./Md";
 import { MdEditor } from "./MdEditor";
 import { prLabel, prUrl, usageChip, usageTitle } from "./pr";
@@ -20,7 +21,7 @@ import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
 import { pokeRunning } from "./running";
 import { BrandIcon, Icon } from "./icons";
-import { Status, type Tone } from "./ui";
+import { Status, toneOf as toneOfState, wordOf, type Tone } from "./ui";
 import { Banner, RawBanner, SlowBusy } from "./ui";
 
 const refOf = (d: PrData): PrRef => ({ repo: d.repo, num: d.pr });
@@ -132,7 +133,7 @@ function RunForm({
       }}
     >
       {err && (
-        <Banner kind="warn">{err}</Banner>
+        <Banner kind="err">{err}</Banner>
       )}
       {others.length > 0 && (
         <div className="nudge">
@@ -351,6 +352,37 @@ type Placement = "inline" | "summary" | "unknown";
 const placementOf = (f: Finding): Placement =>
   f.anchorable === true ? "inline" : f.anchorable === false ? "summary" : "unknown";
 
+// The path is content a reviewer pastes into an editor, so it is shown whole and selectable in
+// one click; the button is for the case where select-all is out of reach (a phone).
+function CopyPath({ loc }: { loc: string }) {
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!done) return;
+    const t = window.setTimeout(() => setDone(false), 1500);
+    return () => window.clearTimeout(t);
+  }, [done]);
+  return (
+    <div className="fpath">
+      <code>{loc}</code>
+      <button
+        type="button"
+        className="copybtn"
+        aria-label={`Copy ${loc}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(loc);
+            setDone(true);
+          } catch {
+            /* the text stays selectable by hand */
+          }
+        }}
+      >
+        {done ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
 function FindingCard({
   f,
   checked,
@@ -374,7 +406,7 @@ function FindingCard({
   // Unstructured findings (older reviews) show the comment inline; structured ones tuck it away.
   const [showDetail, setShowDetail] = useState(!f.structured);
   const explain = async () => {
-    if (expLoading) return;
+    if (expLoading || exp) return;
     setExpErr("");
     setExpLoading(true);
     try {
@@ -387,66 +419,82 @@ function FindingCard({
     }
   };
   const loc = `${f.path}:${f.line}`;
+  const place = placementOf(f);
   return (
     <div className={"finding" + (checked ? " is-staged" : "")} data-staged={checked ? "1" : undefined}>
       <div className="fhead">
-        <input type="checkbox" className="fsel" checked={checked} onChange={onToggle} aria-label={`Stage this ${f.sevLabel} finding`} />
+        <input type="checkbox" className="fsel" checked={checked} onChange={onToggle} aria-label={`Stage this ${wordOf(f.severity)} finding`} />
         <Status kind={f.severity} />
-        {f.criticalPath && (
-          <span className="cpbadge" title={`Concerns a profiled critical path: ${f.criticalPath}`}>
-            critical path
-          </span>
+        {place === "summary" && (
+          <Status tone="graphite" title={OFFDIFF_HINT} data-testid="placement">
+            In summary
+          </Status>
         )}
-        {placementOf(f) === "summary" && (
-          <span className="offdiff" title={OFFDIFF_HINT}>
-            in summary
-          </span>
+        {place === "unknown" && (
+          <Status tone="amber" title={UNKNOWN_HINT} data-testid="placement-unknown">
+            Placement unknown
+          </Status>
         )}
-        {placementOf(f) === "unknown" && (
-          <span className="offdiff" title={UNKNOWN_HINT} data-testid="placement-unknown">
-            placement unknown
-          </span>
-        )}
-        {f.agreement?.confirmed ? (
-          <span className="agree ok" title={`Also raised by ${f.agreement.by.join(", ")} (${f.agreement.differ})`}>
-            {f.agreement.n} independent
-          </span>
-        ) : f.agreement ? (
-          <span className="agree solo">only your run</span>
-        ) : null}
-        <span className="fhead-sp" />
-        <span className="loc" title={loc}>{loc}</span>
       </div>
       <div className="fmain">
-        {f.structured && (
-          <>
-            <div className="ftitle">{f.title}</div>
-            {f.impact && (
-              <div className="fimpact">
-                <span className="fimpact-l">Why it matters</span>
-                {f.impact}
-              </div>
+        {f.structured && <div className="ftitle">{f.title}</div>}
+        <CopyPath loc={loc} />
+        {f.structured && f.impact && (
+          <div className="fimpact">
+            <span className="fimpact-l">Why it matters</span>
+            {f.impact}
+          </div>
+        )}
+        {(f.criticalPath || f.agreement) && (
+          <div className="fmeta">
+            {f.criticalPath && (
+              <span className="cpbadge" title={`Concerns a profiled critical path: ${f.criticalPath}`}>
+                critical path
+              </span>
             )}
-          </>
+            {f.agreement?.confirmed ? (
+              <span className="agree ok" title={`Also raised by ${f.agreement.by.join(", ")} (${f.agreement.differ})`}>
+                {f.agreement.n} independent
+              </span>
+            ) : f.agreement ? (
+              <span className="agree solo">only your run</span>
+            ) : null}
+          </div>
         )}
         {f.thread && <div className="freply">Reply to {f.thread}</div>}
-        <div className="factions">
-          {!exp && (
-            <button type="button" className="fbtn accent" onClick={explain} disabled={expLoading}>
-              {expLoading ? "Explaining…" : "Explain simply"}
-            </button>
+        <details
+          className="explain"
+          onToggle={(e) => {
+            if ((e.currentTarget as HTMLDetailsElement).open) void explain();
+          }}
+        >
+          <summary>Explain simply</summary>
+          {expLoading && <div className="hint">Explaining…</div>}
+          {expErr && (
+            <div className="ferr">
+              {expErr}{" "}
+              <button type="button" className="linkbtn" onClick={explain}>
+                Try again
+              </button>
+            </div>
           )}
-          {f.structured && (
-            <button type="button" className="fbtn" onClick={() => setShowDetail((v) => !v)}>
-              {showDetail ? "Hide comment" : "View / edit comment"}
-            </button>
+          {exp && (
+            <div className="explainbox">
+              <div className="explainbox-h">In plain words · how to verify</div>
+              <Md className="dbody">{exp}</Md>
+            </div>
           )}
-        </div>
-        {expErr && <div className="ferr">{expErr}</div>}
-        {exp && (
-          <div className="explainbox">
-            <div className="explainbox-h">In plain words · how to verify</div>
-            <Md className="dbody">{exp}</Md>
+        </details>
+        {f.structured && (
+          <div className="factions">
+            <button
+              type="button"
+              className="fbtn"
+              aria-expanded={showDetail}
+              onClick={() => setShowDetail((v) => !v)}
+            >
+              Edit comment
+            </button>
           </div>
         )}
         {showDetail && (
@@ -513,7 +561,84 @@ function verdict(rev: ReviewData) {
 // check, exactly as it did before the key existed.
 const reviewIdentity = (rev: ReviewData): string => rev.reviewKey || "";
 
-function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
+// The server answers a write with banner HTML, not a status. Its `kind` is the only signal of
+// whether the stage was committed: `ok` is a post, and in dry run the deliberate "nothing was
+// sent" is a `warn` that says so.
+function postedFromBanner(html: string, dryRun: boolean): boolean {
+  const kind = /class='banner (\w+)'/.exec(html)?.[1];
+  if (kind === "ok") return true;
+  return kind === "warn" && dryRun && /dry run/i.test(html);
+}
+
+const headMovedOf = (rev: ReviewData | undefined): boolean =>
+  !!(
+    rev?.approve?.reviewedHead &&
+    rev.approve.currentHead &&
+    rev.approve.reviewedHead !== rev.approve.currentHead
+  );
+
+// A row of disclosure buttons; each opens its panel beneath the row, so the row itself never
+// reflows when one is open. Several may be open at once.
+interface Section {
+  key: string;
+  label: string;
+  content: React.ReactNode;
+}
+function SectionRow({ sections }: { sections: Section[] }) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  if (!sections.length) return null;
+  const flip = (k: string) =>
+    setOpen((s) => {
+      const n = new Set(s);
+      n.has(k) ? n.delete(k) : n.add(k);
+      return n;
+    });
+  return (
+    <>
+      <div className="secrow" data-testid="section-row">
+        {sections.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className="secbtn"
+            id={`sec-${s.key}`}
+            aria-expanded={open.has(s.key)}
+            aria-controls={`secpanel-${s.key}`}
+            data-testid={`sec-${s.key}`}
+            onClick={() => flip(s.key)}
+          >
+            {s.label}
+            <Icon name="chevron-down" />
+          </button>
+        ))}
+      </div>
+      {sections
+        .filter((s) => open.has(s.key))
+        .map((s) => (
+          <section
+            key={s.key}
+            className="secpanel"
+            id={`secpanel-${s.key}`}
+            aria-labelledby={`sec-${s.key}`}
+          >
+            {s.content}
+          </section>
+        ))}
+    </>
+  );
+}
+
+function ReviewBody({
+  data,
+  me,
+  onDone,
+  onPosted,
+}: {
+  data: PrData;
+  me: Me;
+  onDone: () => void;
+  onPosted: () => void;
+}) {
   const rev = data.review!;
   const [bodies, setBodies] = useState<Record<number, string>>(
     () => Object.fromEntries(rev.findings.map((f) => [f.i, f.body]))
@@ -545,6 +670,9 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   const [err, setErr] = useState("");
   const [stale, setStale] = useState(false); // the server refused: this run has been replaced
   const [busy, setBusy] = useState(false);
+  // The stage was committed in this session: the bar switches in place, no reload needed.
+  const [postedNow, setPostedNow] = useState(false);
+  const posted = postedNow || rev.posted;
 
   // approve
   const [approveBody, setApproveBody] = useState(rev.approve?.defaultMsg || "");
@@ -571,11 +699,7 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   const overCap = maxPerPost > 0 && selected.size > maxPerPost;
   // Approving head B while reading head A's "LGTM, no blockers" is the failure this catches. The
   // server refuses it too; this just makes the reason visible before the click.
-  const headMoved = !!(
-    rev.approve?.reviewedHead &&
-    rev.approve?.currentHead &&
-    rev.approve.reviewedHead !== rev.approve.currentHead
-  );
+  const headMoved = headMovedOf(rev);
   const needsAck = !!rev.approve && (!rev.approve.lgtm || headMoved);
   // The server refuses an approval on a PR that is no longer open; say so before the click
   // instead of after it.
@@ -617,10 +741,15 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
           }),
       );
       setBanner(res.bannerHtml);
+      if (postedFromBanner(res.bannerHtml, data.dryRun)) {
+        setPostedNow(true);
+        onPosted();
+      }
       onDone();
     } catch (e) {
       // 409: the stored review is not the one on screen. Say so in those words and offer the
       // only thing that helps — a reload — rather than a button that looks retryable.
+      setBanner("");
       if (e instanceof ApiError && e.status === 409) {
         setStale(true);
         setErr("");
@@ -644,6 +773,7 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
       setBanner(res.bannerHtml);
       onDone();
     } catch (e) {
+      setBanner("");
       setErr(errMessage(e, "Couldn't approve on GitHub."));
     } finally {
       setBusy(false);
@@ -663,76 +793,154 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
     />
   );
 
-  return (
-    <>
-      {data.dryRun && (
-        <Banner kind="warn" icon="flask">
-            <b>Dry run — the buttons on this page do not write to GitHub.</b>
-          </Banner>
-      )}
-      {banner && <RawBanner html={banner} />}
-      {err && (
-        <Banner kind="err" data-testid="action-error">{err}</Banner>
-      )}
-      {stale && (
-        <Banner kind="err" data-testid="rerun-refusal">
-            <b>This review was re-run — reload before posting.</b> The findings on the server are
-            not the ones on this page, so your ticks and edits no longer line up with them.
-            Nothing was posted.{" "}
-            <button type="button" className="linkbtn" onClick={() => window.location.reload()}>
-              Reload the page
-            </button>
-            .
-          </Banner>
-      )}
-      {rev.anchorsUnknown && (
-        <Banner kind="warn" data-testid="anchors-unknown">
-            <b>Where these comments will land could not be checked.</b> GitHub would not say which
-            lines this PR touches, so this is not a claim that the findings sit outside the diff —
-            it is simply unknown. Each one goes inline if its line is in the diff, and into the
-            review body if it is not.
-            {rev.anchorError ? <> The check failed with: <code>{rev.anchorError}</code>.</> : null}
-          </Banner>
-      )}
-      {rev.truncated && (
-        <Banner kind="warn" data-testid="truncated">
-            <b>
-              Showing {rev.truncated.shown.toLocaleString("en-US")} of{" "}
-              {rev.truncated.total.toLocaleString("en-US")} findings.
-            </b>{" "}
-            This run produced more than one page — and one review — should carry, so the rest were
-            not rendered and cannot be posted from here. Re-run with a focus to narrow it.
-          </Banner>
-      )}
-      {rev.preselectCapped && (
-        <Banner kind="warn" data-testid="preselect-capped">{rev.preselectCapped.note}</Banner>
-      )}
+  // At most one full-width banner, and only for something that went wrong. The server's answer
+  // to a write is the exception: it is the receipt for the click.
+  const errorBanner = stale ? (
+    <Banner kind="err" data-testid="rerun-refusal">
+      <b>This review was re-run — reload before posting.</b> The findings on the server are
+      not the ones on this page, so your ticks and edits no longer line up with them.
+      Nothing was posted.{" "}
+      <button type="button" className="linkbtn" onClick={() => window.location.reload()}>
+        Reload the page
+      </button>
+      .
+    </Banner>
+  ) : err ? (
+    <Banner kind="err" data-testid="action-error">{err}</Banner>
+  ) : null;
 
-      {rev.reused && (
-        <Banner kind="ok">Reused your earlier run of this exact configuration on this commit — 0 new tokens.</Banner>
-      )}
-      {(() => {
-        const v = verdict(rev);
-        return (
-          <div className="verdict" data-testid="verdict">
-            <div className="verdict-main">
-              <div className="verdict-t">
-                <Status tone={v.tone}>{v.text}</Status>
-              </div>
-              <div className="verdict-sub">the agent's read · comments post as a plain review either way</div>
-            </div>
-            {rev.chips.length > 0 && (
-              <div className="verdict-chips">
-                {rev.chips.map((c) => (
-                  <Status key={c.kind} kind={c.kind}>
-                    {c.n} {c.label}
-                  </Status>
-                ))}
-              </div>
+  const sections: Section[] = [];
+  if ((rev.keyPoints && rev.keyPoints.length > 0 && rev.summary) || rev.analysis) {
+    sections.push({
+      key: "summary",
+      label: "Full summary",
+      content: (
+        <>
+          {rev.keyPoints && rev.keyPoints.length > 0 && rev.summary && (
+            <Md className="dbody">{rev.summary}</Md>
+          )}
+          {rev.analysis && (
+            <>
+              <h2>Reviewer's notes — what was checked, and what was dropped</h2>
+              <Md className="dbody">{rev.analysis}</Md>
+            </>
+          )}
+        </>
+      ),
+    });
+  }
+  if (rev.explainer) {
+    sections.push({
+      key: "explainer",
+      label: "What this PR does",
+      content: <Md className="dbody">{rev.explainer}</Md>,
+    });
+  }
+  if (rev.approved) {
+    sections.push({
+      key: "approve",
+      label: "Approved",
+      content: <ApprovedBody a={rev.approved} ghUrl={data.ghUrl} reviewers={data.reviewers} />,
+    });
+  } else if (rev.approve) {
+    const a = rev.approve;
+    sections.push({
+      key: "approve",
+      label: "Approve",
+      content: (
+        <>
+          {headMoved && (
+            <Banner kind="warn" data-testid="head-moved">
+              <b>The branch has moved since this review ran.</b> The verdict above was
+              written against <code>{a.reviewedHead!.slice(0, 7)}</code>; GitHub is
+              now at <code>{a.currentHead!.slice(0, 7)}</code>. Approving would
+              bless commits nobody here has read — re-run the review, or confirm below to
+              approve the current commit anyway.
+            </Banner>
+          )}
+          <div className="approve-verdict">
+            {a.lgtm ? (
+              <Status tone="green">LGTM — no blockers</Status>
+            ) : (
+              <Status tone="amber">
+                Not LGTM —{" "}
+                {a.blockers ? `${a.blockers} blocker(s)` : "the agent's assessment is REQUEST_CHANGES"}
+                . Approving anyway needs the confirmation below.
+              </Status>
             )}
           </div>
-        );
-      })()}
+          {/* Not a <form>, for the same reason as the post panel: Enter must never approve
+              a PR. The acknowledgement that `required` used to enforce gates the button. */}
+          <div data-testid="approve-panel">
+            <label className="muted sm">
+              Approval comment — posted on the PR as a whole, then the PR is approved
+            </label>
+            <MdEditor value={approveBody} onChange={setApproveBody} />
+            {needsAck && (
+              <p className="sm">
+                <label>
+                  <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />{" "}
+                  {headMoved && a.lgtm
+                    ? "I know the branch has moved and want to approve the current commit."
+                    : "I've read the findings above and want to approve anyway."}
+                </label>
+              </p>
+            )}
+            <p>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={busy || noApprove || (needsAck && !ack)}
+                aria-busy={busy}
+                title={noApprove ? noApproveWhy : needsAck && !ack ? "Tick the confirmation above first" : ""}
+                onClick={submitApprove}
+              >
+                {busy
+                  ? "Approving…"
+                  : data.dryRun
+                    ? "Approve (dry run)"
+                    : `Approve #${data.pr}`}
+              </button>
+              {noApprove && (
+                <span className="rownote" data-testid="no-approve">
+                  {noApproveWhy}
+                </span>
+              )}
+            </p>
+          </div>
+          {data.reviewers && <Reviewers data={data.reviewers} />}
+        </>
+      ),
+    });
+  }
+  sections.push({
+    key: "rerun",
+    label: "Re-run",
+    content: <RerunBody data={data} onDone={onDone} />,
+  });
+
+  const v = verdict(rev);
+  return (
+    <>
+      {banner && <RawBanner html={banner} />}
+      {errorBanner}
+      <div className="verdict" data-testid="verdict">
+        <div className="verdict-main">
+          <div className="verdict-t">
+            <Status tone={v.tone}>{v.text}</Status>
+          </div>
+          <div className="verdict-sub">the agent's read · comments post as a plain review either way</div>
+        </div>
+        {rev.chips.length > 0 && (
+          <div className="verdict-chips">
+            {rev.chips.map((c) => (
+              <Status key={c.kind} kind={c.kind}>
+                {c.n} {wordOf(c.kind).toLowerCase()}
+              </Status>
+            ))}
+          </div>
+        )}
+      </div>
       {rev.keyPoints && rev.keyPoints.length > 0 ? (
         <ul className="keypoints">
           {rev.keyPoints.map((pt, i) => (
@@ -742,26 +950,6 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
       ) : rev.summary ? (
         <ClampSummary text={rev.summary} />
       ) : null}
-      {rev.keyPoints && rev.keyPoints.length > 0 && rev.summary && (
-        <details className="refblock">
-          <summary>Full summary</summary>
-          <div className="dbody">
-            <Md>{rev.summary}</Md>
-          </div>
-        </details>
-      )}
-      {rev.explainer && (
-        <details className="refblock">
-          <summary>What this PR does</summary>
-          <Md className="dbody">{rev.explainer}</Md>
-        </details>
-      )}
-      {rev.analysis && (
-        <details className="refblock">
-          <summary>Reviewer's notes — what was checked, and what was dropped</summary>
-          <Md className="dbody">{rev.analysis}</Md>
-        </details>
-      )}
 
       {rev.convergence && rev.convergence.total > 0 && (
         <div className="conv-summary">
@@ -771,232 +959,185 @@ function ReviewBody({ data, onDone }: { data: PrData; onDone: () => void }) {
           different skill/model/effort raised it too — a signal to build on, not a score.
         </div>
       )}
-      {rev.count === 0 ? (
-        <p className="muted">No findings — nothing to post.</p>
-      ) : (
-        // Deliberately not a <form>: browsers implicitly submit one on Enter, and these are
-        // checkboxes. A stray keystroke while ticking findings would have posted the review.
-        <div data-testid="post-panel">
-          {rev.posted && (
-            <Banner kind="ok">
-                Posted to GitHub as your review.{" "}
-                <a href={data.ghUrl} target="_blank" rel="noreferrer">View on GitHub</a>.
-              </Banner>
-          )}
-          {shown.map(renderFinding)}
-          {maybe.length > 0 && (
-            <details className="maybe">
-              <summary>
-                Maybe — {maybe.length} lower-confidence finding{maybe.length !== 1 ? "s" : ""} (unchecked)
-              </summary>
-              <div className="dbody">{maybe.map(renderFinding)}</div>
-            </details>
-          )}
-          {!rev.posted && (
-            <div className={"commit-bar" + (entering ? " is-entering" : "")} data-testid="commit-bar">
-              <div className="inner">
-                <span className="muted sm">
-                  <b>{selected.size}</b> staged
-                  {(selOff > 0 || selUnknown > 0) && (
-                    <>
-                      {" · "}
-                      {selInline} inline
-                      {selOff > 0 && (
-                        <>
-                          {" · "}
-                          <span title={OFFDIFF_HINT}>{selOff} in the summary</span>
-                        </>
-                      )}
-                      {selUnknown > 0 && (
-                        <>
-                          {" · "}
-                          <span title={UNKNOWN_HINT} data-testid="placement-unknown-count">
-                            {selUnknown} unknown
-                          </span>
-                        </>
-                      )}
-                    </>
-                  )}{" "}
-                  ·{" "}
-                  {requestChanges ? "requests changes — can block the PR until updated" : "posts as plain comments"}
-                  {overCap && (
-                    <>
-                      {" · "}
-                      <b data-testid="over-cap">
-                        over the {maxPerPost} per-post limit — untick some
-                      </b>
-                    </>
-                  )}
-                </span>
-                <span className="spacer" />
-                <label className="rqtoggle">
-                  <input type="checkbox" checked={requestChanges} onChange={(e) => setRequestChanges(e.target.checked)} />{" "}
-                  Request changes instead
-                </label>
-                <button
-                  className={"btn " + (requestChanges ? "destructive" : "primary")}
-                  type="button"
-                  disabled={busy || stale || overCap}
-                  aria-busy={busy}
-                  title={
-                    stale
-                      ? "Reload the page — this review has been replaced"
-                      : overCap
-                        ? `GitHub takes a review all-or-nothing; post at most ${maxPerPost} at a time`
-                        : ""
-                  }
-                  onClick={submitPost}
-                >
-                  {busy ? "Posting…" : requestChanges ? "Request changes" : rev.postLabel}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {rev.approved ? (
-        <ApprovedCard a={rev.approved} ghUrl={data.ghUrl} />
-      ) : (
-        rev.approve && (
+      {/* Deliberately not a <form>: browsers implicitly submit one on Enter, and these are
+          checkboxes. A stray keystroke while ticking findings would have posted the review. */}
+      <div data-testid="post-panel">
+        {rev.count === 0 ? (
+          <p className="muted">No findings — nothing to post.</p>
+        ) : (
           <>
-            <h2>Approve</h2>
-            <div className="card">
-              {headMoved && (
-                <Banner kind="warn" data-testid="head-moved">
-                    <b>The branch has moved since this review ran.</b> The verdict above was
-                    written against <code>{rev.approve.reviewedHead!.slice(0, 7)}</code>; GitHub is
-                    now at <code>{rev.approve.currentHead!.slice(0, 7)}</code>. Approving would
-                    bless commits nobody here has read — re-run the review, or confirm below to
-                    approve the current commit anyway.
-                  </Banner>
-              )}
-              {rev.approve.lgtm ? (
-                <Banner kind="ok">
-                    <b>LGTM</b> — no blockers.
-                  </Banner>
-              ) : (
-                <Banner kind="warn">
-                    <b>Not LGTM</b> —{" "}
-                    {rev.approve.blockers ? `${rev.approve.blockers} blocker(s)` : "the agent's assessment is REQUEST_CHANGES"}
-                    . Approving anyway needs the confirmation below.
-                  </Banner>
-              )}
-              {/* Not a <form>, for the same reason as the post panel: Enter must never approve
-                  a PR. The acknowledgement that `required` used to enforce gates the button. */}
-              <div data-testid="approve-panel">
-                <label className="muted sm">
-                  Approval comment — posted on the PR as a whole, then the PR is approved
-                </label>
-                <MdEditor value={approveBody} onChange={setApproveBody} />
-                {needsAck && (
-                  <p className="sm">
-                    <label>
-                      <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />{" "}
-                      {headMoved && rev.approve.lgtm
-                        ? "I know the branch has moved and want to approve the current commit."
-                        : "I've read the findings above and want to approve anyway."}
-                    </label>
-                  </p>
-                )}
-                <p>
-                  <button
-                    className="btn primary"
-                    type="button"
-                    disabled={busy || noApprove || (needsAck && !ack)}
-                    aria-busy={busy}
-                    title={noApprove ? noApproveWhy : needsAck && !ack ? "Tick the confirmation above first" : ""}
-                    onClick={submitApprove}
-                  >
-                    {busy
-                      ? "Approving…"
-                      : data.dryRun
-                        ? "Approve (dry run)"
-                        : `Approve #${data.pr}`}
-                  </button>
-                  {noApprove && (
-                    <span className="rownote" data-testid="no-approve">
-                      {noApproveWhy}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </>
-        )
-      )}
-
-      <RerunSection data={data} onDone={onDone} />
-    </>
-  );
-}
-
-function ApprovedCard({ a, ghUrl }: { a: NonNullable<PrData["approved"]>; ghUrl: string }) {
-  return (
-    <>
-      <h2>Approved</h2>
-      <div className="card">
-        <Banner kind="ok">
-            <b>
-              {a.manual ? "Marked as approved" : "Approved"} on {a.at}
-            </b>{" "}
-            ({a.ago}){!a.manual && <> as <code>{a.user}</code></>}
-          </Banner>
-        {a.body && !a.manual && (
-          <>
-            <p className="muted sm">Comment posted with the approval:</p>
-            <pre>
-              <code>{a.body}</code>
-            </pre>
+            {shown.map(renderFinding)}
+            {maybe.length > 0 && (
+              <details className="maybe">
+                <summary>
+                  Maybe — {maybe.length} lower-confidence finding{maybe.length !== 1 ? "s" : ""} (unchecked)
+                </summary>
+                <div className="dbody">{maybe.map(renderFinding)}</div>
+              </details>
+            )}
           </>
         )}
-        <p>
-          <a className="btn secondary" href={ghUrl} target="_blank" rel="noopener">
-            View on GitHub
-          </a>
-        </p>
+        <SectionRow sections={sections} />
+        {rev.count > 0 && (
+          <div
+            className={"commit-bar" + (entering ? " is-entering" : "") + (posted ? " is-posted" : "")}
+            data-testid="commit-bar"
+          >
+            <div className="inner">
+              {posted ? (
+                <>
+                  <span className="muted sm" data-testid="commit-posted">
+                    <Status tone="green">Posted as {me.login}</Status>
+                    {postedNow && data.dryRun && <> · dry run — nothing reached GitHub</>}
+                    {!data.dryRun && data.ghUrl && (
+                      <>
+                        {" · "}
+                        <a href={data.ghUrl} target="_blank" rel="noreferrer">
+                          View on GitHub
+                        </a>
+                      </>
+                    )}
+                  </span>
+                  <span className="spacer" />
+                  <button className="btn primary" type="button" disabled>
+                    Posted
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="muted sm">
+                    <b>{selected.size}</b> staged
+                    {(selOff > 0 || selUnknown > 0) && (
+                      <>
+                        {" · "}
+                        {selInline} inline
+                        {selOff > 0 && (
+                          <>
+                            {" · "}
+                            <span title={OFFDIFF_HINT}>{selOff} in the summary</span>
+                          </>
+                        )}
+                        {selUnknown > 0 && (
+                          <>
+                            {" · "}
+                            <span title={UNKNOWN_HINT} data-testid="placement-unknown-count">
+                              {selUnknown} unknown
+                            </span>
+                          </>
+                        )}
+                      </>
+                    )}{" "}
+                    ·{" "}
+                    {requestChanges ? "requests changes — can block the PR until updated" : "posts as plain comments"}
+                    {overCap && (
+                      <>
+                        {" · "}
+                        <b data-testid="over-cap">
+                          over the {maxPerPost} per-post limit — untick some
+                        </b>
+                      </>
+                    )}
+                  </span>
+                  <span className="spacer" />
+                  <label className="rqtoggle">
+                    <input type="checkbox" checked={requestChanges} onChange={(e) => setRequestChanges(e.target.checked)} />{" "}
+                    Request changes instead
+                  </label>
+                  <button
+                    className={"btn " + (requestChanges ? "destructive" : "primary")}
+                    type="button"
+                    disabled={busy || stale || overCap}
+                    aria-busy={busy}
+                    title={
+                      stale
+                        ? "Reload the page — this review has been replaced"
+                        : overCap
+                          ? `GitHub takes a review all-or-nothing; post at most ${maxPerPost} at a time`
+                          : ""
+                    }
+                    onClick={submitPost}
+                  >
+                    {busy ? "Posting…" : requestChanges ? "Request changes" : rev.postLabel}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
 }
 
-function RerunSection({ data, onDone }: { data: PrData; onDone: () => void }) {
+function ApprovedBody({
+  a,
+  ghUrl,
+  reviewers,
+}: {
+  a: NonNullable<PrData["approved"]>;
+  ghUrl: string;
+  reviewers?: ReviewersData | null;
+}) {
+  return (
+    <>
+      <div className="approve-verdict">
+        <Status tone="green">
+          {a.manual ? "Marked as approved" : "Approved"} on {a.at} ({a.ago})
+          {!a.manual && <> as <code>{a.user}</code></>}
+        </Status>
+      </div>
+      {a.body && !a.manual && (
+        <>
+          <p className="muted sm">Comment posted with the approval:</p>
+          <pre>
+            <code>{a.body}</code>
+          </pre>
+        </>
+      )}
+      <p>
+        <a className="btn secondary" href={ghUrl} target="_blank" rel="noopener">
+          View on GitHub
+        </a>
+      </p>
+      {reviewers && <Reviewers data={reviewers} />}
+    </>
+  );
+}
+
+function RerunBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   return (
     <div id="rerun">
-      <h2>Re-run</h2>
-      <div className="card">
-        <p className="muted sm" style={{ marginTop: 0 }}>
-          Run it again — a fresh effort level or a focus note. The current review is kept in history below.
-        </p>
-        <RunForm
-          pr={refOf(data)}
-          token={data.tokens.review}
-          form={data.runForm}
-          label="Re-run review"
-          connected={data.claudeConnected}
-          onStarted={onDone}
-        />
-        <HistoryList pr={refOf(data)} runs={data.history} />
-      </div>
+      <p className="muted sm" style={{ marginTop: 0 }}>
+        Run it again — a fresh effort level or a focus note. The current review is kept in history below.
+      </p>
+      <RunForm
+        pr={refOf(data)}
+        token={data.tokens.review}
+        form={data.runForm}
+        label="Re-run review"
+        connected={data.claudeConnected}
+        onStarted={onDone}
+      />
+      <HistoryList pr={refOf(data)} runs={data.history} />
     </div>
   );
 }
 
 // Breadcrumbs: Queue / owner/name / #123. Clicking the repo crumb filters the queue to it.
-function Crumbs({ data, tail }: { data: PrData; tail?: React.ReactNode }) {
+function Crumbs({ repo, num, tail, linkNum }: { repo: string; num: string; tail?: React.ReactNode; linkNum?: boolean }) {
   return (
     <nav className="bc">
       <Link to="/">Queue</Link>
-      {data.repo && (
+      {repo && (
         <>
           <span className="sep">/</span>
-          <Link to="/" className="repo" onClick={() => setRepoFilter(data.repo)} title="Filter the queue to this repository">
-            {data.repo}
+          <Link to="/" className="repo" onClick={() => setRepoFilter(repo)} title="Filter the queue to this repository">
+            {repo}
           </Link>
         </>
       )}
       <span className="sep">/</span>
-      {tail ? <Link to={prUrl(refOf(data))}>#{data.pr}</Link> : <span className="cur">#{data.pr}</span>}
+      {tail || linkNum ? <Link to={prUrl({ repo, num })}>#{num}</Link> : <span className="cur">#{num}</span>}
       {tail && (
         <>
           <span className="sep">/</span>
@@ -1007,125 +1148,271 @@ function Crumbs({ data, tail }: { data: PrData; tail?: React.ReactNode }) {
   );
 }
 
-function Title({ data }: { data: PrData }) {
+// The one title pattern: mono repo, then #number — title. The Stack page reuses it.
+export function PrTitle({ repo, num, title }: { repo: string; num: string; title: string }) {
   return (
     <h1 className="prtitle">
-      {data.repo && <span className="repo">{data.repo}</span>}#{data.pr} — {data.title}
+      {repo && <span className="repo">{repo}</span>}#{num}
+      {title ? <> — {title}</> : null}
     </h1>
   );
 }
 
-function HeaderTop({ data }: { data: PrData }) {
+// The one Actions menu, in place of the three side cards.
+function ActionsMenu({ data }: { data: PrData }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const close = () => setOpen(false);
   return (
-    <>
-      <Crumbs data={data} />
-      <Title data={data} />
-    </>
-  );
-}
-
-// The GitHub-style right rail: quick actions, PR details, and review progress, grouped.
-function PrSidebar({ data }: { data: PrData }) {
-  return (
-    <div className="prside-inner">
-      <div className="sidecard">
-        <a className="sideact" href={data.ghUrl} target="_blank" rel="noopener">
-          <Icon name="external" /> Open on GitHub
-        </a>
-        <Link className="sideact" to={prUrl(refOf(data), "/qa")}>
-          <Icon name="flask" /> QA guide
-        </Link>
-        {data.stack?.isStack && (
-          <Link className="sideact" to={prUrl(refOf(data), "/stack")}>
-            <Icon name="layers" /> Stacked review ({data.stack.size} PRs)
+    <div className="actwrap" ref={ref}>
+      <button
+        className="btn secondary"
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        data-testid="pr-actions"
+        onClick={() => setOpen((o) => !o)}
+      >
+        Actions
+      </button>
+      {open && (
+        <div className="actmenu" data-testid="pr-actions-menu">
+          <a className="actitem" href={data.ghUrl} target="_blank" rel="noopener" onClick={close}>
+            <Icon name="external" /> Open on GitHub
+          </a>
+          <Link className="actitem" to={prUrl(refOf(data), "/qa")} onClick={close}>
+            <Icon name="flask" /> QA guide
           </Link>
-        )}
-      </div>
-
-      <div className="sidecard">
-        <div className="siderow">
-          <Status kind={data.state} />
-          {data.canApprove === false && (
-            <Status kind={data.merged ? "merged" : "closed"} data-testid="pr-state" />
-          )}
-          {data.dryRun && <Status kind="dry" />}
-          {data.effortBadge && (
-            <span className="chip" title={data.effortBadge.hint}>
-              {data.effortBadge.label}
-            </span>
+          {data.stack?.isStack && (
+            <Link className="actitem" to={prUrl(refOf(data), "/stack")} onClick={close}>
+              <Icon name="layers" /> Stacked review ({data.stack.size} PRs)
+            </Link>
           )}
         </div>
-        {data.usage && (
-          <div className="sideusage" title={usageTitle(data.usage)}>
-            {usageChip(data.usage)}
-          </div>
-        )}
-        {(data.author || data.size) && (
-          <div className="sidemeta">
-            {data.author}
-            {data.size ? ` · ${data.size}` : ""}
-          </div>
-        )}
-        {data.runner && (
-          <div className="sidemeta muted">
-            Ran on {data.runner !== "shared" ? `${data.runner}'s` : "the shared team"} Claude account
-          </div>
-        )}
-        {!data.awaiting && <div className="sidemeta muted">Not awaiting your review</div>}
-      </div>
-
-      <div className="sidecard">
-        <div className="sidesteps">
-          {data.timeline.map((s) => (
-            <div key={s.label} className={"sidestep" + (s.done ? " hit" : "")}>
-              <span className="sidetick">{s.done ? <Icon name="check" /> : null}</span>
-              <span>
-                {s.label}
-                {s.note && <span className="muted"> {s.note}</span>}
-              </span>
-            </div>
-          ))}
-        </div>
-        {data.reviewers && <Reviewers data={data.reviewers} />}
-      </div>
+      )}
     </div>
   );
 }
 
-// Contextual alert banners (risk / focus / stale) — shown atop the main column.
-function PrBanners({ data }: { data: PrData }) {
+function HeaderTop({ data, tail }: { data: PrData; tail?: React.ReactNode }) {
   return (
     <>
-      {data.risk.map((r) => (
-        <Banner kind="info" key={r.title}>
-            <b>{r.title}.</b> {r.note}
-          </Banner>
-      ))}
-      {data.focus && data.state === "done" && (
-        <Banner kind="info">
-            <b>Focused review.</b> You asked ReviewStage to focus on: “{data.focus}”.
-          </Banner>
-      )}
-      {data.stale && (
-        <Banner kind="warn">
-            <b>The author pushed new commits since this review.</b> The findings may be out of date —
-            re-run below.
-          </Banner>
-      )}
-      {data.canApprove === false && (
-        <Banner kind="warn" data-testid="pr-closed-banner">
-            {data.merged ? (
-              <>
-                <b>This pull request is merged.</b> GitHub will not take an approval on it, and
-                comments posted now cannot be acted on. The review below is kept for the record.
-              </>
-            ) : (
-              <>
-                <b>This pull request is closed.</b> An approval on it would not be actionable.
-                Reopen it on GitHub if you still want to sign off.
-              </>
-            )}
-          </Banner>
+      <Crumbs repo={data.repo} num={data.pr} tail={tail} />
+      <div className="prhead">
+        <PrTitle repo={data.repo} num={data.pr} title={data.title} />
+        <ActionsMenu data={data} />
+      </div>
+    </>
+  );
+}
+
+// One status line under the title. Every condition that used to be a banner is a dot and a
+// word here, ordered by what the reviewer must act on: things that block or mislead an approval
+// first, then the flags, then where the PR stands, then plain facts. The full sentence each
+// banner carried is the item's title.
+interface StatusItem {
+  key: string;
+  tone: Tone;
+  word: string;
+  title?: string;
+  testid?: string;
+  to?: string;
+}
+function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
+  const rev = data.review;
+  const items: StatusItem[] = [];
+  if (headMovedOf(rev)) {
+    items.push({
+      key: "head-moved",
+      tone: "amber",
+      word: "Branch moved",
+      testid: "status-head-moved",
+      title:
+        `The branch has moved since this review ran — the verdict was written against ` +
+        `${rev!.approve!.reviewedHead!.slice(0, 7)}, GitHub is now at ` +
+        `${rev!.approve!.currentHead!.slice(0, 7)}. Approving needs the confirmation in Approve.`,
+    });
+  }
+  if (data.stale) {
+    items.push({
+      key: "stale",
+      tone: "amber",
+      word: "New commits since review",
+      testid: "status-stale",
+      title: "The author pushed new commits since this review. The findings may be out of date — re-run.",
+    });
+  }
+  if (!data.claudeConnected) {
+    items.push({
+      key: "claude",
+      tone: "amber",
+      word: "Claude not connected",
+      testid: "status-claude",
+      to: "/integrations",
+      title: "Reviews run on your own Claude subscription. Connect it on Integrations to run one here.",
+    });
+  }
+  if (rev?.anchorsUnknown) {
+    items.push({
+      key: "anchors",
+      tone: "amber",
+      word: "Placement unknown",
+      testid: "anchors-unknown",
+      title:
+        "Where these comments will land could not be checked. GitHub would not say which lines " +
+        "this PR touches, so this is not a claim that the findings sit outside the diff — it is " +
+        "simply unknown. Each one goes inline if its line is in the diff, and into the review " +
+        "body if it is not." +
+        (rev.anchorError ? ` The check failed with: ${rev.anchorError}.` : ""),
+    });
+  }
+  if (rev?.truncated) {
+    items.push({
+      key: "truncated",
+      tone: "amber",
+      word: `Showing ${rev.truncated.shown.toLocaleString("en-US")} of ${rev.truncated.total.toLocaleString("en-US")} findings`,
+      testid: "truncated",
+      title:
+        "This run produced more than one page — and one review — should carry, so the rest were " +
+        "not rendered and cannot be posted from here. Re-run with a focus to narrow it.",
+    });
+  }
+  if (rev?.preselectCapped) {
+    items.push({
+      key: "precap",
+      tone: "amber",
+      word: `Pre-selection capped at ${rev.preselectCapped.max}`,
+      testid: "preselect-capped",
+      title: rev.preselectCapped.note,
+    });
+  }
+  for (const r of data.risk) {
+    items.push({ key: `risk-${r.title}`, tone: "amber", word: r.title, title: r.note });
+  }
+  if (data.stopped) {
+    items.push({
+      key: "stopped",
+      tone: "amber",
+      word: "Review stopped",
+      title: data.stopped.halted
+        ? "No agent is running — Claude usage has halted. Start a new run below."
+        : "A process may still be running. Start a new run below.",
+    });
+  }
+  if (data.dryRun) {
+    items.push({
+      key: "dry",
+      tone: "amber",
+      word: "Dry run",
+      testid: "status-dry",
+      title: "Dry run — the buttons on this page do not write to GitHub.",
+    });
+  }
+  if (data.canApprove === false) {
+    items.push({
+      key: "prstate",
+      tone: data.merged ? "green" : "graphite",
+      word: data.merged ? "Merged" : "Closed",
+      testid: "pr-state",
+      title: data.merged
+        ? "This pull request is merged. GitHub will not take an approval on it, and comments " +
+          "posted now cannot be acted on. The review below is kept for the record."
+        : "This pull request is closed. An approval on it would not be actionable. Reopen it on " +
+          "GitHub if you still want to sign off.",
+    });
+  }
+  if (data.state && !data.stopped) {
+    const kind = postedNow && data.state === "done" ? "posted" : data.state;
+    items.push({ key: "state", tone: toneOfState(kind), word: wordOf(kind), testid: "review-state" });
+  }
+  if (data.focus && data.state === "done") {
+    items.push({
+      key: "focus",
+      tone: "graphite",
+      word: "Focused review",
+      title: `You asked ReviewStage to focus on: “${data.focus}”.`,
+    });
+  }
+  if (rev?.reused) {
+    items.push({
+      key: "reused",
+      tone: "graphite",
+      word: "Reused earlier run",
+      title: "Reused your earlier run of this exact configuration on this commit — 0 new tokens.",
+    });
+  }
+  if (!data.awaiting) {
+    items.push({ key: "awaiting", tone: "graphite", word: "Not awaiting your review" });
+  }
+  return items;
+}
+function StatusLine({ data, postedNow }: { data: PrData; postedNow: boolean }) {
+  const items = statusItems(data, postedNow);
+  const meta: React.ReactNode[] = [];
+  if (data.author) meta.push(data.author);
+  if (data.size) meta.push(data.size);
+  if (data.effortBadge) meta.push(<span title={data.effortBadge.hint}>{data.effortBadge.label}</span>);
+  if (data.usage) meta.push(<span className="usage" title={usageTitle(data.usage)}>{usageChip(data.usage)}</span>);
+  if (data.runner)
+    meta.push(`Ran on ${data.runner !== "shared" ? `${data.runner}'s` : "the shared team"} Claude account`);
+  const steps = data.timeline.map((s) =>
+    postedNow && s.label === "Comments posted" ? { ...s, done: true, note: s.note || "just now" } : s,
+  );
+  return (
+    <>
+      <div className="statusline" data-testid="status-line">
+        {items.map((it) => {
+          const s = (
+            <Status key={it.key} tone={it.tone} title={it.title} data-testid={it.testid}>
+              {it.word}
+            </Status>
+          );
+          return it.to ? (
+            <Link key={it.key} to={it.to} title={it.title}>
+              {s}
+            </Link>
+          ) : (
+            s
+          );
+        })}
+        {meta.length > 0 && (
+          <span className="meta-t">
+            {meta.map((m, i) => (
+              <span key={i}>
+                {i > 0 && " · "}
+                {m}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+      {steps.length > 0 && (
+        <div className="steps" data-testid="steps">
+          {steps.map((s) => (
+            <span key={s.label} className={"step" + (s.done ? " hit" : "")} data-testid={s.done ? "step-done" : "step-todo"}>
+              <span className="tick" aria-hidden="true">{s.done ? <Icon name="check" /> : null}</span>
+              <span>
+                {s.label}
+                {s.note && <span className="muted"> {s.note}</span>}
+              </span>
+            </span>
+          ))}
+        </div>
       )}
     </>
   );
@@ -1140,6 +1427,7 @@ export function PrPage({ me }: { me: Me }) {
   const [data, setData] = useState<PrData | null>(null);
   const [pick, setPick] = useState<string[] | null>(null); // repos to choose from (ambiguous link)
   const [err, setErr] = useState("");
+  const [postedNow, setPostedNow] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   const load = useCallback(() => {
@@ -1165,6 +1453,7 @@ export function PrPage({ me }: { me: Me }) {
 
   useEffect(() => {
     setData(null);
+    setPostedNow(false);
     load();
   }, [load]);
 
@@ -1206,19 +1495,41 @@ export function PrPage({ me }: { me: Me }) {
     );
   }
   if (err)
+    // The frame stays: breadcrumb, the reference as typed, and a way back or on. The error is
+    // the one banner the page allows.
     return (
-      <Banner kind="err">{err}</Banner>
+      <div className="prpage" data-testid="pr-unknown">
+        <Crumbs repo={repo} num={num} />
+        <div className="prhead">
+          <PrTitle repo={repo} num={num} title="" />
+        </div>
+        <Banner kind="err" data-testid="pr-error">{err}</Banner>
+        <p className="muted sm">
+          If this came from the queue, the queue and GitHub disagree about it — check the number
+          and the repository.
+        </p>
+        <div className="practions" data-testid="unknown-actions">
+          <Link className="btn secondary" to="/">
+            Back to queue
+          </Link>
+          <button className="btn quiet" type="button" onClick={openPalette}>
+            Try another
+          </button>
+        </div>
+      </div>
     );
   if (!data) return <div className="muted">Loading…</div>;
 
   if (data.historyView) {
     return (
-      <>
-        <Crumbs data={data} tail="earlier run" />
-        <Title data={data} />
-        <Banner kind="info">
-            <b>Viewing an earlier run</b> from {data.when}. <Link to={prUrl(refOf(data))}>Back to the current review</Link>.
-          </Banner>
+      <div className="prpage">
+        <HeaderTop data={data} tail="earlier run" />
+        <div className="statusline">
+          <Status tone="graphite">Earlier run from {data.when}</Status>
+          <span className="meta-t">
+            <Link to={prUrl(refOf(data))}>Back to the current review</Link>
+          </span>
+        </div>
         <h2>Assessment</h2>
         <Md className="assess-summary">{data.summary || ""}</Md>
         <h2>Findings ({data.findings?.length || 0})</h2>
@@ -1233,25 +1544,41 @@ export function PrPage({ me }: { me: Me }) {
             <Md>{f.body}</Md>
           </div>
         ))}
-      </>
+      </div>
     );
   }
 
+  // The one full-width banner for a state that is not a review: a run that died, or one that
+  // failed to start.
+  const runError = data.stalled ? (
+    <Banner kind="err" data-testid="stalled-banner">
+      <b>The review stopped before it finished.</b> It was at <code>{data.stalled.was}</code>. Re-run below.
+      {data.stalled.pidAlive && (
+        <>
+          {" "}
+          A process from that run is still alive.{" "}
+          <StopStalled pr={pr} token={data.tokens.stop} onDone={load} />
+        </>
+      )}
+    </Banner>
+  ) : data.notReviewed && !data.approved && data.failed ? (
+    <Banner kind="err">{data.failed}</Banner>
+  ) : null;
+
   return (
-    <>
+    <div className="prpage">
       <HeaderTop data={data} />
-      <div className="prlayout">
-        <div className="prmain">
-          <PrBanners data={data} />
-          {data.reviewing && <ProgressPanel pr={pr} data={data} onStop={load} />}
+      <StatusLine data={data} postedNow={postedNow} />
+      {runError}
+      {data.reviewing && <ProgressPanel pr={pr} data={data} onStop={load} />}
       {data.stopped && (
         <>
-          <Banner kind="warn">
-              <b>Review stopped.</b>{" "}
+          <div className="card top">
+            <h4 style={{ marginTop: 0 }}>Review stopped</h4>
+            <p className="muted sm">
               {data.stopped.halted ? "No agent is running — Claude usage has halted." : "A process may still be running."}{" "}
               Start a new run below.
-            </Banner>
-          <div className="card top">
+            </p>
             <RunForm
               pr={pr}
               token={data.tokens.review}
@@ -1266,16 +1593,6 @@ export function PrPage({ me }: { me: Me }) {
       )}
       {data.stalled && (
         <>
-          <Banner kind="err" data-testid="stalled-banner">
-              <b>The review stopped before it finished.</b> It was at <code>{data.stalled.was}</code>. Re-run below.
-              {data.stalled.pidAlive && (
-                <>
-                  {" "}
-                  A process from that run is still alive.{" "}
-                  <StopStalled pr={pr} token={data.tokens.stop} onDone={load} />
-                </>
-              )}
-            </Banner>
           <div className="card top">
             <RunForm
               pr={pr}
@@ -1291,11 +1608,8 @@ export function PrPage({ me }: { me: Me }) {
       )}
       {data.notReviewed && !data.approved && (
         <>
-          {data.failed && (
-            <Banner kind="err">{data.failed}</Banner>
-          )}
           <div className="card top">
-            <h4>Not reviewed here</h4>
+            <h4 style={{ marginTop: 0 }}>Not reviewed here</h4>
             <p className="muted sm">No review has been run for this PR on this box.</p>
             <RunForm
               pr={pr}
@@ -1307,15 +1621,17 @@ export function PrPage({ me }: { me: Me }) {
             />
           </div>
           <HistoryList pr={pr} runs={data.history} />
+          {data.reviewers && <Reviewers data={data.reviewers} />}
         </>
       )}
-      {data.notReviewed && data.approved && <ApprovedCard a={data.approved} ghUrl={data.ghUrl} />}
-          {data.review && <ReviewBody data={data} onDone={load} />}
+      {data.notReviewed && data.approved && (
+        <div className="card top">
+          <ApprovedBody a={data.approved} ghUrl={data.ghUrl} reviewers={data.reviewers} />
         </div>
-        <aside className="prside">
-          <PrSidebar data={data} />
-        </aside>
-      </div>
-    </>
+      )}
+      {data.review && (
+        <ReviewBody data={data} me={me} onDone={load} onPosted={() => setPostedNow(true)} />
+      )}
+    </div>
   );
 }

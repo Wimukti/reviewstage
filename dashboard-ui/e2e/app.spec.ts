@@ -145,7 +145,7 @@ test.describe("signed in", () => {
     // Breadcrumbs include the repo.
     await expect(page.locator("nav.bc")).toContainText(REPO);
     await expect(page.getByText(/can crash the lead-time badge/i).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: /explain simply/i }).first()).toBeVisible();
+    await expect(page.locator(".explain > summary", { hasText: /explain simply/i }).first()).toBeVisible();
     await expect(page.getByText(/the badge logic is sound/i)).toBeVisible();
   });
 
@@ -155,9 +155,9 @@ test.describe("signed in", () => {
     // Product.php:42 sits inside the fixture's hunk; Badge.tsx is not in the PR at all.
     const inline = cards.filter({ hasText: "app/models/Product.php" });
     const off = cards.filter({ hasText: "src/javascripts/Badge.tsx" });
-    await expect(inline.locator(".offdiff")).toHaveCount(0);
-    await expect(off.locator(".offdiff")).toHaveText("in summary");
-    await expect(off.locator(".offdiff")).toHaveAttribute("title", /not part of the PR's diff/);
+    await expect(inline.getByTestId("placement")).toHaveCount(0);
+    await expect(off.getByTestId("placement")).toHaveText("In summary");
+    await expect(off.getByTestId("placement")).toHaveAttribute("title", /not part of the PR's diff/);
     // Both are staged by default, so the commit bar splits them.
     const bar = page.locator(".commit-bar .inner .muted");
     await expect(bar).toContainText("2 staged");

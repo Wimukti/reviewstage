@@ -105,6 +105,7 @@ test.describe("Enter never writes to GitHub", () => {
     });
 
     await page.goto(prUrl(REPO2, PR3));
+    await page.getByTestId("sec-approve").click();
     const panel = page.getByTestId("approve-panel");
     await expect(panel).toBeVisible();
     const ack = panel.locator("input[type=checkbox]");

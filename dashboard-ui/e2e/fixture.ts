@@ -38,7 +38,9 @@ export const PR5 = "38852"; // in REPO — merged on GitHub, posted here: the de
 export const PROFILE_V1 = 1777900000;
 export const BRANCH = "lead-time-badge";
 export const BRANCH2 = "cache-lead-times";
-export const PORT = 8988;
+// Overridable so two checkouts can run their suites side by side without one reusing the
+// other's server (reuseExistingServer is on locally).
+export const PORT = Number(process.env.RS_E2E_PORT || 8988);
 
 const slug = (repo: string) => repo.replace("/", "__");
 

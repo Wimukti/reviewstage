@@ -2799,8 +2799,17 @@ def gh_status(r):
     return int(m.group(1)) if m else 0
 
 
+# The client renders banners as an icon slot and a sentence; the slot here is a `.status` dot in
+# the banner's own colour, so the markup never carries an emoji whose colour and shape the
+# viewer's OS decides. `icon` is accepted for the callers that still pass one and ignored.
+_BANNER_TONE = {"ok": "green", "warn": "amber", "err": "red"}
+
+
 def _banner(kind, icon, html_body):
-    return f"<div class='banner {kind}'><span>{icon}</span><div>{html_body}</div></div>"
+    del icon
+    tone = _BANNER_TONE.get(kind, "graphite")
+    return (f"<div class='banner {kind}'><span class='status is-{tone}' aria-hidden='true'>"
+            f"<i></i></span><div>{html_body}</div></div>")
 
 
 def gh_write_failure(r, user, what="post your review", retry="Nothing was sent."):

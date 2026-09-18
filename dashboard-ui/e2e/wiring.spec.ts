@@ -68,6 +68,9 @@ test.describe("approving after the branch moved", () => {
     }));
     await page.goto(prPath(REPO2, PR3));
 
+    // The status line says so at a glance; the full warning lives inside the Approve section.
+    await expect(page.getByTestId("status-head-moved")).toHaveText("Branch moved");
+    await page.getByTestId("sec-approve").click();
     const moved = page.getByTestId("head-moved");
     await expect(moved).toBeVisible();
     await expect(moved).toContainText(/branch has moved/i);
@@ -108,8 +111,10 @@ test.describe("approving after the branch moved", () => {
       },
     }));
     await page.goto(prPath(REPO2, PR3));
+    await page.getByTestId("sec-approve").click();
     await expect(page.getByTestId("head-moved")).toHaveCount(0);
-    await expect(page.getByTestId("pr-closed-banner")).toHaveCount(0);
+    await expect(page.getByTestId("status-head-moved")).toHaveCount(0);
+    await expect(page.getByTestId("pr-state")).toHaveCount(0);
     await expect(page.getByTestId("no-approve")).toHaveCount(0);
     await expect(page.getByTestId("approve-panel").getByRole("button", { name: /approve/i })).toBeEnabled();
   });
@@ -169,13 +174,14 @@ test.describe("a merged pull request", () => {
     // /api/pr used to carry no GitHub state at all, so this page offered a live Approve button
     // on a merged PR and the server's refusal only arrived once it had been pressed.
     await page.goto(prPath(REPO, PR5));
-    await expect(page.getByTestId("pr-closed-banner")).toContainText(/merged/i);
+    // Merged is one item on the status line, not a banner; the sentence is its title.
     await expect(page.getByTestId("pr-state").first()).toHaveText("Merged");
+    await expect(page.getByTestId("pr-state").first()).toHaveAttribute("title", /merged/i);
   });
 
   test("an open PR's detail page shows no such banner", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
-    await expect(page.getByTestId("pr-closed-banner")).toHaveCount(0);
+    await expect(page.getByTestId("pr-state")).toHaveCount(0);
   });
 });
 
@@ -407,7 +413,7 @@ test.describe("an older server that sends none of this", () => {
     await expect(page.getByTestId("post-panel")).toBeVisible();
     await expect(page.getByTestId("truncated")).toHaveCount(0);
     await expect(page.getByTestId("preselect-capped")).toHaveCount(0);
-    await expect(page.getByTestId("head-moved")).toHaveCount(0);
+    await expect(page.getByTestId("status-head-moved")).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText("undefined");
     await expect(page.locator("body")).not.toContainText("NaN");
     // With no pre-selection from the server, the old rule still applies: everything not low.

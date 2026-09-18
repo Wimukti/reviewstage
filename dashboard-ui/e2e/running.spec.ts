@@ -58,6 +58,7 @@ test.describe("a running review stays visible", () => {
 test.describe("the stacked-review action", () => {
   test("is offered, with the stack size, on a stacked PR", async ({ page }) => {
     await page.goto(prUrl(REPO, PR));
+    await page.getByTestId("pr-actions").click();
     const link = page.getByRole("link", { name: /stacked review/i });
     await expect(link).toBeVisible();
     await expect(link).toHaveText(/stacked review \(2 PRs\)/i);
@@ -67,8 +68,10 @@ test.describe("the stacked-review action", () => {
 
   test("is absent on a PR that is not in a stack", async ({ page }) => {
     await page.goto(prUrl(REPO2, PR3));
-    // The rest of the Actions card is there — only the stack row is gone.
-    await expect(page.getByRole("link", { name: /qa guide/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /stacked review/i })).toHaveCount(0);
+    await page.getByTestId("pr-actions").click();
+    // The rest of the Actions menu is there — only the stack row is gone.
+    const menu = page.getByTestId("pr-actions-menu");
+    await expect(menu.getByRole("link", { name: /qa guide/i })).toBeVisible();
+    await expect(menu.getByRole("link", { name: /stacked review/i })).toHaveCount(0);
   });
 });

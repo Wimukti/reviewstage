@@ -12,6 +12,8 @@
   --r-s: 4px; --r-m: 8px; --r-full: 999px;
   --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem;
+  --t-26: 1.857rem; --t-34: 2.429rem;
   --dur: 120ms; --ease: cubic-bezier(.2,.7,.2,1);
   color-scheme: light;
 }

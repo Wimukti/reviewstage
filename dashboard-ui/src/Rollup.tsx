@@ -352,7 +352,7 @@ export function Rollup() {
       {!repo && d.repos.length > 0 && (
         <div className="panel">
           <div className="panel-h">Runs by repository</div>
-          <HBars color={C.amber}
+          <HBars color={C.blue}
                  rows={d.repos.map((r) => ({ label: r.repo, value: r.runs,
                                              note: `${num(r.runs)} runs · ${num(r.prs)} PRs · ${num(r.tokens)} tok` }))} />
         </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, errMessage, type StackData } from "./api";
-import { prLabel, prUrl } from "./pr";
+import { prUrl } from "./pr";
+import { PrTitle } from "./PrPage";
 import { Link, useLocation } from "./router";
 import { Banner } from "./ui";
 import { BrandIcon, Icon } from "./icons";
@@ -61,7 +62,7 @@ export function StackPage() {
         <span className="sep">/</span>
         <span className="cur">stack</span>
       </nav>
-      <h1 className="prtitle">Stacked review · {prLabel({ repo: d?.repo || repo, num: pr })}</h1>
+      <PrTitle repo={d?.repo || repo} num={pr} title="Stacked review" />
     </>
   );
 

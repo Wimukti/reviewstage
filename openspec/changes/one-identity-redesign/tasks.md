@@ -67,15 +67,15 @@ Files: `Skills.tsx`, `Rollup.tsx`, `Settings.tsx`, `Integrations.tsx`, `HowItWor
       replace them with the live mock components so they cannot drift again. (nit 10)
 
 ## Lane W addenda (already sent to the website lane)
-- [ ] Closing CTA install command renders (containment collapse). (blocker 3)
-- [ ] Docs sidebar group labels sentence case; "On this page" rail does not style
+- [x] (lane W, verified by `pnpm verify` on main) Closing CTA install command renders (containment collapse). (blocker 3)
+- [x] (lane W; checked on main 09/18/26) Docs sidebar group labels sentence case; "On this page" rail does not style
       "Overview" as a link. (nit 11)
 
 ## Cross-cutting, owned by whichever lane touches the file
-- [ ] Vocabulary: one spelling per state and action across pages; "Sign out" /
+- [x] (checked on main 09/18/26: Sign in/Sign out only, Repository in labels, Show/Hide pairs) Vocabulary: one spelling per state and action across pages; "Sign out" /
       "Sign out everywhere" / "Revoke" each mean one thing and are used for that thing
       only. (should-fix 8)
-- [ ] Colour meaning: amber only for needs-you, red only for blocker / failed /
+- [x] (checked on main 09/18/26; runs-by-repository bars moved amber→blue in 26f2678) Colour meaning: amber only for needs-you, red only for blocker / failed /
       destructive, green only for done, blue only for staged / primary, graphite for
       neutral — including Learnings, where "dropped" is neutral, not red. (should-fix 7)
       — Learnings part done in `4b5d29d`; other pages' lanes tick the rest.

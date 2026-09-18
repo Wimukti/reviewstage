@@ -4,7 +4,7 @@ import { Md } from "./Md";
 import { parsePrRef, prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { Link, navigate, useLocation } from "./router";
 import { pokeRunning, runningFor, useRunning } from "./running";
-import { Banner } from "./ui";
+import { Banner, Status } from "./ui";
 import { BrandIcon, Icon } from "./icons";
 
 function QaIndex({ me }: { me: Me }) {
@@ -13,6 +13,7 @@ function QaIndex({ me }: { me: Me }) {
   const [pr, setPr] = useState("");
   const [pickRepo, setPickRepo] = useState("");
   const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const jobs = useRunning();
   const runKey = jobs.map((j) => `${j.kind}:${j.repo}#${j.num}`).join(",");
   useEffect(() => {
@@ -23,55 +24,59 @@ function QaIndex({ me }: { me: Me }) {
         setGuides(d.guides);
         if (d.repos?.length) setRepos(d.repos);
       })
-      .catch((e: unknown) => setErr(errMessage(e, "Couldn't load your QA guides.")));
+      .catch((e: unknown) => setErr(errMessage(e, "Couldn't load your QA guides.")))
+      .finally(() => setLoaded(true));
     // A guide starting or finishing changes this list — re-read it then, no timer of our own.
   }, [runKey]);
   const multi = repos.length > 1;
   const parsed = parsePrRef(pr, repos);
   const needsPick = !!parsed && !parsed.repo && multi;
+  const form = (
+    <form
+      className="qagen"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!parsed) return;
+        const repo = parsed.repo || pickRepo || repos[0] || "";
+        navigate(prUrl({ repo, num: parsed.number }, "/qa"));
+      }}
+    >
+      <input
+        className="in"
+        autoComplete="off"
+        aria-label="PR to build a QA guide for"
+        placeholder="PR URL, owner/name#123, or a number"
+        value={pr}
+        onChange={(e) => setPr(e.target.value)}
+      />
+      {needsPick && (
+        <select aria-label="Repository" value={pickRepo || repos[0]} onChange={(e) => setPickRepo(e.target.value)}>
+          {repos.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+      )}
+      <button className="btn primary" type="submit" disabled={!parsed}>
+        Open
+      </button>
+    </form>
+  );
+  // With no guides yet the form IS the empty state: the one thing to do on the page.
+  const none = loaded && guides.length === 0 && !err;
   return (
     <>
-      <h1>QA guides</h1>
-      <p className="lead">
-        Generate a tester-ready QA guide for a PR — risk-tiered manual test cases, setup steps, a
-        surface matrix and what <em>not</em> to file — all grounded in the real diff. Then hand it
-        straight to QA.
-      </p>
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Generate a guide</h2>
-        <form
-          className="qagen"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!parsed) return;
-            const repo = parsed.repo || pickRepo || repos[0] || "";
-            navigate(prUrl({ repo, num: parsed.number }, "/qa"));
-          }}
-        >
-          <input
-            className="in"
-            autoComplete="off"
-            placeholder="PR URL, owner/name#123, or a number"
-            value={pr}
-            onChange={(e) => setPr(e.target.value)}
-          />
-          {needsPick && (
-            <select aria-label="Repository" value={pickRepo || repos[0]} onChange={(e) => setPickRepo(e.target.value)}>
-              {repos.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          )}
-          <button className="btn primary" type="submit">
-            Open
-          </button>
-        </form>
-        <div className="hint">
-          Paste a PR URL, or type <code>owner/name#123</code> or a number, to view its guide
-          or generate a new one.
+      <div className="pagehead">
+        <div className="pagehead-t">
+          <h1>QA guides</h1>
+          <p className="lead">
+            Generate a tester-ready QA guide for a PR — risk-tiered manual test cases, setup steps, a
+            surface matrix and what <em>not</em> to file — all grounded in the real diff. Then hand it
+            straight to QA.
+          </p>
         </div>
+        {!none && form}
       </div>
       {err && (
         <Banner kind="err" data-testid="qa-index-error">{err}</Banner>
@@ -82,42 +87,42 @@ function QaIndex({ me }: { me: Me }) {
           <div className="list">
             {guides.map((g) => {
               const status = runningFor(jobs, "qa", g.repo, g.num)?.status || (g.running ? g.status || "building" : "");
+              const to = prUrl({ repo: g.repo, num: g.num }, "/qa");
               return (
               <div className={"row" + (status ? " running" : "")} key={`${g.repo}#${g.num}`}>
-                <Link className="rowlink" to={prUrl({ repo: g.repo, num: g.num }, "/qa")}>
+                <Link className="rowlink" to={to}>
                   <div className="rowtop">
+                    {multi && g.repo && <span className="repochip" title={g.repo}>{g.repo}</span>}
                     <span className="num">#{g.num}</span>
                     <span className="ttl">{g.title}</span>
                   </div>
                   {status ? (
-                    <div className="rowrun" data-testid="row-running">
-                      <span className="rundot" aria-hidden="true" />
+                    <div className="rowsub rowrun" data-testid="row-running">
+                      <Status kind="reviewing" live>Building</Status>
                       <span>{status}</span>
                       <span className="runback">— open to watch</span>
                     </div>
                   ) : (
-                    <div className="muted sm rowsub">
-                      <span>guide ready · {g.when}</span>
+                    <div className="rowsub">
+                      <Status kind="done">Guide ready</Status>
+                      <span className="muted sm">{g.when}</span>
                     </div>
                   )}
                 </Link>
-                <div className="rowmeta">
-                  <Link className="chev" to={prUrl({ repo: g.repo, num: g.num }, "/qa")} aria-hidden="true" tabIndex={-1}>
-                    <Icon name="chevron-right" />
-                  </Link>
-                </div>
               </div>
               );
             })}
           </div>
         </>
-      ) : (
-        <div className="empty">
+      ) : none ? (
+        <div className="empty" data-testid="qa-empty">
           <Icon name="flask" />
-          <b>No guides yet</b>
-          Paste a PR URL or number above to build the first one.
+          <b>Build your first QA guide</b>
+          Paste a PR URL, or type <code>owner/name#123</code> or a number, and {me.brand} writes a
+          guide your testers can run.
+          {form}
         </div>
-      )}
+      ) : null}
     </>
   );
 }
@@ -225,6 +230,9 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     </span>
   ) : null;
 
+  // The server has no title for a PR it has never fetched and fills in "PR #n"; printing that
+  // after the number read as `#38849 — PR #38849`.
+  const hasTitle = !!d.title && d.title.trim() !== `PR #${pr.num}` && d.title.trim() !== `#${pr.num}`;
   const header = (
     <>
       <nav className="bc">
@@ -239,7 +247,8 @@ function QaDetailView({ pr }: { pr: PrRef }) {
         <span className="cur">#{pr.num}</span>
       </nav>
       <h1 className="prtitle">
-        {d.repo && <span className="repo">{d.repo}</span>}#{pr.num} — {d.title}
+        {d.repo && <span className="repo">{d.repo}</span>}#{pr.num}
+        {hasTitle && <> — {d.title}</>}
       </h1>
       <div className="meta">
         <a href={d.ghUrl} target="_blank" rel="noopener">

@@ -661,3 +661,23 @@ border-radius:var(--r-m);padding:16px 18px;box-shadow:var(--shadow-raised)}
 .rowact[aria-pressed="true"]{color:var(--ink);font-weight:500}
 .repoed h2{margin-top:24px}
 .depthed .rulebox{display:none}
+
+/* ---- lane S: insights ------------------------------------------------------------------------- */
+.kpi-h{margin:20px 0 4px;font-size:var(--t-13);font-weight:500;color:var(--graphite)}
+.kpi-h+.kpirow{margin-bottom:8px}
+.kpi .kpi-l{margin:2px 0 0}
+.kpi-v.kpi-thin{font-size:var(--t-14);font-weight:500;color:var(--graphite);line-height:1.5;padding:4px 0}
+.kpi-thin-note{font-weight:400}
+.agreebig.kpi-thin{font-size:var(--t-14)}
+.barchart{margin-top:6px}
+.barchart .chart{height:130px}
+.axis-max{margin-bottom:4px;font-family:var(--mono)}
+.axis-x{display:flex;justify-content:space-between;margin-top:4px;font-family:var(--mono)}
+.axis-x span:nth-child(2){text-align:center}
+.axis-x span:last-child{text-align:right}
+.method{margin-top:24px;border-top:1px solid var(--hairline);padding-top:8px}
+.method>summary{color:var(--graphite)}
+.method .dbody{padding:0 0 8px}
+.method .dbody p{margin-top:4px}
+.method li{color:var(--graphite)}
+.method li b{color:var(--ink)}

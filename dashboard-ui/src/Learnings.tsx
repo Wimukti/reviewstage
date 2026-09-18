@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { api, errMessage, type LearningsData, type Me } from "./api";
 import { Banner } from "./ui";
 import { Icon } from "./icons";
-import { Status, wordOf } from "./ui";
+import { Status, wordOf, type Tone } from "./ui";
+
+// The outcome of a decision, in the shared colour vocabulary: kept was posted (green), reworded
+// was posted after a change (amber), dropped is a neutral outcome — noise the reviewer declined,
+// not a failure — so it is graphite, never red. The server still sends `kind: "blocker"` for a
+// drop; the label is what carries the meaning here.
+const OUTCOME_TONE: Record<string, Tone> = { dropped: "graphite", reworded: "amber", kept: "green" };
+const outcomeTone = (label: string): Tone => OUTCOME_TONE[label] ?? "graphite";
 
 export function Learnings({ me }: { me: Me }) {
   const [d, setD] = useState<LearningsData | null>(null);
@@ -25,6 +32,7 @@ export function Learnings({ me }: { me: Me }) {
   // Decisions recorded while DRY_RUN=1. They are real judgements and they do shape the next
   // review, but nothing was posted, so no rate may be computed from them.
   const dry = d.counts.dry ?? 0;
+  const multi = d.repos.length > 1;
 
   return (
     <>
@@ -35,33 +43,33 @@ export function Learnings({ me }: { me: Me }) {
         preferences — so it stops repeating what you reject. This is that memory.
       </p>
       <div className="stats">
-        <a className="stat hot">
-          <div className="k">{d.counts.dropped.toLocaleString()}</div>
+        <div className="stat">
+          <div className="k">{d.counts.dropped.toLocaleString("en-US")}</div>
           <div className="l">Dropped as noise</div>
-        </a>
-        <a className="stat">
-          <div className="k">{d.counts.edited.toLocaleString()}</div>
+        </div>
+        <div className="stat">
+          <div className="k">{d.counts.edited.toLocaleString("en-US")}</div>
           <div className="l">Reworded</div>
-        </a>
-        <a className="stat">
-          <div className="k">{d.counts.kept.toLocaleString()}</div>
+        </div>
+        <div className="stat">
+          <div className="k">{d.counts.kept.toLocaleString("en-US")}</div>
           <div className="l">Kept as-is</div>
-        </a>
-        <a className="stat">
-          <div className="k">{d.promoted.toLocaleString()}</div>
+        </div>
+        <div className="stat">
+          <div className="k">{d.promoted.toLocaleString("en-US")}</div>
           <div className="l">Promoted to rules</div>
-        </a>
+        </div>
         {dry > 0 && (
-          <a className="stat" data-testid="dry-count">
-            <div className="k">{dry.toLocaleString()}</div>
+          <div className="stat" data-testid="dry-count">
+            <div className="k">{dry.toLocaleString("en-US")}</div>
             <div className="l">Made in dry run</div>
-          </a>
+          </div>
         )}
       </div>
       {dry > 0 && (
         <Banner kind="info" icon="flask" data-testid="dry-banner">
             <b>
-              {dry.toLocaleString()} of these decisions were made while <code>DRY_RUN=1</code>.
+              {dry.toLocaleString("en-US")} of these decisions were made while <code>DRY_RUN=1</code>.
             </b>{" "}
             Nothing was posted to GitHub, so they are in none of the keep rates here or on
             Insights — but {me.brand} still reads them before every review, so they teach the
@@ -125,46 +133,71 @@ export function Learnings({ me }: { me: Me }) {
       ) : (
         <>
           <h2>Recent decisions</h2>
-          <div className="list">
-            {d.rows.map((r, i) => (
-              <div className="row" key={i}>
-                <div className="rowlink">
-                  <div className="rowtop">
-                    <Status kind={r.kind}>{wordOf(r.label || r.kind)}</Status>
-                    {r.repo && d.repos.length > 1 && <span className="repochip">{r.repo}</span>}
-                    <span className="loc">{r.loc}</span>
-                    <Status kind={r.severity} />
-                    {r.dry && (
-                      <Status
-                        kind="dry"
-                        data-testid="dry-row"
-                        title="Decided while DRY_RUN=1 — never posted to GitHub, and in no rate. It still teaches the reviewer."
-                      />
+          <div className="list ltable" data-testid="learning-rows">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Decision</th>
+                  <th scope="col">Finding</th>
+                  {multi && <th scope="col">Repository</th>}
+                  <th scope="col">Path</th>
+                  <th scope="col">Severity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.rows.map((r, i) => (
+                  <tr key={i} data-testid={r.dry ? "dry-row" : undefined}>
+                    <td>
+                      <div className="lcell">
+                        <Status tone={outcomeTone(r.label || r.kind)}>{wordOf(r.label || r.kind)}</Status>
+                        {r.dry && (
+                          <Status
+                            tone="graphite"
+                            data-testid="dry-mark"
+                            title="Decided while DRY_RUN=1 — never posted to GitHub, and in no rate. It still teaches the reviewer."
+                          >
+                            Dry run
+                          </Status>
+                        )}
+                      </div>
+                    </td>
+                    <td className="lgist">
+                      {r.gist}
+                      {r.editedGist && <div className="sub">Reworded to: {r.editedGist}</div>}
+                    </td>
+                    {multi && (
+                      <td>
+                        <span className="repochip">{r.repo}</span>
+                      </td>
                     )}
-                  </div>
-                  <div className="muted sm" style={{ marginTop: 5 }}>
-                    {r.gist}
-                  </div>
-                  {r.editedGist && (
-                    <div className="muted sm" style={{ marginTop: 4 }}>
-                      Reworded to: {r.editedGist}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+                    <td>
+                      <span className="loc">{r.loc}</span>
+                    </td>
+                    <td>
+                      <Status kind={r.severity} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <p className="fine">
-            {d.findingsCap
-              ? `This list is the detail log, which keeps only the most recent ${d.findingsCap.toLocaleString(
-                  "en-US",
-                )} decisions — the totals above are counted separately and are never truncated. `
-              : ""}
-            One log for the whole install: every repository, every reviewer. {me.brand} weighs
-            decisions from the repository under review first, but nothing here is scoped to a
-            single repo. These are preferences, not hard rules — it still raises a genuine
-            higher-severity issue even if it resembles a past drop.
-          </p>
+          <details className="infodisc" data-testid="retention-note">
+            <summary>
+              <Icon name="info" />
+              About this log
+            </summary>
+            <p className="fine">
+              {d.findingsCap
+                ? `This list is the detail log, which keeps only the most recent ${d.findingsCap.toLocaleString(
+                    "en-US",
+                  )} decisions — the totals above are counted separately and are never truncated. `
+                : ""}
+              One log for the whole install: every repository, every reviewer. {me.brand} weighs
+              decisions from the repository under review first, but nothing here is scoped to a
+              single repo. These are preferences, not hard rules — it still raises a genuine
+              higher-severity issue even if it resembles a past drop.
+            </p>
+          </details>
         </>
       )}
     </>

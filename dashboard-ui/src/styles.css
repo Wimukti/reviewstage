@@ -717,3 +717,6 @@ border-radius:0 0 var(--r-m) var(--r-m);background:var(--panel)}
 .howslack-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .howapprove{display:flex;flex-direction:column;gap:10px}
 .howapprove pre{margin:0}
+
+/* ---- lane S: tour — on the phone the card sits over the header, clear of what it points at ---- */
+@media (max-width:899px){.tourcard.at-top{top:16px!important;bottom:auto}}

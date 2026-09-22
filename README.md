@@ -22,7 +22,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="website/src/assets/screenshots/hero-dark.png">
-  <img alt="ReviewStage PR page: the agent's assessment above a list of findings, each with a checkbox, severity, file and line, and an editable body. A sticky bar shows the selected count and one Post to GitHub button." src="website/src/assets/screenshots/hero-light.png">
+  <img alt="The ReviewStage PR page for acme/widgets #38849: the agent's assessment — “1 thing to fix before merge” with three bullet points — above two finding cards, each with a ticked checkbox, a severity word, the file and line it points at, and a one-line why-it-matters. A sticky bar at the foot reads “2 staged” and carries a single Post selected to GitHub button." src="website/src/assets/screenshots/hero-light.png">
 </picture>
 
 > [!NOTE]

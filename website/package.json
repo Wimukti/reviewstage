@@ -10,10 +10,9 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/gen-placeholders.mjs && node scripts/gen-brand.mjs && astro build",
+    "build": "node scripts/gen-brand.mjs && astro build",
     "check": "astro check",
     "preview": "astro preview",
-    "placeholders": "node scripts/gen-placeholders.mjs",
     "brand": "node scripts/gen-brand.mjs",
     "verify": "node scripts/verify-site.mjs"
   },

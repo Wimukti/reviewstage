@@ -260,9 +260,9 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
         <Link className="brand" to="/" aria-label={me.brand}>
           <Logo me={me} />
         </Link>
-        <span className="phone-title" role="heading" aria-level={2}>
-          {pageTitle(path, me.brand)}
-        </span>
+        {/* Chrome, not structure: this repeats the page's own h1, so exposing it as a second
+            heading made a screen reader announce every title twice. */}
+        <span className="phone-title">{pageTitle(path, me.brand)}</span>
         <button className="iconbtn" type="button" aria-label="Review a PR" title="Review a PR" onClick={openPalette}>
           <Icon name="search" />
         </button>

@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   dashboard:
-    name: Dashboard (test + build)
+    name: Dashboard (unit + build + browser)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,6 +27,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm build
+      # The browser suite is where the interface is actually specified — focus rings, the phone
+      # tab bar, the commit bar, every redesign guarantee. It ran only on developer machines, so
+      # nothing stopped a regression reaching main.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:browser
 
   image:
     name: Docker image (builds + boots)

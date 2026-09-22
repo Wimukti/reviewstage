@@ -28,6 +28,27 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  image:
+    name: Docker image (builds + boots)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The image build is the only thing that exercises the Dockerfile's own view of the tree.
+      # A bundle import reaching outside dashboard-ui once broke every install while the
+      # dashboard job stayed green, because that job builds in a full checkout.
+      - name: Build the image
+        run: docker build -t reviewstage:ci .
+      - name: It boots and answers /health
+        run: |
+          docker run -d --name rs-ci -e RS_SECRET=ci-secret-that-is-long-enough-to-pass \
+            -e REPOS=acme/widgets -e PUBLIC_URL=http://127.0.0.1:8080 \
+            -p 8080:8899 reviewstage:ci
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8080/health && break || sleep 2
+          done
+          curl -sf http://127.0.0.1:8080/health
+          docker rm -f rs-ci
+
   scripts:
     name: Scripts (compile + syntax + shellcheck)
     runs-on: ubuntu-latest

@@ -13,8 +13,10 @@ COPY dashboard-ui/package.json dashboard-ui/pnpm-lock.yaml dashboard-ui/pnpm-wor
 # pnpm-workspace.yaml carries dangerouslyAllowAllBuilds so esbuild's postinstall may run.
 RUN pnpm install --frozen-lockfile
 COPY dashboard-ui/ ./
-# scripts/icons.mjs (the tail of "build") renders the PWA icons from ../assets/logo-light.svg.
-COPY assets/logo-light.svg /build/assets/logo-light.svg
+# The bundle reaches outside dashboard-ui for the mark: Logo.tsx imports assets/logo.svg and
+# scripts/icons.mjs renders the PWA icons from assets/logo-light.svg. Copy the whole directory
+# so adding another variant does not silently break the image build.
+COPY assets/ /build/assets/
 # esbuild writes the bundle to ../bin/static, which scripts/icons.mjs then fingerprints as
 # app-<hash>.js / app-<hash>.css and records in assets.json (see package.json "build").
 RUN pnpm build && ls -1 /build/bin/static

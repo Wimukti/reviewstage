@@ -1292,6 +1292,144 @@ def find_cluster(sig):
     return None
 
 
+# --- Teaching the skill from ONE finding -------------------------------------------------------
+# The clustering above learns only from repetition, and only from rejection: the same complaint has
+# to be dropped RULE_SUGGEST_MIN times across several PRs before anything is offered. A reviewer
+# reading a finding already knows whether it should be raised again, so this turns that judgement
+# into a rule on the spot. It reuses the cluster shape, the quick-add path and the promotion record
+# deliberately: a complaint taught here must never be offered back later as a fresh suggestion.
+
+TEACH_DIRECTIONS = ("avoid", "always")
+
+
+def teach_target_label(target):
+    """The prose name of the skill a taught rule lands in. Distinct from skill_label(), which
+    names a skill from a viewer's point of view ("your skill", "the team default")."""
+    return ("the team default skill" if target == "global"
+            else f"the team default for {target[len(REPO_SKILL_PREFIX):]}")
+
+
+def finding_row(repo, pr, c):
+    """One stored finding in the row shape rs_learn keys its signatures on."""
+    gist = (c.get("title") or "").strip() or " ".join((c.get("body") or "").split())[:160]
+    return {"repo": repo, "pr": str(pr), "gist": gist,
+            "severity": c.get("severity") or "nit", "path": c.get("path") or ""}
+
+
+def finding_cluster(repo, pr, c):
+    """A one-finding cluster shaped exactly like the engine's, so suggestion_target, promote and
+    covered_by_rule work on it unchanged — and so its signature is the same one the clustering
+    engine would mint for a pile of this complaint later."""
+    row = finding_row(repo, pr, c)
+    return {"signature": rs_learn.signature([row]), "repos": [repo], "prs": 1, "count": 1,
+            "outcome": "taught", "gist": row["gist"], "rowIds": [], "findings": [row]}
+
+
+def stored_finding(repo, pr, user, idx):
+    """The finding the client's index refers to, read from the STORED review rather than the
+    request body. Same sort as _review_data and explain_finding, so the index lines up; a
+    client-supplied body could otherwise teach a rule about a finding that does not exist."""
+    rev = load_review(repo, pr, user) or {}
+    comments = sorted(rev.get("comments", []), key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
+    if idx < 0 or idx >= len(comments):
+        return None
+    return comments[idx]
+
+
+def _teach_prompt(direction, c, existing):
+    ex = "\n".join(f"- {r}" for r in existing[:8]) or "- (none yet)"
+    detail = (f"Severity: {c.get('severity') or 'nit'}\n"
+              f"Location: {c.get('path') or 'no file'}:{c.get('line') or '?'}\n"
+              f"Title: {(c.get('title') or '').strip()}\n"
+              f"Detail:\n{(c.get('body') or '').strip()[:1500]}")
+    if direction == "always":
+        ask = ("A human reviewer read the code-review finding below and judged it worth raising "
+               "EVERY time. Write the standing rule that makes the assistant always check for it.")
+        line = ("RULE: one imperative sentence, under 20 words, telling the reviewer what to "
+                "check for. No preamble, no markdown, no quotes.")
+    else:
+        ask = ("A human reviewer read the code-review finding below and judged it NOT worth "
+               "raising. Write the standing rule that would have stopped the assistant raising it.")
+        line = ("RULE: one imperative sentence, under 20 words, telling the reviewer what not to "
+                "raise (or what to raise instead). No preamble, no markdown, no quotes.")
+    return (ask + "\n\nExisting rules, for house style — match their voice and length exactly:\n"
+            + ex + "\n\nThe finding:\n" + detail +
+            "\n\nReply with EXACTLY two lines and nothing else:\n" + line +
+            "\nWHY: one short line of rationale, under 20 words.\n")
+
+
+def draft_teach(user, direction, target, c):
+    """(rule, why, error) — one haiku turn on the acting user's own Claude account, on a click.
+
+    The prompt goes over STDIN, never argv: a finding body is reviewer-sized and a long one
+    pushed the explain call past ARG_MAX before."""
+    tok = user_claude_token(user)
+    if not tok:
+        return "", "", "Connect your Claude account in Integrations to draft a rule."
+    existing = rs_learn.parse_rules(read_skill(target), RULES_MARKER)
+    try:
+        r = subprocess.run(["claude", "-p", "--max-turns", "1", "--model", "haiku"],
+                           capture_output=True, text=True, timeout=90,
+                           input=_teach_prompt(direction, c, existing),
+                           env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": tok})
+    except FileNotFoundError:
+        return "", "", "claude is not installed on this box."
+    except subprocess.TimeoutExpired:
+        return "", "", "Claude did not answer within 90 seconds — try again."
+    if r.returncode != 0:
+        tail = ((r.stderr or r.stdout or "error").strip().splitlines() or ["error"])[-1]
+        return "", "", tail[:200]
+    rule, why = _parse_proposal(r.stdout)
+    if not rule:
+        return "", "", "Claude replied, but not with a rule."
+    return rule, why, None
+
+
+def teach_finding(repo, pr, user, idx, direction, action, rule=""):
+    """(payload, error). 'draft' writes nothing at all; 'add' lands the rule in the skill.
+
+    Serialised on the target skill exactly as accept_suggestion is: two rules landing together
+    would otherwise each read the same skill, append their own line and write the whole file
+    back, losing one of them while both were recorded as promoted."""
+    if direction not in TEACH_DIRECTIONS:
+        return None, "Unknown direction."
+    c = stored_finding(repo, pr, user, idx)
+    if c is None:
+        return None, "That finding no longer exists — re-open the review."
+    cluster = finding_cluster(repo, pr, c)
+    target = suggestion_target(cluster)
+    if action == "draft":
+        text, why, err = draft_teach(user, direction, target, c)
+        if err:
+            return None, err
+        return {"rule": text, "rationale": why, "target": target,
+                "targetLabel": teach_target_label(target)}, None
+    text = (rule or "").strip()
+    if not text:
+        return None, "Write the rule first, or draft one."
+    path = skill_path(target)
+    with rs_learn.file_lock(Path(str(path) + ".accept")):
+        # Two guards, because they catch different things. The signature is exact: this same
+        # finding, taught before. covered_by_rule is fuzzy and catches a differently worded
+        # complaint — but only when the gist has enough vocabulary to judge, so a three-word nit
+        # slips past it and the signature is the one that holds.
+        if cluster["signature"] in rs_learn.promoted_signatures():
+            return None, "You have already taught this one — see the rules on the Skills page."
+        current = read_skill(target)
+        if rs_learn.covered_by_rule(cluster, rs_learn.parse_rules(current, RULES_MARKER)):
+            return None, f"A rule in {teach_target_label(target)} already covers this one."
+        new_text = add_skill_rule(current, text)
+        if len(new_text) > 40000:
+            return None, "That skill is already very large (>40k chars). Trim it first."
+        save_skill(target, new_text)
+        rs_learn.promote(cluster["signature"], cluster, user, tidy_rule(text), target)
+    g = commit_skill_change(user, f"Taught {teach_target_label(target)} from one finding on "
+                                  f"{repo}#{pr}: {tidy_rule(text)}", [skill_rel(target)])
+    print(f"rule taught to {target} by {user} from {repo}#{pr}: {tidy_rule(text)!r}", flush=True)
+    return {"added": True, "rule": tidy_rule(text), "target": target,
+            "targetLabel": teach_target_label(target), "warning": history_warning(g).strip()}, None
+
+
 # Which skill a user's reviews run with: their own, or the shared team default. A saved choice
 # wins; with none, we default to "own" when they have a personal skill, else "team". The team
 # default is never destructively resettable through this — see save_skill / do_skill.
@@ -4077,7 +4215,11 @@ class Handler(BaseHTTPRequestHandler):
                        "approve": self._tok("approve", repo, pr), "markdone": self._tok("markdone", repo, pr),
                        "archive": self._tok("archive", repo, pr),
                        "unarchive": self._tok("unarchive", repo, pr),
-                       "explain": self._tok("explain", repo, pr, PAGE_TTL)},
+                       "explain": self._tok("explain", repo, pr, PAGE_TTL),
+                       "teach": self._tok("teach", repo, pr, PAGE_TTL)},
+            "teach": {"target": (tt := suggestion_target({"repos": [repo]})),
+                      "targetLabel": teach_target_label(tt),
+                      "connected": claude_connected(user)},
             "history": review_history(repo, pr, user),
         }
         if st == "reviewing":
@@ -4185,6 +4327,10 @@ class Handler(BaseHTTPRequestHandler):
         # run that produced 200 findings — every non-low one pre-ticked by the UI — turned one
         # click into a 200-comment review GitHub rejects outright, losing the lot.
         shown = comments[:FINDING_RENDER_CAP]
+        # Which skill a taught rule would land in depends only on the repository, so it is
+        # resolved once here rather than per finding.
+        teach_target = suggestion_target({"repos": [repo]})
+        taught_sigs = rs_learn.promoted_signatures()
         preselectable = [i for i, c in enumerate(shown) if c.get("confidence") != "low"]
         preselect = set(preselectable[:PRESELECT_CAP]) if len(preselectable) > PRESELECT_CAP \
             else set(preselectable)
@@ -4205,6 +4351,8 @@ class Handler(BaseHTTPRequestHandler):
                                                 and (c.get("impact") or "").strip()),
                              "agreement": conv_tags.get(rs_agree._cid(c)),
                              "preselect": i in preselect,
+                             "taught": rs_learn.signature([finding_row(repo, pr, c)])
+                             in taught_sigs,
                              "anchorable": where(c)})
         key = review_key(rev, head)
         data = {
@@ -4904,6 +5052,21 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self.api_json({"error": err}, 400)
             return self.api_json({"md": md})
+        if route == "/api/teach":
+            if err := gate("teach"):
+                return self.api_json({"error": err}, 403)
+            try:
+                idx = int(body.get("idx"))
+            except (TypeError, ValueError):
+                return self.api_json({"error": "missing finding"}, 400)
+            act = str(body.get("action") or "")
+            if act not in ("draft", "add"):
+                return self.api_json({"error": "Unknown action."}, 400)
+            out, err = teach_finding(repo, pr, user, idx, str(body.get("direction") or ""),
+                                     act, str(body.get("rule") or ""))
+            if err:
+                return self.api_json({"error": err}, 400)
+            return self.api_json(out)
         if route == "/api/post":
             if err := gate("post"):
                 return self.api_json({"error": err}, 403)

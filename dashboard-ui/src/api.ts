@@ -230,6 +230,19 @@ export interface QueueData {
   slackOk: boolean;
 }
 
+// Teaching the skill from one finding. "avoid" asks for a rule that stops the assistant raising
+// this complaint; "always" asks for one that makes it check every time.
+export type TeachDirection = "avoid" | "always";
+
+export interface TeachResult {
+  rule: string;
+  rationale?: string;
+  target: string;
+  targetLabel: string;
+  added?: boolean;
+  warning?: string;
+}
+
 export interface Finding {
   i: number;
   severity: string;
@@ -252,6 +265,9 @@ export interface Finding {
   // attempt a review GitHub will reject whole; absent on older servers.
   preselect?: boolean;
   agreement?: { confirmed: boolean; n: number; by: string[]; differ: string } | null;
+  // Whether this exact complaint has already been turned into a rule, by anyone. Absent on
+  // older servers, which is why every read of it is optional rather than defaulted to false.
+  taught?: boolean;
 }
 
 export interface ApprovedData {
@@ -383,6 +399,9 @@ export interface PrData {
   claudeConnected: boolean;
   runForm: RunFormData;
   tokens: Record<string, Token>;
+  // Which skill a rule taught from this page would land in, and whether the viewer can draft
+  // one at all. Absent on older servers.
+  teach?: { target: string; targetLabel: string; connected: boolean };
   reviewing?: {
     phases: string[];
     cur: number;
@@ -835,6 +854,9 @@ export const api = {
   pr: (ref: PrRef, v?: string) => get<PrData>(`/pr?${prq(ref)}${v ? `&v=${v}` : ""}`),
   explain: (ref: PrRef, t: Token, idx: number) =>
     post<{ md: string }>("/explain", { ...prBody(ref), ...t, idx }),
+  teach: (ref: PrRef, t: Token, idx: number, direction: TeachDirection,
+          action: "draft" | "add", rule?: string) =>
+    post<TeachResult>("/teach", { ...prBody(ref), ...t, idx, direction, action, rule }),
   review: (ref: PrRef, t: Token, effort: string, focus: string, model: string) =>
     post<{ ok: boolean; started?: boolean }>("/review", { ...prBody(ref), ...t, effort, focus, model }),
   stop: (ref: PrRef, t: Token) =>

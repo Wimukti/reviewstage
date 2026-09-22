@@ -16,3 +16,6 @@ dashboard-ui/playwright-report/
 dashboard-ui/shot.png
 dashboard-ui/e2e/.fixture/
 dashboard-ui/e2e/.auth.json
+
+# pnpm writes a content-addressed store here when a container run sets a different store dir.
+.pnpm-store/

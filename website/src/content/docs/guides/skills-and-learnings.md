@@ -81,6 +81,17 @@ When the next review starts, recent *dropped* and *reworded* rows are rendered i
 
 This is **not machine learning**. It is in-context steering with your own recent decisions, shared per repository and attributed per user. The **Learnings** page shows the counts and the recent decisions so you can see what the agent is being told.
 
+### Teaching the skill from one finding
+
+Repetition is slow, and it only ever learns from rejection. A reviewer reading a finding already knows whether it should be raised again, so each finding card carries a **Teach the skill** button next to Edit comment.
+
+1. **Direction.** The panel opens in the card and asks what the next review should do with this complaint: *Don't raise it again*, or *Always check it*. Nothing is assumed from whether you ticked the finding — the clustering engine infers intent from repetition, this does not have to.
+2. **Drafting.** One Claude call on your own account, one turn, writes the rule in the house style of the rules already in the target skill, with a one-line rationale. With no Claude account connected the panel says so and offers the link to connect one, rather than a button that cannot work.
+3. **Reading it.** The drafted sentence lands in a box you can edit, above the name of the exact skill it will be written to. Nothing has been written yet. **Redraft** asks again.
+4. **Adding it.** **Add this rule** goes through the same quick-add path as a typed rule and an accepted suggestion: a bullet in `## Team rules`, committed to the skills repository with you as the author. The same targeting applies — the repository's own team default when it has one, otherwise the shared team default, and never a new per-repository override created from a single rule.
+
+The promotion is recorded against the same vocabulary-keyed signature the clustering engine uses, which is the point of reusing it: a complaint you have taught is not offered back to you later as a fresh suggestion, and the card says **Already a rule** instead of offering the button again. It counts among the promoted rules on [Insights](/reviewstage/guides/insights/) like any other.
+
 ### From a repeated rejection to a proposed rule
 
 A rolling window forgets. A finding you dropped six times still arrives on review seven, because the last few dozen decisions are a preference, not a standard. So repetition is promoted deliberately.

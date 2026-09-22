@@ -807,3 +807,25 @@ border-radius:0 0 var(--r-m) var(--r-m);background:var(--panel)}
 
 /* ---- lane S: tour — on the phone the card sits over the header, clear of what it points at ---- */
 @media (max-width:899px){.tourcard.at-top{top:16px!important;bottom:auto}}
+
+/* ---- teach the skill from one finding ---------------------------------------------------------- */
+/* Sits inside the finding card, under its actions: the reviewer is already looking at the
+   complaint, so the panel opens in place rather than taking them somewhere else. */
+.teach{margin-top:12px;border:1px solid var(--hairline);border-radius:var(--r-s);
+padding:12px;background:var(--paper)}
+.teach-note{margin:0;font-size:var(--t-13);color:var(--graphite)}
+.teach-note+.teach-dirs{margin-top:8px}
+.teach-dirs{display:flex;gap:8px;flex-wrap:wrap}
+.teach-dirs .btn.is-on{border-color:var(--blue);color:var(--blue)}
+.teach-l{display:block;margin:12px 0 4px;font-size:var(--t-13);font-weight:500;color:var(--ink)}
+/* The base textarea rule sets a 120px mono box for comment bodies; a one-sentence rule is
+   neither that tall nor code. */
+/* textarea.in above sets a 120px monospace box for comment bodies and wins on specificity, so
+   this has to match the element too. A one-sentence rule is prose, and two lines of it. */
+textarea.teach-in{width:100%;min-height:56px;font:var(--t-14)/1.5 var(--font);resize:vertical}
+.teach-in+.teach-note{margin-top:6px}
+.teach-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.teach .hint,.teach .ferr{margin-top:8px}
+@media (max-width:899px){
+  .teach-dirs .btn,.teach-acts .btn{flex:1 1 auto;min-height:40px}
+}

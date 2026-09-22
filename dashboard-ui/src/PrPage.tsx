@@ -6,6 +6,7 @@ import {
   isExpiredToken,
   type Finding,
   type ReviewData,
+  type TeachDirection,
   type Me,
   type PrData,
   type PrRef,
@@ -391,6 +392,8 @@ function FindingCard({
   onBody,
   pr,
   explainToken,
+  teachToken,
+  teach,
 }: {
   f: Finding;
   checked: boolean;
@@ -399,12 +402,16 @@ function FindingCard({
   onBody: (v: string) => void;
   pr: PrRef;
   explainToken: Token;
+  teachToken?: Token;
+  teach?: { target: string; targetLabel: string; connected: boolean };
 }) {
   const [exp, setExp] = useState("");
   const [expLoading, setExpLoading] = useState(false);
   const [expErr, setExpErr] = useState("");
   // Unstructured findings (older reviews) show the comment inline; structured ones tuck it away.
   const [showDetail, setShowDetail] = useState(!f.structured);
+  const [showTeach, setShowTeach] = useState(false);
+  const [taught, setTaught] = useState(!!f.taught);
   const explain = async () => {
     if (expLoading || exp) return;
     setExpErr("");
@@ -485,17 +492,39 @@ function FindingCard({
             </div>
           )}
         </details>
-        {f.structured && (
+        {(f.structured || (teach && teachToken)) && (
           <div className="factions">
-            <button
-              type="button"
-              className="fbtn"
-              aria-expanded={showDetail}
-              onClick={() => setShowDetail((v) => !v)}
-            >
-              Edit comment
-            </button>
+            {f.structured && (
+              <button
+                type="button"
+                className="fbtn"
+                aria-expanded={showDetail}
+                onClick={() => setShowDetail((v) => !v)}
+              >
+                Edit comment
+              </button>
+            )}
+            {teach && teachToken && (
+              <button
+                type="button"
+                className="fbtn"
+                aria-expanded={showTeach}
+                disabled={taught}
+                title={taught ? "This one is already a rule" : undefined}
+                onClick={() => setShowTeach((v) => !v)}
+                data-testid="teach-open"
+              >
+                {taught ? "Already a rule" : "Teach the skill"}
+              </button>
+            )}
           </div>
+        )}
+        {/* Deliberately not gated on `taught`: adding the rule sets it, and gating here would
+            unmount the panel at the exact moment it has something to confirm. The button above
+            is what stops a second visit. */}
+        {showTeach && teach && teachToken && (
+          <TeachPanel f={f} pr={pr} token={teachToken} teach={teach}
+                      onTaught={() => setTaught(true)} />
         )}
         {showDetail && (
           <>
@@ -504,6 +533,112 @@ function FindingCard({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Teaching the skill from this one finding. The clustering engine needs the same complaint
+// dropped several times across several PRs before it offers anything; a reviewer reading the
+// card already knows. Nothing is written until the rule has been read and the button pressed.
+function TeachPanel({ f, pr, token, teach, onTaught }: {
+  f: Finding;
+  pr: PrRef;
+  token: Token;
+  teach: { target: string; targetLabel: string; connected: boolean };
+  onTaught: () => void;
+}) {
+  const [dir, setDir] = useState<TeachDirection | "">("");
+  const [rule, setRule] = useState("");
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState<"" | "draft" | "add">("");
+  const [err, setErr] = useState("");
+  const [added, setAdded] = useState("");
+
+  const draft = async (d: TeachDirection) => {
+    setDir(d);
+    setErr("");
+    setBusy("draft");
+    try {
+      const r = await api.teach(pr, token, f.i, d, "draft");
+      setRule(r.rule);
+      setWhy(r.rationale || "");
+    } catch (e) {
+      setErr(errMessage(e, "Could not draft a rule — try again."));
+    } finally {
+      setBusy("");
+    }
+  };
+  const add = async () => {
+    if (!dir || !rule.trim()) return;
+    setErr("");
+    setBusy("add");
+    try {
+      const r = await api.teach(pr, token, f.i, dir, "add", rule);
+      setAdded(r.targetLabel);
+      onTaught();
+    } catch (e) {
+      setErr(errMessage(e, "Could not add the rule — try again."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  if (added) {
+    return (
+      <div className="teach" data-testid="teach-added">
+        <Status tone="green">Added to {added}</Status>
+        <p className="teach-note">
+          Every review from now on reads this. <Link to="/skills#rules">See it on Skills</Link>.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="teach" data-testid="teach">
+      {!teach.connected ? (
+        <p className="teach-note" data-testid="teach-noclaude">
+          Drafting a rule runs on your own Claude account.{" "}
+          <Link to="/integrations">Connect one</Link> to use this.
+        </p>
+      ) : (
+        <>
+          <p className="teach-note">What should the next review do with this complaint?</p>
+          <div className="teach-dirs">
+            <button type="button" className={"btn" + (dir === "avoid" ? " is-on" : "")}
+                    disabled={!!busy} onClick={() => void draft("avoid")}
+                    data-testid="teach-avoid">
+              Don't raise it again
+            </button>
+            <button type="button" className={"btn" + (dir === "always" ? " is-on" : "")}
+                    disabled={!!busy} onClick={() => void draft("always")}
+                    data-testid="teach-always">
+              Always check it
+            </button>
+          </div>
+          {busy === "draft" && <div className="hint">Writing the rule…</div>}
+          {err && <div className="ferr" data-testid="teach-err">{err}</div>}
+          {rule && busy !== "draft" && (
+            <>
+              <label className="teach-l" htmlFor={`teach-${f.i}`}>
+                The rule, as it will be written to {teach.targetLabel}
+              </label>
+              <textarea id={`teach-${f.i}`} className="in teach-in" rows={2} value={rule}
+                        onChange={(e) => setRule(e.target.value)} />
+              {why && <p className="teach-note">{why}</p>}
+              <div className="teach-acts">
+                <button type="button" className="btn primary" disabled={busy === "add" || !rule.trim()}
+                        onClick={() => void add()} data-testid="teach-add">
+                  {busy === "add" ? "Adding…" : "Add this rule"}
+                </button>
+                <button type="button" className="btn" disabled={!!busy}
+                        onClick={() => void draft(dir as TeachDirection)}>
+                  Redraft
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -790,6 +925,8 @@ function ReviewBody({
       onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
       pr={refOf(data)}
       explainToken={data.tokens.explain}
+      teachToken={data.tokens.teach}
+      teach={data.teach}
     />
   );
 

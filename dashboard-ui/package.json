@@ -14,15 +14,15 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
-    "react": "19.1.1",
-    "react-dom": "19.1.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
     "@types/node": "^24.0.0",
-    "@types/react": "^19.2.18",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.2.4",
     "esbuild": "0.25.8",
     "sharp": "0.34.3",

@@ -315,19 +315,52 @@ def _openssl(mode, data, iters):
     finally:
         os.close(w_fd)
     try:
+        # pass_fds keeps the pipe at the SAME descriptor number in the child, so that is the
+        # number openssl must read from. This used to say fd:3, which only holds while 3 happens
+        # to be free — inside the running server fd 3 is the listening socket, so openssl read
+        # its password from the server's own port, every encrypt and decrypt failed, and a
+        # completed GitHub sign-in crashed while storing its token.
+        # Bytes in, bytes out. With text=True, subprocess decoded stdout BEFORE this code saw
+        # the exit status, and a decrypt at the wrong iteration count can leave partial
+        # garbage on stdout — so the UnicodeDecodeError fired instead of the RuntimeError that
+        # dec() catches, and the legacy-iterations fallback never ran. That is how tokens
+        # written before PBKDF2_ITERS was raised became unreadable on OpenSSL 3.5.
         r = subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2",
                             "-iter", str(iters), "-salt", "-a", "-A",
-                            mode, "-pass", "fd:3"], input=data, capture_output=True,
-                           text=True, pass_fds=(r_fd,))
+                            mode, "-pass", f"fd:{r_fd}"], input=data.encode(),
+                           capture_output=True, pass_fds=(r_fd,))
     finally:
         os.close(r_fd)
     if r.returncode != 0:
-        raise RuntimeError((r.stderr or "openssl failed").strip()[:200])
-    return r.stdout.strip()
+        err = r.stderr.decode("utf-8", "replace") if r.stderr else "openssl failed"
+        raise RuntimeError(err.strip()[:200])
+    try:
+        return r.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError as e:
+        raise RuntimeError("openssl produced undecodable output") from e
 
 
 def enc(plain):
     return _openssl("-e", plain, PBKDF2_ITERS)
+
+
+_CRYPTO_CHECK = {"at": 0.0, "err": None}
+CRYPTO_CHECK_TTL = 600
+
+
+def crypto_selftest():
+    """None when enc/dec round-trip inside THIS process, else the reason. Cached for
+    CRYPTO_CHECK_TTL seconds. It must run in the server process, not a helper: the failure it
+    guards against depends on the process's own descriptor layout."""
+    now = time.time()
+    if now - _CRYPTO_CHECK["at"] < CRYPTO_CHECK_TTL:
+        return _CRYPTO_CHECK["err"]
+    try:
+        err = None if dec(enc("probe")) == "probe" else "round trip returned the wrong text"
+    except Exception as e:  # noqa: BLE001 — the whole point is to report whatever broke
+        err = str(e).splitlines()[0][:160] if str(e) else type(e).__name__
+    _CRYPTO_CHECK.update(at=now, err=err)
+    return err
 
 
 def dec(cipher):
@@ -3959,6 +3992,15 @@ class Handler(BaseHTTPRequestHandler):
         route = u.path.rstrip("/") or "/"
 
         if route == "/health":
+            # Health includes an in-process encryption round trip. The at-rest crypto forks
+            # openssl with the key on a pipe, and it broke once in a way that only showed INSIDE
+            # the running server (the pipe's descriptor number depends on what the process has
+            # open — here, the listening socket). A test process and `doctor` both passed while
+            # every sign-in crashed. Checked lazily and cached, so the Compose healthcheck does
+            # not pay for two PBKDF2 derivations every 30 seconds.
+            err = crypto_selftest()
+            if err:
+                return self.reply(500, f"crypto: {err}", "text/plain; charset=utf-8")
             return self.reply(200, "ok", "text/plain; charset=utf-8")
         if route.startswith("/static/"):
             return self.serve_static(route)
@@ -5226,7 +5268,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"status": "error", "error": msg})
         first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
-        oauth_store(login, d, name, prev)
+        try:
+            oauth_store(login, d, name, prev)
+        except Exception as e:  # noqa: BLE001 — anything here must reach the screen
+            # GitHub has already issued the token, so the device code is spent. If this
+            # crashed instead of answering, the client's next poll found no session and the
+            # user was told the code had expired — which pointed them at GitHub for a fault
+            # that was entirely this box's.
+            print(f"login (github device): storing {login}'s token failed: {e}", flush=True)
+            return self.api_json({"status": "error",
+                                  "error": "GitHub signed you in, but this box could not store "
+                                           f"the token: {str(e).splitlines()[0][:160]}"})
         clear_oauth_block(login)
         print(f"login (github device): {login}", flush=True)
         return self.api_json({"status": "ok", "login": login, "welcome": first_sign_in},

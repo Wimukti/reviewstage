@@ -372,6 +372,53 @@ class AtRestEncryption(ServerCase):
         legacy = self.srv._openssl("-e", "ghp_old", self.srv.PBKDF2_ITERS_LEGACY)
         self.assertEqual(self.srv.dec(legacy), "ghp_old")
 
+    def test_round_trip_survives_fd_3_being_taken(self):
+        """Inside the running server fd 3 is the listening socket. The password pipe used to be
+        addressed as fd:3 regardless of where it actually landed, so openssl read its password
+        from the server's own port and every encrypt and decrypt failed — a completed GitHub
+        sign-in crashed while storing its token. Hold fd 3 here so the pipe cannot land there."""
+        import os
+        # Open descriptors until 3 is taken; if the runner already holds it, so much the better.
+        held = []
+        while True:
+            fd = os.open(os.devnull, os.O_RDONLY)
+            held.append(fd)
+            if fd >= 3:
+                break
+        for fd in held:
+            self.addCleanup(os.close, fd)
+        self.assertEqual(self.srv.dec(self.srv.enc("ghp_secret")), "ghp_secret")
+
+    def test_the_legacy_fallback_runs_even_when_the_first_attempt_emits_garbage(self):
+        """A decrypt at the wrong iteration count can leave undecodable bytes on stdout before
+        openssl exits non-zero. With text=True that raised UnicodeDecodeError, not the
+        RuntimeError dec() catches, so the fallback never ran and pre-upgrade tokens were
+        unreadable on OpenSSL 3.5."""
+        from unittest import mock
+        real = self.srv.subprocess.run
+        calls = []
+
+        def fake(cmd, **kw):
+            calls.append(cmd)
+            if len(calls) == 1:
+                return mock.Mock(returncode=1, stdout=b"\xfd\xc9garbage", stderr=b"bad decrypt")
+            return real(cmd, **kw)
+        legacy = self.srv._openssl("-e", "ghp_old", self.srv.PBKDF2_ITERS_LEGACY)
+        with mock.patch.object(self.srv.subprocess, "run", side_effect=fake):
+            self.assertEqual(self.srv.dec(legacy), "ghp_old")
+        self.assertEqual(len(calls), 2)
+
+    def test_health_fails_when_the_encryption_does_not_round_trip_in_process(self):
+        """The CI boot check and the Compose healthcheck both curl /health. A broken at-rest
+        cipher used to leave it saying ok while every sign-in crashed, because the fault only
+        existed inside the server process. Health now includes the round trip."""
+        from unittest import mock
+        self.assertIsNone(self.srv.crypto_selftest())
+        self.srv._CRYPTO_CHECK.update(at=0.0, err=None)          # drop the cache
+        with mock.patch.object(self.srv, "enc", side_effect=RuntimeError("Error getting password")):
+            self.assertIn("Error getting password", self.srv.crypto_selftest())
+        self.srv._CRYPTO_CHECK.update(at=0.0, err=None)
+
     def test_the_key_is_not_in_the_child_environment(self):
         import inspect
         src = inspect.getsource(self.srv._openssl)

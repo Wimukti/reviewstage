@@ -25,7 +25,7 @@ export default defineConfig({
         { tag: "link", attrs: { rel: "icon", type: "image/png", sizes: "512x512", href: `${base}/favicon-512.png` } },
         { tag: "link", attrs: { rel: "apple-touch-icon", sizes: "180x180", href: `${base}/apple-touch-icon.png` } },
         { tag: "meta", attrs: { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#F6F6F9" } },
-        { tag: "meta", attrs: { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#101117" } },
+        { tag: "meta", attrs: { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#0B0C10" } },
         { tag: "meta", attrs: { property: "og:image", content: `${site}${base}/og.png` } },
         { tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
         { tag: "meta", attrs: { property: "og:image:height", content: "630" } },
@@ -34,6 +34,7 @@ export default defineConfig({
       ],
       customCss: ["./src/styles/app.css"],
       components: {
+        ThemeProvider: "./src/components/starlight/ThemeProvider.astro",
         SiteTitle: "./src/components/starlight/SiteTitle.astro",
         Footer: "./src/components/starlight/Footer.astro",
         ThemeSelect: "./src/components/starlight/ThemeSelect.astro",

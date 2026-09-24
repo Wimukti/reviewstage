@@ -35,8 +35,8 @@ test.describe("pwa", () => {
     await page.goto("/");
     await expect(page.locator("link[rel=manifest]")).toHaveAttribute("href", "/manifest.webmanifest");
     await expect(page.locator("link[rel=apple-touch-icon]")).toHaveCount(1);
-    // Light is the default; the inline shell script flips this to the dark paper when dark renders.
-    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#F6F6F9");
+    // Dark is the default; the inline shell script flips this to the light paper when light renders.
+    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#0B0C10");
   });
 
   test.describe("phone width", () => {

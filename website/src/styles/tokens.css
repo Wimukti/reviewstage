@@ -10,7 +10,7 @@
   --amber-bg: rgba(224,166,58,.12); --red-bg: rgba(240,113,138,.12); --green-bg: rgba(61,217,143,.12);
   --blue-bg:  rgba(122,131,255,.14);
   /* the stage light (design.md §4). .17 rather than the proposed .18: graphite over a panel
-     blended with the light at its maximum alpha reads 4.39:1 at .18 and 4.54:1 at .17. */
+     blended with the light at its maximum alpha reads 4.40:1 at .18 and 4.54:1 at .17. */
   --light:    rgba(255,225,176,.17);
   --light-strong: rgba(255,225,176,.38);
   --shadow-raised: 0 -1px 0 var(--hairline), 0 12px 32px -12px rgba(0,0,0,.7);

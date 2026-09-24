@@ -14,7 +14,7 @@ const ld = {
 };
 ---
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -22,7 +22,7 @@ const ld = {
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex" />}
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F6F9" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#101117" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0C10" />
     <link rel="icon" href={`${base}/favicon.ico`} sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
     <link rel="icon" type="image/png" sizes="192x192" href={`${base}/favicon-192.png`} />
@@ -44,10 +44,10 @@ const ld = {
     <meta name="twitter:image" content={ogImage} />
     <script is:inline>
       (() => {
+        // Dark unless a choice is stored; "system" is stamped as itself (see scripts/theme.ts).
         let s = null; try { s = localStorage.getItem("starlight-theme"); } catch {}
-        const pref = s === "light" || s === "dark" ? s : "auto";
-        const resolved = pref === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : pref;
-        document.documentElement.dataset.theme = resolved;
+        const pref = s === "light" || s === "dark" ? s : s === "auto" || s === "" ? "auto" : "dark";
+        document.documentElement.dataset.theme = pref === "auto" ? "system" : pref;
         document.documentElement.dataset.themePreference = pref;
       })();
     </script>

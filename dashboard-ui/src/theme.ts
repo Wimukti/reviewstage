@@ -1,20 +1,22 @@
-// Theme: light by default, dark from the system preference, either pinned per device. The pin
-// is a localStorage key rather than a user preference on the server because the shell has to
-// apply it before the first paint (see index_html in bin/server.py) and because it is a
-// property of the screen in front of you, not of your account — a dark laptop and a light
-// desktop are both right.
+// Theme: dark by default, light or the system preference as a per-device choice. The pin is a
+// localStorage key rather than a user preference on the server because the shell has to apply
+// it before the first paint (see index_html in bin/server.py) and because it is a property of
+// the screen in front of you, not of your account — a dark laptop and a light desktop are both
+// right. Every choice is stamped on <html data-theme>: "dark", "light", or "system" (the media
+// query in tokens.css targets the last one), so nothing is ever the absence of an attribute.
 import { useEffect, useState } from "react";
 
 export type ThemeChoice = "system" | "light" | "dark";
 export const THEME_KEY = "rs-theme";
+export const DEFAULT_THEME: ThemeChoice = "dark";
 const EVT = "reviewstage:theme";
 
 export function getTheme(): ThemeChoice {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    return v === "light" || v === "dark" ? v : "system";
+    return v === "light" || v === "system" ? v : DEFAULT_THEME;
   } catch {
-    return "system";
+    return DEFAULT_THEME;
   }
 }
 
@@ -23,12 +25,10 @@ export function resolvedTheme(choice = getTheme()): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-const PAPER = { light: "#F6F6F9", dark: "#101117" };
+const PAPER = { light: "#F6F6F9", dark: "#0B0C10" };
 
 export function applyTheme(choice = getTheme()): void {
-  const root = document.documentElement;
-  if (choice === "system") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", choice);
+  document.documentElement.setAttribute("data-theme", choice);
   const scheme = document.querySelector<HTMLMetaElement>("meta[name=color-scheme]");
   if (scheme) scheme.content = choice === "system" ? "light dark" : choice;
   const color = document.querySelector<HTMLMetaElement>("meta[name=theme-color]");
@@ -37,7 +37,8 @@ export function applyTheme(choice = getTheme()): void {
 
 export function setTheme(choice: ThemeChoice): void {
   try {
-    if (choice === "system") localStorage.removeItem(THEME_KEY);
+    // Dark is the default, so "system" has to be stored as a choice in its own right.
+    if (choice === DEFAULT_THEME) localStorage.removeItem(THEME_KEY);
     else localStorage.setItem(THEME_KEY, choice);
   } catch {
     /* private mode: the choice lasts for this page only */

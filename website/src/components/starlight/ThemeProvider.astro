@@ -1,0 +1,15 @@
+---
+/* Replaces Starlight's ThemeProvider, which stamps the *resolved* light/dark on <html>. The
+ * site's contract (scripts/theme.ts) stamps the choice itself — "dark" by default, "light", or
+ * "system" for the media query in tokens.css — so the two must agree before first paint.
+ * Keep this inline and identical in intent to the bootstrap in layouts/MarketingLayout.astro. */
+---
+<script is:inline>
+  window.StarlightThemeProvider = (() => {
+    let s = null; try { s = localStorage.getItem("starlight-theme"); } catch {}
+    const pref = s === "light" || s === "dark" ? s : s === "auto" || s === "" ? "auto" : "dark";
+    document.documentElement.dataset.theme = pref === "auto" ? "system" : pref;
+    document.documentElement.dataset.themePreference = pref;
+    return { updatePickers() {} };
+  })();
+</script>

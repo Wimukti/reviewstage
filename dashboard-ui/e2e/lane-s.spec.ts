@@ -1,4 +1,4 @@
-// Lane S (Skills, Insights, Settings, Integrations, How it works, Tour) — the redesign's proof
+// Lane S (Skills, Insights, Settings, Integrations, Tour) — the redesign's proof
 // for the pages that sit on the foundation. Behaviour is unchanged; these pin the new shape.
 import { expect, test, type Page } from "@playwright/test";
 import { REPO } from "./fixture";
@@ -202,23 +202,6 @@ test.describe("integrations", () => {
     const primaries = page.locator(".main .btn.primary:visible");
     await expect(primaries).toHaveCount(1);
     await expect(primaries).toHaveText(/connect with claude/i);
-  });
-});
-
-test.describe("how it works", () => {
-  test("the steps are illustrated by live mocks, not images", async ({ page }) => {
-    await page.goto("/how");
-    await settled(page);
-    await expect(page.locator(".flow img")).toHaveCount(0);
-    await expect(page.locator("[data-testid^=how-mock-]")).toHaveCount(5);
-    // The mocks are built from the product's own classes, so they cannot drift from it.
-    await expect(page.getByTestId("how-mock-findings").locator(".finding.is-staged")).toHaveCount(1);
-    await expect(page.getByTestId("how-mock-post").locator(".commit-bar")).toHaveCount(1);
-    // Pictures: inert and out of the accessibility tree.
-    for (const m of await page.locator("[data-testid^=how-mock-]").all()) {
-      await expect(m).toHaveAttribute("aria-hidden", "true");
-      await expect(m).toHaveAttribute("inert", "");
-    }
   });
 });
 

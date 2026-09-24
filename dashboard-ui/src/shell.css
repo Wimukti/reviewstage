@@ -1,1 +1,98 @@
-/* Lane A1 — login and shell (design.md §8). Imported by styles.css into the `shell` layer. */
+/* Lane A1 — login and shell (design.md §8). Imported by styles.css into the `shell` layer, which
+   beats `base` without !important. Tokens only; no colour literal; the light token never appears
+   here (the login light is `.stage-login::before` in styles.css). */
+
+/* visually hidden — for the running bar's words */
+.vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- sign-in ----------------------------------------------------------------------------------- */
+.auth{padding:24px 16px}
+.stage-login{width:100%;max-width:400px}
+/* The shared light is centred on its box's top edge (right for the site frame, whose top edge is
+   the frame); behind a free-standing card that edge shows as a hard line, so lift it and fade
+   the top in. Geometry only — the gradient and its token stay in styles.css. */
+.stage-login::before{top:-46%;height:112%;mask-image:linear-gradient(180deg,transparent 0%,var(--ink) 45%);
+-webkit-mask-image:linear-gradient(180deg,transparent 0%,var(--ink) 45%)}
+.authcard{max-width:none;padding:32px 28px 20px;background:var(--panel)}
+.authlogo{width:40px;height:40px;margin:0 auto 12px}
+.authcard h1{font-size:var(--t-32);letter-spacing:-0.02em;line-height:1.05}
+.authsub{color:var(--graphite);font-weight:400;font-size:var(--t-14);margin:6px 0 24px}
+.authcard .banner{text-align:left}
+.btn.lg{height:44px;font-size:var(--t-14);font-weight:600}
+.authmore{margin:14px 0 0;display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
+.authlink{background:none;border:0;padding:0;font:inherit;font-size:var(--t-13);color:var(--graphite);cursor:pointer;
+min-height:32px;display:inline-flex;align-items:center}
+.authlink:hover{color:var(--ink);text-decoration:underline}
+.authlink[aria-expanded="true"]{color:var(--ink)}
+#pat-form{margin-top:10px}
+.patform .btn.block{margin-top:8px}
+.authfine{font-size:var(--t-12);margin:12px 0 0;line-height:1.5}
+.authguarantee{margin-top:20px;padding-top:14px;border-top:1px solid var(--hairline)}
+.devflow{margin:0 0 12px}
+
+/* ---- running bar: a 2px amber sweep at the very top of the viewport ---------------------------- */
+.runbar{position:fixed;top:0;left:0;right:0;height:2px;z-index:100;background:var(--amber-bg);overflow:hidden;display:block}
+.runbar::before{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:var(--amber);
+transform:translateX(-100%)}
+/* the hit area is taller than the bar */
+.runbar::after{content:"";position:absolute;left:0;right:0;top:0;height:10px}
+.runbar:focus-visible{outline-offset:0}
+@media (prefers-reduced-motion:no-preference){
+  .runbar::before{animation:sweep 1.6s var(--ease) infinite}
+  @keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+}
+@media (prefers-reduced-motion:reduce){.runbar::before{transform:none;width:100%}}
+
+/* ---- sidebar ----------------------------------------------------------------------------------- */
+.side{width:var(--side);padding:12px 10px;gap:2px}
+.brand{gap:8px;padding:4px 8px 12px;font-size:var(--t-13)}
+.brand img{width:20px;height:20px}
+.reviewbtn{margin:0 0 4px}
+.nav{margin-top:8px;gap:1px}
+.navgroup{gap:1px}
+.navgroup+.navgroup{margin-top:20px;padding-top:0;border-top:0}
+.ni{height:36px;gap:9px;padding:0 8px;font-size:var(--t-13)}
+.ni svg{width:16px;height:16px}
+.sidefoot{gap:2px;padding:10px 0 0}
+.acct{position:relative;flex-direction:row;align-items:center;gap:6px;min-height:36px;padding:0 0 0 4px;border:0;
+background:none;border-radius:var(--r-s)}
+.acct .av{width:22px;height:22px;font-size:var(--t-12);display:inline-flex;align-items:center;justify-content:center}
+.acct .nm{flex:1;min-width:0;font-size:var(--t-13)}
+.acct .status{font-size:var(--t-12);font-weight:500;gap:5px;flex:none}
+.iconbtn.sm{width:24px;height:var(--ctl);color:var(--graphite)}
+.iconbtn.sm:hover,.iconbtn.sm[aria-expanded="true"]{color:var(--ink);background:var(--blue-bg)}
+.iconbtn.sm svg{width:16px;height:16px}
+.moremenu{position:absolute;bottom:calc(100% + 6px);right:0;left:0;padding:8px;background:var(--panel);
+border:1px solid var(--hairline);border-radius:var(--r-m);box-shadow:var(--shadow-raised);z-index:50}
+.moremenu-l{font-size:var(--t-12);color:var(--graphite);padding:0 4px 6px}
+.themeseg{width:100%;display:flex}
+.themeseg button{flex:1;padding:0 4px;height:var(--ctl);display:inline-flex;align-items:center;justify-content:center}
+.foota{padding:0}
+.so{height:var(--ctl);padding:0 8px}
+.helpmenu{box-shadow:var(--shadow-raised)}
+.helpitem{gap:8px;height:var(--ctl);min-height:0;font-size:var(--t-13)}
+.helpitem svg{width:12px;height:12px;color:var(--graphite);margin-left:auto}
+
+/* ---- phone shell ------------------------------------------------------------------------------- */
+.phone-head{justify-content:space-between;height:52px}
+.phone-head .brand img{width:22px;height:22px}
+.sheet .ni{height:44px}
+.sheet-theme{padding:8px 8px 4px}
+.sheet .acct{margin:8px 0 0;padding:0 8px;min-height:44px}
+.sheet .so{height:44px}
+.sheet .moremenu-l{display:block}
+
+/* ---- command palette: density and type only ---------------------------------------------------- */
+.cmdk-in{height:var(--row);font-size:var(--t-14)}
+.cmdk-inwrap{padding:0 var(--pad)}
+.cmdk-list{padding:4px}
+.cmdk-grouphead{font-size:var(--t-12);padding:8px 10px 2px}
+.cmdk-row{min-height:36px;font-size:var(--t-13)}
+.cmdk-empty{padding:var(--pad);font-size:var(--t-13)}
+.cmdk-foot{padding:6px 14px;font-size:var(--t-12)}
+
+/* ---- tour: density and type only --------------------------------------------------------------- */
+.tourcard{padding:var(--pad)}
+.tourh{font-size:var(--t-14);margin-bottom:4px}
+.tourtext{font-size:var(--t-13)}
+.tourdots{margin:12px 0}

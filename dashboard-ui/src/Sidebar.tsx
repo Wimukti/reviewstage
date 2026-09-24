@@ -9,8 +9,10 @@ import { useTheme, type ThemeChoice } from "./theme";
 import { Status } from "./ui";
 import { Logo } from "./Logo";
 
-// Two groups — what you do day to day, then what you configure once — separated by a hairline,
-// not a label. "How it works" lives behind the Help menu (desktop) and the More sheet (phone).
+// "How it works" lives on the site now (design.md: the app's copy duplicated the site's strip).
+export const HOW_URL = "https://wimukti.github.io/reviewstage/#how-it-works";
+
+// Two groups — what you do day to day, then what you configure once — separated by space alone.
 const WORK: [string, string, string][] = [
   ["queue", "Queue", "/"],
   ["qa", "QA guides", "/qa"],
@@ -22,7 +24,6 @@ const SETUP: [string, string, string][] = [
   ["integrations", "Integrations", "/integrations"],
   ["settings", "Settings", "/settings"],
 ];
-const ALL = [...WORK, ...SETUP];
 
 function activeKey(path: string): string {
   if (path === "/") return "queue";
@@ -32,20 +33,12 @@ function activeKey(path: string): string {
   if (path.startsWith("/skills")) return "skills";
   if (path.startsWith("/integrations")) return "integrations";
   if (path.startsWith("/settings")) return "settings";
-  if (path.startsWith("/how")) return "how";
   if (path.startsWith("/pr") || path.startsWith("/stack")) return "queue";
   return "";
 }
 
-function pageTitle(path: string, brand: string): string {
-  if (path.startsWith("/pr")) return "Review";
-  if (path.startsWith("/stack")) return "Stacked review";
-  if (path.startsWith("/how")) return "How it works";
-  return ALL.find(([k]) => k === activeKey(path))?.[1] ?? brand;
-}
-
 // What this user has in flight: one job links straight to it; several link to the queue
-// filtered to running. The dot pulses — one of the three animations in the app.
+// filtered to running.
 function useRunningLink() {
   const jobs = useRunning();
   if (jobs.length === 0) return null;
@@ -58,13 +51,17 @@ function useRunningLink() {
   };
 }
 
-function RunningLink({ className }: { className: string }) {
+// The running indicator: a 2px amber sweep fixed to the top of the viewport, on every width.
+// The words are for screen readers (and the tooltip); the bar itself is the signal. Rendered
+// once by App, above whichever shell is showing.
+export function RunningBar() {
   const r = useRunningLink();
   if (!r) return null;
   return (
-    <Link className={className} data-testid="running-pill" to={r.to} title={r.title}>
-      <span className="rundot" aria-hidden="true" />
-      {r.text}
+    <Link className="runbar" data-testid="running-bar" to={r.to} title={r.title}>
+      <span className="vh" aria-live="polite">
+        {r.text}
+      </span>
     </Link>
   );
 }
@@ -78,7 +75,7 @@ const THEMES: [ThemeChoice, string, string][] = [
 function ThemeControl() {
   const [choice, setChoice] = useTheme();
   return (
-    <div className="seg" role="radiogroup" aria-label="Theme" data-testid="theme-control">
+    <div className="seg themeseg" role="radiogroup" aria-label="Theme" data-testid="theme-control">
       {THEMES.map(([k, label, icon]) => (
         <button
           key={k}
@@ -97,40 +94,15 @@ function ThemeControl() {
   );
 }
 
-function AccountCard({ me }: { me: Me }) {
-  const skill = me.active_skill === "own" ? "your skill" : "team default";
-  return (
-    <div className="acct" data-testid="account-card">
-      <div className="acct-top">
-        <span className="av" aria-hidden="true">{(me.login || "?").slice(0, 1).toUpperCase()}</span>
-        <div className="whot">
-          <span className="nm">{me.login}</span>
-          <Link className="skillline" to="/skills" title="Which skill runs your reviews">
-            {skill}
-          </Link>
-        </div>
-        <Status
-          kind={me.dry_run ? "dry" : "live"}
-          title={me.dry_run ? "Dry run — nothing posts to GitHub" : "Live"}
-        >
-          {me.dry_run ? "Dry run" : "Live"}
-        </Status>
-      </div>
-      <ThemeControl />
-    </div>
-  );
-}
-
-function HelpMenu() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+// Closes on an outside click or Escape.
+function useDismiss(open: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") close();
     };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
@@ -138,7 +110,54 @@ function HelpMenu() {
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, close, ref]);
+}
+
+// One row: avatar · login · Live/Dry run. On the desktop it ends in a More button whose menu
+// holds the theme switch; on the phone the sheet shows the switch directly.
+function AccountRow({ me, more }: { me: Me; more?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(open, () => setOpen(false), ref);
+  return (
+    <div className="acct" data-testid="account-card" ref={ref}>
+      <span className="av" aria-hidden="true">{(me.login || "?").slice(0, 1).toUpperCase()}</span>
+      <span className="nm">{me.login}</span>
+      <Status
+        kind={me.dry_run ? "dry" : "live"}
+        title={me.dry_run ? "Dry run — nothing posts to GitHub" : "Live"}
+      >
+        {me.dry_run ? "Dry run" : "Live"}
+      </Status>
+      {more && (
+        <>
+          <button
+            className="iconbtn sm"
+            type="button"
+            aria-label="More"
+            aria-expanded={open}
+            aria-haspopup="menu"
+            data-testid="account-more"
+            onClick={() => setOpen((o) => !o)}
+          >
+            <Icon name="more" />
+          </button>
+          {open && (
+            <div className="moremenu" data-testid="more-menu">
+              <div className="moremenu-l">Theme</div>
+              <ThemeControl />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function HelpMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(open, () => setOpen(false), ref);
   return (
     <div className="helpwrap" ref={ref}>
       <button className="so" type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -146,9 +165,10 @@ function HelpMenu() {
       </button>
       {open && (
         <div className="helpmenu">
-          <Link className="helpitem" to="/how" onClick={() => setOpen(false)}>
+          <a className="helpitem" href={HOW_URL} target="_blank" rel="noopener" onClick={() => setOpen(false)}>
             How it works
-          </Link>
+            <Icon name="external" />
+          </a>
           <button
             className="helpitem"
             type="button"
@@ -179,7 +199,6 @@ export function Sidebar({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
         <span className="rb-label">Review a PR</span>
         <kbd className="rb-kbd">⌘K</kbd>
       </button>
-      <RunningLink className="runlink" />
 
       <nav className="nav" aria-label="Main">
         {[WORK, SETUP].map((g, i) => (
@@ -201,7 +220,7 @@ export function Sidebar({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
       </nav>
 
       <div className="sidefoot">
-        <AccountCard me={me} />
+        <AccountRow me={me} more />
         <div className="foota">
           <HelpMenu />
           <span className="spacer" />
@@ -214,9 +233,9 @@ export function Sidebar({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
   );
 }
 
-// Phone (< 900px): a 56px header with the mark and the page title, a 28px strip for a running
-// job, and a labelled four-tab bar. More opens a sheet with the rest of the navigation, the
-// account card (theme control included) and Sign out. Every target is at least 44px.
+// Phone (< 900px): a 56px header with the mark and the search, and a labelled four-tab bar.
+// More opens a sheet with the rest of the navigation, the account row, the theme switch and
+// Sign out. Every target is at least 44px.
 const TABS: [string, string, string][] = [
   ["queue", "Queue", "/"],
   ["qa", "QA", "/qa"],
@@ -228,7 +247,6 @@ const MORE: [string, string, string][] = [
   ["integrations", "Integrations", "/integrations"],
   ["settings", "Settings", "/settings"],
   ["devices", "Devices", "/settings#devices"],
-  ["how", "How it works", "/how"],
 ];
 
 export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
@@ -260,14 +278,10 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
         <Link className="brand" to="/" aria-label={me.brand}>
           <Logo me={me} />
         </Link>
-        {/* Chrome, not structure: this repeats the page's own h1, so exposing it as a second
-            heading made a screen reader announce every title twice. */}
-        <span className="phone-title">{pageTitle(path, me.brand)}</span>
         <button className="iconbtn" type="button" aria-label="Review a PR" title="Review a PR" onClick={openPalette}>
           <Icon name="search" />
         </button>
       </header>
-      <RunningLink className="runstrip" />
 
       <nav className="tabbar" aria-label="Main">
         {TABS.map(([k, label, to]) => (
@@ -306,6 +320,10 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
                 <span>{label}</span>
               </Link>
             ))}
+            <a className="ni" href={HOW_URL} target="_blank" rel="noopener">
+              {NavIcon.how}
+              <span>How it works</span>
+            </a>
             <button
               className="ni"
               type="button"
@@ -314,10 +332,14 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
                 startTour();
               }}
             >
-              {NavIcon.how}
+              <Icon name="compass" />
               <span>Take a tour</span>
             </button>
-            <AccountCard me={me} />
+            <div className="sheet-theme">
+              <span className="moremenu-l">Theme</span>
+              <ThemeControl />
+            </div>
+            <AccountRow me={me} />
             <div className="foota">
               <span className="spacer" />
               <button className="so" type="button" onClick={onSignOut}>

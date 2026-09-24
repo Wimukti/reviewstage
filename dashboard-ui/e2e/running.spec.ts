@@ -14,8 +14,8 @@ test.describe("a running review stays visible", () => {
     await expect(page.getByTestId("progress-panel")).toBeVisible();
     await expect(page.getByTestId("progress-panel")).toContainText(/reviewing the diff/i);
 
-    // 2. The sidebar says so from any page — including this one.
-    const pill = page.getByTestId("running-pill");
+    // 2. The running bar at the top of the viewport says so from any page — including this one.
+    const pill = page.getByTestId("running-bar");
     await expect(pill).toBeVisible();
     await expect(pill).toHaveText(/1 review running/i);
 
@@ -37,9 +37,9 @@ test.describe("a running review stays visible", () => {
     await expect(page.getByTestId("progress-panel")).toContainText(/reviewing the diff/i);
   });
 
-  test("the sidebar pill jumps straight to the running review", async ({ page }) => {
+  test("the running bar jumps straight to the running review", async ({ page }) => {
     await page.goto("/");
-    const pill = page.getByTestId("running-pill");
+    const pill = page.getByTestId("running-bar");
     await expect(pill).toBeVisible();
     await pill.click();
     await expect(page).toHaveURL(new RegExp(`pr=${PR4}`));

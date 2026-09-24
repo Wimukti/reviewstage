@@ -8,20 +8,20 @@ const BASE = `http://127.0.0.1:${PORT}`;
 test.describe("login page", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("with OAuth configured: Sign in with GitHub is primary, the token form is behind a disclosure", async ({ page }) => {
+  test("with OAuth configured: Continue with GitHub is primary, the token form is behind a disclosure", async ({ page }) => {
     await page.route("**/api/me", async (route) => {
       const r = await route.fetch();
       const body = await r.json();
       await route.fulfill({ response: r, json: { ...body, oauth: true, oauth_blocked: false } });
     });
     await page.goto("/login");
-    await expect(page.getByText("Stage your PR review. Post it as yourself.")).toBeVisible();
-    const gh = page.getByRole("link", { name: "Sign in with GitHub" });
+    await expect(page.getByText("Stage your review. Post it as yourself.")).toBeVisible();
+    const gh = page.getByRole("link", { name: "Continue with GitHub" });
     await expect(gh).toBeVisible();
     await expect(gh).toHaveAttribute("href", "/oauth/start");
     const patInput = page.getByLabel("GitHub personal access token");
     await expect(patInput).toBeHidden();
-    await page.getByText("Use a personal access token instead").click();
+    await page.getByText("Use a token instead").click();
     await expect(patInput).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in with token" })).toBeVisible();
   });
@@ -32,8 +32,8 @@ test.describe("login page", () => {
       await route.fulfill({ response: r, json: { ...(await r.json()), oauth: true, device_flow: true } });
     });
     await page.goto("/login");
-    await expect(page.getByRole("link", { name: "Sign in with GitHub" })).toHaveAttribute("href", "/oauth/start");
-    await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Continue with GitHub" })).toHaveAttribute("href", "/oauth/start");
+    await expect(page.getByRole("button", { name: "Continue with GitHub" })).toHaveCount(0);
   });
 
   test("device pairing carries ?device=1 into the OAuth start link", async ({ page }) => {
@@ -42,22 +42,23 @@ test.describe("login page", () => {
       await route.fulfill({ response: r, json: { ...(await r.json()), oauth: true } });
     });
     await page.goto("/login?device=1&name=Pixel");
-    const href = await page.getByRole("link", { name: "Sign in with GitHub" }).getAttribute("href");
+    const href = await page.getByRole("link", { name: "Continue with GitHub" }).getAttribute("href");
     expect(href).toBe(`/oauth/start?next=${encodeURIComponent("/device?name=Pixel")}`);
   });
 
-  test("with both flows off: the token form is the sign-in and the admin hint names the callback URL", async ({ page }) => {
+  test("with both flows off: the token form is the sign-in and team setup is one docs link", async ({ page }) => {
     // The fixture runs with GH_DEVICE_FLOW=0 and no GH_CLIENT_ID, so this is the real /api/me.
     await page.goto("/login");
     await expect(page.getByLabel("GitHub personal access token")).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in with token" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Sign in with GitHub" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toHaveCount(0);
-    await expect(page.getByText("Running this server?")).toBeVisible();
-    await expect(page.getByText("https://reviewstage.example.com/oauth/callback")).toBeVisible();
-    await expect(page.getByRole("link", { name: "the install guide" })).toHaveAttribute(
+    await expect(page.getByRole("link", { name: "Continue with GitHub" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Continue with GitHub" })).toHaveCount(0);
+    // No server-setup paragraph and no environment-variable names on the screen: one link.
+    await expect(page.getByText("Running this server?")).toHaveCount(0);
+    await expect(page.locator(".authcard").getByText(/GH_[A-Z_]+/)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Setting up sign-in for a team" })).toHaveAttribute(
       "href",
-      /start\/install\/#github-sign-in/,
+      "https://wimukti.github.io/reviewstage/start/team-mode/",
     );
   });
 });

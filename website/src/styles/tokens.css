@@ -19,7 +19,7 @@
   --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --dur: 120ms; --dur-slow: 320ms; --ease: cubic-bezier(.2,.7,.2,1);
-  --t-12: .8571rem; --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem;
+  --t-12: .8572rem; --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem;
   --t-24: 1.714rem; --t-32: 2.286rem;
   --t-display: clamp(2.75rem, 7vw, 5.5rem);      /* site headline only */
   --row: 44px; --pad: 16px; --ctl: 32px; --side: 216px;

@@ -1,19 +1,30 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
+import react from "@astrojs/react";
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import tailwindcss from "@tailwindcss/vite";
 
 const site = "https://wimukti.github.io";
 const base = "/reviewstage";
+// The site renders the app's own components (design.md §7): `@app/…` is dashboard-ui/src,
+// reached by path rather than a workspace so the Docker and CI install paths stay untouched.
+const appSrc = fileURLToPath(new URL("../dashboard-ui/src", import.meta.url));
 
 export default defineConfig({
   site,
   base,
   output: "static",
   trailingSlash: "always",
-  vite: { plugins: [tailwindcss()] },
+  vite: {
+    plugins: [tailwindcss()],
+    resolve: { alias: { "@app": appSrc } },
+    server: { fs: { allow: [".", appSrc] } },
+  },
   integrations: [
-    sitemap(),
+    react(),
+    // stage-proof is the island's proof page (design §7), not a page for readers.
+    sitemap({ filter: (page) => !page.includes("/stage-proof/") }),
     starlight({
       title: "ReviewStage",
       description:

@@ -1,42 +1,51 @@
 /* ReviewStage tokens. Shared verbatim by the app (dashboard-ui/src/tokens.css) and the site
-   (website/src/styles/tokens.css); the contract is openspec/changes/one-identity-redesign/design.md §1.
-   No other colour literal may appear in any stylesheet. */
+   (website/src/styles/tokens.css); the contract is openspec/changes/stage-light/design.md §1.
+   No other colour literal may appear in any stylesheet. Dark is the default; light is opt-in,
+   and "system" is stamped as an attribute so the media query below can target it. */
 :root {
-  --paper:    #F6F6F9;  --panel:    #FFFFFF;  --raised:  #FFFFFF;
-  --ink:      #171922;  --graphite: #5A5F73;  --hairline:#E1E3EA;
-  --blue:     #3947FF;  --blue-ink: #FFFFFF;           /* text on a blue fill */
-  --amber:    #8F5D0A;  --red:      #C93A52;  --green:  #187149;
-  --amber-bg: rgba(143,93,10,.08); --red-bg: rgba(201,58,82,.08); --green-bg: rgba(24,113,73,.08);
-  --blue-bg:  rgba(57,71,255,.08);
-  --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(23,25,34,.25);
+  --paper:    #0B0C10;  --panel:    #12141A;  --raised:  #181B23;
+  --ink:      #ECEEF3;  --graphite: #9AA0B4;  --hairline:#22262F;
+  --blue:     #7A83FF;  --blue-ink: #0B0C10;           /* text on a blue fill */
+  --amber:    #E0A63A;  --red:      #F0718A;  --green:   #3DD98F;
+  --amber-bg: rgba(224,166,58,.12); --red-bg: rgba(240,113,138,.12); --green-bg: rgba(61,217,143,.12);
+  --blue-bg:  rgba(122,131,255,.14);
+  /* the stage light (design.md §4). .17 rather than the proposed .18: graphite over a panel
+     blended with the light at its maximum alpha reads 4.39:1 at .18 and 4.54:1 at .17. */
+  --light:    rgba(255,225,176,.17);
+  --light-strong: rgba(255,225,176,.38);
+  --shadow-raised: 0 -1px 0 var(--hairline), 0 12px 32px -12px rgba(0,0,0,.7);
   --r-s: 4px; --r-m: 8px; --r-full: 999px;
+  --display: 'Bricolage Grotesque Variable', 'IBM Plex Sans', system-ui, sans-serif;
   --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --dur: 120ms; --ease: cubic-bezier(.2,.7,.2,1);
-  --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem;
-  --t-26: 1.857rem; --t-34: 2.429rem;
-  color-scheme: light;
-}
-/* dark: the mark's own light-ink variant */
-:root[data-theme="dark"] {
-  --paper: #101117; --panel: #171922; --raised: #1C1F2B;
-  --ink: #E8E9F0; --graphite: #9AA0B4; --hairline: #262A38;
-  --blue: #7A83FF; --blue-ink: #101117;
-  --amber: #E0A63A; --red: #F0718A; --green: #3DD98F;
-  --amber-bg: rgba(224,166,58,.12); --red-bg: rgba(240,113,138,.12); --green-bg: rgba(61,217,143,.12);
-  --blue-bg: rgba(122,131,255,.14);
-  --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(0,0,0,.6);
+  --dur: 120ms; --dur-slow: 320ms; --ease: cubic-bezier(.2,.7,.2,1);
+  --t-12: .8571rem; --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem;
+  --t-24: 1.714rem; --t-32: 2.286rem;
+  --t-display: clamp(2.75rem, 7vw, 5.5rem);      /* site headline only */
+  --row: 44px; --pad: 16px; --ctl: 32px; --side: 216px;
   color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #101117; --panel: #171922; --raised: #1C1F2B;
-    --ink: #E8E9F0; --graphite: #9AA0B4; --hairline: #262A38;
-    --blue: #7A83FF; --blue-ink: #101117;
-    --amber: #E0A63A; --red: #F0718A; --green: #3DD98F;
-    --amber-bg: rgba(224,166,58,.12); --red-bg: rgba(240,113,138,.12); --green-bg: rgba(61,217,143,.12);
-    --blue-bg: rgba(122,131,255,.14);
-    --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(0,0,0,.6);
-    color-scheme: dark;
+:root[data-theme="light"] {
+  --paper: #F6F6F9; --panel: #FFFFFF; --raised: #FFFFFF;
+  --ink: #171922; --graphite: #5A5F73; --hairline: #E1E3EA;
+  --blue: #3947FF; --blue-ink: #FFFFFF;
+  --amber: #8F5D0A; --red: #C93A52; --green: #187149;
+  --amber-bg: rgba(143,93,10,.08); --red-bg: rgba(201,58,82,.08); --green-bg: rgba(24,113,73,.08);
+  --blue-bg: rgba(57,71,255,.08);
+  --light: rgba(255,190,90,.16); --light-strong: rgba(255,190,90,.34);
+  --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(23,25,34,.25);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --paper: #F6F6F9; --panel: #FFFFFF; --raised: #FFFFFF;
+    --ink: #171922; --graphite: #5A5F73; --hairline: #E1E3EA;
+    --blue: #3947FF; --blue-ink: #FFFFFF;
+    --amber: #8F5D0A; --red: #C93A52; --green: #187149;
+    --amber-bg: rgba(143,93,10,.08); --red-bg: rgba(201,58,82,.08); --green-bg: rgba(24,113,73,.08);
+    --blue-bg: rgba(57,71,255,.08);
+    --light: rgba(255,190,90,.16); --light-strong: rgba(255,190,90,.34);
+    --shadow-raised: 0 -1px 0 var(--hairline), 0 8px 24px -12px rgba(23,25,34,.25);
+    color-scheme: light;
   }
 }

@@ -1,13 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-// Self-hosted type (design.md §2): a LAN install never fetches a font. Latin subsets only —
-// esbuild copies the woff2 files next to the bundle.
+// Self-hosted type (design.md §2): a LAN install never fetches a font. Latin subsets only for
+// Plex — esbuild copies the woff2 files next to the bundle. Bricolage Grotesque (the display
+// face) ships as one variable-weight file per script with unicode-range on each, so the
+// browser downloads only the latin one; the package has no per-subset stylesheet to import.
 import "@fontsource/ibm-plex-sans/latin-400.css";
 import "@fontsource/ibm-plex-sans/latin-500.css";
 import "@fontsource/ibm-plex-sans/latin-600.css";
 import "@fontsource/ibm-plex-mono/latin-400.css";
 import "@fontsource/ibm-plex-mono/latin-500.css";
+import "@fontsource-variable/bricolage-grotesque/index.css";
 import "./tokens.css";
 import "./styles.css";
 

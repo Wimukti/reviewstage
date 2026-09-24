@@ -34,7 +34,11 @@ import rs_device_flow as df  # noqa: E402
 
 
 class FakeGitHub(BaseHTTPRequestHandler):
-    """Hands out a code pair, and answers every token poll with authorization_pending."""
+    """Hands out a code pair, and answers every token poll with authorization_pending — until a
+    test flips `approved`, after which every poll hands over a token, the way GitHub does once
+    the person has typed the code in."""
+
+    approved = False
 
     def log_message(self, *a):
         pass
@@ -42,10 +46,15 @@ class FakeGitHub(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         parse_qs(self.rfile.read(n).decode())
-        body = ({"device_code": "dc-" + os.urandom(4).hex(), "user_code": "ABCD-1234",
-                 "verification_uri": "https://github.com/login/device",
-                 "expires_in": 900, "interval": 1}
-                if self.path == "/login/device/code" else {"error": "authorization_pending"})
+        if self.path == "/login/device/code":
+            body = {"device_code": "dc-" + os.urandom(4).hex(), "user_code": "ABCD-1234",
+                    "verification_uri": "https://github.com/login/device",
+                    "expires_in": 900, "interval": 1}
+        elif FakeGitHub.approved:
+            body = {"access_token": "gho_fake_from_device_flow", "token_type": "bearer",
+                    "scope": "repo"}
+        else:
+            body = {"error": "authorization_pending"}
         raw = json.dumps(body).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -222,6 +231,63 @@ class DeviceSignIn(unittest.TestCase):
         self.assertTrue(first)
         b.get("/")
         self.assertEqual(b.jar.get(self.srv.CLIENT_COOKIE), first)
+
+
+    def test_a_completed_sign_in_stores_the_token_and_the_session_works(self):
+        """End to end over HTTP, through the part no test reached before: GitHub hands over a
+        token, the server verifies it, encrypts it, writes users.json and sets the cookie.
+
+        Descriptor 3 is held for the duration. The at-rest cipher forks openssl with the key on
+        a pipe and used to tell it to read from fd:3 no matter where the pipe landed; inside a
+        server the listening socket sits there, so every stored token failed to encrypt and a
+        completed sign-in crashed. Every existing test here stopped at authorization_pending,
+        which is how that shipped."""
+        from unittest import mock
+        held = []
+        while True:
+            fd = os.open(os.devnull, os.O_RDONLY)
+            held.append(fd)
+            if fd >= 3:
+                break
+        for fd in held:
+            self.addCleanup(os.close, fd)
+        FakeGitHub.approved = True
+        self.addCleanup(setattr, FakeGitHub, "approved", False)
+        b = Browser(self)
+        st, r = b.post("/api/auth/device/start")
+        self.assertEqual(st, 200)
+        session = r["session"]
+        # verify_pat talks to the real GitHub API; the token is fake, so answer for it.
+        with mock.patch.object(self.srv, "verify_pat", return_value=("ann", "Ann Example", "")):
+            st, r = b.post("/api/auth/device/poll", {"session": session})
+        self.assertEqual(st, 200, r)
+        self.assertEqual(r.get("status"), "ok", r)
+        self.assertEqual(r.get("login"), "ann")
+        self.assertIn("rs_session", b.jar, "no session cookie was set")
+        # The cookie is a real session: an authenticated route answers.
+        self.assertEqual(b.get("/api/me"), 200)
+        # And the token on disk is the one GitHub handed over, decryptable by the server.
+        u = self.srv.load_users()["ann"]
+        self.assertEqual(self.srv.dec(u["gh_token_enc"]), "gho_fake_from_device_flow")
+
+    def test_a_storage_failure_is_reported_not_disguised_as_expired(self):
+        """If storing the token fails after GitHub has issued it, the code is spent. The old
+        handler crashed, the browser re-polled and was told the code had expired — a GitHub
+        fault in the reviewer's eyes for a bug that was this box's."""
+        from unittest import mock
+        FakeGitHub.approved = True
+        self.addCleanup(setattr, FakeGitHub, "approved", False)
+        b = Browser(self)
+        _st, r = b.post("/api/auth/device/start")
+        with mock.patch.object(self.srv, "verify_pat", return_value=("bob", "Bob", "")), \
+             mock.patch.object(self.srv, "oauth_store",
+                               side_effect=RuntimeError("Error getting password")):
+            st, r = b.post("/api/auth/device/poll", {"session": r["session"]})
+        self.assertEqual(st, 200)
+        self.assertEqual(r.get("status"), "error")
+        self.assertIn("could not store the token", r.get("error", ""))
+        self.assertIn("Error getting password", r.get("error", ""))
+        self.assertNotIn("rs_session", b.jar)
 
 
 class ForwardedFor(unittest.TestCase):

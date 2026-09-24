@@ -3128,17 +3128,21 @@ def bundle_urls():
     picked up without a restart.
     """
     f = STATIC_DIR / "assets.json"
+    # Keyed on the manifest's bytes, not its mtime and size. Two hashed manifests are the same
+    # length, and on the container's filesystem two writes inside one timestamp tick are
+    # indistinguishable by stat — so a rebuild kept serving the previous bundle's URLs. The file
+    # is ~100 bytes; reading it per page render costs nothing.
     try:
-        st = f.stat()
-        key = (str(f), st.st_mtime_ns, st.st_size)
+        raw = f.read_bytes()
+        key = (str(f), raw)
     except OSError:
-        key = None
+        raw, key = b"", None
     if _ASSETS["key"] == key:
         return _ASSETS["urls"]
     urls = UNHASHED_BUNDLE
     if key is not None:
         try:
-            m = json.loads(f.read_text())
+            m = json.loads(raw.decode("utf-8"))
             js, css = str(m.get("js", "")), str(m.get("css", ""))
             if (HASHED_ASSET.match(js) and HASHED_ASSET.match(css)
                     and (STATIC_DIR / js).is_file() and (STATIC_DIR / css).is_file()):

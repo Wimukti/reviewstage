@@ -30,7 +30,7 @@ const SECTIONS: [string, string, React.ReactNode][] = [
   ["Learnings", "/learnings", NavIcon.learnings],
   ["Skills", "/skills", NavIcon.skills],
   ["Integrations", "/integrations", NavIcon.integrations],
-  ["How it works", "/how", NavIcon.how],
+  ["Settings", "/settings", NavIcon.settings],
 ];
 
 const optId = (i: number) => `cmdk-opt-${i}`;

@@ -14,7 +14,6 @@ const PAGES: [string, string][] = [
   ["skills", "/skills"],
   ["integrations", "/integrations"],
   ["settings", "/settings"],
-  ["how it works", "/how"],
   ["pr", `/pr?repo=${enc(REPO)}&pr=${PR}`],
   ["pr with a blocker", `/pr?repo=${enc(REPO2)}&pr=${PR3}`],
   ["stack", `/stack?repo=${enc(REPO)}&pr=${PR}`],
@@ -73,15 +72,14 @@ test.describe("phone", () => {
     await expect(page.getByTestId("more-tab")).toBeFocused();
   });
 
-  test("a running job is a strip under the header, not a pill above the logo", async ({ page }) => {
+  test("a running job is a 2px bar at the very top of the viewport, not a strip of text", async ({ page }) => {
     await page.goto("/");
-    const strip = page.getByTestId("running-pill");
-    await expect(strip).toBeVisible();
-    await expect(strip).toHaveClass(/runstrip/);
-    const head = await page.locator(".phone-head").boundingBox();
-    const box = await strip.boundingBox();
-    expect(box!.y).toBeGreaterThanOrEqual(head!.y + head!.height - 1);
-    expect(Math.round(box!.height)).toBe(28);
+    const bar = page.getByTestId("running-bar");
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveClass(/runbar/);
+    const box = await bar.boundingBox();
+    expect(box!.y).toBe(0);
+    expect(Math.round(box!.height)).toBe(2);
   });
 });
 
@@ -152,10 +150,17 @@ test.describe("keyboard", () => {
   });
 });
 
+// The theme switch lives in the account row's More menu on the desktop (stage-light A1).
+async function openTheme(page: Page) {
+  await page.getByTestId("account-more").click();
+  await expect(page.getByTestId("theme-control")).toBeVisible();
+}
+
 test.describe("theme", () => {
   test("dark is the default, the control switches data-theme and the choice survives a reload", async ({ page }) => {
     await page.goto("/");
     await settled(page);
+    await openTheme(page);
     const html = page.locator("html");
     // Nothing stored: the shell stamps dark before the bundle runs, and the dark paper renders.
     await expect(html).toHaveAttribute("data-theme", "dark");
@@ -172,6 +177,7 @@ test.describe("theme", () => {
 
     await page.reload();
     await expect(html).toHaveAttribute("data-theme", "light");
+    await openTheme(page);
     await expect(page.locator("[data-theme-choice=light]")).toHaveAttribute("aria-checked", "true");
 
     // System is a stored choice of its own, stamped as an attribute so the media query can see it.
@@ -181,6 +187,7 @@ test.describe("theme", () => {
     await page.reload();
     await expect(html).toHaveAttribute("data-theme", "system");
 
+    await openTheme(page);
     await page.locator("[data-theme-choice=dark]").click();
     await expect(html).toHaveAttribute("data-theme", "dark");
   });
@@ -188,6 +195,7 @@ test.describe("theme", () => {
   test("system follows the preference: light on a light machine, dark on a dark one", async ({ page }) => {
     await page.goto("/");
     await settled(page);
+    await openTheme(page);
     await page.locator("[data-theme-choice=system]").click();
     await page.emulateMedia({ colorScheme: "light" });
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(246, 246, 249)");

@@ -4,13 +4,12 @@ import { Login } from "./Login";
 import { PrPage } from "./PrPage";
 import { Qa } from "./Qa";
 import { CommandPalette } from "./CommandPalette";
-import { HowItWorks } from "./HowItWorks";
 import { Integrations } from "./Integrations";
 import { Learnings } from "./Learnings";
 import { Queue } from "./Queue";
 import { Rollup } from "./Rollup";
 import { Settings } from "./Settings";
-import { PhoneShell, Sidebar } from "./Sidebar";
+import { PhoneShell, RunningBar, Sidebar } from "./Sidebar";
 import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
 import { Tour } from "./Tour";
@@ -38,7 +37,6 @@ function Routed({ me }: { me: Me }) {
   if (path.startsWith("/settings")) return <Settings me={me} />;
   if (path.startsWith("/learnings")) return <Learnings me={me} />;
   if (path.startsWith("/dashboard")) return <Rollup />;
-  if (path.startsWith("/how")) return <HowItWorks />;
   return <NotFound />;
 }
 
@@ -77,6 +75,7 @@ export function App() {
 
   return (
     <div className="app">
+      <RunningBar />
       {phone ? <PhoneShell me={me} onSignOut={signOut} /> : <Sidebar me={me} onSignOut={signOut} />}
       <main className="main">
         <div className="wrap">

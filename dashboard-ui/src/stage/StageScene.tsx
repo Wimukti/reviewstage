@@ -1,21 +1,20 @@
 // The PR page's stage — verdict, findings and the commit bar — as a presentational component
 // the site renders inside a shadow root (design.md §7). Its data is fixture.json (PR #38849
 // from the e2e fixture, written by scripts/stage-fixture.mjs); its markup and class names are
-// the PR page's own (PrPage FindingCard, the commit bar) with no-op handlers, so when the A2
-// lane restyles those pieces the scene inherits the change. The A2 lane extracts the shared
-// pieces; until then this file mirrors them by hand and nothing here talks to an API.
+// the PR page's own — the components in src/ReviewParts.tsx (FindingCard, CommitBar, Verdict,
+// StatusLineView) with no-op handlers — so when those pieces are restyled the scene inherits
+// the change. Nothing here talks to an API.
 //
 // `state` picks a still; `play` runs the scripted sequence once from "drafting" to the armed
 // stage (~6 s) and stops. Under prefers-reduced-motion it jumps straight to the end. Bump
 // `playKey` to replay.
 import { useEffect, useMemo, useState } from "react";
 import fixture from "./fixture.json";
-import { Status, wordOf } from "../ui";
+import { CommitBar, FindingCard, KeyPoints, StatusLineView, Verdict } from "../ReviewParts";
+import { Status, toneOf, wordOf } from "../ui";
 import { StageProgress } from "./StageProgress";
 
 export type SceneState = "requested" | "drafting" | "staged" | "posted" | "approved";
-
-type Finding = (typeof fixture.review.findings)[number];
 
 // The scripted sequence, as (delay from the previous step, step index) pairs.
 const SCRIPT: [number, number][] = [
@@ -95,55 +94,29 @@ export function StageScene({
   return (
     <div className="prpage" data-stage={state} data-stage-step={play ? step : undefined}>
       <Header />
-      <Verdict />
+      <Verdict_ />
       <div data-testid="post-panel">
         {visible.map((f) => (
           <FindingCard
             key={f.i}
-            f={f}
+            f={{ ...f, structured: true }}
             checked={posted ? false : !!staged[f.i]}
             disabled={posted}
             onToggle={() => setManual((m) => ({ ...m, [f.i]: !staged[f.i] }))}
           />
         ))}
         {state === "approved" && <Approved />}
-        <div
-          className={"commit-bar" + (posted ? " is-posted" : "") + (armed ? " has-staged" : "")}
-          data-testid="commit-bar"
-        >
-          <div className="inner">
-            {posted ? (
-              <>
-                <span className="muted sm" data-testid="commit-posted">
-                  <Status tone="green">Posted as {fixture.user}</Status>
-                  {" · "}
-                  <a href="#" onClick={(e) => e.preventDefault()}>View on GitHub</a>
-                </span>
-                <span className="spacer" />
-                <button className="btn primary" type="button" disabled>
-                  Posted
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="muted sm">
-                  {/* keyed on the count so the A2 lane's roll animation restarts on every change */}
-                  <b key={count} className="stage-count" data-stage-count={count}>
-                    {count}
-                  </b>{" "}
-                  staged · posts as plain comments
-                </span>
-                <span className="spacer" />
-                <label className="rqtoggle">
-                  <input type="checkbox" checked={false} onChange={() => undefined} /> Request changes instead
-                </label>
-                <button className="btn primary" type="button" disabled={count === 0} onClick={(e) => e.preventDefault()}>
-                  Post selected to GitHub
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        <CommitBar
+          staged={count}
+          inline={findings.filter((f) => staged[f.i] && f.anchorable).length}
+          summary={findings.filter((f) => staged[f.i] && f.anchorable === false).length}
+          posted={posted}
+          postedAs={fixture.user}
+          ghUrl="#"
+          onPost={() => undefined}
+          requestChanges={false}
+          armed={armed}
+        />
       </div>
     </div>
   );
@@ -164,12 +137,10 @@ function Requested() {
   return (
     <div className="prpage" data-stage="requested">
       <Header />
-      <div className="statusline">
-        <Status kind="new" />
-        <span className="meta-t">
-          {fixture.author} asked for your review · +{fixture.additions} −{fixture.deletions} · {fixture.changedFiles} files
-        </span>
-      </div>
+      <StatusLineView
+        items={[{ key: "state", tone: toneOf("new"), word: wordOf("new") }]}
+        meta={[`${fixture.author} asked for your review · +${fixture.additions} −${fixture.deletions} · ${fixture.changedFiles} files`]}
+      />
       <div className="practions">
         <button className="btn primary" type="button" onClick={(e) => e.preventDefault()}>
           Review this PR
@@ -181,25 +152,16 @@ function Requested() {
 }
 
 // PrPage's verdict() for this review: one should-fix, no blockers.
-function Verdict() {
+function Verdict_() {
   const fix = fixture.review.findings.filter((f) => f.severity === "should-fix").length;
   return (
     <>
-      <div className="verdict">
-        <div className="verdict-main">
-          <div className="verdict-t">
-            <Status tone={fix ? "amber" : "green"}>
-              {fix ? `${fix} thing${fix > 1 ? "s" : ""} to fix before merge` : "Looks good — nothing to fix"}
-            </Status>
-          </div>
-          <div className="verdict-sub">{fixture.review.explainer}</div>
-        </div>
-      </div>
-      <ul className="keypoints">
-        {fixture.review.keyPoints.map((k) => (
-          <li key={k}>{k}</li>
-        ))}
-      </ul>
+      <Verdict
+        tone={fix ? "amber" : "green"}
+        text={fix ? `${fix} thing${fix > 1 ? "s" : ""} to fix before merge` : "Looks good — nothing to fix"}
+        sub={fixture.review.explainer}
+      />
+      <KeyPoints points={fixture.review.keyPoints} />
     </>
   );
 }
@@ -208,53 +170,6 @@ function Approved() {
   return (
     <div className="approve-verdict">
       <Status tone="green">Approved by {fixture.user} · LGTM — no blockers</Status>
-    </div>
-  );
-}
-
-function FindingCard({ f, checked, disabled, onToggle }: { f: Finding; checked: boolean; disabled?: boolean; onToggle: () => void }) {
-  const loc = `${f.path}:${f.line}`;
-  return (
-    <div className={"finding" + (checked ? " is-staged" : "")} data-staged={checked ? "1" : undefined}>
-      <div className="fhead">
-        <input
-          type="checkbox"
-          className="fsel"
-          checked={checked}
-          disabled={disabled}
-          onChange={onToggle}
-          aria-label={`Stage this ${wordOf(f.severity)} finding`}
-        />
-        <Status kind={f.severity} />
-        {f.anchorable === false && (
-          <Status tone="graphite" title="This line is not part of the PR's diff, so it goes into the review body.">
-            In summary
-          </Status>
-        )}
-      </div>
-      <div className="fmain">
-        <div className="ftitle">{f.title}</div>
-        <div className="fpath">
-          <code>{loc}</code>
-          <button type="button" className="copybtn" aria-label={`Copy ${loc}`} onClick={(e) => e.preventDefault()}>
-            Copy
-          </button>
-        </div>
-        {f.impact && (
-          <div className="fimpact">
-            <span className="fimpact-l">Why it matters</span>
-            {f.impact}
-          </div>
-        )}
-        <details className="explain">
-          <summary>Explain simply</summary>
-        </details>
-        <div className="factions">
-          <button type="button" className="fbtn" disabled={disabled}>
-            Edit comment
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

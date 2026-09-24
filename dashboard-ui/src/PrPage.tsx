@@ -22,6 +22,17 @@ import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
 import { pokeRunning } from "./running";
 import { BrandIcon, Icon } from "./icons";
+import {
+  CommitBar,
+  FindingCard,
+  KeyPoints,
+  placementOf,
+  ProgressSteps,
+  StatusLineView,
+  Steps,
+  Verdict,
+  type StatusItem,
+} from "./ReviewParts";
 import { Status, toneOf as toneOfState, wordOf, type Tone } from "./ui";
 import { Banner, RawBanner, SlowBusy } from "./ui";
 
@@ -293,16 +304,7 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
       <div className="prog-hd">
         Drafting review for <b>{prLabel(pr)}</b> · <span className="muted sm">{r.effortLabel} effort</span>
       </div>
-      <ul className="prog">
-        {r.phases.map((ph, j) => (
-          <li key={ph} className={j < r.cur ? "done" : j === r.cur ? "now" : ""}>
-            <span className="pm">
-              {j < r.cur ? <Icon name="check" /> : j === r.cur ? <span className="rundot" aria-hidden="true" /> : <Icon name="circle" />}
-            </span>
-            {ph}
-          </li>
-        ))}
-      </ul>
+      <ProgressSteps phases={r.phases} cur={r.cur} />
       {r.focus && <div className="hint">Focusing on: “{r.focus}”</div>}
       {r.queued && (
         <div className="hint">Waiting for another review to finish first — one runs at a time on this box.</div>
@@ -333,205 +335,6 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
         >
           {stopping ? "Stopping…" : "Stop review"}
         </button>
-      </div>
-    </div>
-  );
-}
-
-const OFFDIFF_HINT =
-  "This line is not part of the PR's diff, so GitHub cannot take an inline comment. " +
-  "It will appear in the review body with a link to the line.";
-
-const UNKNOWN_HINT =
-  "GitHub would not say which lines this PR touches, so where this comment lands is unknown. " +
-  "It goes inline if the line is in the diff, and into the review body if it is not.";
-
-// Where a finding will land. `undefined`/`null` is a real third answer: the server could not ask
-// GitHub, and promising "inline" on that is the post bar telling the reviewer something it does
-// not know.
-type Placement = "inline" | "summary" | "unknown";
-const placementOf = (f: Finding): Placement =>
-  f.anchorable === true ? "inline" : f.anchorable === false ? "summary" : "unknown";
-
-// The path is content a reviewer pastes into an editor, so it is shown whole and selectable in
-// one click; the button is for the case where select-all is out of reach (a phone).
-function CopyPath({ loc }: { loc: string }) {
-  const [done, setDone] = useState(false);
-  useEffect(() => {
-    if (!done) return;
-    const t = window.setTimeout(() => setDone(false), 1500);
-    return () => window.clearTimeout(t);
-  }, [done]);
-  return (
-    <div className="fpath">
-      <code>{loc}</code>
-      <button
-        type="button"
-        className="copybtn"
-        aria-label={`Copy ${loc}`}
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(loc);
-            setDone(true);
-          } catch {
-            /* the text stays selectable by hand */
-          }
-        }}
-      >
-        {done ? "Copied" : "Copy"}
-      </button>
-    </div>
-  );
-}
-
-function FindingCard({
-  f,
-  checked,
-  onToggle,
-  body,
-  onBody,
-  pr,
-  explainToken,
-  teachToken,
-  teach,
-}: {
-  f: Finding;
-  checked: boolean;
-  onToggle: () => void;
-  body: string;
-  onBody: (v: string) => void;
-  pr: PrRef;
-  explainToken: Token;
-  teachToken?: Token;
-  teach?: { target: string; targetLabel: string; connected: boolean };
-}) {
-  const [exp, setExp] = useState("");
-  const [expLoading, setExpLoading] = useState(false);
-  const [expErr, setExpErr] = useState("");
-  // Unstructured findings (older reviews) show the comment inline; structured ones tuck it away.
-  const [showDetail, setShowDetail] = useState(!f.structured);
-  const [showTeach, setShowTeach] = useState(false);
-  const [taught, setTaught] = useState(!!f.taught);
-  const explain = async () => {
-    if (expLoading || exp) return;
-    setExpErr("");
-    setExpLoading(true);
-    try {
-      const r = await api.explain(pr, explainToken, f.i);
-      setExp(r.md);
-    } catch {
-      setExpErr("Couldn't explain this one — try again.");
-    } finally {
-      setExpLoading(false);
-    }
-  };
-  const loc = `${f.path}:${f.line}`;
-  const place = placementOf(f);
-  return (
-    <div className={"finding" + (checked ? " is-staged" : "")} data-staged={checked ? "1" : undefined}>
-      <div className="fhead">
-        <input type="checkbox" className="fsel" checked={checked} onChange={onToggle} aria-label={`Stage this ${wordOf(f.severity)} finding`} />
-        <Status kind={f.severity} />
-        {place === "summary" && (
-          <Status tone="graphite" title={OFFDIFF_HINT} data-testid="placement">
-            In summary
-          </Status>
-        )}
-        {place === "unknown" && (
-          <Status tone="amber" title={UNKNOWN_HINT} data-testid="placement-unknown">
-            Placement unknown
-          </Status>
-        )}
-      </div>
-      <div className="fmain">
-        {f.structured && <div className="ftitle">{f.title}</div>}
-        <CopyPath loc={loc} />
-        {f.structured && f.impact && (
-          <div className="fimpact">
-            <span className="fimpact-l">Why it matters</span>
-            {f.impact}
-          </div>
-        )}
-        {(f.criticalPath || f.agreement) && (
-          <div className="fmeta">
-            {f.criticalPath && (
-              <span className="cpbadge" title={`Concerns a profiled critical path: ${f.criticalPath}`}>
-                critical path
-              </span>
-            )}
-            {f.agreement?.confirmed ? (
-              <span className="agree ok" title={`Also raised by ${f.agreement.by.join(", ")} (${f.agreement.differ})`}>
-                {f.agreement.n} independent
-              </span>
-            ) : f.agreement ? (
-              <span className="agree solo">only your run</span>
-            ) : null}
-          </div>
-        )}
-        {f.thread && <div className="freply">Reply to {f.thread}</div>}
-        <details
-          className="explain"
-          onToggle={(e) => {
-            if ((e.currentTarget as HTMLDetailsElement).open) void explain();
-          }}
-        >
-          <summary>Explain simply</summary>
-          {expLoading && <div className="hint">Explaining…</div>}
-          {expErr && (
-            <div className="ferr">
-              {expErr}{" "}
-              <button type="button" className="linkbtn" onClick={explain}>
-                Try again
-              </button>
-            </div>
-          )}
-          {exp && (
-            <div className="explainbox">
-              <div className="explainbox-h">In plain words · how to verify</div>
-              <Md className="dbody">{exp}</Md>
-            </div>
-          )}
-        </details>
-        {(f.structured || (teach && teachToken)) && (
-          <div className="factions">
-            {f.structured && (
-              <button
-                type="button"
-                className="fbtn"
-                aria-expanded={showDetail}
-                onClick={() => setShowDetail((v) => !v)}
-              >
-                Edit comment
-              </button>
-            )}
-            {teach && teachToken && (
-              <button
-                type="button"
-                className="fbtn"
-                aria-expanded={showTeach}
-                disabled={taught}
-                title={taught ? "This one is already a rule" : undefined}
-                onClick={() => setShowTeach((v) => !v)}
-                data-testid="teach-open"
-              >
-                {taught ? "Already a rule" : "Teach the skill"}
-              </button>
-            )}
-          </div>
-        )}
-        {/* Deliberately not gated on `taught`: adding the rule sets it, and gating here would
-            unmount the panel at the exact moment it has something to confirm. The button above
-            is what stops a second visit. */}
-        {showTeach && teach && teachToken && (
-          <TeachPanel f={f} pr={pr} token={teachToken} teach={teach}
-                      onTaught={() => setTaught(true)} />
-        )}
-        {showDetail && (
-          <>
-            {f.structured && <div className="fbody-note">This is the comment posted to GitHub — edit if needed.</div>}
-            <FindingBody body={body} onBody={onBody} suggestion={f.suggestion} />
-          </>
-        )}
       </div>
     </div>
   );
@@ -831,7 +634,6 @@ function ReviewBody({
   // GitHub accepts a review all-or-nothing, so a batch over the server's cap is refused there
   // anyway — catch it before the click rather than after the whole review is lost.
   const maxPerPost = rev.maxPerPost ?? 0;
-  const overCap = maxPerPost > 0 && selected.size > maxPerPost;
   // Approving head B while reading head A's "LGTM, no blockers" is the failure this catches. The
   // server refuses it too; this just makes the reason visible before the click.
   const headMoved = headMovedOf(rev);
@@ -915,18 +717,37 @@ function ReviewBody({
     }
   }
 
+  const teachOn = data.teach && data.tokens.teach ? data.teach : null;
+  const teachToken = data.tokens.teach;
   const renderFinding = (f: Finding) => (
     <FindingCard
       key={f.i}
       f={f}
       checked={selected.has(f.i)}
       onToggle={() => toggle(f.i)}
-      body={bodies[f.i] ?? ""}
-      onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
-      pr={refOf(data)}
-      explainToken={data.tokens.explain}
-      teachToken={data.tokens.teach}
-      teach={data.teach}
+      explain={async () => {
+        const r = await api.explain(refOf(data), data.tokens.explain, f.i);
+        return <Md className="dbody">{r.md}</Md>;
+      }}
+      editor={
+        <>
+          {f.structured && <div className="fbody-note">This is the comment posted to GitHub — edit if needed.</div>}
+          <FindingBody
+            body={bodies[f.i] ?? ""}
+            onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
+            suggestion={f.suggestion}
+          />
+        </>
+      }
+      teach={
+        teachOn && teachToken
+          ? {
+              panel: (onTaught) => (
+                <TeachPanel f={f} pr={refOf(data)} token={teachToken} teach={teachOn} onTaught={onTaught} />
+              ),
+            }
+          : undefined
+      }
     />
   );
 
@@ -1061,29 +882,15 @@ function ReviewBody({
     <>
       {banner && <RawBanner html={banner} />}
       {errorBanner}
-      <div className="verdict" data-testid="verdict">
-        <div className="verdict-main">
-          <div className="verdict-t">
-            <Status tone={v.tone}>{v.text}</Status>
-          </div>
-          <div className="verdict-sub">the agent's read · comments post as a plain review either way</div>
-        </div>
-        {rev.chips.length > 0 && (
-          <div className="verdict-chips">
-            {rev.chips.map((c) => (
-              <Status key={c.kind} kind={c.kind}>
-                {c.n} {wordOf(c.kind).toLowerCase()}
-              </Status>
-            ))}
-          </div>
-        )}
-      </div>
+      <Verdict
+        tone={v.tone}
+        text={v.text}
+        sub="the agent's read · comments post as a plain review either way"
+        chips={rev.chips}
+        testid="verdict"
+      />
       {rev.keyPoints && rev.keyPoints.length > 0 ? (
-        <ul className="keypoints">
-          {rev.keyPoints.map((pt, i) => (
-            <li key={i}>{pt}</li>
-          ))}
-        </ul>
+        <KeyPoints points={rev.keyPoints} />
       ) : rev.summary ? (
         <ClampSummary text={rev.summary} />
       ) : null}
@@ -1116,90 +923,25 @@ function ReviewBody({
         )}
         <SectionRow sections={sections} />
         {rev.count > 0 && (
-          <div
-            className={"commit-bar" + (entering ? " is-entering" : "") + (posted ? " is-posted" : "")}
-            data-testid="commit-bar"
-          >
-            <div className="inner">
-              {posted ? (
-                <>
-                  <span className="muted sm" data-testid="commit-posted">
-                    <Status tone="green">Posted as {me.login}</Status>
-                    {postedNow && data.dryRun && <> · dry run — nothing reached GitHub</>}
-                    {!data.dryRun && data.ghUrl && (
-                      <>
-                        {" · "}
-                        <a href={data.ghUrl} target="_blank" rel="noreferrer">
-                          View on GitHub
-                        </a>
-                      </>
-                    )}
-                  </span>
-                  <span className="spacer" />
-                  <button className="btn primary" type="button" disabled>
-                    Posted
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="muted sm">
-                    <b>{selected.size}</b> staged
-                    {(selOff > 0 || selUnknown > 0) && (
-                      <>
-                        {" · "}
-                        {selInline} inline
-                        {selOff > 0 && (
-                          <>
-                            {" · "}
-                            <span title={OFFDIFF_HINT}>{selOff} in the summary</span>
-                          </>
-                        )}
-                        {selUnknown > 0 && (
-                          <>
-                            {" · "}
-                            <span title={UNKNOWN_HINT} data-testid="placement-unknown-count">
-                              {selUnknown} unknown
-                            </span>
-                          </>
-                        )}
-                      </>
-                    )}{" "}
-                    ·{" "}
-                    {requestChanges ? "requests changes — can block the PR until updated" : "posts as plain comments"}
-                    {overCap && (
-                      <>
-                        {" · "}
-                        <b data-testid="over-cap">
-                          over the {maxPerPost} per-post limit — untick some
-                        </b>
-                      </>
-                    )}
-                  </span>
-                  <span className="spacer" />
-                  <label className="rqtoggle">
-                    <input type="checkbox" checked={requestChanges} onChange={(e) => setRequestChanges(e.target.checked)} />{" "}
-                    Request changes instead
-                  </label>
-                  <button
-                    className={"btn " + (requestChanges ? "destructive" : "primary")}
-                    type="button"
-                    disabled={busy || stale || overCap}
-                    aria-busy={busy}
-                    title={
-                      stale
-                        ? "Reload the page — this review has been replaced"
-                        : overCap
-                          ? `GitHub takes a review all-or-nothing; post at most ${maxPerPost} at a time`
-                          : ""
-                    }
-                    onClick={submitPost}
-                  >
-                    {busy ? "Posting…" : requestChanges ? "Request changes" : rev.postLabel}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+          <CommitBar
+            staged={selected.size}
+            inline={selInline}
+            summary={selOff}
+            unknown={selUnknown}
+            dryRun={data.dryRun}
+            posted={posted}
+            postedAs={me.login}
+            postedNow={postedNow}
+            ghUrl={data.ghUrl}
+            onPost={submitPost}
+            requestChanges={requestChanges}
+            onRequestChanges={setRequestChanges}
+            postLabel={rev.postLabel}
+            busy={busy}
+            stale={stale}
+            maxPerPost={maxPerPost}
+            entering={entering}
+          />
         )}
       </div>
     </>
@@ -1362,14 +1104,6 @@ function HeaderTop({ data, tail }: { data: PrData; tail?: React.ReactNode }) {
 // word here, ordered by what the reviewer must act on: things that block or mislead an approval
 // first, then the flags, then where the PR stands, then plain facts. The full sentence each
 // banner carried is the item's title.
-interface StatusItem {
-  key: string;
-  tone: Tone;
-  word: string;
-  title?: string;
-  testid?: string;
-  to?: string;
-}
 function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
   const rev = data.review;
   const items: StatusItem[] = [];
@@ -1512,45 +1246,17 @@ function StatusLine({ data, postedNow }: { data: PrData; postedNow: boolean }) {
   );
   return (
     <>
-      <div className="statusline" data-testid="status-line">
-        {items.map((it) => {
-          const s = (
-            <Status key={it.key} tone={it.tone} title={it.title} data-testid={it.testid}>
-              {it.word}
-            </Status>
-          );
-          return it.to ? (
-            <Link key={it.key} to={it.to} title={it.title}>
-              {s}
-            </Link>
-          ) : (
-            s
-          );
-        })}
-        {meta.length > 0 && (
-          <span className="meta-t">
-            {meta.map((m, i) => (
-              <span key={i}>
-                {i > 0 && " · "}
-                {m}
-              </span>
-            ))}
-          </span>
+      <StatusLineView
+        items={items}
+        meta={meta}
+        testid="status-line"
+        link={(to, child, title) => (
+          <Link to={to} title={title}>
+            {child}
+          </Link>
         )}
-      </div>
-      {steps.length > 0 && (
-        <div className="steps" data-testid="steps">
-          {steps.map((s) => (
-            <span key={s.label} className={"step" + (s.done ? " hit" : "")} data-testid={s.done ? "step-done" : "step-todo"}>
-              <span className="tick" aria-hidden="true">{s.done ? <Icon name="check" /> : null}</span>
-              <span>
-                {s.label}
-                {s.note && <span className="muted"> {s.note}</span>}
-              </span>
-            </span>
-          ))}
-        </div>
-      )}
+      />
+      <Steps steps={steps} />
     </>
   );
 }

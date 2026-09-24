@@ -9,9 +9,11 @@
     "test": "node --import tsx --test src/*.test.ts",
     "test:browser": "playwright test",
     "icons": "node scripts/icons.mjs",
-    "brand": "node scripts/brand.mjs"
+    "brand": "node scripts/brand.mjs",
+    "stage:fixture": "node --import tsx scripts/stage-fixture.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "react": "19.3.0",

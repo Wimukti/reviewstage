@@ -153,38 +153,56 @@ test.describe("keyboard", () => {
 });
 
 test.describe("theme", () => {
-  test("the control switches data-theme and the choice survives a reload", async ({ page }) => {
+  test("dark is the default, the control switches data-theme and the choice survives a reload", async ({ page }) => {
     await page.goto("/");
     await settled(page);
     const html = page.locator("html");
-    await expect(html).not.toHaveAttribute("data-theme", /./);
-    await expect(page.locator("meta[name=color-scheme]")).toHaveAttribute("content", "light dark");
-
-    await page.locator("[data-theme-choice=dark]").click();
+    // Nothing stored: the shell stamps dark before the bundle runs, and the dark paper renders.
     await expect(html).toHaveAttribute("data-theme", "dark");
     await expect(page.locator("meta[name=color-scheme]")).toHaveAttribute("content", "dark");
-    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#101117");
-    // The dark paper really renders.
-    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    expect(bg).toBe("rgb(16, 17, 23)");
-
-    await page.reload();
-    await expect(html).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#0B0C10");
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(11, 12, 16)");
     await expect(page.locator("[data-theme-choice=dark]")).toHaveAttribute("aria-checked", "true");
 
     await page.locator("[data-theme-choice=light]").click();
     await expect(html).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("meta[name=color-scheme]")).toHaveAttribute("content", "light");
+    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#F6F6F9");
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(246, 246, 249)");
+
+    await page.reload();
+    await expect(html).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("[data-theme-choice=light]")).toHaveAttribute("aria-checked", "true");
+
+    // System is a stored choice of its own, stamped as an attribute so the media query can see it.
     await page.locator("[data-theme-choice=system]").click();
-    await expect(html).not.toHaveAttribute("data-theme", /./);
+    await expect(html).toHaveAttribute("data-theme", "system");
+    await expect(page.locator("meta[name=color-scheme]")).toHaveAttribute("content", "light dark");
+    await page.reload();
+    await expect(html).toHaveAttribute("data-theme", "system");
+
+    await page.locator("[data-theme-choice=dark]").click();
+    await expect(html).toHaveAttribute("data-theme", "dark");
   });
 
-  test("dark follows the system preference when nothing is pinned", async ({ page }) => {
-    await page.emulateMedia({ colorScheme: "dark" });
+  test("system follows the preference: light on a light machine, dark on a dark one", async ({ page }) => {
     await page.goto("/");
     await settled(page);
-    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    expect(bg).toBe("rgb(16, 17, 23)");
-    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#101117");
+    await page.locator("[data-theme-choice=system]").click();
+    await page.emulateMedia({ colorScheme: "light" });
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(246, 246, 249)");
+    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#F6F6F9");
+    await page.emulateMedia({ colorScheme: "dark" });
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(11, 12, 16)");
+    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#0B0C10");
+  });
+
+  test("a light system preference does not override the dark default", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/");
+    await settled(page);
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(11, 12, 16)");
+    await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#0B0C10");
   });
 });
 

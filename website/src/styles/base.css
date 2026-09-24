@@ -1,8 +1,11 @@
-/* Site-level scale and layout on top of tokens.css: type scale (rem, base 14px), section
- * rhythm, the Tailwind theme bridge, and the one focus ring. No colour literals here. */
+/* Site-level layout on top of tokens.css: section rhythm, the Tailwind theme bridge, the one
+ * focus ring, and the site's copy of the stage light's first placement. The type scale,
+ * --t-display included, comes from tokens.css. No colour literals here. */
 :root {
-  /* Landing display size: 34 on the phone, up to 48 on a wide screen (see design.md §2 note). */
-  --t-display: clamp(2.429rem, 1.6rem + 2.2vw, 3.429rem);
+  /* Bridge for the two sizes the stage-light scale dropped; marketing.css and starlight.css
+   * still name them. The W lane moves those to --t-24 / --t-32 and deletes these two lines. */
+  --t-26: var(--t-24);
+  --t-34: var(--t-32);
   --nav-height: 4rem;
   --container-max: 76rem;
   --page-gutter: clamp(1.143rem, 3vw, 2.5rem);
@@ -41,4 +44,18 @@
   ::selection { background-color: var(--blue-bg); }
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   * { scrollbar-color: var(--hairline) transparent; }
+}
+
+/* The stage light, placement 1 (design §4.1) for the site's light DOM: the hero frame's wrapper
+ * is `.stage-hero`. The same rule ships inside the app stylesheet for `.stage-login`; --light may
+ * appear in no other selector here. */
+.stage-hero { position: relative; isolation: isolate; }
+.stage-hero::before {
+  content: ""; position: absolute; left: 50%; top: -24%; width: min(140%, 1200px); height: 80%;
+  transform: translateX(-50%); pointer-events: none; z-index: -1;
+  background: radial-gradient(60% 55% at 50% 0%, var(--light), transparent 70%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .stage-hero::before { animation: breathe 8s var(--ease) alternate infinite; }
+  @keyframes breathe { from { opacity: .7; } to { opacity: 1; } }
 }

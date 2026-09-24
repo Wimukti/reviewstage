@@ -9,12 +9,17 @@ import { chromium } from "@playwright/test";
 
 const outDir = resolve(process.argv[2] ?? "../openspec/changes/one-identity-redesign/after/site");
 mkdirSync(outDir, { recursive: true });
-const PORT = 4877, BASE = `http://127.0.0.1:${PORT}/reviewstage`;
+const PORT = Number(process.env.RS_SITE_PORT || 4877), BASE = `http://127.0.0.1:${PORT}/reviewstage`;
 const pages = { landing: "/", install: "/start/install/", security: "/security/" };
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); console.log(`${ok ? "ok  " : "FAIL"} ${msg}`); };
 
-const server = spawn("pnpm", ["exec", "astro", "preview", "--port", String(PORT), "--host", "127.0.0.1"], { stdio: "ignore" });
+// Spawn the astro binary itself, not `pnpm exec astro`: killing the pnpm wrapper left the
+// preview alive on the port, and the next run then verified whatever dist that orphan served.
+// If something already answers on the port, refuse — astro would silently move to the next one.
+const busy = await fetch(BASE + "/").then((r) => r.ok, () => false);
+if (busy) { console.error(`port ${PORT} already answers — an old preview is still running; stop it first`); process.exit(2); }
+const server = spawn(resolve("node_modules/.bin/astro"), ["preview", "--port", String(PORT), "--host", "127.0.0.1"], { stdio: "ignore" });
 const wait = async () => { for (let i = 0; i < 60; i++) { try { if ((await fetch(BASE + "/")).ok) return; } catch {} await new Promise((r) => setTimeout(r, 500)); } throw new Error("preview did not start"); };
 try {
   await wait();
@@ -63,6 +68,34 @@ try {
       }
       await ctx.close();
     }
+  }
+  // The site renders the app (design.md §7): the stage island on the proof page hydrates, attaches
+  // an open shadow root, and that root holds a real `.finding.is-staged` from dashboard-ui/src.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+    const page = await ctx.newPage();
+    await page.goto(BASE + "/stage-proof/", { waitUntil: "load" });
+    const frame = page.locator('[data-proof="scene"] [data-stage-frame]');
+    await frame.waitFor({ state: "attached", timeout: 15_000 });
+    const island = await frame.evaluate(async (el) => {
+      for (let i = 0; i < 100 && !el.shadowRoot?.querySelector(".finding"); i++) await new Promise((r) => setTimeout(r, 100));
+      const root = el.shadowRoot;
+      return {
+        shadow: !!root,
+        styled: !!root?.querySelector("style")?.textContent?.includes(".finding"),
+        staged: root?.querySelectorAll(".finding.is-staged").length ?? 0,
+        findings: root?.querySelectorAll(".finding").length ?? 0,
+        count: root?.querySelector(".commit-bar")?.textContent?.includes("2 staged") ?? false,
+        leaked: document.querySelectorAll(".finding").length,
+      };
+    });
+    check(island.shadow, "stage-proof: the island attached an open shadow root");
+    check(island.styled, "stage-proof: the app stylesheet is inlined inside the shadow root");
+    check(island.findings === 2 && island.staged === 2, `stage-proof: shadow root holds .finding.is-staged (${island.staged} of ${island.findings})`);
+    check(island.count, "stage-proof: the commit bar in the shadow root reads 2 staged");
+    check(island.leaked === 0, `stage-proof: no .finding leaked into the light DOM (${island.leaked})`);
+    await page.screenshot({ path: join(outDir, "stage-proof-dark-desktop.png"), fullPage: true });
+    await ctx.close();
   }
   await browser.close();
   console.log("\n<head> as served on the landing page:\n" + head);

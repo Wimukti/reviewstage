@@ -3157,23 +3157,25 @@ def index_html():
     """The minimal HTML shell the React SPA mounts into (bundle built to bin/static/app-*)."""
     js, css = bundle_urls()
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
+        # Dark is the default, stamped on <html> before any script runs so a shell with no
+        # stored choice (or no JavaScript) is dark. A per-device choice lives in this browser's
+        # localStorage and is applied here, before the first paint, so a pinned theme never
+        # flashes the other one: "light", or "system" (which the tokens' media query targets).
+        # Fonts are bundled (fontsource), so nothing is fetched from a CDN.
+        "<!doctype html><html lang=en data-theme=dark><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{html.escape(BRAND)}</title>"
         f"<link rel=icon href='{rs_assets.FAVICON}'>"
         "<link rel=manifest href='/manifest.webmanifest'>"
-        # Light is the default; dark follows the system unless pinned. The pin lives in this
-        # browser's localStorage (a per-device choice) and is applied here, before the first
-        # paint, so a pinned theme never flashes the other one. Fonts are bundled (fontsource),
-        # so nothing is fetched from a CDN.
-        "<meta name=theme-color content='#F6F6F9'>"
-        "<meta name=color-scheme content='light dark'>"
+        "<meta name=theme-color content='#0B0C10'>"
+        "<meta name=color-scheme content='dark'>"
         "<script>(function(){try{var t=localStorage.getItem('rs-theme');"
+        "if(t!=='light'&&t!=='system')return;"
         "var d=document.documentElement,m=document.querySelector('meta[name=color-scheme]'),"
         "c=document.querySelector('meta[name=theme-color]');"
-        "if(t==='light'||t==='dark'){d.setAttribute('data-theme',t);m.content=t;}"
-        "var dark=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);"
-        "c.content=dark?'#101117':'#F6F6F9';}catch(e){}})()</script>"
+        "d.setAttribute('data-theme',t);m.content=t==='system'?'light dark':t;"
+        "var dark=t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches;"
+        "c.content=dark?'#0B0C10':'#F6F6F9';}catch(e){}})()</script>"
         "<meta name=mobile-web-app-capable content='yes'>"
         "<meta name=apple-mobile-web-app-capable content='yes'>"
         "<meta name=apple-mobile-web-app-status-bar-style content='default'>"

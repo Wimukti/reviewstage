@@ -8,6 +8,9 @@
 @import "@fontsource/ibm-plex-sans/latin-600.css";
 @import "@fontsource/ibm-plex-mono/latin-400.css";
 @import "@fontsource/ibm-plex-mono/latin-500.css";
+/* The display face (design §2). Declared here, in the light DOM: @font-face does not cross into
+   the shadow roots the stage islands render in, but the family name does. */
+@import "@fontsource-variable/bricolage-grotesque/index.css";
 
 @source "../**/*.astro";
 

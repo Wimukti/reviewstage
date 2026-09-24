@@ -1,5 +1,11 @@
 {
   "extends": "astro/tsconfigs/strict",
-  "include": [".astro/types.d.ts", "**/*"],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "baseUrl": ".",
+    "paths": { "@app/*": ["../dashboard-ui/src/*"] }
+  },
+  "include": [".astro/types.d.ts", "**/*", "../dashboard-ui/src/assets.d.ts"],
   "exclude": ["dist"]
 }

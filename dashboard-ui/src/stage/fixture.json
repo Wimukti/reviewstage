@@ -1,0 +1,50 @@
+{
+  "source": "dashboard-ui/e2e/fixture.ts — written by scripts/stage-fixture.mjs; do not edit",
+  "repo": "acme/widgets",
+  "pr": "38849",
+  "title": "Add lead-time badge to product cards",
+  "author": "teammate",
+  "additions": 42,
+  "deletions": 8,
+  "changedFiles": 5,
+  "user": "acme-dev",
+  "phases": [
+    "Fetching the PR",
+    "Checking out the branch",
+    "Reviewing the diff",
+    "Writing the findings"
+  ],
+  "review": {
+    "summary": "Adds a lead-time badge to product cards. Logic is sound; two small things.",
+    "keyPoints": [
+      "The badge logic is sound — no blockers.",
+      "Guard a null vendor before reading its lead time.",
+      "One nit: prefer const over let in the badge component."
+    ],
+    "explainer": "A COMMENT review — nothing here blocks the merge.",
+    "findings": [
+      {
+        "i": 0,
+        "severity": "should-fix",
+        "path": "app/models/Product.php",
+        "line": 42,
+        "title": "A product with no vendor can crash the lead-time badge",
+        "impact": "A shopper viewing such a product would see the card fail instead of loading.",
+        "body": "Guard against a null vendor before reading its lead time.",
+        "suggestion": "if ($vendor === null) return null;",
+        "anchorable": true
+      },
+      {
+        "i": 1,
+        "severity": "nit",
+        "path": "src/javascripts/Badge.tsx",
+        "line": 10,
+        "title": "Use const instead of let",
+        "impact": "Style only — no effect on behavior.",
+        "body": "Prefer `const` over `let` here.",
+        "suggestion": "",
+        "anchorable": false
+      }
+    ]
+  }
+}

@@ -4,24 +4,30 @@ Lanes run in worktrees off `main`, never merge or push; the main session merges.
 names its files (`openspec/config.yaml`). Tick with the commit sha.
 
 ## F0 — foundation (first, alone)
-- [ ] `tokens.css` (both copies, byte-identical): dark `:root`, light `[data-theme="light"]`,
+- [x] `tokens.css` (both copies, byte-identical): dark `:root`, light `[data-theme="light"]`,
       `[data-theme="system"]` media block, `--light*`, `--display`, `--t-12/24/32/display`,
-      `--row/--pad/--ctl/--side`, `--dur-slow`.
-- [ ] Theme semantics: default Dark when nothing stored; `system` stamped as an attribute.
-      `dashboard-ui/src/theme.ts`, `index_html()` in `bin/server.py`, `website/src/scripts/theme.ts`.
-- [ ] Bricolage Grotesque self-hosted in both (`main.tsx`, `website/src/styles/app.css`);
-      `--display` applied to app `h1`, login name, empty-state titles.
-- [ ] `styles.css` base pass: density scale from §3, prose removal hooks (`.pagehead p` gone,
+      `--row/--pad/--ctl/--side`, `--dur-slow`. — 22b10d1, 52c23ee (`--light` .17 not .18 and
+      `--t-12` .8572rem, both recorded in the file)
+- [x] Theme semantics: default Dark when nothing stored; `system` stamped as an attribute.
+      `dashboard-ui/src/theme.ts`, `index_html()` in `bin/server.py`, `website/src/scripts/theme.ts`. — eb6708a
+      (also `components/starlight/ThemeProvider.astro` and the layout's inline bootstrap)
+- [x] Bricolage Grotesque self-hosted in both (`main.tsx`, `website/src/styles/app.css`);
+      `--display` applied to app `h1`, login name, empty-state titles. — baf1080
+- [x] `styles.css` base pass: density scale from §3, prose removal hooks (`.pagehead p` gone,
       `.about` icon button + explainbox), page `h1` at `--t-24`; `@import` of the three empty lane
-      files at the end.
-- [ ] `tokens.test.ts` extended for the new values and the light-blended pairs.
-- [ ] Site can render app components: `@astrojs/react`, alias, pinned React, `StageFrame.tsx`
+      files at the end. — baf1080 (imports sit at the top in cascade layers — a trailing
+      `@import` is invalid CSS; see the commit)
+- [x] `tokens.test.ts` extended for the new values and the light-blended pairs. — 22b10d1
+- [x] Site can render app components: `@astrojs/react`, alias, pinned React, `StageFrame.tsx`
       with shadow root and inlined app CSS, `dashboard-ui/src/stage/{StageScene,StageQueueCard,StageProgress}.tsx`
       + `fixture.json` + the script that writes it; one scratch page proving a `.finding.is-staged`
-      renders inside the shadow root.
-- [ ] Font comparison sheet: the fold headline in Bricolage, Schibsted, Instrument →
-      `after/fonts/{bricolage,schibsted,instrument}.png`.
-- [ ] Gates: typecheck, unit, build, browser, python, website build/check/verify, Docker build.
+      renders inside the shadow root. — 144a8d9, d35d06b
+- [x] Font comparison sheet: the fold headline in Bricolage, Schibsted, Instrument →
+      `after/fonts/{bricolage,schibsted,instrument}.png`. — d35d06b
+- [x] Gates: typecheck, unit, build, browser, python, website build/check/verify, Docker build.
+      — run on 52c23ee (09/24/26): tsc clean · 70 unit · bundle builds · browser 157/158 then the
+      one failure fixed and re-run green · python 489 · site 21 pages, check 0/0, verify 51 ok ·
+      `docker build` exit 0
 
 ## W — website
 - [ ] Home rebuilt to the four sections in proposal §"Home": fold (≤ 25 words), strip (five

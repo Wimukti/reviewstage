@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { SECRET, USER } from "./fixture";
 import { createHmac } from "node:crypto";
 
-// "Sign in with GitHub" through the device flow. The fixture runs with GH_DEVICE_FLOW=0 so the
+// "Continue with GitHub" through the device flow. The fixture runs with GH_DEVICE_FLOW=0 so the
 // server never reaches GitHub; here /api/me is rewritten to advertise device_flow and the two
 // auth endpoints are stubbed the way the real server answers them.
 const START = {
@@ -54,7 +54,7 @@ test.describe("device flow sign-in", () => {
     });
 
     await page.goto("/login");
-    const btn = page.getByRole("button", { name: "Sign in with GitHub" });
+    const btn = page.getByRole("button", { name: "Continue with GitHub" });
     await expect(btn).toBeVisible();
     await expect(page.getByLabel("GitHub personal access token")).toBeHidden();
     await expect(page.getByText("Running this server?")).toHaveCount(0);
@@ -89,7 +89,7 @@ test.describe("device flow sign-in", () => {
     });
 
     await page.goto("/login");
-    await page.getByRole("button", { name: "Sign in with GitHub" }).click();
+    await page.getByRole("button", { name: "Continue with GitHub" }).click();
     await expect(page.getByTestId("device-user-code")).toHaveText("ABCD-1234");
     const alert = page.getByRole("alert");
     await expect(alert).toContainText("You cancelled the sign-in on GitHub.");
@@ -98,7 +98,7 @@ test.describe("device flow sign-in", () => {
     await expect(page.getByTestId("device-user-code")).toHaveText("WXYZ-9876");
     expect(starts).toBe(2);
     // The token form is still one click away.
-    await page.getByText("Use a personal access token instead").click();
+    await page.getByText("Use a token instead").click();
     await expect(page.getByLabel("GitHub personal access token")).toBeVisible();
   });
 
@@ -107,7 +107,7 @@ test.describe("device flow sign-in", () => {
     await page.route("**/api/auth/device/start", (route) => route.fulfill({ json: START }));
     await page.route("**/api/auth/device/poll", (route) => route.fulfill({ json: { status: "expired" } }));
     await page.goto("/login");
-    await page.getByRole("button", { name: "Sign in with GitHub" }).click();
+    await page.getByRole("button", { name: "Continue with GitHub" }).click();
     await expect(page.getByRole("alert")).toContainText("That code expired before GitHub saw it.");
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   });
@@ -123,7 +123,7 @@ test.describe("device flow sign-in", () => {
       });
     });
     await page.goto("/login?device=1&name=Pixel");
-    await page.getByRole("button", { name: "Sign in with GitHub" }).click();
+    await page.getByRole("button", { name: "Continue with GitHub" }).click();
     await page.waitForURL(/\/device\?name=Pixel/, { timeout: 15_000 });
   });
 });

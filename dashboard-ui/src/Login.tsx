@@ -10,7 +10,7 @@ const NEW_CLASSIC_TOKEN =
   "https://github.com/settings/tokens/new?" +
   new URLSearchParams({ scopes: "repo", description: "ReviewStage — PR reviews" }).toString();
 
-const OAUTH_DOCS = "https://wimukti.github.io/reviewstage/start/install/#github-sign-in";
+const TEAM_DOCS = "https://wimukti.github.io/reviewstage/start/team-mode/";
 
 function query() {
   try {
@@ -149,7 +149,7 @@ function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
   return { state, begin, cancel, copy, copied };
 }
 
-// Sign-in. "Sign in with GitHub" is the one visible action whenever either GitHub path is on:
+// Sign-in. "Continue with GitHub" is the one visible action whenever either GitHub path is on:
 // the redirect flow when the admin registered an OAuth App (one click), else the device flow
 // (a short code at github.com/login/device — works on every install, nothing to register).
 // The token form sits behind a disclosure; it is the sign-in when both are off. `?device=1`
@@ -217,7 +217,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   }
 
   const patForm = (
-    <form onSubmit={submit} aria-label="Sign in with a personal access token">
+    <form onSubmit={submit} aria-label="Sign in with a personal access token" className="patform">
       <div className="tokfield">
         <input
           className="in"
@@ -240,20 +240,14 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
         <SlowBusy busy={busy} />{busy ? "Verifying with GitHub…" : "Sign in with token"}
       </button>
       <p className="authfine">
-        Need a token?{" "}
         <a href={NEW_TOKEN} target="_blank" rel="noopener">
-          Create a fine-grained token
+          Fine-grained token
         </a>{" "}
-        for the repositories you review with <b>Pull requests: Read and write</b>,{" "}
-        <b>Contents: Read</b> and <b>Metadata: Read</b>, then paste it above. It is stored
-        encrypted and used only for the comments and approvals you click.
-      </p>
-      <p className="authfine">
-        A{" "}
+        (Pull requests: read and write · Contents: read · Metadata: read) or a{" "}
         <a href={NEW_CLASSIC_TOKEN} target="_blank" rel="noopener">
           classic token
         </a>{" "}
-        with the <code>repo</code> scope also works.
+        with <code>repo</code>. Stored encrypted.
       </p>
     </form>
   );
@@ -306,83 +300,77 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   const deviceFailed =
     st.step === "failed" ? (
       <Banner kind="err" role="alert">
-          {st.message}{" "}
-          <button type="button" className="linkbtn" onClick={() => void flow.begin()}>
-            Try again
-          </button>
-        </Banner>
+        {st.message}{" "}
+        <button type="button" className="linkbtn" onClick={() => void flow.begin()}>
+          Try again
+        </button>
+      </Banner>
     ) : null;
+
+  // The one permitted orientation sentence in the shell (design.md §6) sits here and nowhere
+  // else; the team-setup instructions live in the docs, not on the screen.
+  const teamLink = (
+    <a className="authlink" href={TEAM_DOCS} target="_blank" rel="noopener">
+      Setting up sign-in for a team
+    </a>
+  );
 
   return (
     <div className="auth">
-      <div className="authcard">
-        <Logo me={me} className="authlogo" />
-        <h1>{me.brand}</h1>
-        <p className="authsub">Stage your PR review. Post it as yourself.</p>
-        <p className="authlead">
-          {device
-            ? "Sign in to connect this device. Every comment and approval it posts will carry your own name."
-            : "Every comment and approval posts under your own name — nothing is ever posted for you."}
-        </p>
-        {err && (
-          <Banner kind="err">{err}</Banner>
-        )}
-        {github ? (
-          <>
-            {deviceFailed}
-            {deviceCard}
-            {redirectFlow && (
-              <a className="btn primary block" href={oauthHref}>
-                Sign in with GitHub
-              </a>
-            )}
-            {deviceFlow && st.step !== "waiting" && st.step !== "done" && (
-              <button
-                type="button"
-                className="btn primary block"
-                onClick={() => void flow.begin()}
-                disabled={st.step === "starting"}
-                aria-busy={st.step === "starting"}
-              >
-                <SlowBusy busy={st.step === "starting"} />
-                {st.step === "starting" ? "Asking GitHub for a code…" : "Sign in with GitHub"}
-              </button>
-            )}
-            {deviceFlow && st.step === "idle" && (
-              <p className="authfine devflow-hint">
-                Shows a short code to enter at github.com/login/device. Nothing to install, no token to paste.
-              </p>
-            )}
-            {me.oauth_blocked && !err && (
-              <p className="authfine">
-                GitHub sign-in is waiting on an org owner to approve the app; a token works meanwhile.
-              </p>
-            )}
-            <details
-              className="authalt"
-              open={showPat}
-              onToggle={(e) => setShowPat((e.target as HTMLDetailsElement).open)}
-            >
-              <summary>Use a personal access token instead</summary>
+      <div className="stage-login">
+        <div className="authcard">
+          <Logo me={me} className="authlogo" />
+          <h1>{me.brand}</h1>
+          <p className="authsub">Stage your review. Post it as yourself.</p>
+          {err && <Banner kind="err">{err}</Banner>}
+          {github ? (
+            <>
+              {deviceFailed}
+              {deviceCard}
+              {redirectFlow && (
+                <a className="btn primary block lg" href={oauthHref}>
+                  Continue with GitHub
+                </a>
+              )}
+              {deviceFlow && st.step !== "waiting" && st.step !== "done" && (
+                <button
+                  type="button"
+                  className="btn primary block lg"
+                  onClick={() => void flow.begin()}
+                  disabled={st.step === "starting"}
+                  aria-busy={st.step === "starting"}
+                >
+                  <SlowBusy busy={st.step === "starting"} />
+                  {st.step === "starting" ? "Asking GitHub for a code…" : "Continue with GitHub"}
+                </button>
+              )}
+              {me.oauth_blocked && !err && (
+                <p className="authfine">
+                  GitHub sign-in is waiting on an org owner to approve the app; a token works meanwhile.
+                </p>
+              )}
+              <div className="authmore">
+                <button
+                  type="button"
+                  className="authlink"
+                  aria-expanded={showPat}
+                  aria-controls="pat-form"
+                  data-testid="pat-toggle"
+                  onClick={() => setShowPat((o) => !o)}
+                >
+                  Use a token instead
+                </button>
+              </div>
+              {showPat && <div id="pat-form">{patForm}</div>}
+            </>
+          ) : (
+            <>
               {patForm}
-            </details>
-          </>
-        ) : (
-          <>
-            {patForm}
-            <p className="authfine authadmin">
-              <b>Running this server?</b> Teams should sign in with GitHub instead of tokens. Set{" "}
-              <code>GH_DEVICE_FLOW=1</code> for the zero-setup device flow, or create a GitHub OAuth App
-              with callback <code>{(me.public_url || "PUBLIC_URL") + "/oauth/callback"}</code> and set{" "}
-              <code>GH_CLIENT_ID</code> / <code>GH_CLIENT_SECRET</code> for one-click sign-in. Step by
-              step in{" "}
-              <a href={OAUTH_DOCS} target="_blank" rel="noopener">
-                the install guide
-              </a>
-              .
-            </p>
-          </>
-        )}
+              <div className="authmore">{teamLink}</div>
+            </>
+          )}
+          <p className="authfine authguarantee">Nothing posts to GitHub until you click.</p>
+        </div>
       </div>
     </div>
   );

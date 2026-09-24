@@ -42,17 +42,25 @@ names its files (`openspec/config.yaml`). Tick with the commit sha.
 - [ ] `after/site/*` screenshots.
 
 ## A1 — login and shell
-- [ ] `Login.tsx`: mark, name in display type, one line, **Continue with GitHub**, "Use a token
+- [x] `Login.tsx`: mark, name in display type, one line, **Continue with GitHub**, "Use a token
       instead" disclosure holding the token form; server-setup paragraph removed (docs link only);
-      `.stage-login::before` light.
-- [ ] `Sidebar.tsx`: `--side`, 36px items, no group labels, smaller mark, account row (avatar ·
-      name · Live dot), theme switch moved into More; phone header = mark + search only.
-- [ ] Running indicator: thin amber sweep bar at the top of the viewport replaces the pill
-      (`RunningLink` rendering), phone `runstrip` becomes the same bar.
-- [ ] `App.tsx`: remove the `/how` route; Help menu links to the site's strip.
-- [ ] `CommandPalette.tsx`, `Tour.tsx`: density and type only.
-- [ ] `e2e/shell.spec.ts`: login states, theme default dark, sidebar geometry, running bar,
-      phone header, More sheet holds the theme switch.
+      `.stage-login::before` light. — 00d234b (shell.css lifts the light's geometry so its top
+      edge fades behind a free-standing card; the token stays in styles.css)
+- [x] `Sidebar.tsx`: `--side`, 36px items, no group labels, smaller mark, account row (avatar ·
+      name · Live dot), theme switch moved into More; phone header = mark + search only. — 8e204e4
+      (desktop "More" is a `⋯` button at the end of the account row, `data-testid="account-more"`;
+      Help stays its own menu)
+- [x] Running indicator: thin amber sweep bar at the top of the viewport replaces the pill
+      (`RunningLink` rendering), phone `runstrip` becomes the same bar. — 8e204e4 (`.runbar`,
+      `data-testid="running-bar"`, rendered once by `App`)
+- [x] `App.tsx`: remove the `/how` route; Help menu links to the site's strip. — 8e204e4
+- [x] `CommandPalette.tsx`, `Tour.tsx`: density and type only. — 00d234b (rules in shell.css;
+      `Tour.tsx` needed no source change), 8e204e4 (palette drops the dead How entry for Settings)
+- [x] `e2e/shell.spec.ts`: login states, theme default dark, sidebar geometry, running bar,
+      phone header, More sheet holds the theme switch. — 9b8788b (+ `after/a1/*` screenshots and
+      `e2e/shots-shell.ts`). Gates on 9b8788b (09/24/26): tsc clean · 70 unit · bundle builds ·
+      browser 163/166 then the three stale selectors fixed and re-run green · python 489 ·
+      `--light` grep on shell.css empty
 
 ## A2 — PR page and queue
 - [ ] `PrPage.tsx`: `.finding.is-staged` head light (§4.2); commit bar as the stage: raised,

@@ -11,9 +11,13 @@ import styles from "@app/styles.css?inline";
 
 // html/body rules in styles.css match nothing inside a shadow root, so the mount takes over
 // the few that matter: the interface size, the face, the ink and the paper.
+// The island is a frame on a page, not the app's viewport: the commit bar's phone rule pins it
+// to the bottom of the window and pads the page for it, which here would float the bar over the
+// site, so both are undone. Sticky is already neutral inside the overflow-hidden mount.
 const ROOT_CSS =
   ".stage-root{font:var(--t-13)/1.5 var(--font);color:var(--ink);background:var(--paper);" +
-  "border-radius:var(--r-m);overflow:hidden;-webkit-font-smoothing:antialiased}";
+  "padding:var(--pad);overflow:hidden;-webkit-font-smoothing:antialiased}" +
+  ".stage-root .commit-bar{position:static}.stage-root .prpage{padding-bottom:0}";
 
 export function StageFrame({ children, className, label }: { children: ReactNode; className?: string; label?: string }) {
   const host = useRef<HTMLDivElement>(null);

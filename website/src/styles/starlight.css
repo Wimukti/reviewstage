@@ -5,11 +5,11 @@
   --sl-font-mono: var(--mono);
   --sl-nav-height: var(--nav-height);
   --sl-content-width: 50rem;
-  --sl-sidebar-width: 17rem;
+  --sl-sidebar-width: var(--side);
   --sl-text-base: var(--t-14);
   --sl-text-body: var(--t-14);
-  --sl-text-h1: var(--t-34);
-  --sl-text-h2: var(--t-26);
+  --sl-text-h1: var(--t-32);
+  --sl-text-h2: var(--t-24);
   --sl-text-h3: var(--t-20);
   --sl-text-h4: var(--t-16);
   --sl-text-code: 0.9em;
@@ -49,16 +49,28 @@
 
 .header { border-bottom: 1px solid var(--hairline); }
 site-search button[data-open-modal] { border-radius: var(--r-s); border-color: var(--hairline); background-color: var(--panel); color: var(--graphite); }
+/* The docs sidebar and rail echo the app's shell (design §3): a --side pane, 36px items at the
+ * interface size, groups separated by space rather than uppercase labels. */
 .sidebar-pane { border-inline-end: 1px solid var(--hairline); background-color: var(--paper); }
-.sidebar-content .top-level > li > details > summary,
-.sidebar-content .top-level > li > .group-label,
-.sidebar-content .top-level > li > details > summary .group-label { font-size: var(--t-13); font-weight: 600; color: var(--ink); }
-.sidebar-content a { border-radius: var(--r-s); padding-block: 0.4rem; font-size: var(--t-14); color: var(--graphite); }
-.sidebar-content a:hover { color: var(--ink); }
+.sidebar-content { padding: 0.75rem; }
+.sidebar-content .top-level > li + li { margin-top: 1rem; }
+.sidebar-content .top-level > li > details > summary { min-height: 36px; padding: 0 0.6rem; border-radius: var(--r-s); }
+.sidebar-content .group-label,
+.sidebar-content .group-label .large,
+.sidebar-content .top-level > li > a.large { font-size: var(--t-13); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.sidebar-content ul ul { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
+.sidebar-content ul ul li { margin-inline-start: 0; }
+.sidebar-content a { display: flex; align-items: center; min-height: 36px; padding: 0 0.6rem; border-radius: var(--r-s); font-size: var(--t-13); font-weight: 500; line-height: 1.3; color: var(--graphite); }
+.sidebar-content a:hover { color: var(--ink); background-color: var(--panel); }
 .sidebar-content a[aria-current="page"], .sidebar-content a[aria-current="page"]:hover { background-color: var(--blue-bg); color: var(--blue); font-weight: 500; }
 .right-sidebar { border-inline-start: 1px solid var(--hairline); }
-.right-sidebar-panel h2 { font-size: var(--t-13); font-weight: 600; }
-.right-sidebar-panel a { font-size: var(--t-13); }
+.right-sidebar-panel { padding: 1.25rem 1rem; }
+.right-sidebar-panel h2 { font-size: var(--t-13); font-weight: 600; color: var(--ink); }
+.right-sidebar-panel a { display: flex; align-items: center; min-height: 32px; padding-block: 0; font-size: var(--t-13); color: var(--graphite); border-radius: var(--r-s); }
+.right-sidebar-panel a:hover { color: var(--ink); }
+.right-sidebar-panel a[aria-current="true"] { color: var(--blue); font-weight: 500; }
+.right-sidebar-panel ul ul a { padding-inline-start: 1rem; }
+.sl-markdown-content h1, .content-panel h1 { font-family: var(--display); font-weight: 600; letter-spacing: -0.02em; }
 .content-panel + .content-panel { border-top: 0; padding-top: 0.75rem; }
 .sl-markdown-content { font-size: var(--t-14); line-height: 1.6; }
 .sl-markdown-content :is(h1, h2, h3, h4) { font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; }

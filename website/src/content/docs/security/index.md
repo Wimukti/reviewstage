@@ -30,7 +30,7 @@ Rotating `RS_SECRET` invalidates every session, every signed link and every stor
 - **Device tokens are the only other credential.** `Authorization: Bearer …` is accepted on every `/api/*` route alongside the cookie; see [Device tokens](#device-tokens).
 - **Every action is HMAC-signed** over `action:pr:expiry`: post, approve, mark done, archive, start review, stop, explain. Tokens are minted at render time and last **30 minutes**, so a bookmarked or forwarded page cannot act later and a cross-site form has nothing valid to present.
 - **Writes use the acting user's own token.** The service token does reads and the base clone only. Nothing can post or approve under another name, and GitHub's self-approval check runs against the real user.
-- **The review step has no GitHub write path.** The script that runs the agent produces a file; every write is a separate human click.
+- **The review step has no GitHub write path.** The script that runs the agent produces a file; every write is a separate human click. Three mechanisms back that up: every GitHub credential is stripped from the agent's environment, the agent runs under an explicit tool deny list, and the pull request's comment and review counts are taken before and after the run — if anything landed on it, the run is failed.
 - **The agent never chooses the review event.** Posting defaults to `COMMENT`; a reviewer can tick *Request changes* on the post form for that one review. `APPROVE` is a separate click, never from the agent.
 - **Approve is gated** on the PR being open, not a draft, not authored by you, and having a review on this server.
 - **Diff-anchor validation** checks every `path:line` against the real diff before posting.

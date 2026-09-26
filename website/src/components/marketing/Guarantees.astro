@@ -1,0 +1,24 @@
+---
+/* Proposal §"Home" 3: five lines, a graphite dot each, no paragraphs. Each line is the link to
+ * the docs page that proves it. */
+import { withBase } from "../../content/site-links";
+const lines = [
+  { t: "Your name on every comment, never a bot", href: "/security/#controls" },
+  { t: "Nothing automatic: every review is a click", href: "/start/#what-it-deliberately-does-not-do" },
+  { t: "Comments, not blocks: it never requests changes", href: "/guides/reviewing/#posting" },
+  { t: "Your Claude account pays for your runs", href: "/security/#claude-tokens" },
+  { t: "Your box, your data: files, no database", href: "/security/#what-is-stored-and-how" },
+];
+---
+<ul class="guarantees" aria-label="Guarantees">
+  {lines.map((l) => (
+    <li><a class="status guarantee" href={withBase(l.href)}><i aria-hidden="true"></i>{l.t}</a></li>
+  ))}
+</ul>
+<style>
+  .guarantees { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+  .guarantee { min-height: 44px; font-size: var(--t-16); font-weight: 500; white-space: normal; text-decoration: none; gap: 0.75rem; }
+  .guarantee:hover { color: var(--blue); }
+  .guarantee i { width: 10px; height: 10px; }
+  @media (min-width: 64rem) { .guarantees { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; } }
+</style>

@@ -34,6 +34,11 @@ const l = await getImage({ src: light, widths: [640, 960, 1280, 1600], format: "
   picture { display: block; line-height: 0; }
   picture img { display: block; width: 100%; height: auto; }
   .shot-light { display: none; }
+  /* data-theme is the choice, never the resolved value: "system" resolves through the media query. */
   :global(:root[data-theme="light"]) .shot-dark { display: none; }
   :global(:root[data-theme="light"]) .shot-light { display: block; }
+  @media (prefers-color-scheme: light) {
+    :global(:root[data-theme="system"]) .shot-dark { display: none; }
+    :global(:root[data-theme="system"]) .shot-light { display: block; }
+  }
 </style>

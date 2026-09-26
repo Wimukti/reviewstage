@@ -5,7 +5,11 @@ sidebar:
   order: 2
 ---
 
+import Shot from "../../../components/marketing/Shot.astro";
+
 ## Two ideas
+
+<Shot name="learnings" alt="The Skills page: tabs for Which skill, Suggested rules, Editors, Per repository, Profiles and Depth; a selector between the team default and your own skill; and a “How each skill scores” card showing the team default’s keep rate." label="skills · team default · keep rate" loading="eager" />
 
 A **skill** is the review procedure: a Claude Code skill file that tells the agent how to read the PR, what to check, and how to decide reply-vs-new. **Learnings** are your team's recent accept/reject decisions, folded into the next prompt so the agent stops raising what you drop.
 

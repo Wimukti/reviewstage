@@ -7,7 +7,7 @@ import { StageQueueCard, type QueueCardState } from "@app/stage/StageQueueCard";
 import { StageProgress } from "@app/stage/StageProgress";
 
 type Props =
-  | { scene: "scene"; state: SceneState; play?: boolean; playKey?: number; className?: string; label?: string }
+  | { scene: "scene"; state: SceneState; play?: boolean; playKey?: number; onDone?: () => void; className?: string; label?: string }
   | { scene: "queue"; state?: QueueCardState; className?: string; label?: string }
   | { scene: "progress"; cur?: number; className?: string; label?: string };
 
@@ -16,7 +16,7 @@ export default function StageIsland(props: Props) {
   return (
     <StageFrame className={className} label={label}>
       {props.scene === "scene" ? (
-        <StageScene state={props.state} play={props.play} playKey={props.playKey} />
+        <StageScene state={props.state} play={props.play} playKey={props.playKey} onDone={props.onDone} />
       ) : props.scene === "queue" ? (
         <StageQueueCard state={props.state} />
       ) : (

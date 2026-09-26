@@ -1,0 +1,53 @@
+---
+/* Proposal §"Home" 4: the command, three steps as three lines, three quiet tier columns with
+ * one line each, and the two closing links. This is the page's last section. */
+import InstallCommand from "./InstallCommand.astro";
+import GitHubIcon from "./GitHubIcon.astro";
+import { repo, withBase } from "../../content/site-links";
+const steps = [
+  ["Bring it up", "docker compose up -d, then open localhost:8899"],
+  ["Sign in as yourself", "GitHub device flow, then connect Claude"],
+  ["Paste a PR", "pick an effort, run, tick, post"],
+];
+const tiers = [
+  ["Solo", "Your laptop, your PRs, your plan.", "/start/install/"],
+  ["Team", "One server, every reviewer as themselves.", "/start/team-mode/"],
+  ["Company", "Many repositories, one allowlist, shared Insights.", "/start/team-mode/#many-repositories"],
+];
+---
+<div class="install-grid">
+  <div class="install-frame panel lift">
+    <InstallCommand />
+    <ol class="steps">
+      {steps.map(([t, d], i) => (
+        <li><span class="step-n">{String(i + 1).padStart(2, "0")}</span><span class="step-t">{t}</span><span class="step-d">{d}</span></li>
+      ))}
+    </ol>
+  </div>
+  <ul class="tiers">
+    {tiers.map(([t, d, href]) => (
+      <li><a class="tier" href={withBase(href)}><span class="tier-t">{t}</span><span class="tier-d">{d}</span></a></li>
+    ))}
+  </ul>
+  <div class="install-actions">
+    <a class="btn btn-primary" href={withBase("/start/install/")}>Install guide</a>
+    <a class="btn btn-secondary" href={repo}><GitHubIcon />Star on GitHub</a>
+  </div>
+</div>
+<style>
+  .install-grid { display: grid; gap: 2rem; }
+  .install-frame { display: grid; gap: 1.25rem; padding: var(--pad); }
+  .steps { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+  .steps li { display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; gap: 0.75rem; min-height: 32px; font-size: var(--t-14); }
+  .step-n { color: var(--blue); font-family: var(--mono); font-size: var(--t-13); font-weight: 500; }
+  .step-t { font-weight: 600; }
+  .step-d { color: var(--graphite); }
+  @media (max-width: 40rem) { .steps li { grid-template-columns: auto 1fr; } .step-d { grid-column: 2; } }
+  .tiers { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; border: 1px solid var(--hairline); border-radius: var(--r-m); background: var(--hairline); overflow: hidden; }
+  @media (min-width: 48rem) { .tiers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .tier { display: grid; gap: 0.25rem; min-height: 44px; padding: var(--pad); background: var(--paper); color: var(--ink); text-decoration: none; }
+  .tier:hover { background: var(--panel); }
+  .tier-t { font-weight: 600; }
+  .tier-d { color: var(--graphite); font-size: var(--t-14); }
+  .install-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+</style>

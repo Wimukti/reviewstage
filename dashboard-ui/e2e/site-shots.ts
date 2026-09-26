@@ -10,6 +10,9 @@
 //   team      the queue: tabs with counts and the reviewed rows
 //   learnings the Skills page (the site's alt text describes Skills, not Learnings)
 //   qa        a QA guide with its cases
+//   insights  the Insights page: range pills, the tiles and the first chart row
+//   integrations  the Integrations page (the Notifications guide's view)
+//   profile   the Skills page's Repository profile section, open
 //
 // It builds its own copy of the fixture, adjusts three things the marketing shots need
 // (the reviewer's Claude account connected, dry run off, a QA guide that is not a failed one),
@@ -188,6 +191,29 @@ const SHOTS: Shot[] = [
     height: 1400,
     shoot: (p) => topCrop(p, p.locator(".qaguide")),
   },
+  {
+    name: "insights",
+    path: "/dashboard",
+    height: 1400,
+    shoot: (p) => topCrop(p, p.locator(".grid2").first()),
+  },
+  {
+    name: "integrations",
+    path: "/integrations",
+    height: 1400,
+    shoot: (p) => topCrop(p, p.getByTestId("integrations-list")),
+  },
+  {
+    name: "profile",
+    path: "/skills#profiles",
+    height: 1600,
+    shoot: async (p) => {
+      const prof = p.getByTestId("repo-profile").first();
+      await prof.locator("> summary").click();
+      await p.waitForTimeout(400);
+      return topCrop(p, prof);
+    },
+  },
 ];
 
 /** Page top down to the bottom of `last`, full window width — the sidebar stays in frame. */
@@ -226,6 +252,11 @@ async function main() {
           reducedMotion: "reduce",
         });
         await ctx.addCookies([sessionCookie()]);
+        // Dark is the app's default whatever the OS says (theme.ts), so the light pair needs the
+        // stored choice; the dark pair needs it absent.
+        await ctx.addInitScript((t: string) => {
+          try { if (t === "light") localStorage.setItem("rs-theme", "light"); else localStorage.removeItem("rs-theme"); } catch {}
+        }, theme);
         const page = await ctx.newPage();
         await page.goto(ORIGIN + s.path, { waitUntil: "networkidle" });
         await settle(page);

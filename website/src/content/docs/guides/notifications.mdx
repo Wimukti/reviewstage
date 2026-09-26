@@ -5,7 +5,11 @@ sidebar:
   order: 4
 ---
 
+import Shot from "../../../components/marketing/Shot.astro";
+
 Notifications are optional. Without them the dashboard still works; you just have to remember to open it. With them, a card arrives when a review is requested of you, another when the review is ready, one if a run is stopped or fails, and one when a QA guide finishes.
+
+<Shot name="integrations" alt="The Integrations page: GitHub connected as acme-dev, Slack and Discord connected with a member-ID field each, a generic webhook not yet configured with its signing header documented, and Claude connected." label="integrations · slack · discord · webhook" loading="eager" />
 
 One notifier serves every backend: the scripts call `notify_card <kind> <payload>` (in `bin/notify.sh`) and each enabled backend renders the same small payload in its own idiom. Enable any combination.
 

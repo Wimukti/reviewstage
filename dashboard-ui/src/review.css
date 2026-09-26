@@ -1,2 +1,68 @@
-/* Lane A2 — PR page and queue (design.md §8). Imported by styles.css into the `review` layer;
-   §4.2 and §4.3 of the stage light belong here. */
+/* Lane A2 — PR page and queue (design.md §8). Imported by styles.css into the `review` layer,
+   which beats `base` without !important; §4.2 and §4.3 of the stage light live here and nowhere
+   else. No colour literal: tokens only. */
+
+/* ---- the staged finding: the blue edge stays, the head is lit (§4.2) ------------------------- */
+.finding.is-staged .fhead{background:linear-gradient(180deg,var(--light) 0%,transparent 28%)}
+
+/* ---- the commit bar is the stage: raised, the count in display type, the button lit when
+   something is on it (§4.3) ------------------------------------------------------------------- */
+.commit-bar{background:var(--raised);box-shadow:var(--shadow-raised)}
+.commit-bar .inner{min-height:56px;padding:10px var(--pad);gap:10px 14px}
+.commit-bar .inner>.muted{display:inline-flex;align-items:baseline;gap:0 5px;flex-wrap:wrap;min-width:0}
+.stage-roll{display:inline-grid;overflow:hidden;line-height:1;vertical-align:baseline}
+.stage-roll>.stage-count{grid-area:1/1;font-family:var(--display);font-size:var(--t-24);font-weight:600;
+letter-spacing:-0.01em;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
+.commit-bar .btn.primary{transition:box-shadow var(--dur-slow) var(--ease)}
+.commit-bar.has-staged .btn.primary{box-shadow:0 0 0 1px var(--blue),0 0 28px var(--light-strong);transition:box-shadow var(--dur-slow) var(--ease)}
+
+/* ---- the assessment: a tighter measure, the orientation behind ? ------------------------------ */
+.verdict{padding:4px 0 8px;margin-bottom:4px;align-items:center}
+.verdict .about{align-self:center}
+.verdict .explainbox{flex:1 1 100%;order:10;margin:6px 0 2px;max-width:64ch;font-size:var(--t-13)}
+.keypoints,.assess-summary,.conv-summary{max-width:64ch}
+.keypoints li{margin:4px 0}
+
+/* ---- the four sections as one segmented control, one panel at a time ------------------------- */
+.secseg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;margin:16px 0 0}
+.secseg button{display:inline-flex;align-items:center;justify-content:center;min-width:0;padding:0 8px;
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.secseg button:hover{color:var(--ink)}
+.secpanel{margin-top:8px;padding:var(--pad)}
+
+/* ---- queue: one field that filters and opens, rows at --row, a quieter empty state ----------- */
+.pagehead .qsearch{flex:1 1 360px;max-width:520px;display:flex;align-items:center;gap:8px;margin:2px 0 0}
+.pagehead .qsearch .in{flex:1;min-width:0}
+.qtools{margin:14px 0 0;gap:10px 14px}
+.qtools .filter-note{font-size:var(--t-12);color:var(--graphite);flex:1 1 100%;margin:0}
+.repopick{margin-top:8px}
+.list .rowlink{padding:6px 4px 6px var(--pad)}
+.list .rowtop{margin-bottom:2px}
+.empty{padding:56px 20px}
+.empty b{margin-bottom:6px}
+.empty .setuplist{text-align:left}
+
+/* ---- stack: density ----------------------------------------------------------------------------- */
+.stackrow .rowlink{padding-top:6px;padding-bottom:6px}
+.stackhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px}
+.stackhead .prtitle{flex:1;min-width:0;margin:0}
+.stackhead .explainbox{flex:1 1 100%;margin:0;max-width:64ch}
+
+/* ---- motion (design §5): the count rolls, the glow fades; nothing under reduced motion -------- */
+@media (prefers-reduced-motion:no-preference){
+  .stage-count.is-in{animation:roll-in var(--dur-slow) var(--ease) both}
+  .stage-count.is-out{animation:roll-out var(--dur-slow) var(--ease) both}
+  @keyframes roll-in{from{transform:translateY(100%);opacity:0}to{transform:none;opacity:1}}
+  @keyframes roll-out{from{transform:none;opacity:1}to{transform:translateY(-100%);opacity:0}}
+}
+@media (prefers-reduced-motion:reduce){
+  .commit-bar .btn.primary,.commit-bar.has-staged .btn.primary{transition:none}
+}
+
+/* ---- phone ---------------------------------------------------------------------------------------- */
+@media (max-width:899px){
+  .secseg{grid-template-columns:1fr 1fr}
+  .commit-bar .inner{padding:10px var(--pad)}
+  .commit-bar .inner>.muted{flex:1 1 100%}
+  .pagehead .qsearch{max-width:none;flex-basis:100%}
+}

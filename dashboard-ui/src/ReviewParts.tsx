@@ -4,7 +4,7 @@
 // JSON for the website's islands (design.md §7), so a restyle here reaches both by
 // construction. Nothing in this file may import api.ts, the router, or the markdown stack:
 // the site bundles whatever this pulls in.
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./icons";
 import { Status, wordOf, type Tone } from "./ui";
 
@@ -218,7 +218,65 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
   );
 }
 
+// The one permitted orientation disclosure (design.md §6): a ? button that opens an .explainbox.
+// The sentence that used to sit under a title goes here.
+export function About({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <>
+      <button
+        type="button"
+        className="about"
+        aria-label="About this page"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon name="question" />
+      </button>
+      {open && (
+        <div className="explainbox" id={id} data-testid="about-box">
+          {children}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ---- the commit bar --------------------------------------------------------------------------
+
+const reducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// The staged count in display type. When it changes the old value slides up and out while the
+// new one slides in (design.md §5); the new value is keyed on itself so it is a fresh element
+// every time. Under reduced motion the swap is plain: nothing outgoing is rendered.
+export function StageCount({ n }: { n: number }) {
+  const last = useRef(n);
+  const [out, setOut] = useState<number | null>(null);
+  useEffect(() => {
+    if (last.current === n) return;
+    const prev = last.current;
+    last.current = n;
+    if (reducedMotion()) return;
+    setOut(prev);
+    const t = window.setTimeout(() => setOut(null), 320);
+    return () => window.clearTimeout(t);
+  }, [n]);
+  return (
+    <span className="stage-roll">
+      <b key={n} className={"stage-count" + (out !== null ? " is-in" : "")} data-stage-count={n}>
+        {n}
+      </b>
+      {out !== null && (
+        <b className="stage-count is-out" aria-hidden="true">
+          {out}
+        </b>
+      )}
+    </span>
+  );
+}
 
 export interface CommitBarProps {
   staged: number;
@@ -299,11 +357,7 @@ export function CommitBar({
         ) : (
           <>
             <span className="muted sm">
-              {/* keyed on the count so a roll animation restarts on every change */}
-              <b key={staged} className="stage-count" data-stage-count={staged}>
-                {staged}
-              </b>{" "}
-              staged
+              <StageCount n={staged} /> staged
               {(summary > 0 || unknown > 0) && (
                 <>
                   {" · "}
@@ -372,20 +426,21 @@ export function CommitBar({
 export interface VerdictProps {
   tone: Tone;
   text: string;
-  sub?: ReactNode;
+  // Orientation for the verdict, behind the ? button (design.md §6).
+  about?: ReactNode;
   chips?: { kind: string; n: number }[];
   testid?: string;
 }
 
-export function Verdict({ tone, text, sub, chips = [], testid }: VerdictProps) {
+export function Verdict({ tone, text, about, chips = [], testid }: VerdictProps) {
   return (
     <div className="verdict" data-testid={testid}>
       <div className="verdict-main">
         <div className="verdict-t">
           <Status tone={tone}>{text}</Status>
         </div>
-        {sub && <div className="verdict-sub">{sub}</div>}
       </div>
+      {about && <About>{about}</About>}
       {chips.length > 0 && (
         <div className="verdict-chips">
           {chips.map((c) => (

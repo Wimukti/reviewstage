@@ -159,7 +159,7 @@ function Verdict_() {
       <Verdict
         tone={fix ? "amber" : "green"}
         text={fix ? `${fix} thing${fix > 1 ? "s" : ""} to fix before merge` : "Looks good — nothing to fix"}
-        sub={fixture.review.explainer}
+        about="The agent's read of this PR. Comments post as a plain review either way — nothing here blocks a merge unless you ask for changes."
       />
       <KeyPoints points={fixture.review.keyPoints} />
     </>

@@ -34,9 +34,11 @@ test.describe("queue", () => {
     await expect(row.locator(".rowby")).toContainText("teammate");
     // The sort options are one segmented control.
     await expect(page.getByRole("group", { name: "Sort" }).locator(".sortopt")).toHaveCount(4);
-    // The paste-a-PR field sits in the page header with its action.
-    await expect(page.locator(".pagehead .reviewany input")).toBeVisible();
-    await expect(page.locator(".pagehead .reviewany button[type=submit]")).toHaveText("Review");
+    // One field in the page header filters the queue and opens a pasted PR.
+    await expect(page.locator(".pagehead .qsearch #qsearch")).toBeVisible();
+    await expect(page.locator(".pagehead .qsearch button[type=submit]")).toHaveCount(0);
+    await page.locator("#qsearch").fill(`#${PR}`);
+    await expect(page.locator(".pagehead .qsearch button[type=submit]")).toHaveText(`Open #${PR}`);
   });
 
   test("the archive control is reachable by keyboard and visible on focus", async ({ page }) => {

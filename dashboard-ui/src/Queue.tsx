@@ -4,6 +4,7 @@ import { parsePrRef, prUrl } from "./pr";
 import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
 import { Link, navigate, useLocation } from "./router";
 import { runningFor, useRunning } from "./running";
+import { About } from "./ReviewParts";
 import { Banner } from "./ui";
 import { Icon } from "./icons";
 import { Status } from "./ui";
@@ -139,7 +140,6 @@ export function Queue({ me }: { me: Me }) {
   const jobs = useRunning();
   const [data, setData] = useState<QueueData | null>(null);
   const [q, setQ] = useState("");
-  const [rv, setRv] = useState("");
   const [rvRepo, setRvRepo] = useState("");
   const [nonce, setNonce] = useState(0);
   const [err, setErr] = useState("");
@@ -215,7 +215,9 @@ export function Queue({ me }: { me: Me }) {
     [runKey, query, activeFilter],
   );
 
-  const parsed = parsePrRef(rv, repos);
+  // The one field does both: what is typed filters the queue as it goes, and if it reads as a
+  // PR reference — a URL, owner/name#123 or a bare number — Enter opens that PR.
+  const parsed = parsePrRef(q, repos);
   const needsPick = !!parsed && !parsed.repo && multi;
   const goReview = () => {
     if (!parsed) return;
@@ -242,7 +244,7 @@ export function Queue({ me }: { me: Me }) {
       <div className="pagehead">
         <div className="pagehead-t">
           <h1>Your review queue</h1>
-          <p className="muted sm">
+          <About>
             Reviews requested from you across{" "}
             {multi ? (
               <>
@@ -252,28 +254,33 @@ export function Queue({ me }: { me: Me }) {
             ) : (
               <code>{repos[0] || me.repo}</code>
             )}
-            . Nothing reaches GitHub without your click.
-          </p>
+            . Type to filter, or paste a PR URL, <code>owner/name#123</code> or a number and press
+            Enter to open it. Nothing reaches GitHub without your click.
+          </About>
         </div>
         <form
-          className="reviewany"
+          className="qsearch"
+          role="search"
           onSubmit={(e) => {
             e.preventDefault();
             goReview();
           }}
         >
           <input
+            id="qsearch"
             className="in"
-            type="text"
+            type="search"
             autoComplete="off"
-            aria-label="Review any PR"
-            placeholder="Review any PR — PR URL, owner/name#123, or a number…"
-            value={rv}
-            onChange={(e) => setRv(e.target.value)}
+            aria-label="Filter your queue, or open a PR by URL or number"
+            placeholder="Filter, or paste a PR URL or #123…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
           />
-          <button className="btn quiet" type="submit" disabled={!parsed}>
-            Review
-          </button>
+          {parsed && (
+            <button className="btn quiet" type="submit" data-testid="open-pr">
+              Open #{parsed.number}
+            </button>
+          )}
         </form>
       </div>
       {needsPick && (
@@ -307,26 +314,7 @@ export function Queue({ me }: { me: Me }) {
           </Link>
         ))}
       </div>
-      <div className="tabdesc">
-        {data.tabDesc}
-        {filtering && (
-          <span className="muted sm" data-testid="filter-note">
-            {" "}
-            Every count above is for the filtered set.
-          </span>
-        )}
-      </div>
-
       <div className="qtools">
-        <input
-          id="qsearch"
-          className="in"
-          type="search"
-          autoComplete="off"
-          placeholder={multi ? "Filter your queue — title, author, repo…" : "Filter your queue…"}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
         {multi && (
           <label className="repofilter">
             <span className="muted sm">Repository</span>
@@ -361,8 +349,12 @@ export function Queue({ me }: { me: Me }) {
             </Link>
           ))}
         </div>
+        {filtering && (
+          <span className="filter-note" data-testid="filter-note">
+            Every count above is for the filtered set.
+          </span>
+        )}
       </div>
-
 
       {err && (
         <Banner kind="err" data-testid="queue-error">{err}</Banner>

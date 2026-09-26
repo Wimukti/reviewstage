@@ -515,53 +515,52 @@ const headMovedOf = (rev: ReviewData | undefined): boolean =>
     rev.approve.reviewedHead !== rev.approve.currentHead
   );
 
-// A row of disclosure buttons; each opens its panel beneath the row, so the row itself never
-// reflows when one is open. Several may be open at once.
+// One segmented control for the four sections; at most one panel is open beneath it, so the
+// control itself never reflows. Arrow keys move between the segments, Enter or Space toggles.
 interface Section {
   key: string;
   label: string;
   content: React.ReactNode;
 }
-function SectionRow({ sections }: { sections: Section[] }) {
-  const [open, setOpen] = useState<Set<string>>(() => new Set());
+function SectionSeg({ sections }: { sections: Section[] }) {
+  const [open, setOpen] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
   if (!sections.length) return null;
-  const flip = (k: string) =>
-    setOpen((s) => {
-      const n = new Set(s);
-      n.has(k) ? n.delete(k) : n.add(k);
-      return n;
-    });
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    const btns = [...(ref.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+    const at = btns.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    e.preventDefault();
+    const n = btns.length;
+    const to =
+      e.key === "Home" ? 0 : e.key === "End" ? n - 1 : e.key === "ArrowLeft" ? (at + n - 1) % n : (at + 1) % n;
+    btns[to].focus();
+  };
+  const cur = sections.find((s) => s.key === open);
   return (
     <>
-      <div className="secrow" data-testid="section-row">
+      <div className="seg secseg" role="group" aria-label="Sections" data-testid="section-row" ref={ref} onKeyDown={onKey}>
         {sections.map((s) => (
           <button
             key={s.key}
             type="button"
-            className="secbtn"
+            className={open === s.key ? "on" : ""}
             id={`sec-${s.key}`}
-            aria-expanded={open.has(s.key)}
+            aria-expanded={open === s.key}
             aria-controls={`secpanel-${s.key}`}
             data-testid={`sec-${s.key}`}
-            onClick={() => flip(s.key)}
+            onClick={() => setOpen((o) => (o === s.key ? "" : s.key))}
           >
             {s.label}
-            <Icon name="chevron-down" />
           </button>
         ))}
       </div>
-      {sections
-        .filter((s) => open.has(s.key))
-        .map((s) => (
-          <section
-            key={s.key}
-            className="secpanel"
-            id={`secpanel-${s.key}`}
-            aria-labelledby={`sec-${s.key}`}
-          >
-            {s.content}
-          </section>
-        ))}
+      {cur && (
+        <section className="secpanel" id={`secpanel-${cur.key}`} aria-labelledby={`sec-${cur.key}`}>
+          {cur.content}
+        </section>
+      )}
     </>
   );
 }
@@ -885,7 +884,7 @@ function ReviewBody({
       <Verdict
         tone={v.tone}
         text={v.text}
-        sub="the agent's read · comments post as a plain review either way"
+        about="The agent's read of this PR. Comments post as a plain review either way — nothing here blocks a merge unless you ask for changes."
         chips={rev.chips}
         testid="verdict"
       />
@@ -921,7 +920,7 @@ function ReviewBody({
             )}
           </>
         )}
-        <SectionRow sections={sections} />
+        <SectionSeg sections={sections} />
         {rev.count > 0 && (
           <CommitBar
             staged={selected.size}

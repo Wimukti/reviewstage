@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, errMessage, type StackData } from "./api";
 import { prUrl } from "./pr";
 import { PrTitle } from "./PrPage";
+import { About } from "./ReviewParts";
 import { Link, useLocation } from "./router";
 import { Banner } from "./ui";
 import { BrandIcon, Icon } from "./icons";
@@ -62,7 +63,14 @@ export function StackPage() {
         <span className="sep">/</span>
         <span className="cur">stack</span>
       </nav>
-      <PrTitle repo={d?.repo || repo} num={pr} title="Stacked review" />
+      <div className="stackhead">
+        <PrTitle repo={d?.repo || repo} num={pr} title="Stacked review" />
+        <About>
+          These open PRs form a stack — each is based on the one above it. Tick the ones to review
+          and start them from here; they queue one at a time on this box, skipping any already
+          running.
+        </About>
+      </div>
     </>
   );
 
@@ -82,8 +90,8 @@ export function StackPage() {
         <div className="card top">
           <h4 style={{ marginTop: 0 }}>Not a stack</h4>
           <p className="muted sm">
-            This PR isn't stacked on another open PR — its base branch isn't another open PR's
-            branch. <Link to={prUrl({ repo: d.repo, num: pr })}>Back to the review</Link>.
+            Its base branch is not another open PR's branch.{" "}
+            <Link to={prUrl({ repo: d.repo, num: pr })}>Back to the review</Link>.
           </p>
         </div>
       </>
@@ -120,10 +128,6 @@ export function StackPage() {
   return (
     <>
       {head}
-      <p className="lead">
-        These open PRs form a stack (each based on the one above). Review the whole stack from here
-        instead of triggering each separately.
-      </p>
       <div className="list">
         {d.stack.map((it, i) => {
           const pos = i === 0 ? "top" : i === d.stack.length - 1 ? "bottom" : "";
@@ -187,8 +191,7 @@ export function StackPage() {
             </div>
             <div className="runrow">
               <span className="hint" style={{ flex: 1 }}>
-                Tick the PRs to review — each queues a review (skipping any already running); they
-                run one at a time on the box.
+                {sel.size.toLocaleString("en-US")} of {d.stack.length.toLocaleString("en-US")} ticked
               </span>
               <button
                 className="btn primary"

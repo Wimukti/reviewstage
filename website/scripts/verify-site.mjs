@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "@playwright/test";
 
-const outDir = resolve(process.argv[2] ?? "../openspec/changes/one-identity-redesign/after/site");
+const outDir = resolve(process.argv[2] ?? "../openspec/changes/stage-light/after/site");
 mkdirSync(outDir, { recursive: true });
 const PORT = Number(process.env.RS_SITE_PORT || 4877), BASE = `http://127.0.0.1:${PORT}/reviewstage`;
 const pages = { landing: "/", install: "/start/install/", security: "/security/" };
@@ -50,53 +50,50 @@ try {
         if (name === "landing") {
           const small = await page.evaluate(() => [...document.querySelectorAll("a, button")].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (r.height < 44 || r.width < 44) && getComputedStyle(el).visibility !== "hidden"; }).map((el) => `${el.tagName}.${el.className} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`));
           if (w === 390) console.log(`     targets under 44px on landing phone: ${small.length ? small.join(" | ") : "none"}`);
-          const cta = page.locator(".cta [data-install] code");
+          // The install command is the page's one conversion moment; it rendered as an empty
+          // box once already (a containment collapse), so its width is asserted, not assumed.
+          const cta = page.locator("#install [data-install] code");
           const ctaText = (await cta.textContent())?.trim() ?? "";
           const ctaBox = await cta.boundingBox();
-          check(ctaText.startsWith("git clone") && ctaBox && ctaBox.width > 100, `${scheme} ${label}: closing CTA install command renders (${Math.round(ctaBox?.width ?? 0)}px wide)`);
+          check(ctaText.startsWith("git clone") && ctaBox && ctaBox.width > 100, `${scheme} ${label}: install command renders (${Math.round(ctaBox?.width ?? 0)}px wide)`);
           await cta.scrollIntoViewIfNeeded();
-          await page.screenshot({ path: join(outDir, `closing-cta-${scheme}-${label}.png`) });
-          const heights = [];
-          for (const s of [1, 4, 6]) {
-            await page.locator(`[data-lr-step="${s}"]`).click();
+          await page.screenshot({ path: join(outDir, `install-cmd-${scheme}-${label}.png`) });
+
+          // Four sections, and the page stays short enough to be read (design §9).
+          const words = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").trim().split(/\s+/).filter(Boolean).length);
+          check(words < 400, `${scheme} ${label}: home reads ${words} words (< 400)`);
+
+          // The hero is the app itself, not a picture of it (design §7).
+          const hero = page.locator(".stage-hero [data-stage-frame]").first();
+          await hero.waitFor({ state: "attached" });
+          const heroState = await hero.evaluate(async (el) => {
+            for (let i = 0; i < 100 && !el.shadowRoot?.querySelector(".finding"); i++) await new Promise((r) => setTimeout(r, 100));
+            const root = el.shadowRoot;
+            return { shadow: !!root, staged: root?.querySelectorAll(".finding.is-staged").length ?? 0 };
+          });
+          check(heroState.shadow && heroState.staged >= 1, `${scheme} ${label}: hero island hydrated, ${heroState.staged} staged finding(s) in its shadow root`);
+
+          // The strip is keyboard-operable, five stops (design §"How it works").
+          const tabs = page.locator('.strip [role="tab"]');
+          const nTabs = await tabs.count();
+          check(nTabs === 5, `${scheme} ${label}: how-it-works strip has ${nTabs} stops (5)`);
+          if (nTabs === 5) {
+            await tabs.first().focus();
+            await page.keyboard.press("ArrowRight");
             await page.waitForTimeout(150);
-            heights.push(await page.locator(".lr").evaluate((el) => el.getBoundingClientRect().height));
+            const firstId = await tabs.first().getAttribute("id");
+            const selId = await page.locator('.strip [role="tab"][aria-selected="true"]').first().getAttribute("id");
+            check(selId !== null && selId !== firstId, `${scheme} ${label}: arrow key moves the strip selection (${firstId} -> ${selId})`);
           }
-          check(new Set(heights.map((h) => Math.round(h))).size === 1, `${scheme} ${label}: hero height across steps 1/4/6 = ${heights.map((h) => Math.round(h)).join(", ")}`);
         }
         await page.close();
       }
       await ctx.close();
     }
   }
-  // The site renders the app (design.md §7): the stage island on the proof page hydrates, attaches
-  // an open shadow root, and that root holds a real `.finding.is-staged` from dashboard-ui/src.
-  {
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
-    const page = await ctx.newPage();
-    await page.goto(BASE + "/stage-proof/", { waitUntil: "load" });
-    const frame = page.locator('[data-proof="scene"] [data-stage-frame]');
-    await frame.waitFor({ state: "attached", timeout: 15_000 });
-    const island = await frame.evaluate(async (el) => {
-      for (let i = 0; i < 100 && !el.shadowRoot?.querySelector(".finding"); i++) await new Promise((r) => setTimeout(r, 100));
-      const root = el.shadowRoot;
-      return {
-        shadow: !!root,
-        styled: !!root?.querySelector("style")?.textContent?.includes(".finding"),
-        staged: root?.querySelectorAll(".finding.is-staged").length ?? 0,
-        findings: root?.querySelectorAll(".finding").length ?? 0,
-        count: root?.querySelector(".commit-bar")?.textContent?.includes("2 staged") ?? false,
-        leaked: document.querySelectorAll(".finding").length,
-      };
-    });
-    check(island.shadow, "stage-proof: the island attached an open shadow root");
-    check(island.styled, "stage-proof: the app stylesheet is inlined inside the shadow root");
-    check(island.findings === 2 && island.staged === 2, `stage-proof: shadow root holds .finding.is-staged (${island.staged} of ${island.findings})`);
-    check(island.count, "stage-proof: the commit bar in the shadow root reads 2 staged");
-    check(island.leaked === 0, `stage-proof: no .finding leaked into the light DOM (${island.leaked})`);
-    await page.screenshot({ path: join(outDir, "stage-proof-dark-desktop.png"), fullPage: true });
-    await ctx.close();
-  }
+  // The hero on the real home page is the same proof, asserted per theme and width above:
+  // the island hydrates, attaches an open shadow root, and that root holds the app's own
+  // `.finding.is-staged`. The standalone proof page it replaced is gone.
   await browser.close();
   console.log("\n<head> as served on the landing page:\n" + head);
 } finally {

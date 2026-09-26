@@ -2,10 +2,6 @@
  * focus ring, and the site's copy of the stage light's first placement. The type scale,
  * --t-display included, comes from tokens.css. No colour literals here. */
 :root {
-  /* Bridge for the two sizes the stage-light scale dropped; marketing.css and starlight.css
-   * still name them. The W lane moves those to --t-24 / --t-32 and deletes these two lines. */
-  --t-26: var(--t-24);
-  --t-34: var(--t-32);
   --nav-height: 4rem;
   --container-max: 76rem;
   --page-gutter: clamp(1.143rem, 3vw, 2.5rem);

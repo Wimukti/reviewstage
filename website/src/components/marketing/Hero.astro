@@ -1,42 +1,36 @@
 ---
-/* useScreenshot swaps the live simulated run for the static screenshot pair. */
-interface Props { useScreenshot?: boolean; }
-const { useScreenshot = false } = Astro.props;
-import InstallCommand from "./InstallCommand.astro";
-import Shot from "./Shot.astro";
-import LiveRun from "./LiveRun.astro";
-import { repo, withBase } from "../../content/site-links";
+/* The fold (proposal §"Home" 1): two lines, one sentence, two buttons, then the real PR page
+ * playing the staging sequence under the stage light. Nothing else is above the frame. */
+import HeroStage from "./HeroStage";
+import GitHubIcon from "./GitHubIcon.astro";
+import { installCommand } from "../../content/install";
+import { repo } from "../../content/site-links";
 ---
 <section class="hero">
-  <div class="container-page hero-shell">
-    <div class="hero-copy">
-      <span class="status"><i aria-hidden="true"></i>Open source · Self-hosted · Beta</span>
-      <h1 class="display-title">AI wrote the PR.<br /><span class="accent">You still have to review it.</span></h1>
-      <p class="lede hero-lede">ReviewStage drafts your review from the real diff, on your own Claude plan, and stages every finding privately. You pick what reaches GitHub, edit it, and post it under your own name. Nothing posts until you click.</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href={withBase("/start/")}>Get started</a>
-        <a class="btn btn-secondary" href={repo} aria-label="ReviewStage on GitHub">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.35-1.3-1.7-1.3-1.7-1.05-.72.08-.71.08-.71 1.16.08 1.78 1.2 1.78 1.2 1.03 1.78 2.7 1.27 3.36.97.1-.75.4-1.27.73-1.56-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.5 3.17-1.18 3.17-1.18.63 1.59.24 2.76.12 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
-          GitHub
-        </a>
-      </div>
-      <div class="hero-install">
-        <InstallCommand />
-        <p class="meta-text">Docker Compose, then <code class="kbd">http://localhost:8899</code>. Needs a Claude Pro, Max, Team or Enterprise plan for the reviewer who runs it.</p>
-      </div>
+  <div class="container-page hero-copy">
+    <h1 class="display-title">AI wrote the PR.<br /><span class="accent">You still have to review it.</span></h1>
+    <p class="hero-line">Stage every finding privately. Post the ones you mean, as yourself.</p>
+    <div class="hero-actions">
+      <button type="button" class="btn btn-primary" data-copy={installCommand} aria-label="Copy the one-line install command">
+        <span data-copy-label>Install</span>
+      </button>
+      <a class="btn btn-secondary" href={repo}><GitHubIcon />GitHub</a>
     </div>
-    <div class="hero-stage">
-      {useScreenshot ? <Shot name="hero" alt="The ReviewStage PR page for acme/widgets #38849: the agent's assessment — “1 thing to fix before merge” with three bullet points — above two finding cards, each with a ticked checkbox, a severity word, the file and line it points at, and a one-line why-it-matters. A sticky bar at the foot reads “2 staged” and carries a single Post selected to GitHub button." label="reviewstage · pr #38849 · 2 findings staged" loading="eager" /> : <LiveRun />}
-    </div>
+  </div>
+  <div class="container-page hero-stage stage-hero">
+    <HeroStage client:only="react" />
   </div>
 </section>
 <style>
-  .hero { padding-block: clamp(3rem, 6vw, 5.5rem) clamp(3rem, 6vw, 5rem); border-bottom: 1px solid var(--hairline); }
-  .hero-shell { display: grid; align-items: center; gap: clamp(2.5rem, 5vw, 4.5rem); }
-  @media (min-width: 64rem) { .hero-shell { grid-template-columns: minmax(0, 6fr) minmax(0, 7fr); } }
-  .hero-copy { display: grid; gap: 1.5rem; }
-  .hero-lede { max-width: 34rem; }
-  .hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-  .hero-install { display: grid; gap: 0.6rem; max-width: 36rem; }
-  .hero-install .meta-text { margin: 0; }
+  /* overflow-x: clip keeps the light's 140%-wide gradient from widening the page on a phone without
+     making the section a scroll container. */
+  .hero { padding-block: clamp(3rem, 7vw, 6rem) var(--section-pad); border-bottom: 1px solid var(--hairline); overflow-x: clip; }
+  .hero-copy { display: grid; justify-items: center; gap: 1.5rem; text-align: center; }
+  .hero-line { margin: 0; max-width: 40rem; color: var(--graphite); font-size: var(--t-16); line-height: 1.5; text-wrap: balance; }
+  .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; }
+  .hero-actions .btn-primary { min-width: 8rem; }
+  .hero-stage { margin-top: clamp(2.5rem, 5vw, 4rem); }
+  /* The island renders client-only; the reserved height keeps the fold from jumping when it mounts. */
+  .hero-stage :global([data-hero-stage]) { min-height: 34rem; }
+  @media (max-width: 40rem) { .hero-stage :global([data-hero-stage]) { min-height: 40rem; } }
 </style>

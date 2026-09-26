@@ -5,10 +5,14 @@ sidebar:
   order: 3
 ---
 
+import Shot from "../../../components/marketing/Shot.astro";
+
 A **repository profile** is a short, checked list of the places in a codebase where a mistake
 hurts most — payments, auth, migrations, public contracts, the module everything imports — with
 the checks a reviewer must perform when a PR touches one. ReviewStage builds it once per
 repository and then feeds it into every review of that repository.
+
+<Shot name="profile" alt="The Skills page’s Profiles tab with the acme/widgets profile open: Profiled and Stale status words, a banner saying the profile is out of date with the checkout, the last-run line with model and tokens, the path counts, a Re-profile button, and the rendered profile with its critical paths, risk paths, review rules and do-not-flag list." label="skills · profiles · acme/widgets" loading="eager" />
 
 Without a profile the agent reads each PR cold. With one, a Standard or Deep review that touches
 `app/payments/**` is told, in so many words, to verify the callers, contracts, migrations and

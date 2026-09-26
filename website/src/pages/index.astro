@@ -1,18 +1,11 @@
 ---
+/* Home: four sections, under 400 words (design §9). The fold and the strip are the app's own
+ * components (design §7); everything a reader might want to know beyond this lives in the docs. */
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 import Hero from "../components/marketing/Hero.astro";
-import TrustBar from "../components/marketing/TrustBar.astro";
-import Section from "../components/marketing/Section.astro";
-import Feature from "../components/marketing/Feature.astro";
-import Steps from "../components/marketing/Steps.astro";
-import Tiers from "../components/marketing/Tiers.astro";
-import ClosingCta from "../components/marketing/ClosingCta.astro";
-import GateMock from "../components/marketing/mocks/GateMock.astro";
-import StagingMock from "../components/marketing/mocks/StagingMock.astro";
-import RunMock from "../components/marketing/mocks/RunMock.astro";
-import TeamMock from "../components/marketing/mocks/TeamMock.astro";
-import LearnMock from "../components/marketing/mocks/LearnMock.astro";
-import QaMock from "../components/marketing/mocks/QaMock.astro";
+import HowItWorks from "../components/marketing/HowItWorks";
+import Guarantees from "../components/marketing/Guarantees.astro";
+import Install from "../components/marketing/Install.astro";
 
 const title = "ReviewStage";
 const description =
@@ -20,119 +13,30 @@ const description =
 ---
 <MarketingLayout {title} {description}>
   <Hero />
-  <TrustBar />
 
-  <Section id="gate" title="Nothing posts until you click"
-    lede="The review step has no GitHub write path at all: the agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before-and-after count of the pull request that fails the run if anything landed on it. It reads the diff and produces a file the dashboard renders. Every write to GitHub is a separate, deliberate click by a signed-in person, using that person's own token.">
-    <Feature shot="gate" alt="The Approve panel open above the sticky posting bar: a pre-filled “LGTM — no blockers” comment with the one should-fix finding listed under it and its own Approve #38849 button, and below that the bar reading “2 staged · 1 inline · 1 in the summary · posts as plain comments” with a Request changes instead checkbox and the Post selected to GitHub button."
-      label="post · 2 staged · COMMENT review"
-      points={[
-        "Comment-only. Posting is always a plain COMMENT review. ReviewStage never requests changes and never blocks a merge; the agent's verdict is shown to you as an assessment, nothing more.",
-        "Approval is its own click, pre-filled with LGTM plus a checklist of the blocker and should-fix findings, editable before it goes.",
-        "Every finding's file and line is checked against the actual diff before posting, so one anchor pointing outside it cannot make GitHub reject the whole review; those findings move into the summary instead, and the page tells you before you post.",
-        "A failed GitHub read never degrades into a bad post: the fetch checks the response shape, retries once, and refuses on anything odd.",
-        "Posting is scoped to the run, not the pull request, so you can review and post a second time after the author pushes — while the same run can never post twice, and approving a branch that has moved needs an explicit confirmation.",
-      ]}>
-      <GateMock slot="mock" />
-      <h3 class="card-title">Comment-only, by construction.</h3>
-      <p class="body-text">A wrong nit costs a reply. A wrong approval ships a bug under a real person's name. So the two are different buttons, and the agent can press neither.</p>
-    </Feature>
-  </Section>
+  <section id="how-it-works" class="home-section" aria-labelledby="how-title">
+    <div class="container-page section-inner">
+      <h2 id="how-title" class="section-title">How it works</h2>
+      <HowItWorks client:only="react" />
+    </div>
+  </section>
 
-  <Section id="staging" title="A review is a staging area"
-    lede="Findings arrive as cards, not as comments. You decide which ones deserve your name on them, reword the ones that are almost right, and drop the rest without anyone seeing.">
-    <Feature flip shot="staging" alt="One finding card: a ticked checkbox and the severity word Should fix, the plain-language title “A product with no vendor can crash the lead-time badge”, the path app/models/Product.php:42 with a Copy control, a one-line Why it matters, and the collapsed Explain simply disclosure above an Edit comment button."
-      label="finding · should-fix · src/orders/cutoff.ts:142"
-      points={[
-        "Tick or untick each finding. Edit the body inline with a markdown preview; the original is kept so the learnings loop knows what you changed.",
-        "Each card leads with a plain title and why it matters; the technical detail is collapsed underneath.",
-        "Explain simply: one click rewrites a finding in plain words and adds how to verify it, on your own Claude account.",
-        "Findings can carry a GitHub suggestion block, so the author gets a one-click Apply on the exact replacement.",
-        "The review is flagged stale when the author pushes new commits. It is never re-run for you; you choose when.",
-        "Re-run at any effort or focus. Every earlier run stays in history and can be opened read-only.",
-      ]}>
-      <StagingMock slot="mock" />
-      <h3 class="card-title">Your name, your call.</h3>
-      <p class="body-text">The agent writes for a person deciding from its text alone, so the prose has to be readable, and the findings have to be few and confident. What you drop is recorded, and it stops coming back.</p>
-    </Feature>
-  </Section>
+  <section id="guarantees" class="home-section" aria-labelledby="guarantees-title">
+    <div class="container-page section-inner">
+      <h2 id="guarantees-title" class="section-title">What holds, always</h2>
+      <Guarantees />
+    </div>
+  </section>
 
-  <Section id="plan" title="Runs on your own Claude plan"
-    lede="ReviewStage runs the genuine Claude Code CLI. Each reviewer connects their own Claude account in the browser, and the reviews they start are billed to their plan and bound by their plan's limits.">
-    <Feature shot="run" alt="The run form on a PR nobody has reviewed yet: Quick, Standard and Deep effort with the suggested one highlighted, a Default, Opus, Sonnet or Haiku model choice, a free-text focus note filled in, and a Run review button."
-      label="run · effort quick · model default · focus: retry back-off"
-      points={[
-        "Click-to-run, not on every push. A real agent run takes minutes and real tokens — the run form shows your own install's measured median once it has a few runs to go on — so you decide which PRs earn one.",
-        "Quick, Standard or Deep effort, auto-suggested from the diff size. Deep tells the agent to search the whole repository for impact before judging.",
-        "A focus note (\"pay attention to the cut-off maths\") is folded into the prompt on top of the skill.",
-        "Choose the model per run: your plan's default, Opus, Sonnet or Haiku. The PR page shows which model ran and how many tokens it used.",
-        "Runs serialise one at a time per server, and refuse to start below a free-memory floor, so two agents never fight over a small box.",
-        "A re-run of the exact same commit, effort, focus and model is served from cache: zero new tokens.",
-      ]}>
-      <RunMock slot="mock" />
-      <h3 class="card-title">Honest about the cost.</h3>
-      <p class="body-text">There is no shared API key and no metered SaaS. Whoever clicks Start pays for that run on their own subscription, and everyone requested on the PR reads the result.</p>
-    </Feature>
-  </Section>
-
-  <Section id="team" title="One server, every reviewer, their own name"
-    lede="One instance serves the whole team. Each person signs in once; from then on their queue, their runs, their posts and their approvals are theirs, under their own GitHub identity.">
-    <Feature flip shot="team" alt="The review queue: To review, Reviewed, Posted, Approved, Archived and All tabs each with a count, a filter box, a repository picker and sort controls, above three two-line rows showing the repository chip, PR number and title, the review state, severity chips, diff size, author and dates."
-      label="queue · to review (1) · reviewed (3) · posted (1)"
-      points={[
-        "Independent reviews per reviewer, each in its own git worktree, so two people on one PR never collide and can compare what they each found.",
-        "A poller notices review requests within three minutes (or a GitHub webhook delivers them in one second) and sends each requested person their own card — Slack, Discord, or any signed JSON webhook.",
-        "Posts and approvals go out under each person's own GitHub account. GitHub's own self-approval check runs against that user.",
-        "The service token in the server's .env does reads and the base clone. GitHub requires Pull requests: Read and write on it to reach review threads, so the guarantee is not the token's scope — it is that nothing in the service or review path writes with it.",
-        "Stacked PRs (Graphite or ghstack style) can be reviewed from one page, top to bottom, at one effort.",
-      ]}>
-      <TeamMock slot="mock" />
-      <h3 class="card-title">Shared server. Personal accountability.</h3>
-      <p class="body-text">The design refuses to have a bot identity. If a comment carries your name, you chose it, and the audit trail on GitHub is the audit trail.</p>
-    </Feature>
-  </Section>
-
-  <Section id="learn" title="It learns what your team drops"
-    lede="Every post records which findings were kept, reworded or dropped. Recent decisions are fed into the next review of the same repository, so the agent stops raising what your team has already rejected. Not machine learning: in-context steering with your own recent choices.">
-    <Feature shot="learnings" alt="The Skills page: tabs for Which skill, Suggested rules, Editors, Per repository, Profiles and Depth; a selector between the team default and your own skill; and a “How each skill scores” card showing the team default at 71.4% kept or reworded over 56 findings."
-      label="skills · team default · kept 71.4% · 56 findings"
-      points={[
-        "Per-skill keep rate: each review records which skill ran it, so the Skills page shows how often each skill's findings survive a human — on one shared definition, from a tally that is never truncated, and hidden entirely below twenty decisions.",
-        "Bring your own Claude Code skill. Paste your review skill and ReviewStage runs its logic, appending only the output contract the dashboard needs.",
-        "Quick-add a rule in plain words (\"don't ask for a ticket link in code comments\"); it is tidied into the skill's Team rules section. Drop the same complaint three times across different PRs and it is drafted as a proposed rule for you to accept or dismiss.",
-        "The team default is versioned: edits are committed to a git repository on your server with the editor's name, and the revision history is on the page. It cannot be blanked, and restoring the built-in takes a typed confirm.",
-        "Independence-weighted agreement: when reviewers using a different skill, model or effort raise the same finding, it is marked confirmed. Same configuration twice does not count.",
-      ]}>
-      <LearnMock slot="mock" />
-      <h3 class="card-title">A flywheel with a human at every turn.</h3>
-      <p class="body-text">Usage produces accept and reject signal. Signal shows which skills work. That informs a better team default, edited and approved by people.</p>
-    </Feature>
-  </Section>
-
-  <Section id="qa" title="From PR to QA guide"
-    lede="The same server can turn a PR into a tester-ready QA guide: what to set up, what to test first, where the change must not appear, and what not to file as a bug.">
-    <Feature flip shot="qa" alt="A generated QA guide for acme/widgets #38850: the model, token count and run time above set-up notes, then numbered P0, P1 and P2 cases each with explicit pass and fail conditions, and a “Do not file” section."
-      label="qa guide · pr #38850 · 4 cases · P0 2 · P1 1 · P2 1"
-      points={[
-        "Risk-tiered P0 / P1 / P2 cases derived from the real diff, the review threads and the branch's commit history, not from the PR description.",
-        "Written for a tester who has never seen the code: numbered steps, explicit pass and fail, no identifiers except the ones a tester has to type.",
-        "Includes a surface matrix with the deliberate \"must not appear\" rows and a list of known non-defects, so QA does not file them.",
-        "Runs on the requesting user's own Claude account, in its own worktree, never writing to GitHub — with the model, tokens and cost reported, and a budget sized from the diff. A guide that was cut short is failed, not handed to QA.",
-      ]}>
-      <QaMock slot="mock" />
-      <h3 class="card-title">Hand testers something grounded.</h3>
-      <p class="body-text">The guide is markdown you can paste anywhere. It is generated on demand, one job at a time, and can be stopped like a review.</p>
-    </Feature>
-  </Section>
-
-  <Section id="who" title="One developer, one team, or the whole company"
-    lede="The same container at every size. Start on a laptop, move it to a server when a second reviewer wants in, and add repositories when the organisation does.">
-    <Tiers />
-  </Section>
-
-  <Section id="start" title="Three steps to a staged review" align="center">
-    <Steps />
-  </Section>
-
-  <ClosingCta />
+  <section id="install" class="home-section" aria-labelledby="install-title">
+    <div class="container-page section-inner">
+      <h2 id="install-title" class="section-title">Install</h2>
+      <Install />
+    </div>
+  </section>
 </MarketingLayout>
+<style>
+  .home-section { padding-block: var(--section-pad); border-bottom: 1px solid var(--hairline); scroll-margin-top: calc(var(--nav-height) + 1rem); }
+  .home-section:last-of-type { border-bottom: 0; }
+  .section-inner { display: grid; gap: var(--section-gap); }
+</style>

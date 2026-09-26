@@ -1,5 +1,5 @@
 ---
-const cmd = "git clone https://github.com/Wimukti/reviewstage && cd reviewstage && cp .env.example .env && docker compose up -d";
+import { installCommand as cmd } from "../../content/install";
 ---
 <div class="install" data-install>
   <span class="prompt" aria-hidden="true">$</span>
@@ -8,13 +8,6 @@ const cmd = "git clone https://github.com/Wimukti/reviewstage && cd reviewstage 
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
   </button>
 </div>
-<script>
-  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
-    b.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(b.dataset.copy ?? ""); b.dataset.done = "1"; setTimeout(() => delete b.dataset.done, 1200); } catch {}
-    });
-  }
-</script>
 <style>
   .install { display: flex; align-items: center; width: 100%; min-width: 0; box-sizing: border-box; gap: 0.6rem; max-width: 100%; padding: 0.35rem 0.35rem 0.35rem 0.85rem; border: 1px solid var(--hairline); border-radius: var(--r-s); background: var(--panel); font-family: var(--mono); font-size: var(--t-13); }
   .prompt { color: var(--blue); font-weight: 500; }

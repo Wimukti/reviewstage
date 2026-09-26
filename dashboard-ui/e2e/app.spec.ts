@@ -121,20 +121,20 @@ test.describe("signed in", () => {
 
   test("pasting a bare number with several repos shows a repo picker", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".reviewany input").fill(PR3);
+    await page.locator("#qsearch").fill(PR3);
     const pick = page.getByTestId("repo-pick");
     await expect(pick).toBeVisible();
     await pick.locator("select").selectOption(REPO2);
-    await page.locator(".reviewany button[type=submit]").click();
+    await page.getByTestId("open-pr").click();
     await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO2)}&pr=${PR3}`));
     await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);
   });
 
   test("pasting a GitHub URL derives the repo — no picker", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".reviewany input").fill(`https://github.com/${REPO2}/pull/${PR3}`);
+    await page.locator("#qsearch").fill(`https://github.com/${REPO2}/pull/${PR3}`);
     await expect(page.getByTestId("repo-pick")).toHaveCount(0);
-    await page.locator(".reviewany button[type=submit]").click();
+    await page.getByTestId("open-pr").click();
     await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO2)}&pr=${PR3}`));
   });
 

@@ -145,9 +145,10 @@ test.describe("the status line", () => {
     await expect(menu.getByRole("link", { name: /stacked review \(2 PRs\)/i })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
-    // Four collapsed sections in one row.
+    // Four collapsed sections as one segmented control.
     const row = page.getByTestId("section-row");
-    const btns = row.locator(".secbtn");
+    await expect(row).toHaveClass(/seg/);
+    const btns = row.locator("button");
     await expect(btns).toHaveText(["Full summary", "What this PR does", "Approve", "Re-run"]);
     const tops = await Promise.all([0, 1, 2, 3].map(async (i) => (await btns.nth(i).boundingBox())!.y));
     expect(new Set(tops.map(Math.round)).size).toBe(1);

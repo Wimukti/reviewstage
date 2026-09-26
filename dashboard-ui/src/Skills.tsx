@@ -11,6 +11,7 @@ import {
   type Token,
 } from "./api";
 import { MdEditor } from "./MdEditor";
+import { PageHead } from "./About";
 import { Banner, RawBanner, SlowBusy } from "./ui";
 import { Icon } from "./icons";
 import { Status } from "./ui";
@@ -21,14 +22,59 @@ const RATE_FLOOR = 20;
 const floorOf = (s: SkillStat) => s.minSample ?? RATE_FLOOR;
 const ratable = (s: SkillStat) => s.ratable ?? s.total >= floorOf(s);
 
-const COPY_HINT = (
-  <div className="hint">
-    Load a local skill onto the clipboard, then paste it here:
-    <br />
-    <code>cat ~/.claude/skills/pr-review/SKILL.md | pbcopy</code> (macOS) ·{" "}
-    <code>… | xclip -selection clipboard</code> or <code>… | wl-copy</code> (Linux).
-  </div>
-);
+// The skill editor: a plain <textarea> for a11y and for the tests, laid over a <pre> mirror that
+// draws the line numbers and marks the managed "## Team rules" section. Both share one font,
+// padding and wrap rule (pages.css), so the caret lands exactly on the mirrored glyph.
+const RULES_MARKER = "## Team rules";
+function CodeArea({
+  value,
+  onChange,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  label: string;
+}) {
+  const lines = value.split("\n");
+  const start = lines.findIndex((l) => l.trimEnd() === RULES_MARKER);
+  let end = lines.length;
+  if (start >= 0) {
+    for (let i = start + 1; i < lines.length; i++) {
+      if (/^##\s/.test(lines[i])) {
+        end = i;
+        break;
+      }
+    }
+  }
+  return (
+    <div className="codearea" data-testid="code-area">
+      <pre className="codearea-mirror" aria-hidden="true">
+        {lines.map((l, i) => {
+          const rules = start >= 0 && i >= start && i < end;
+          return (
+            <div
+              key={i}
+              className={"ln" + (rules ? " is-rules" : "") + (i === start ? " is-rules-h" : "")}
+              data-n={i + 1}
+            >
+              {l || "\u200b"}
+            </div>
+          );
+        })}
+      </pre>
+      <textarea
+        className="in codearea-in"
+        aria-label={label}
+        spellCheck={false}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
 
 function RuleForm({
   token,
@@ -72,10 +118,6 @@ function RuleForm({
           {busy ? "Adding…" : "Add rule"}
         </button>
       </form>
-      <div className="hint">
-        Type a preference in plain words — ReviewStage tidies it into the skill so you don't have to edit
-        the whole file.
-      </div>
     </div>
   );
 }
@@ -125,12 +167,10 @@ function SkillEditor({
           );
         }}
       >
-        <textarea
-          className="in"
-          spellCheck={false}
-          style={{ minHeight: 150 }}
+        <CodeArea
+          label={isGlobal ? "Team default skill" : isRepo ? `Team default for ${repoName}` : "My own skill"}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={setText}
           placeholder={
             isGlobal
               ? "The shared reviewing approach — edit it right here."
@@ -139,14 +179,6 @@ function SkillEditor({
               : "Paste your pr-review SKILL.md here — or leave blank to use the team default."
           }
         />
-        <div className="hint">
-          {isGlobal
-            ? "Everyone without their own skill uses this. ReviewStage always appends its output format."
-            : isRepo
-            ? `Every review of ${repoName} runs with this — it takes precedence over personal skills and the team default for that repository. Clear it to fall back.`
-            : "Your skill's logic runs; ReviewStage always appends its output format. Reviews others start are unaffected."}
-        </div>
-        {COPY_HINT}
         <div className="inrow" style={{ marginTop: 10 }}>
           <button className="btn primary" type="submit" disabled={busy}>
             {busy ? "Saving…" : "Save skill"}
@@ -231,10 +263,11 @@ function DepthEditor({ token, level, d, onDone }: {
   };
   return (
     <div className="depthed" data-testid="depth-editor">
-      <p className="muted sm" style={{ marginTop: 0 }}>
-        What ReviewStage does on a <b>{d.name}</b> review ({d.meta}). Appended to whichever skill runs.{" "}
+      <div className="depthmeta">
+        <b>{d.name}</b>
+        <span className="muted">{d.meta}</span>
         <Status kind={d.edited ? "edited" : "archived"}>{d.edited ? "Edited" : "Default"}</Status>
-      </p>
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -250,13 +283,7 @@ function DepthEditor({ token, level, d, onDone }: {
           );
         }}
       >
-        <textarea
-          className="in"
-          spellCheck={false}
-          style={{ minHeight: 150 }}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
+        <CodeArea label={`${d.name} depth instructions`} value={text} onChange={setText} />
         <div className="inrow" style={{ marginTop: 10 }}>
           <button className="btn primary" type="submit" disabled={busy}>
             {busy ? "Saving…" : "Save depth"}
@@ -524,11 +551,6 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
               {d.versions.length} earlier version{d.versions.length === 1 ? "" : "s"}
             </summary>
             <div className="dbody">
-              <p className="muted sm" style={{ marginTop: 0 }}>
-                Every save and every re-profile keeps the one it replaced. Open one to read it;
-                restoring makes it the live profile and keeps the current one as a version of its
-                own, so nothing is lost either way.
-              </p>
               <ul className="verlist">
                 {d.versions.map((ts) => (
                   <li key={ts}>
@@ -610,11 +632,6 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
               Runs on your Claude account — connect it in Integrations first.
             </span>
           )}
-        </div>
-        <div className="hint">
-          Gathers the tree, churn, in-degree, CODEOWNERS and CI names with no model call, then makes one
-          Sonnet call to name the critical paths. Every path is checked against the tree; anything that
-          matches nothing is dropped.
         </div>
         {d.last && d.last.dropped.length > 0 && (
           <div className="profdrop">
@@ -875,11 +892,6 @@ function SuggestedRules({
 
   return (
     <div data-testid="suggested-rules">
-      <p className="tabdesc">
-        A finding the team drops once is a preference; one dropped {d.suggestMin} times across
-        different PRs is a standard nobody has written down. Drafted from your own rejections —
-        nothing reaches a skill until you accept it.
-      </p>
       {live.length > 0 && (
         <div className="list" style={{ marginTop: 0 }}>
           {live.map((s) => (
@@ -919,6 +931,55 @@ function SuggestedRules({
     </div>
   );
 }
+
+// Orientation per tab, behind the page's one `?` (design §6). Everything that used to be a
+// sentence under a heading lives here and nowhere else.
+const ABOUT: Record<string, React.ReactNode> = {
+  which: (
+    <>
+      The skill is the reviewing approach ReviewStage follows. Quick, Standard and Deep all run
+      the same skill and differ only in the depth instructions. Scores are the share of a skill's
+      findings that were posted at all, kept as-is or reworded; Insights' &ldquo;kept as-is&rdquo;
+      is stricter and reads lower.
+    </>
+  ),
+  rules: (
+    <>
+      A finding the team drops once is a preference; one dropped often enough across different
+      PRs is a standard nobody has written down. Rules are drafted from your own rejections and
+      nothing reaches a skill until you accept it.
+    </>
+  ),
+  editors: (
+    <>
+      The team default is what everyone without their own skill runs; your own skill runs only
+      the reviews you start. ReviewStage always appends its output format. To load a local skill:{" "}
+      <code>cat ~/.claude/skills/pr-review/SKILL.md | pbcopy</code> (macOS) or{" "}
+      <code>… | wl-copy</code> (Linux), then paste it here.
+    </>
+  ),
+  repos: (
+    <>
+      Optional. A repository with its own team default is reviewed with it, ahead of personal
+      skills and the shared default. Leave it empty to use the shared default.
+    </>
+  ),
+  profiles: (
+    <>
+      A profile names the paths where a mistake hurts most in each repository. When a PR touches
+      one, Standard and Deep reviews verify it explicitly and its findings carry a{" "}
+      <span className="cpbadge">critical path</span> badge. Profiling gathers the tree, churn,
+      CODEOWNERS and CI names with no model call, then makes one Sonnet call; every path is
+      checked against the tree.
+    </>
+  ),
+  depth: (
+    <>
+      How deep each level goes, appended to whichever skill runs. Deep is a thorough, whole-repo
+      analysis.
+    </>
+  ),
+};
 
 // The six tabs, each one screen. The hash is the tab, so a link from Learnings or a
 // notification (`/skills#rules`) lands on the right one and Back returns to the last.
@@ -1099,12 +1160,7 @@ export function Skills() {
 
   return (
     <>
-      <h1>Review skills</h1>
-      <p className="lead">
-        The skill is the reviewing approach ReviewStage follows. Pick which one runs your reviews,
-        accept the rules your rejections suggest, and edit the skill, its per-repository
-        overrides and the depth instructions.
-      </p>
+      <PageHead title="Review skills" about={ABOUT[tab]} aboutTestId="skills-about" />
       {banner && <RawBanner html={banner} />}
 
       <SkillTabs tab={tab} go={go} counts={counts} />
@@ -1112,10 +1168,6 @@ export function Skills() {
       {panel(
         "which",
         <>
-          <p className="tabdesc">
-            Quick, Standard and Deep all run the same skill — they differ only in the depth
-            instructions on the Depth tab.
-          </p>
           <div className="skillsel">
             {opt("team", "Team default", "the shared reviewing approach", false)}
             {opt(
@@ -1125,15 +1177,13 @@ export function Skills() {
               !d.hasMySkill
             )}
           </div>
-          <div className="hint">
-            Reviews run with <b>{d.effLabel}</b>. Learnings sharpen whichever skill runs — every
-            finding you keep or drop feeds the next review.
+          <div className="skillnow" data-testid="skill-now">
+            <span className="muted">Runs with</span> <b>{d.effLabel}</b>
             {repos.some((r) => r.has) && (
               <>
-                {" "}
-                Repositories with their own team default use it instead:{" "}
+                <span className="muted">· overrides</span>
                 {repos.filter((r) => r.has).map((r) => (
-                  <span key={r.repo} className="repochip" style={{ marginRight: 4 }}>
+                  <span key={r.repo} className="repochip">
                     {r.repo}
                   </span>
                 ))}
@@ -1141,11 +1191,7 @@ export function Skills() {
             )}
           </div>
 
-          <h2>How each skill scores</h2>
-          <p className="muted sm">
-            The share of a skill's findings that were posted at all — kept as-is or reworded.
-            Insights' &ldquo;kept as-is&rdquo; is stricter and reads lower.
-          </p>
+          <h2>Scores</h2>
           {d.stats.length === 0 ? (
             <div className="empty">
               <Icon name="compass" />
@@ -1153,36 +1199,47 @@ export function Skills() {
               Post a few reviews and each skill's kept-rate will show up here.
             </div>
           ) : (
-            <div className="list">
-              {d.stats.map((s) => (
-                <div className="row" key={s.skill}>
-                  <div className="rowlink">
-                    <div className="rowtop">
-                      <span className="ttl">
+            <div className="list skilltable">
+              <table data-testid="skill-stats">
+                <thead>
+                  <tr>
+                    <th scope="col">Skill</th>
+                    <th scope="col" className="num">Kept</th>
+                    <th scope="col" className="num">Reworded</th>
+                    <th scope="col" className="num">Dropped</th>
+                    <th scope="col" className="num">Findings</th>
+                    <th scope="col">Rating</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.stats.map((s) => (
+                    <tr key={s.skill} data-testid="skill-stat">
+                      <td>
                         {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
-                        {s.skill === d.user && <span className="chip" style={{ marginLeft: 6 }}>you</span>}
-                      </span>
-                      {ratable(s) ? (
-                        <span className="num" style={{ color: "var(--ink)" }}>
-                          {s.rate.toFixed(1)}% kept or reworded
-                        </span>
-                      ) : (
-                        <span className="muted sm">
-                          n = {s.total} of {floorOf(s)} — too few to rate
-                        </span>
-                      )}
-                    </div>
-                    {ratable(s) && (
-                      <div className="ratebar">
-                        <div className="ratefill" style={{ width: `${s.rate}%` }} />
-                      </div>
-                    )}
-                    <div className="muted sm" style={{ marginTop: 6 }}>
-                      {s.kept} kept · {s.edited} reworded · {s.dropped} dropped · {s.total} findings
-                    </div>
-                  </div>
-                </div>
-              ))}
+                        {s.skill === d.user && <span className="chip">you</span>}
+                      </td>
+                      <td className="num">{s.kept.toLocaleString("en-US")}</td>
+                      <td className="num">{s.edited.toLocaleString("en-US")}</td>
+                      <td className="num">{s.dropped.toLocaleString("en-US")}</td>
+                      <td className="num">{s.total.toLocaleString("en-US")}</td>
+                      <td>
+                        {ratable(s) ? (
+                          <span className="rating">
+                            <span className="ratebar">
+                              <span className="ratefill" style={{ width: `${s.rate}%` }} />
+                            </span>
+                            <span className="num">{s.rate.toFixed(1)}%</span>
+                          </span>
+                        ) : (
+                          <span className="muted">
+                            n = {s.total.toLocaleString("en-US")} of {floorOf(s).toLocaleString("en-US")} · too few
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </>,
@@ -1203,10 +1260,6 @@ export function Skills() {
       {panel(
         "editors",
         <>
-          <p className="tabdesc">
-            The team default is what everyone without their own skill runs. Your own skill runs
-            only the reviews you start. ReviewStage always appends its output format.
-          </p>
           <div className="rowtop" style={{ marginBottom: 12 }}>
             <Seg
               label="Which skill to edit"
@@ -1245,7 +1298,7 @@ export function Skills() {
               />
               {d.teamHistory && d.teamHistory.length > 0 && (
                 <div className="skillhist">
-                  <div className="skillhist-h">Revision history — how the team standard evolved</div>
+                  <div className="skillhist-h">Revision history</div>
                   <ul>
                     {d.teamHistory.map((h) => (
                       <li key={h.hash}>
@@ -1277,10 +1330,6 @@ export function Skills() {
           </div>
         ) : (
           <>
-            <p className="tabdesc">
-              Optional. A repository with its own team default is reviewed with it — ahead of
-              personal skills and the shared default. Leave it empty to use the shared default.
-            </p>
             <div className="list" style={{ marginTop: 0 }} data-testid="repo-skill-list">
               {repos.map((r) => {
                 const on = curRepo?.repo === r.repo;
@@ -1334,11 +1383,6 @@ export function Skills() {
           </div>
         ) : (
           <>
-            <p className="tabdesc">
-              A profile names the paths where a mistake hurts most in each repository. When a PR
-              touches one, Standard and Deep reviews verify it explicitly and its findings carry a{" "}
-              <span className="cpbadge">critical path</span> badge.
-            </p>
             <div className="stack">
               {repos.map((r) => (
                 <RepoProfile key={r.repo} repo={r.repo} onBanner={setBanner} />
@@ -1351,10 +1395,6 @@ export function Skills() {
       {panel(
         "depth",
         <>
-          <p className="tabdesc">
-            How deep each level goes. Deep is a thorough, whole-repo analysis. All three run the
-            skill you picked.
-          </p>
           <div className="rowtop" style={{ marginBottom: 12 }}>
             <Seg
               label="Which depth to edit"

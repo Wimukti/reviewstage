@@ -1,2 +1,94 @@
 /* Lane A3 — Skills, Insights, Learnings, QA, Integrations, Settings (design.md §8). Imported by
-   styles.css into the `pages` layer. */
+   styles.css into the `pages` layer, which beats `base` without !important. Density from §3
+   (--row, --ctl, --pad), words from §6 (the one `?` per page), no colour literal, no stage
+   light (§4 allows none on these pages). */
+
+/* ---- page header: title, the one `?`, and the control that belongs beside it ---------------- */
+.pagehead{margin-bottom:12px;align-items:center}
+.pagehead .rangepills{align-self:center}
+.pagehead .explainbox .dbody{max-width:none;line-height:1.55}
+.pagehead .explainbox p{margin:0 0 8px}
+.pagehead .explainbox p:last-child{margin-bottom:0}
+.pagehead .explainbox ul{margin:8px 0 0;padding-left:18px}
+.pagehead .explainbox li{margin:4px 0;color:var(--graphite)}
+.pagehead .explainbox li b{color:var(--ink)}
+.cardhead .muted{font-size:var(--t-12)}
+
+/* ---- skills: which ------------------------------------------------------------------------- */
+.tabpanel>:first-child{margin-top:12px}
+.skillnow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0 0;min-height:var(--ctl)}
+.skillnow .repochip{margin-left:2px}
+.skilltable{margin-top:8px;overflow-x:auto}
+.skilltable table{font-size:var(--t-13)}
+.skilltable th,.skilltable td{padding:0 12px;height:var(--row);vertical-align:middle;white-space:nowrap}
+.skilltable th:first-child,.skilltable td:first-child{padding-left:var(--pad)}
+.skilltable th:last-child,.skilltable td:last-child{padding-right:var(--pad);width:38%}
+.skilltable .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:400}
+.skilltable th.num{color:var(--graphite);font-family:var(--font)}
+.skilltable td .chip{margin-left:6px}
+.skilltable .rating{display:flex;align-items:center;gap:10px}
+.skilltable .rating .ratebar{flex:1;min-width:80px;margin:0;display:block}
+.skilltable .rating .ratefill{display:block}
+.skilltable .rating .num{min-width:3.5em;text-align:left}
+
+/* ---- skills: the code surface -------------------------------------------------------------- */
+/* A <pre> mirror draws the gutter and the Team rules band; the real <textarea> sits over it with
+   transparent glyphs and a visible caret. The two share every metric below, so what the caret
+   touches is the mirrored glyph underneath. */
+.codearea{position:relative;border:1px solid var(--hairline);border-radius:var(--r-s);background:var(--paper);
+overflow:hidden;--gutter:3.5rem}
+.codearea:focus-within{outline:2px solid var(--blue);outline-offset:2px}
+.codearea-mirror,.codearea-in{margin:0;font:var(--t-13)/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:break-word;
+word-break:break-word;tab-size:4;letter-spacing:normal}
+.codearea-mirror{min-height:180px;padding:10px 0;background:none;border:0;border-radius:0;color:var(--ink);overflow:visible}
+.codearea-mirror .ln{position:relative;padding:0 12px 0 var(--gutter);min-height:1.6em}
+.codearea-mirror .ln::before{content:attr(data-n);position:absolute;left:0;top:0;width:calc(var(--gutter) - 14px);
+text-align:right;color:var(--graphite);font-variant-numeric:tabular-nums;user-select:none}
+.codearea-mirror .ln.is-rules{box-shadow:inset 3px 0 0 var(--blue);background:var(--blue-bg)}
+.codearea-mirror .ln.is-rules-h{color:var(--blue)}
+.codearea-in{position:absolute;inset:0;width:100%;height:100%;min-height:0;padding:10px 12px 10px var(--gutter);
+background:transparent;color:transparent;caret-color:var(--ink);border:0;border-radius:0;resize:none;overflow:hidden;
+outline:none}
+.codearea-in::placeholder{color:var(--graphite)}
+.depthmeta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px;min-height:var(--ctl)}
+.rulebox .rule-lbl{margin-bottom:8px}
+.skillhist{margin-top:12px}
+
+/* ---- insights: one dense tile row, charts on the canvas ------------------------------------- */
+/* Nine tiles in one grid row at desktop; the two eyebrows take row one so every tile shares one
+   top edge. Below 900 the grid is three across and the all-time group follows the range group. */
+.kpigrid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:0 10px;margin:4px 0 8px;align-items:start}
+.kpi-g{grid-column:1 / span 3;font-size:var(--t-12);font-weight:500;color:var(--graphite);padding:0 0 6px;margin:0 0 10px;
+border-bottom:1px solid var(--hairline)}
+.kpi-g-all{grid-column:4 / span 6}
+.kpigrid .kpi{padding:0;min-width:0}
+.kpigrid .kpi-l{font-size:var(--t-12);margin:2px 0 0;display:block;line-height:1.3}
+.kpigrid .kpi-v{font-size:var(--t-20);line-height:1.15;min-height:1.15em}
+.kpigrid .kpi-v.kpi-thin{font-size:var(--t-13);line-height:1.15;padding:3px 0 0}
+.kpigrid .kpi-thin-note{display:block;font-size:var(--t-12);font-weight:400}
+.chartblock{margin:24px 0 0;min-width:0}
+.chart-h{font-size:var(--t-13);font-weight:500;color:var(--graphite);margin:0 0 10px}
+.grid2{gap:0 24px}
+.barchart{margin-top:0}
+.agreebig{font-size:var(--t-24)}
+@media (max-width:899px){
+  .kpigrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .kpi-g{grid-column:1 / -1;margin:0}
+  .kpi-g-all{order:2;margin-top:8px}
+  .kpigrid .kpi.is-all{order:3}
+}
+
+/* ---- learnings, QA, integrations, settings: density -------------------------------------------- */
+.stats{margin:4px 0 8px;gap:28px}
+.qabar{min-height:var(--row);margin:8px 0}
+.intg{padding:12px var(--pad)}
+.itop{gap:12px}
+.iico{width:32px;height:32px}
+.iname{font-size:var(--t-14)}
+.ictl{margin-top:10px}
+.setrow{padding:8px 0;min-height:var(--row)}
+.setrow .setlbl .hint{margin:0}
+.chk{min-height:var(--ctl);padding:4px 0}
+.chk>span:not(.envnote){flex:1 1 200px;min-width:0}
+.devrow{min-height:var(--row);padding:6px 0}
+.setform .setfoot{padding:12px var(--pad)}

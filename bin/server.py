@@ -49,7 +49,6 @@ import rs_assets
 import rs_device_flow
 import rs_devices as rs_dev
 import rs_diff
-import rs_howimg
 import rs_learn
 import rs_md
 import rs_paths as P
@@ -4180,11 +4179,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_json({"error": f"Unknown repository: {rf}",
                                       "repos": all_repos()}, 400)
             return self.api_json(rs_rollup.compute(STATE, ROOT, repo=rf or None))
-        if route == "/api/how":
-            return self.api_json({"images": rs_howimg.IMG, "brand": BRAND,
-                                  "reviewer": REVIEWER, "tabs": [{"key": k, "label": lbl,
-                                                                  "desc": TAB_DESC.get(k, "")}
-                                                                 for k, lbl in TABS if k != "all"]})
         return self.api_json({"error": "not found"}, 404)
 
     def _run_form_data(self, user, meta, repo="", pr=None):

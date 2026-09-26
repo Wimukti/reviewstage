@@ -332,7 +332,7 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: /integrations/i })).toBeVisible();
     await expect(page.getByText(/connected as/i)).toBeVisible(); // GitHub card
     await expect(page.getByText(/pings you when a review is requested/i)).toBeVisible(); // Slack
-    await expect(page.getByText(/required to review/i)).toBeVisible(); // Claude
+    await expect(page.getByText(/run on your own claude subscription/i)).toBeVisible(); // Claude
   });
 
   test("integrations page shows the Discord and generic webhook cards", async ({ page }) => {
@@ -393,12 +393,6 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: /has learned/i })).toBeVisible();
   });
 
-  test("how-it-works page renders the flow", async ({ page }) => {
-    await page.goto("/how");
-    await expect(page.getByRole("heading", { name: /how reviewstage works/i })).toBeVisible();
-    await expect(page.getByText(/a review is requested/i)).toBeVisible();
-  });
-
   test("QA index renders", async ({ page }) => {
     await page.goto("/qa");
     await expect(page.getByRole("heading", { name: /qa guides/i })).toBeVisible();
@@ -450,12 +444,4 @@ test.describe("signed in", () => {
     await expect(page.locator(".cmdk")).toBeVisible();
   });
 
-  test("How it works is under Help, not the primary nav", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("nav.nav").getByText(/how it works/i)).toHaveCount(0);
-    await page.getByRole("button", { name: /help/i }).click();
-    await page.getByRole("link", { name: /how it works/i }).click();
-    await expect(page).toHaveURL(/\/how/);
-    await expect(page.getByRole("heading", { name: /how reviewstage works/i })).toBeVisible();
-  });
 });

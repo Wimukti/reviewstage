@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, errMessage, type KeepBlock, type RollupData, type RollupSeriesPoint } from "./api";
 import { Link } from "./router";
+import { PageHead } from "./About";
 import { Banner } from "./ui";
 
 // Insights — ReviewStage's activity, precision and agreement, aggregated from files it already writes.
 // All charts are hand-rolled SVG (no chart dependency), matching ReviewStage's no-framework style.
-// Tiles carry a number and a two-word label; how each is measured lives in one disclosure at the
-// foot of the page, so the page reads as numbers first and method on request.
+// Tiles carry a number and a two-word label in one dense row; how each is measured lives behind
+// the page's one `?`, so the page reads as numbers first and method on request.
 
 // Chart colours are the tokens, so the charts follow the theme like everything else.
 const C = {
@@ -171,16 +172,26 @@ function HBars({ rows, color }: { rows: { label: string; value: number; note?: s
 
 // A tile is a number and a two-word label. A sample too small to rate is a quiet graphite line
 // in the number's place, never a headline.
-function Kpi({ label, value, thin, testId }:
-  { label: string; value: string; thin?: boolean; testId?: string }) {
+function Kpi({ label, value, thin, testId, all }:
+  { label: string; value: string; thin?: boolean; testId?: string; all?: boolean }) {
   return (
-    <div className="kpi" data-testid={testId}>
-      <div className={"kpi-v" + (thin ? " kpi-thin" : "")}>
+    <div className={"kpi" + (all ? " is-all" : "")} data-testid={testId}>
+      <div className={"kpi-v" + (thin ? " kpi-thin" : "")} title={thin ? "Too few to rate" : undefined}>
         {value}
-        {thin && <span className="kpi-thin-note"> · too few to rate</span>}
+        {thin && <span className="kpi-thin-note">too few to rate</span>}
       </div>
       <div className="kpi-l">{label}</div>
     </div>
+  );
+}
+
+// A chart on the canvas: a title and the drawing, no panel around it (design: Insights).
+function Chart({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="chartblock">
+      <h2 className="chart-h">{title}</h2>
+      {children}
+    </section>
   );
 }
 
@@ -256,14 +267,70 @@ export function Rollup() {
   const allKeep = keepRate(kt);
   const cpKeep = keepRate(cp);
   const worth = keepRate(kt, "keepRate");
+  const method = (
+    <div data-testid="methodology">
+      <p>
+        Activity, precision and agreement for this install: early signal, not proof. Run counts
+        and tokens come from every run this install has kept. The keep, severity and agreement
+        numbers are computed over{" "}
+        {d.findingsCap
+          ? `the most recent ${num(d.findingsCap)} finding decisions only`
+          : "a capped window of recent finding decisions"}
+        , not from day one. The range control applies to the activity chart and the first three
+        tiles; everything else is all time.
+      </p>
+      <ul>
+        <li>
+          <b>Kept as-is</b> — findings posted unchanged, as a share of every finding decided
+          in the range ({num(period.decided)} decided; {allKeep.value}
+          {allKeep.thin ? ", too few to rate," : ""} over the logged {num(allDecided)}).
+        </li>
+        <li>
+          <b>Worth posting</b> — kept or reworded, as a share of the {num(allDecided)} logged
+          decisions: the share of findings worth posting at all. Kept as-is is stricter and reads lower.
+        </li>
+        <li>
+          <b>Critical-path keep</b> — kept as-is, over the {num(cpDecided)} findings on profiled
+          critical paths.
+        </li>
+        <li>
+          <b>Rules promoted</b> — repeated rejections accepted as team rules on the Skills page.
+        </li>
+        <li>
+          <b>Agreement</b> —{" "}
+          {ag.pooled
+            ? `pooled across every reviewed commit: confirmed and total findings are summed over ${num(ag.heads ?? 0)} commit(s), so a big PR counts for more than a small one.`
+            : "the mean of per-PR rates across multi-reviewer PRs."}{" "}
+          A finding counts as confirmed only when a reviewer using a different skill, model or
+          effort raised it too. A signal to improve toward, not a score: a lower number can
+          mean broader coverage, not worse reviews.
+        </li>
+        <li>
+          <b>Cycle time</b> — median time {d.cycle.label ?? "from GitHub's review request to the post"}
+          {d.cycle.n ? ` over ${num(d.cycle.n)} posted review(s)` : ""}; it includes however long
+          the PR sat before anyone clicked Run, not just the run itself.
+          {d.cycle.excluded
+            ? ` ${num(d.cycle.excluded)} of ${num(d.cycle.posts ?? 0)} posted review(s) had no request to measure from and are outside it.`
+            : ""}
+        </li>
+        <li>
+          <b>Too few to rate</b> — below {num(floor)} decided findings a percentage would swing
+          to 0.0% or 100.0% on the next one, so the sample is shown instead.
+        </li>
+        {dry > 0 && (
+          <li>
+            <b>Dry run</b> — the {num(dry)} decision{dry === 1 ? "" : "s"} made while{" "}
+            <code>DRY_RUN=1</code> {dry === 1 ? "is" : "are"} in no rate here because nothing was
+            posted. Every review still weighs them; turn <code>DRY_RUN</code> off to start rating.
+          </li>
+        )}
+      </ul>
+    </div>
+  );
   return (
     <>
-      <div className="insights-head">
-        <div>
-          <h1>Insights</h1>
-          <p className="muted sm">Activity, precision and agreement for this install — early signal, not proof.</p>
-        </div>
-        <div className="rangepills" title="Applies to the activity chart and the tiles under “Last N days”">
+      <PageHead title="Insights" about={method} aboutTestId="insights-about">
+        <div className="rangepills" title="Applies to the activity chart and the first three tiles">
           {RANGES.map(([label, days]) => (
             <button key={days} type="button"
                     className={"rangepill" + (range === days ? " on" : "")}
@@ -272,7 +339,7 @@ export function Rollup() {
             </button>
           ))}
         </div>
-      </div>
+      </PageHead>
       {allRepos.length > 1 && (
         <div className="rangepills" style={{ marginBottom: 14 }} data-testid="repo-pills" aria-label="Filter by repository">
           <button type="button" className={"rangepill" + (repo === "" ? " on" : "")} onClick={() => setRepo("")}>
@@ -294,31 +361,29 @@ export function Rollup() {
         </Banner>
       )}
 
-      <h2 className="kpi-h">Last {range} days</h2>
-      <div className="kpirow" data-testid="kpis-range">
+      {/* One dense row (design: Insights): the range group, then all time, split by a rule. The
+          eyebrows sit in their own grid row so every tile shares one top edge. */}
+      <div className="kpigrid" data-testid="kpis">
+        <div className="kpi-g" data-testid="kpis-range-h">Last {range} days</div>
+        <div className="kpi-g kpi-g-all" data-testid="kpis-all-h">All time</div>
         <Kpi label="Reviews run" value={num(period.reviews)} />
         <Kpi label="Tokens used" value={num(period.tokens)} />
         <Kpi label="Kept as-is" value={periodKeep.value} thin={periodKeep.thin} testId="kpi-kept" />
-      </div>
-      <h2 className="kpi-h">All time</h2>
-      <div className="kpirow" data-testid="kpis-all">
-        <Kpi label="Reviews recorded" value={num(d.reviews.total)} />
-        <Kpi label="PRs reviewed" value={num(d.prs)} />
-        <Kpi label="Active reviewers" value={num(d.reviewers.length)} />
-        <Kpi label="Rules promoted" value={num(d.promotedRules ?? 0)} />
-        <Kpi label="Critical-path keep" value={cpKeep.value} thin={cpKeep.thin} />
-        <Kpi label="Worth posting" value={worth.value} thin={worth.thin} testId="kpi-worth" />
+        <Kpi label="Reviews recorded" all value={num(d.reviews.total)} />
+        <Kpi label="PRs reviewed" all value={num(d.prs)} />
+        <Kpi label="Active reviewers" all value={num(d.reviewers.length)} />
+        <Kpi label="Rules promoted" all value={num(d.promotedRules ?? 0)} />
+        <Kpi label="Critical-path keep" all value={cpKeep.value} thin={cpKeep.thin} />
+        <Kpi label="Worth posting" all value={worth.value} thin={worth.thin} testId="kpi-worth" />
       </div>
 
-      <div className="panel">
-        <div className="panel-h">Review activity per day</div>
+      <Chart title="Review activity per day">
         <BarChart points={period.pts} color={C.accent} partialLast={partialLast} />
         {partialLast && <div className="muted sm">The hatched bar is today, still in progress.</div>}
-      </div>
+      </Chart>
 
       <div className="grid2">
-        <div className="panel">
-          <div className="panel-h">Findings kept, edited, dropped</div>
+        <Chart title="Findings kept, edited, dropped">
           <Donut
             center={thin(period.decided, floor) ? `n = ${num(period.decided)}` : pct(period.keepRate)}
             sub={thin(period.decided, floor) ? "too few to rate" : "kept as-is"}
@@ -333,9 +398,8 @@ export function Rollup() {
               Excludes {num(dry)} decision{dry === 1 ? "" : "s"} made in dry run.
             </div>
           )}
-        </div>
-        <div className="panel">
-          <div className="panel-h">Findings by severity</div>
+        </Chart>
+        <Chart title="Findings by severity">
           <HBars
             color={C.blue}
             rows={[
@@ -346,35 +410,31 @@ export function Rollup() {
             ]}
           />
           <div className="muted sm" style={{ marginTop: 8 }}>{num(allSev)} logged decisions.</div>
-        </div>
+        </Chart>
       </div>
 
       {!repo && d.repos.length > 0 && (
-        <div className="panel">
-          <div className="panel-h">Runs by repository</div>
+        <Chart title="Runs by repository">
           <HBars color={C.blue}
                  rows={d.repos.map((r) => ({ label: r.repo, value: r.runs,
                                              note: `${num(r.runs)} runs · ${num(r.prs)} PRs · ${num(r.tokens)} tok` }))} />
-        </div>
+        </Chart>
       )}
 
       <div className="grid2">
-        <div className="panel">
-          <div className="panel-h">Runs by reviewer</div>
+        <Chart title="Runs by reviewer">
           <HBars color={C.accent}
                  rows={d.reviewers.map((r) => ({ label: r.login, value: r.runs }))} />
-        </div>
-        <div className="panel">
-          <div className="panel-h">Runs by model</div>
+        </Chart>
+        <Chart title="Runs by model">
           <HBars color={C.green}
                  rows={d.models.map((m) => ({ label: m.model, value: m.runs,
                                               note: `${num(m.runs)} · ${num(m.tokens)} tok` }))} />
-        </div>
+        </Chart>
       </div>
 
       <div className="grid2">
-        <div className="panel">
-          <div className="panel-h">Agreement across reviewers</div>
+        <Chart title="Agreement across reviewers">
           <div className={"agreebig" + (agreement.thin ? " kpi-thin" : "")} data-testid="agreement">
             {agreement.value}
             {agreement.thin && <span className="kpi-thin-note"> · too few to rate</span>}
@@ -383,78 +443,17 @@ export function Rollup() {
             {num(ag.confirmedFindings)} confirmed of {num(ag.totalFindings ?? 0)} findings on{" "}
             {num(ag.multiReviewerPRs)} multi-reviewer PR{ag.multiReviewerPRs === 1 ? "" : "s"}.
           </div>
-        </div>
-        <div className="panel">
-          <div className="panel-h">Cycle time</div>
+        </Chart>
+        <Chart title="Cycle time">
           <div className="agreebig">{dur(d.cycle.medianReviewToPostSec)}</div>
           <div className="muted sm">
             {d.cycle.n
               ? `Median over ${num(d.cycle.n)} posted review${d.cycle.n === 1 ? "" : "s"}.`
               : "Needs requested-at data — captured from now on."}
           </div>
-        </div>
+        </Chart>
       </div>
 
-      <details className="method" data-testid="methodology">
-        <summary>How these are measured</summary>
-        <div className="dbody">
-          <p>
-            Run counts and tokens come from every run this install has kept. The keep, severity
-            and agreement numbers are computed over{" "}
-            {d.findingsCap
-              ? `the most recent ${num(d.findingsCap)} finding decisions only`
-              : "a capped window of recent finding decisions"}
-            , not from day one. The range control applies to the activity chart and the tiles
-            under “Last {range} days”; everything else is whole-range.
-          </p>
-          <ul>
-            <li>
-              <b>Kept as-is</b> — findings posted unchanged, as a share of every finding decided
-              in the range ({num(period.decided)} decided; {allKeep.value}
-              {allKeep.thin ? ", too few to rate," : ""} over the logged {num(allDecided)}).
-            </li>
-            <li>
-              <b>Worth posting</b> — kept or reworded, as a share of the {num(allDecided)} logged
-              decisions: the share of findings worth posting at all. Kept as-is is stricter and reads lower.
-            </li>
-            <li>
-              <b>Critical-path keep</b> — kept as-is, over the {num(cpDecided)} findings on profiled
-              critical paths.
-            </li>
-            <li>
-              <b>Rules promoted</b> — repeated rejections accepted as team rules on the Skills page.
-            </li>
-            <li>
-              <b>Agreement</b> —{" "}
-              {ag.pooled
-                ? `pooled across every reviewed commit: confirmed and total findings are summed over ${num(ag.heads ?? 0)} commit(s), so a big PR counts for more than a small one.`
-                : "the mean of per-PR rates across multi-reviewer PRs."}{" "}
-              A finding counts as confirmed only when a reviewer using a different skill, model or
-              effort raised it too. A signal to improve toward, not a score: a lower number can
-              mean broader coverage, not worse reviews.
-            </li>
-            <li>
-              <b>Cycle time</b> — median time {d.cycle.label ?? "from GitHub's review request to the post"}
-              {d.cycle.n ? ` over ${num(d.cycle.n)} posted review(s)` : ""}; it includes however long
-              the PR sat before anyone clicked Run, not just the run itself.
-              {d.cycle.excluded
-                ? ` ${num(d.cycle.excluded)} of ${num(d.cycle.posts ?? 0)} posted review(s) had no request to measure from and are outside it.`
-                : ""}
-            </li>
-            <li>
-              <b>Too few to rate</b> — below {num(floor)} decided findings a percentage would swing
-              to 0.0% or 100.0% on the next one, so the sample is shown instead.
-            </li>
-            {dry > 0 && (
-              <li>
-                <b>Dry run</b> — the {num(dry)} decision{dry === 1 ? "" : "s"} made while{" "}
-                <code>DRY_RUN=1</code> {dry === 1 ? "is" : "are"} in no rate here because nothing was
-                posted. Every review still weighs them; turn <code>DRY_RUN</code> off to start rating.
-              </li>
-            )}
-          </ul>
-        </div>
-      </details>
     </>
   );
 }

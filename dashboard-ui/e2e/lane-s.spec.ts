@@ -1,4 +1,4 @@
-// Lane S (Skills, Insights, Settings, Integrations, How it works, Tour) — the redesign's proof
+// Lane S (Skills, Insights, Settings, Integrations, Tour) — the redesign's proof
 // for the pages that sit on the foundation. Behaviour is unchanged; these pin the new shape.
 import { expect, test, type Page } from "@playwright/test";
 import { REPO } from "./fixture";
@@ -81,12 +81,14 @@ test.describe("insights", () => {
       await expect(t.locator(".kpi-l")).toHaveCount(1);
       await expect(t.locator(".kpi-v")).toHaveCount(1);
     }
-    const method = page.getByTestId("methodology");
-    await expect(method).toHaveCount(1);
-    await expect(method.locator("summary")).toHaveText(/how these are measured/i);
-    await expect(method.locator(".dbody")).toBeHidden();
-    await method.locator("summary").click();
-    await expect(method.locator(".dbody")).toBeVisible();
+    // The method lives behind the page's one `?` (design §6), closed by default.
+    await expect(page.getByTestId("methodology")).toHaveCount(0);
+    const about = page.getByRole("button", { name: "About this page" });
+    await expect(about).toHaveCount(1);
+    await expect(about).toHaveAttribute("aria-expanded", "false");
+    await about.click();
+    await expect(page.getByTestId("methodology")).toBeVisible();
+    await expect(page.getByTestId("methodology")).toContainText(/kept as-is/i);
     // The dry-run notice is one sentence.
     const banner = (await page.getByTestId("dry-banner").textContent())?.trim() ?? "";
     expect(banner.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).length).toBe(1);
@@ -202,23 +204,6 @@ test.describe("integrations", () => {
     const primaries = page.locator(".main .btn.primary:visible");
     await expect(primaries).toHaveCount(1);
     await expect(primaries).toHaveText(/connect with claude/i);
-  });
-});
-
-test.describe("how it works", () => {
-  test("the steps are illustrated by live mocks, not images", async ({ page }) => {
-    await page.goto("/how");
-    await settled(page);
-    await expect(page.locator(".flow img")).toHaveCount(0);
-    await expect(page.locator("[data-testid^=how-mock-]")).toHaveCount(5);
-    // The mocks are built from the product's own classes, so they cannot drift from it.
-    await expect(page.getByTestId("how-mock-findings").locator(".finding.is-staged")).toHaveCount(1);
-    await expect(page.getByTestId("how-mock-post").locator(".commit-bar")).toHaveCount(1);
-    // Pictures: inert and out of the accessibility tree.
-    for (const m of await page.locator("[data-testid^=how-mock-]").all()) {
-      await expect(m).toHaveAttribute("aria-hidden", "true");
-      await expect(m).toHaveAttribute("inert", "");
-    }
   });
 });
 

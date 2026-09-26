@@ -81,12 +81,14 @@ test.describe("insights", () => {
       await expect(t.locator(".kpi-l")).toHaveCount(1);
       await expect(t.locator(".kpi-v")).toHaveCount(1);
     }
-    const method = page.getByTestId("methodology");
-    await expect(method).toHaveCount(1);
-    await expect(method.locator("summary")).toHaveText(/how these are measured/i);
-    await expect(method.locator(".dbody")).toBeHidden();
-    await method.locator("summary").click();
-    await expect(method.locator(".dbody")).toBeVisible();
+    // The method lives behind the page's one `?` (design §6), closed by default.
+    await expect(page.getByTestId("methodology")).toHaveCount(0);
+    const about = page.getByRole("button", { name: "About this page" });
+    await expect(about).toHaveCount(1);
+    await expect(about).toHaveAttribute("aria-expanded", "false");
+    await about.click();
+    await expect(page.getByTestId("methodology")).toBeVisible();
+    await expect(page.getByTestId("methodology")).toContainText(/kept as-is/i);
     // The dry-run notice is one sentence.
     const banner = (await page.getByTestId("dry-banner").textContent())?.trim() ?? "";
     expect(banner.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).length).toBe(1);

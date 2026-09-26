@@ -332,7 +332,7 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: /integrations/i })).toBeVisible();
     await expect(page.getByText(/connected as/i)).toBeVisible(); // GitHub card
     await expect(page.getByText(/pings you when a review is requested/i)).toBeVisible(); // Slack
-    await expect(page.getByText(/required to review/i)).toBeVisible(); // Claude
+    await expect(page.getByText(/run on your own claude subscription/i)).toBeVisible(); // Claude
   });
 
   test("integrations page shows the Discord and generic webhook cards", async ({ page }) => {

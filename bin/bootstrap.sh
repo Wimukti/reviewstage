@@ -127,7 +127,6 @@ if [ "$SRC" != "$BIN" ]; then
   install -m 0644 "$SRC"/rs_learn.py "$BIN/"    # learnings loop (imported + run by shell)
   install -m 0644 "$SRC"/rs_agree.py "$BIN/"    # convergence scoring, imported by the server
   install -m 0644 "$SRC"/rs_rollup.py "$BIN/"   # insights rollup, imported by the server
-  install -m 0644 "$SRC"/rs_howimg.py "$BIN/"   # how-it-works step mockups
   install -m 0644 "$SRC/lib-common.sh" "$BIN/"
 else
   echo "   (running from $BIN — nothing to copy)"

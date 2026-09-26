@@ -743,13 +743,6 @@ export interface StackData {
   stack: StackItem[];
 }
 
-export interface HowData {
-  images: Record<string, string>;
-  brand: string;
-  reviewer: string;
-  tabs: { key: string; label: string; desc: string }[];
-}
-
 export interface RollupSeriesPoint {
   ts: number;
   date: string;
@@ -920,7 +913,6 @@ export const api = {
   stack: (ref: PrRef) => get<StackData>(`/stack?${prq(ref)}`),
   stackRun: (ref: PrRef, t: Token, effort: string, nums: string[]) =>
     post<{ ok: boolean; started: number }>("/stack/run", { ...prBody(ref), ...t, effort, nums }),
-  how: () => get<HowData>("/how"),
   profile: (repo: string) => get<ProfileData>(`/profile?repo=${encodeURIComponent(repo)}`),
   profileRun: (repo: string, t: Token) => post<ProfileData>("/profile/run", { repo, ...t }),
   profileStop: (repo: string, t: Token) => post<ProfileData>("/profile/stop", { repo, ...t }),

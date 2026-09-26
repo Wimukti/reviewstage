@@ -130,10 +130,9 @@ test.describe("learnings", () => {
     await expect(table.locator("tbody .status.is-red", { hasText: "Dropped" })).toHaveCount(0);
     // Dry-run rows keep their marker as a graphite status.
     await expect(page.getByTestId("dry-mark").first()).toHaveClass(/is-graphite/);
-    // The retention note is a disclosure, closed by default.
-    const note = page.getByTestId("retention-note");
-    await expect(note).toBeVisible();
-    await expect(note.locator("summary")).toHaveText(/about this log/i);
-    expect(await note.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
+    // The retention note lives behind the page's one `?`, closed by default.
+    await expect(page.getByTestId("retention-note")).toHaveCount(0);
+    await page.getByRole("button", { name: "About this page" }).click();
+    await expect(page.getByTestId("retention-note")).toContainText(/one log for the whole install/i);
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errMessage, type LearningsData, type Me } from "./api";
+import { PageHead } from "./About";
 import { Banner } from "./ui";
 import { Icon } from "./icons";
 import { Status, wordOf, type Tone } from "./ui";
@@ -34,14 +35,37 @@ export function Learnings({ me }: { me: Me }) {
   const dry = d.counts.dry ?? 0;
   const multi = d.repos.length > 1;
 
+  const about = (
+    <>
+      <p>
+        Every finding you drop as noise or reword before posting is remembered and weighed on the
+        next review, same-repository decisions first, then the team's general preferences. A
+        complaint rejected often enough is a <b>rolling preference</b>
+        {win ? (
+          <>
+            {" "}
+            that survives while it stays inside the window read before a review, the most recent{" "}
+            <b>{win.dropped} drops</b> and <b>{win.edited} rewordings</b>
+          </>
+        ) : null}
+        ; promote it on the Skills page and it becomes a Team rule for good.
+      </p>
+      <p data-testid="retention-note">
+        {d.findingsCap
+          ? `The decision log keeps only the most recent ${d.findingsCap.toLocaleString(
+              "en-US",
+            )} decisions; the totals are counted separately and never truncated. `
+          : ""}
+        One log for the whole install: every repository, every reviewer. These are preferences,
+        not hard rules: a genuine higher-severity issue is still raised even if it resembles a
+        past drop.
+      </p>
+    </>
+  );
+
   return (
     <>
-      <h1>What {me.brand} has learned</h1>
-      <p className="lead">
-        Every time you drop a finding as noise or reword one before posting, {me.brand} remembers it
-        and weighs it on the next review — same-repository decisions first, then the team's general
-        preferences — so it stops repeating what you reject. This is that memory.
-      </p>
+      <PageHead title={<>What {me.brand} has learned</>} about={about} aboutTestId="learnings-about" />
       <div className="stats">
         <div className="stat">
           <div className="k">{d.counts.dropped.toLocaleString("en-US")}</div>
@@ -79,20 +103,7 @@ export function Learnings({ me }: { me: Me }) {
 
       {d.clusters.length > 0 && (
         <>
-          <h2>What is hardening into a rule</h2>
-          <p className="muted sm">
-            The same complaint, rejected again and again. While it is a <b>rolling preference</b> it
-            survives only as long as it stays inside the window {me.brand} reads before a review
-            {win ? (
-              <>
-                {" "}
-                — the most recent <b>{win.dropped} drops</b> and <b>{win.edited} rewordings</b>,
-                counted separately
-              </>
-            ) : null}
-            . Once you promote it on the Skills page it becomes a Team rule and leaves that window
-            for good.
-          </p>
+          <h2>Hardening into a rule</h2>
           <div className="list" data-testid="learning-clusters">
             {d.clusters.map((c) => (
               <div className="row" key={c.signature}>
@@ -181,23 +192,6 @@ export function Learnings({ me }: { me: Me }) {
               </tbody>
             </table>
           </div>
-          <details className="infodisc" data-testid="retention-note">
-            <summary>
-              <Icon name="info" />
-              About this log
-            </summary>
-            <p className="fine">
-              {d.findingsCap
-                ? `This list is the detail log, which keeps only the most recent ${d.findingsCap.toLocaleString(
-                    "en-US",
-                  )} decisions — the totals above are counted separately and are never truncated. `
-                : ""}
-              One log for the whole install: every repository, every reviewer. {me.brand} weighs
-              decisions from the repository under review first, but nothing here is scoped to a
-              single repo. These are preferences, not hard rules — it still raises a genuine
-              higher-severity issue even if it resembles a past drop.
-            </p>
-          </details>
         </>
       )}
     </>

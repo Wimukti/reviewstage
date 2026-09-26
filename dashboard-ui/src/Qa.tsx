@@ -70,11 +70,6 @@ function QaIndex({ me }: { me: Me }) {
       <div className="pagehead">
         <div className="pagehead-t">
           <h1>QA guides</h1>
-          <p className="lead">
-            Generate a tester-ready QA guide for a PR — risk-tiered manual test cases, setup steps, a
-            surface matrix and what <em>not</em> to file — all grounded in the real diff. Then hand it
-            straight to QA.
-          </p>
         </div>
         {!none && form}
       </div>
@@ -118,8 +113,7 @@ function QaIndex({ me }: { me: Me }) {
         <div className="empty" data-testid="qa-empty">
           <Icon name="flask" />
           <b>Build your first QA guide</b>
-          Paste a PR URL, or type <code>owner/name#123</code> or a number, and {me.brand} writes a
-          guide your testers can run.
+          Paste a PR URL, or type <code>owner/name#123</code> or a number.
           {form}
         </div>
       ) : null}
@@ -418,7 +412,7 @@ function QaDetailView({ pr }: { pr: PrRef }) {
         {header}
         {lastRun}
         <div className="qabar">
-          <span className="muted sm">Guide ready — hand it to QA.</span>
+          <Status kind="done">Guide ready</Status>
           {chip}
           <span className="spacer" />
           {d.connected && (
@@ -462,11 +456,6 @@ function QaDetailView({ pr }: { pr: PrRef }) {
       )}
       <div className="card top">
         {d.state === "none" && !note && <h2 style={{ marginTop: 0 }}>No guide yet</h2>}
-        {d.state === "none" && !note && (
-          <p className="muted sm">
-            Build a tester-ready QA guide from this PR's diff, review threads and history.
-          </p>
-        )}
         {d.connected ? (
           <button
             className="btn primary"

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, errBanner, errMessage, type IntegrationsData, type Me } from "./api";
 import { BrandIcon } from "./icons";
+import { PageHead } from "./About";
 import { Banner, RawBanner, SlowBusy } from "./ui";
 import { Status } from "./ui";
 
@@ -232,9 +233,6 @@ function ClaudeCtl({
   if (d.claude.connected)
     return (
       <>
-        <div className="hint ok">
-          Connected — reviews you start run on your own Claude account.
-        </div>
         <button
           className="discbtn"
           type="button"
@@ -361,11 +359,16 @@ export function Integrations({ me }: { me: Me }) {
 
   return (
     <>
-      <h1>Integrations</h1>
-      <p className="lead">
-        The services {me.brand} connects to. Everything is stored encrypted on this box and used
-        only on your behalf.
-      </p>
+      <PageHead
+        title="Integrations"
+        about={
+          <>
+            The services {me.brand} connects to. Everything is stored encrypted on this box and
+            used only on your behalf.
+          </>
+        }
+        aboutTestId="integrations-about"
+      />
       <RawBanner html={banner} />
       <div className="list intglist" data-testid="integrations-list">
       <Card
@@ -375,17 +378,11 @@ export function Integrations({ me }: { me: Me }) {
         chip={ON}
         ok
         sub={
-          d.github.via === "oauth" ? (
-            <>
-              Connected as <code>{d.github.login}</code> via GitHub sign-in (OAuth) — comments
-              and approvals post under your name. Revoke at github.com → Settings → Applications.
-            </>
-          ) : (
-            <>
-              Connected as <code>{d.github.login}</code> — comments and approvals post under your
-              name.
-            </>
-          )
+          <>
+            Connected as <code>{d.github.login}</code>
+            {d.github.via === "oauth" ? " via GitHub sign-in" : ""}. Comments and approvals post
+            under your name.
+          </>
         }
       >
         {d.github.via === "oauth" ? (
@@ -444,12 +441,7 @@ export function Integrations({ me }: { me: Me }) {
         name="Claude"
         chip={hasClaude ? ON : REQ}
         ok={hasClaude}
-        sub={
-          <>
-            <b>Required to review.</b> Reviews and QA guides run on your own Claude subscription —
-            never a shared account.
-          </>
-        }
+        sub="Reviews and QA guides run on your own Claude subscription, never a shared account."
       >
         <ClaudeCtl d={d} onDone={onDone} />
       </Card>

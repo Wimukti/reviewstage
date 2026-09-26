@@ -11,6 +11,7 @@ import {
   type SettingSource,
   type WebhooksStatus,
 } from "./api";
+import { PageHead } from "./About";
 import { Banner, RawBanner } from "./ui";
 import { Status } from "./ui";
 
@@ -106,14 +107,9 @@ function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: nu
         <h2 style={{ margin: 0 }}>Webhooks</h2>
         <Status tone="graphite">Read-only</Status>
       </div>
-      <p className="muted sm" data-testid="webhooks-readonly">
+      <div className="hint" data-testid="webhooks-readonly">
         Nothing to save here: the secret lives in <code>.env</code> and the hook is configured on GitHub.
-      </p>
-      <p className="muted sm">
-        GitHub can tell this install about a review request the moment it happens, instead of
-        waiting for the next poll. The receiver only updates the queue and sends the card — it
-        never starts a review.
-      </p>
+      </div>
       <div className="setrow">
         <div className="setlbl">
           <b>Status</b>
@@ -305,12 +301,13 @@ export function Devices({ me }: { me: Me }) {
 
   return (
     <div className={"card" + (devOnly ? " is-target" : "")} id="devices" tabIndex={-1}>
-      <h2 style={{ marginTop: 0 }}>Devices</h2>
-      <p className="muted sm">
-        Phones, the CLI and other browsers that hold a token for your account. Each one can post
-        and approve as you and nothing more — it can never read your GitHub or Claude token.
-        Unused for {meta.ttl_days} days, a token expires on its own; up to {meta.max} per person.
-      </p>
+      <div className="cardhead">
+        <h2 style={{ margin: 0 }}>Devices</h2>
+        <span className="muted sm">
+          Tokens for phones, the CLI and other browsers · expire after {meta.ttl_days} unused days ·
+          up to {meta.max}
+        </span>
+      </div>
       {err && (
         <Banner kind="err">{err}</Banner>
       )}
@@ -467,12 +464,23 @@ export function Settings({ me }: { me: Me }) {
 
   return (
     <>
-      <h1>Settings</h1>
-      <p className="lead">
-        Runtime knobs for this {me.brand} install. Changes apply on the next poller cycle — no
-        restart, no <code>.env</code> edit. Saved values win over <code>.env</code>, which wins
-        over the default. Your <a href="#devices">devices</a> are at the foot of this page.
-      </p>
+      <PageHead
+        title="Settings"
+        about={
+          <>
+            Changes apply on the next poller cycle, with no restart and no <code>.env</code> edit.
+            Saved values win over <code>.env</code>, which wins over the default; the chip on each
+            row says where the value in effect comes from. Notification URLs stay in{" "}
+            <code>.env</code>. Behind a GitHub webhook, polling is only a safety net: lower the
+            interval or switch it off. See{" "}
+            <a href="https://wimukti.github.io/reviewstage/operations/configuration/#runtime-settings" target="_blank" rel="noopener">
+              Runtime settings
+            </a>{" "}
+            in the docs. Your <a href="#devices">devices</a> are at the foot of this page.
+          </>
+        }
+        aboutTestId="settings-about"
+      />
       {ro && (
         <Banner kind="info" icon="eye">
             Read-only: only the admin (<code>{d.admin || "the REVIEWER in .env"}</code>) can change
@@ -542,23 +550,10 @@ export function Settings({ me }: { me: Me }) {
             <div className="hint">{agoText(d.poller.lastPoll)}</div>
           </div>
         </div>
-        <div className="hint" style={{ marginTop: 12 }}>
-          Running behind a GitHub webhook (see the Webhooks card below)? Then polling is only a
-          safety net — lower the interval or switch it off here. See{" "}
-          <a href="https://wimukti.github.io/reviewstage/operations/configuration/#runtime-settings" target="_blank" rel="noopener">
-            Runtime settings
-          </a>{" "}
-          in the docs.
-        </div>
       </div>
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Notifications</h2>
-        <p className="muted sm">
-          Which backends fire for review requested / review ready / stopped / QA ready. URLs come
-          from <code>.env</code> and are shown here as configured or not — they cannot be edited
-          from the browser.
-        </p>
         {d.backends.map((b) => {
           const meta = BACKEND_META[b];
           const configured = meta.envKey(d.env);

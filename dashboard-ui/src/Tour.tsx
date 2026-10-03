@@ -210,9 +210,29 @@ export function Tour({ me }: { me: Me }) {
   useLayoutEffect(() => {
     if (!open) return;
     place();
+    // place() measures the card BEFORE this step's content has rendered, so on the phone a
+    // step with a taller card than the last scrolled the target too little and the card's
+    // bottom edge sat on it. One corrective pass after paint, from the real rectangles.
+    const raf = requestAnimationFrame(() => {
+      if (window.innerWidth >= 900) return;
+      const s = TOUR[i];
+      const tgt = s.sel ? findTarget(s.sel) : null;
+      const card = cardRef.current;
+      if (!tgt || !card) return;
+      const c = card.getBoundingClientRect();
+      const t = tgt.getBoundingClientRect();
+      const overlap = c.bottom + GAP - t.top;
+      if (overlap > 0) {
+        window.scrollBy({ top: -overlap, behavior: "auto" });
+        place();
+      }
+    });
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [open, place]);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place, i]);
 
   // Focus lands on Next (Radix traps it inside the dialog and handles Tab). `ring` is a
   // dependency because the card remounts inside the popover once the ring is placed.

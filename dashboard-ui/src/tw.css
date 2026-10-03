@@ -40,7 +40,9 @@
   --color-secondary-foreground: var(--ink);
   --color-muted: var(--raised);
   --color-muted-foreground: var(--graphite);
-  --color-accent: var(--raised);
+  /* Accent is Radix's highlight (menu focus, cmdk selection, hover rows). It was the raised
+     surface, invisible on a raised popover; a blue tint reads on every surface. */
+  --color-accent: var(--blue-bg);
   --color-accent-foreground: var(--ink);
   --color-destructive: var(--red);
   --color-destructive-foreground: var(--paper);
@@ -51,6 +53,19 @@
   --font-sans: var(--font);
   --font-mono: var(--mono);
   --font-display: var(--display);
+
+  /* The document root is 14px (styles.css) while Tailwind's scale is written for 16, so every
+     rem utility rendered 7/8 of its name: text-sm was 12.25px and size-11 was 38.5px. These
+     restate the scale so a utility means the pixel size it says, under this root. */
+  --spacing: 0.2857rem;                      /* 4px */
+  --text-xs: 0.857rem;  --text-xs--line-height: 1.5;      /* 12px */
+  --text-sm: 1rem;      --text-sm--line-height: 1.5;      /* 14px */
+  --text-base: 1.143rem; --text-base--line-height: 1.55;  /* 16px */
+  --text-lg: 1.286rem;  --text-lg--line-height: 1.45;     /* 18px */
+  --text-xl: 1.429rem;  --text-xl--line-height: 1.35;     /* 20px */
+  --text-2xl: 1.714rem; --text-2xl--line-height: 1.25;    /* 24px */
+  --text-3xl: 2.143rem; --text-3xl--line-height: 1.2;     /* 30px */
+  --text-4xl: 2.571rem; --text-4xl--line-height: 1.1;     /* 36px */
 
   --radius-sm: 6px;
   --radius-md: 8px;

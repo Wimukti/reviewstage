@@ -315,7 +315,7 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
         >
           {TABS.map(([k, label, to, Glyph]) => (
             <Button key={k} asChild variant="ghost" className={cn(TAB_CLASS, active === k && "text-primary")}>
-              <Link to={to} aria-current={active === k ? "page" : undefined} data-tour={k}>
+              <Link to={to} aria-current={active === k ? "page" : undefined}>
                 <Glyph aria-hidden="true" />
                 <span>{label}</span>
               </Link>

@@ -464,22 +464,10 @@ display:flex;align-items:center;justify-content:center;font-weight:600;font-size
 .qaguide table{display:block;overflow-x:auto;margin:10px 0}
 
 /* ---- sign-in ---------------------------------------------------------------------------------- */
-.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px}
-.authcard{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-m);
-padding:36px 30px 26px;text-align:center}
-.authlogo{width:56px;height:56px;margin:0 auto 14px;display:block}
-.authcard h1{margin:0}
-.authsub{font-weight:500;margin:4px 0 0}
-.authlead{color:var(--graphite);font-size:var(--t-13);margin:14px 0 22px}
-.authcard form{margin:0}
 .tokfield{margin-top:4px}
 .tokfield input{text-align:center;font-family:var(--mono)}
-.authfine{font-size:var(--t-13);color:var(--graphite);margin:16px 0 0;line-height:1.5}
-.authalt{margin:14px 0 0;background:transparent}
 .authalt>summary{justify-content:center;font-size:var(--t-13);font-weight:400;color:var(--graphite)}
 .authalt>summary::after{content:none}
-.authalt form{padding:4px 14px 12px}
-.authadmin{border-top:1px solid var(--hairline);padding-top:14px;text-align:left}
 .devflow{display:grid;gap:10px;margin:0 0 14px;padding:16px 14px 12px;border:1px solid var(--hairline);border-radius:var(--r-m);text-align:center}
 .devflow-title{margin:0;font-weight:500;color:var(--graphite)}
 .devcode{display:block;font-family:var(--mono);font-size:var(--t-32);font-weight:500;letter-spacing:.08em;padding:6px 0;user-select:all}

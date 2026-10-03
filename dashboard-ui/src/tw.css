@@ -1,0 +1,68 @@
+/* Tailwind for the app. Processed by @tailwindcss/cli (see package.json "tw") into
+   src/generated/tw.css, which main.tsx imports; the website compiles this same file through
+   @tailwindcss/vite and inlines the result into the stage islands' shadow roots.
+
+   The palette is NOT defined here. tokens.css is the single source for every colour and both
+   copies of it stay byte-identical; this file only maps those tokens onto the names Tailwind
+   and the shadcn components expect. */
+/* Declared before Tailwind's own @layer so the app's bespoke layers (base, shell, review, pages)
+   sit BELOW utilities: a Tailwind class on an element always beats a legacy rule for it. The
+   legacy layers shrink as pages move onto the components; this keeps the hand-over safe. */
+@layer theme, base, shell, review, pages, components, utilities;
+@import "tailwindcss";
+@source "./";
+@custom-variant dark (&:is(:root:not([data-theme="light"]) *));
+
+@theme inline {
+  /* surfaces and ink, from tokens.css */
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-graphite: var(--graphite);
+  --color-hairline: var(--hairline);
+  --color-blue: var(--blue);
+  --color-blue-ink: var(--blue-ink);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --color-green: var(--green);
+
+  /* the names shadcn/ui components are written against */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--raised);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--blue);
+  --color-primary-foreground: var(--blue-ink);
+  --color-secondary: var(--raised);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--raised);
+  --color-muted-foreground: var(--graphite);
+  --color-accent: var(--raised);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--red);
+  --color-destructive-foreground: var(--paper);
+  --color-border: var(--hairline);
+  --color-input: var(--hairline);
+  --color-ring: var(--blue);
+
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+  --font-display: var(--display);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius: 8px;
+}
+
+/* What `shadcn init` would have written: every border takes the token unless a class says
+   otherwise, and the body carries the canvas. Without this a bare `border` utility falls back
+   to currentColor and draws in white. */
+@layer base {
+  *, ::before, ::after { border-color: var(--color-border); }
+  body { background: var(--color-background); color: var(--color-foreground); }
+}

@@ -7,3 +7,5 @@
 # (react, esbuild, tsx, typescript, @playwright/test, react-markdown, remark-gfm, sharp) and only
 # esbuild and sharp actually have build scripts.
 dangerouslyAllowAllBuilds: true
+minimumReleaseAgeExclude:
+  - lucide-react@1.51.0

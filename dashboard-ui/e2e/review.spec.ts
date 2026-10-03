@@ -61,7 +61,7 @@ test.describe("the commit bar", () => {
     const count = page.locator(".stage-count[data-stage-count]");
     await expect(count).toHaveAttribute("data-stage-count", "2");
     const font = await count.evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(font).toMatch(/Bricolage/);
+    expect(font).toMatch(/Geist/);
     // Tag the live node; after a change the node with the new value must not carry the tag.
     await count.evaluate((el) => ((el as HTMLElement).dataset.tagged = "1"));
     await page.locator(".finding input.fsel").first().uncheck();
@@ -175,7 +175,7 @@ test.describe("the queue's one field", () => {
     await page.goto("/?tab=approved");
     const empty = page.locator(".empty");
     await expect(empty.locator("b")).toHaveText("Nothing approved yet");
-    expect(await empty.locator("b").evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/Bricolage/);
+    expect(await empty.locator("b").evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/Geist/);
     await expect(empty).toContainText("PRs you approve will be listed here.");
     // No light here: only the three §4 placements carry it.
     expect(await empty.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe("none");

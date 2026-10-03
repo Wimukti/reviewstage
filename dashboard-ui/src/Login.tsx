@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type DeviceStart, type Me } from "./api";
 import { Logo } from "./Logo";
-import { Banner, SlowBusy } from "./ui";
+import { Banner } from "./ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { BrandIcon } from "./icons";
+
+const GitHubMark = () => <span className="inline-flex size-4 items-center [&>svg]:size-4" aria-hidden="true">{BrandIcon.gh}</span>;
 
 // Fine-grained PAT (recommended): Pull requests read/write, Contents read, Metadata read on
 // the repositories you review. A classic token with `repo` also works.
@@ -217,37 +224,38 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   }
 
   const patForm = (
-    <form onSubmit={submit} aria-label="Sign in with a personal access token" className="patform">
-      <div className="tokfield">
-        <input
-          className="in"
-          type="password"
-          placeholder="github_pat_… or ghp_…"
-          disabled={busy}
-          aria-label="GitHub personal access token"
-          autoComplete="off"
-          spellCheck={false}
-          value={pat}
-          onChange={(e) => setPat(e.target.value)}
-        />
-      </div>
-      <button
-        className={"btn block " + (github ? "secondary" : "primary")}
+    <form onSubmit={submit} aria-label="Sign in with a personal access token" className="mt-4 space-y-3">
+      <Input
+        type="password"
+        placeholder="github_pat_… or ghp_…"
+        disabled={busy}
+        aria-label="GitHub personal access token"
+        autoComplete="off"
+        spellCheck={false}
+        value={pat}
+        onChange={(e) => setPat(e.target.value)}
+        className="h-11 font-mono text-[13px]"
+      />
+      <Button
         type="submit"
+        size="lg"
+        variant={github ? "secondary" : "default"}
+        className="w-full"
         disabled={busy || !pat.trim()}
         aria-busy={busy}
       >
-        <SlowBusy busy={busy} />{busy ? "Verifying with GitHub…" : "Sign in with token"}
-      </button>
-      <p className="authfine">
-        <a href={NEW_TOKEN} target="_blank" rel="noopener">
+        {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
+        {busy ? "Verifying with GitHub…" : "Sign in with token"}
+      </Button>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        <a className="underline underline-offset-2 hover:text-foreground" href={NEW_TOKEN} target="_blank" rel="noopener">
           Fine-grained token
         </a>{" "}
         (Pull requests: read and write · Contents: read · Metadata: read) or a{" "}
-        <a href={NEW_CLASSIC_TOKEN} target="_blank" rel="noopener">
+        <a className="underline underline-offset-2 hover:text-foreground" href={NEW_CLASSIC_TOKEN} target="_blank" rel="noopener">
           classic token
         </a>{" "}
-        with <code>repo</code>. Stored encrypted.
+        with <code className="font-mono">repo</code>. Stored encrypted.
       </p>
     </form>
   );
@@ -255,42 +263,50 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   const st = flow.state;
   const deviceCard =
     st.step === "waiting" || st.step === "done" ? (
-      <div className="devflow" role="group" aria-labelledby="devflow-title">
-        <p id="devflow-title" className="devflow-title">
+      <div className="mt-2 rounded-lg bg-muted/60 p-4" role="group" aria-labelledby="devflow-title">
+        <p id="devflow-title" className="text-sm font-medium">
           {st.step === "waiting" ? "Enter this code on GitHub" : "Signed in"}
         </p>
         {st.step === "waiting" && (
           <>
-            <output className="devcode" data-testid="device-user-code" aria-label="Your one-time GitHub code">
+            <output
+              className="my-3 block select-all rounded-md bg-background py-3 text-center font-mono text-3xl font-semibold tracking-[0.18em]"
+              data-testid="device-user-code"
+              aria-label="Your one-time GitHub code"
+            >
               {st.start.user_code}
             </output>
-            <div className="devflow-actions">
-              <button type="button" className="btn secondary" onClick={() => void flow.copy(st.start.user_code)}>
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="secondary" onClick={() => void flow.copy(st.start.user_code)}>
+                {flow.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                 {flow.copied ? "Copied" : "Copy code"}
-              </button>
-              <a className="btn primary" href={st.start.verification_uri} target="_blank" rel="noopener">
-                Open github.com/login/device
-              </a>
+              </Button>
+              <Button asChild>
+                <a href={st.start.verification_uri} target="_blank" rel="noopener">
+                  Open github.com/login/device <ExternalLink aria-hidden="true" />
+                </a>
+              </Button>
             </div>
-            <p className="devflow-wait" role="status" aria-live="polite" aria-label="Waiting for GitHub…">
-              <span className="rundot" aria-hidden="true" /> Waiting for GitHub…
+            <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite" aria-label="Waiting for GitHub…">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> Waiting for GitHub…
             </p>
-            <p className="authfine">
-              GitHub asks for the code, then to authorise <b>{me.brand}</b>. This page signs you in by
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              GitHub asks for the code, then to authorise <b className="text-foreground">{me.brand}</b>. This page signs you in by
               itself the moment you do.{" "}
-              <button type="button" className="linkbtn" onClick={flow.cancel}>
+              <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={flow.cancel}>
                 Cancel
               </button>
             </p>
-            <p className="authfine" data-testid="device-phishing-warning">
-              <b>Only continue a sign-in you started yourself.</b> If someone sent you this code
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground" data-testid="device-phishing-warning">
+              <b className="text-foreground">Only continue a sign-in you started yourself.</b> If someone sent you this code
               or asked you to type one at github.com, stop — approving it would sign{" "}
               <i>them</i> in as you.
             </p>
           </>
         )}
         {st.step === "done" && (
-          <p className="devflow-wait" role="status" aria-live="polite">
+          <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+            <Check className="size-4 text-green" aria-hidden="true" />
             Signed in{st.login ? ` as ${st.login}` : ""} — loading…
           </p>
         )}
@@ -301,7 +317,7 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
     st.step === "failed" ? (
       <Banner kind="err" role="alert">
         {st.message}{" "}
-        <button type="button" className="linkbtn" onClick={() => void flow.begin()}>
+        <button type="button" className="underline underline-offset-2" onClick={() => void flow.begin()}>
           Try again
         </button>
       </Banner>
@@ -310,67 +326,76 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   // The one permitted orientation sentence in the shell (design.md §6) sits here and nowhere
   // else; the team-setup instructions live in the docs, not on the screen.
   const teamLink = (
-    <a className="authlink" href={TEAM_DOCS} target="_blank" rel="noopener">
+    <a className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" href={TEAM_DOCS} target="_blank" rel="noopener">
       Setting up sign-in for a team
     </a>
   );
 
   return (
-    <div className="auth">
-      <div className="stage-login">
-        <div className="authcard">
-          <Logo me={me} className="authlogo" />
-          <h1>{me.brand}</h1>
-          <p className="authsub">Stage your review. Post it as yourself.</p>
-          {err && <Banner kind="err">{err}</Banner>}
-          {github ? (
-            <>
-              {deviceFailed}
-              {deviceCard}
-              {redirectFlow && (
-                <a className="btn primary block lg" href={oauthHref}>
-                  Continue with GitHub
-                </a>
+    <div className="auth flex min-h-dvh items-center justify-center px-4 py-10">
+      <div className="stage-login w-full max-w-[400px]">
+        <Card className="authcard shadow-[0_24px_64px_-24px_rgba(0,0,0,.8)]">
+          <CardContent className="flex flex-col items-center px-7 pb-7 pt-8 text-center">
+            <Logo me={me} className="authlogo mb-4 size-10" />
+            <h1 className="font-display text-2xl font-semibold tracking-tight">{me.brand}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Stage your review. Post it as yourself.</p>
+            <div className="mt-6 w-full text-left">
+              {err && <Banner kind="err">{err}</Banner>}
+              {github ? (
+                <>
+                  {deviceFailed}
+                  {deviceCard}
+                  {redirectFlow && (
+                    <Button asChild size="lg" className="w-full">
+                      <a href={oauthHref}>
+                        <GitHubMark /> Continue with GitHub
+                      </a>
+                    </Button>
+                  )}
+                  {deviceFlow && st.step !== "waiting" && st.step !== "done" && (
+                    <Button
+                      type="button"
+                      size="lg"
+                      className="w-full"
+                      onClick={() => void flow.begin()}
+                      disabled={st.step === "starting"}
+                      aria-busy={st.step === "starting"}
+                    >
+                      {st.step === "starting" ? <Loader2 className="animate-spin" aria-hidden="true" /> : <GitHubMark />}
+                      {st.step === "starting" ? "Asking GitHub for a code…" : "Continue with GitHub"}
+                    </Button>
+                  )}
+                  {me.oauth_blocked && !err && (
+                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                      GitHub sign-in is waiting on an org owner to approve the app; a token works meanwhile.
+                    </p>
+                  )}
+                  <div className="mt-3 text-center">
+                    <button
+                      type="button"
+                      className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      aria-expanded={showPat}
+                      aria-controls="pat-form"
+                      data-testid="pat-toggle"
+                      onClick={() => setShowPat((o) => !o)}
+                    >
+                      Use a token instead
+                    </button>
+                  </div>
+                  {showPat && <div id="pat-form">{patForm}</div>}
+                </>
+              ) : (
+                <>
+                  {patForm}
+                  <div className="mt-3 text-center">{teamLink}</div>
+                </>
               )}
-              {deviceFlow && st.step !== "waiting" && st.step !== "done" && (
-                <button
-                  type="button"
-                  className="btn primary block lg"
-                  onClick={() => void flow.begin()}
-                  disabled={st.step === "starting"}
-                  aria-busy={st.step === "starting"}
-                >
-                  <SlowBusy busy={st.step === "starting"} />
-                  {st.step === "starting" ? "Asking GitHub for a code…" : "Continue with GitHub"}
-                </button>
-              )}
-              {me.oauth_blocked && !err && (
-                <p className="authfine">
-                  GitHub sign-in is waiting on an org owner to approve the app; a token works meanwhile.
-                </p>
-              )}
-              <div className="authmore">
-                <button
-                  type="button"
-                  className="authlink"
-                  aria-expanded={showPat}
-                  aria-controls="pat-form"
-                  data-testid="pat-toggle"
-                  onClick={() => setShowPat((o) => !o)}
-                >
-                  Use a token instead
-                </button>
-              </div>
-              {showPat && <div id="pat-form">{patForm}</div>}
-            </>
-          ) : (
-            <>
-              {patForm}
-              <div className="authmore">{teamLink}</div>
-            </>
-          )}
-          <p className="authfine authguarantee">Nothing posts to GitHub until you click.</p>
-        </div>
+            </div>
+            <p className="authguarantee mt-6 w-full border-t border-border pt-4 text-xs text-muted-foreground">
+              Nothing posts to GitHub until you click.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

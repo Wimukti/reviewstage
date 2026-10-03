@@ -15,9 +15,9 @@
   --light-strong: rgba(255,225,176,.38);
   --shadow-raised: 0 -1px 0 var(--hairline), 0 12px 32px -12px rgba(0,0,0,.7);
   --r-s: 4px; --r-m: 8px; --r-full: 999px;
-  --display: 'Bricolage Grotesque Variable', 'IBM Plex Sans', system-ui, sans-serif;
-  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --display: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
   --dur: 120ms; --dur-slow: 320ms; --ease: cubic-bezier(.2,.7,.2,1);
   --t-12: .8572rem; --t-13: .9286rem; --t-14: 1rem; --t-16: 1.143rem; --t-20: 1.429rem;
   --t-24: 1.714rem; --t-32: 2.286rem;

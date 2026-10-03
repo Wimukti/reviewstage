@@ -31,11 +31,11 @@ test.describe("login", () => {
     await expect(card).toBeVisible();
     // The light sits behind the card.
     await expect(page.locator(".stage-login .authcard")).toHaveCount(1);
-    await expect(card.locator(".btn.primary")).toHaveCount(1);
+    await expect(card.getByRole("link", { name: "Continue with GitHub" }).or(card.getByRole("button", { name: /Continue with GitHub|Sign in with token/ }))).toHaveCount(1);
     await expect(card.getByRole("link", { name: "Continue with GitHub" })).toBeVisible();
     // Five things and nothing else: mark, name, one line, the button, the link.
     await expect(card.getByRole("heading", { level: 1 })).toHaveText("ReviewStage");
-    await expect(card.locator(".authsub")).toHaveText("Stage your review. Post it as yourself.");
+    await expect(card.getByText("Stage your review. Post it as yourself.")).toBeVisible();
     await expect(card.getByText(/GH_[A-Z_]+/)).toHaveCount(0);
     await expect(card.getByText("Running this server?")).toHaveCount(0);
     const toggle = card.getByRole("button", { name: "Use a token instead" });
@@ -45,14 +45,15 @@ test.describe("login", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByLabel("GitHub personal access token")).toBeVisible();
     // A secondary sign-in, not a second primary.
-    await expect(card.locator(".btn.primary")).toHaveCount(1);
+    await expect(card.getByRole("link", { name: "Continue with GitHub" })).toHaveCount(1);
+    await expect(card.getByRole("button", { name: "Sign in with token" })).toHaveClass(/bg-secondary/);
   });
 
   test("with both flows off the token form is the sign-in and the team link is the only setup text", async ({ page }) => {
     await page.goto("/login");
     const card = page.locator(".authcard");
     await expect(page.getByLabel("GitHub personal access token")).toBeVisible();
-    await expect(card.locator(".btn.primary")).toHaveCount(1);
+    await expect(card.getByRole("link", { name: "Continue with GitHub" }).or(card.getByRole("button", { name: /Continue with GitHub|Sign in with token/ }))).toHaveCount(1);
     await expect(card.getByRole("link", { name: "Setting up sign-in for a team" })).toHaveAttribute(
       "href",
       /start\/team-mode\/$/,

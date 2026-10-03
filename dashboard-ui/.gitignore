@@ -3,3 +3,6 @@ node_modules/
 *.log
 test-results/
 playwright-report/
+
+# Tailwind output, rebuilt by `pnpm tw` on every build
+src/generated/

@@ -1,6 +1,6 @@
 ---
 title: Notifications
-description: Slack, Discord, a generic signed webhook, or none — which events fire and how to verify them.
+description: Slack, Discord, a generic signed webhook, push to your phone, or none — which events fire and how to verify them.
 sidebar:
   order: 4
 ---
@@ -197,6 +197,48 @@ The dashboard always reflects the live queue regardless of what was announced; a
 
 Cards carry PR titles, authors and diff sizes; the review-ready card carries the agent's summary, which can quote code. Use a **private channel** whose members can all already read the repository, and treat every webhook URL, bot token and `WEBHOOK_SECRET` as a secret. The generic payload includes each reviewer's Slack / Discord IDs — send it only to an endpoint you control or trust.
 
-## Email and push
+## Phone and browser notifications
+
+ReviewStage is an installable app (see [Mobile](/reviewstage/developers/mobile/)), and it can tell you a review is waiting without Slack or Discord: **web push**, delivered to each browser or phone you turn it on from. A notification carries the title (`Review requested: owner/name#123`), the PR title and the review page to open. It never runs a review and never posts anything — tapping it opens the page, and everything from there is still your click.
+
+### Turning it on, per device
+
+1. Open the dashboard on the device — on a phone, **from the home-screen app** (below).
+2. **Settings → Notifications on this device** → turn the switch on, and allow notifications when the browser asks. The device is named from its browser (`iPhone · Safari`, `Android · Chrome`); the list below the switch shows every device you have turned on, with a remove button each.
+3. **Send a test** delivers *"This is what a review request looks like."* to all of your devices. If nothing arrives within a few seconds, see the checks below.
+
+Each person enables their own devices; nobody else's devices are visible or reachable. A review request pushes only to the devices of the reviewer it names, and a repeat for the same PR replaces the earlier notification rather than stacking (`tag`).
+
+**iPhone and iPad:** Safari delivers push **only to installed web apps** (iOS 16.4 or later). In a Safari tab the switch is replaced by the hint *"Add to Home Screen first"* — tap Share → **Add to Home Screen**, open ReviewStage from that icon, then turn notifications on there. Android Chrome and desktop browsers deliver to tabs and installed apps alike.
+
+### What the server stores
+
+- `~/.reviewstage/push_vapid.json` (mode 600): the server's **VAPID key pair**, generated the first time anyone turns notifications on. The public half identifies this server to the push services; the private half signs each send.
+- `~/.reviewstage/push_subs.json` (mode 600): one row per device — your login, the push service endpoint the browser handed out, the browser's public key and auth secret, the device name, when it was added, and the browser's user agent. **No GitHub or Claude token is ever involved**, and the finding text never goes through a push: only the title, the PR title and a URL, encrypted end to end for that one browser (RFC 8291).
+- A device whose push service answers `404` or `410` (the person revoked permission, cleared site data or uninstalled the app) is removed automatically on the next send.
+
+### Knobs
+
+All optional; see `config.example`.
+
+| Variable | Meaning |
+| --- | --- |
+| `RS_PUSH` | `1` (default) on; `0` switches push off everywhere without deleting anything. Restart after changing. |
+| `VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY` | Pin the pair instead of letting the server generate one (the base64url raw keys `npx web-push generate-vapid-keys` prints). Both or neither. |
+| `VAPID_SUBJECT` | The contact push services may use about the sender — a `mailto:` or `https://` URL. Defaults to `PUBLIC_URL` when it is https. |
+
+Push rides beside whatever `NOTIFY_BACKENDS` says: it fires for every reviewer who enabled it whenever a key pair exists, unless the list is `none` or `RS_PUSH=0`.
+
+### Rotating the keys
+
+Changing the pair invalidates every subscription — browsers bind their subscription to the public key they were given. To rotate: stop the server, delete `push_vapid.json` (or set a new `VAPID_*` pair), start it, and ask everyone to turn notifications off and on again on each device. There is no silent migration; that is a property of the protocol, not of ReviewStage.
+
+### When nothing arrives
+
+- `bin/doctor.sh` (or `docker compose exec app doctor`) prints `PASS push: VAPID pair present` once anyone has enabled a device, `WARN push: no VAPID pair — notifications off` before that, and warns when the server's Python cannot import `cryptography` (the image installs it; a from-source install needs `pip install cryptography`).
+- The poller's log shows `WARN: push: <host>/…: answered 4xx` for a rejected send; `… is gone (410) — subscription removed` is a device that revoked permission.
+- On a phone, check the OS notification settings for the installed app, and that it was opened from the home screen at least once since installing.
+
+## Email
 
 Not planned soon. Anything that accepts a webhook (Zapier → email, ntfy, Pushover) covers it via the generic backend.

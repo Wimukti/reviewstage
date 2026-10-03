@@ -83,11 +83,14 @@ test.describe("desktop shell at 1440", () => {
     expect(gap).toBeGreaterThanOrEqual(12);
   });
 
-  test("the account card is one row and the theme switch lives in More", async ({ page }) => {
+  test("the account card is compact and the theme switch lives in More", async ({ page }) => {
     await page.goto("/");
     await settled(page);
     const acct = page.getByTestId("account-card");
-    expect(Math.round((await acct.boundingBox())!.height)).toBeLessThanOrEqual(40);
+    // Name over state: two tight lines, never more. A one-line row truncated the login to two
+    // characters beside the badge and the menu button in a 216px sidebar.
+    expect(Math.round((await acct.boundingBox())!.height)).toBeLessThanOrEqual(48);
+    await expect(acct.getByTitle(/./).first()).toHaveText(/\S{3,}/); // the login is legible
     await expect(acct.getByTestId("status-badge")).toHaveText(/^(Live|Dry run)$/);
     await expect(page.getByTestId("theme-control")).toHaveCount(0);
     await page.getByTestId("account-more").click();

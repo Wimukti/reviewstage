@@ -18,7 +18,7 @@ export default defineConfig({
   trailingSlash: "always",
   vite: {
     plugins: [tailwindcss()],
-    resolve: { alias: { "@app": appSrc } },
+    resolve: { alias: { "@app": appSrc, "@": appSrc } },  // "@" is the app's own alias (shadcn imports @/lib/utils)
     server: { fs: { allow: [".", appSrc] } },
   },
   integrations: [

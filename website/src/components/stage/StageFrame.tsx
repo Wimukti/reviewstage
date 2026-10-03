@@ -7,6 +7,9 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import tokens from "@app/tokens.css?inline";
+// The Tailwind output: the rebuilt parts are utility-styled, so the shadow root needs it
+// alongside the legacy sheet or the hero renders unstyled. Vite compiles tw.css here.
+import tw from "@app/tw.css?inline";
 import styles from "@app/styles.css?inline";
 
 // html/body rules in styles.css match nothing inside a shadow root, so the mount takes over
@@ -29,7 +32,7 @@ export function StageFrame({ children, className, label }: { children: ReactNode
     const shadow = el.shadowRoot ?? el.attachShadow({ mode: "open" });
     if (!root.current) {
       const style = document.createElement("style");
-      style.textContent = `${tokens}\n${styles}\n${ROOT_CSS}`;
+      style.textContent = `${tokens}\n${tw}\n${styles}\n${ROOT_CSS}`;
       const mount = document.createElement("div");
       mount.className = "stage-root";
       shadow.append(style, mount);

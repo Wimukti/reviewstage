@@ -12,6 +12,9 @@
 #   slack    SLACK_WEBHOOK, or SLACK_BOT_TOKEN + SLACK_CHANNEL (threads replies under the card)
 #   discord  DISCORD_WEBHOOK — an embed; mentions <@discord_id> when the user saved one
 #   generic  WEBHOOK_URL — POST the raw JSON; WEBHOOK_SECRET → X-ReviewStage-Signature: sha256=…
+#   push     web push to the devices the reviewer enabled in the dashboard (bin/rs_push.py). On
+#            by itself whenever a VAPID pair exists ($ROOT/push_vapid.json or VAPID_*_KEY), beside
+#            whatever NOTIFY_BACKENDS says; RS_PUSH=0 turns it off.
 #   none     nothing (the dashboard is the inbox)
 # A failing backend is a WARN line, never an error: the caller's review must not die on a webhook.
 
@@ -26,7 +29,18 @@ notify_backends() {
     [ -n "${DISCORD_WEBHOOK:-}" ] && list+="discord,"
     [ -n "${WEBHOOK_URL:-}" ] && list+="generic,"
   fi
+  # Push is per device, not per install: a person who turned it on in the dashboard expects it
+  # regardless of which chat backend the admin picked, so it rides along unless explicitly off.
+  if push_available && ! echo ",$list," | tr -d ' ' | grep -q ',none,'; then list+=",push"; fi
   echo "$list" | tr ',' '\n' | tr -d ' ' | grep -v '^$' | sort -u
+}
+
+# push_available — a VAPID pair exists and RS_PUSH is not 0. Read-only; the server generates
+# the pair the first time someone enables notifications on a device.
+push_available() {
+  [ "${RS_PUSH:-1}" != "0" ] || return 1
+  { [ -n "${VAPID_PRIVATE_KEY:-}" ] && [ -n "${VAPID_PUBLIC_KEY:-}" ]; } && return 0
+  [ -f "${ROOT:-$HOME/.reviewstage}/push_vapid.json" ]
 }
 
 # --- colours ---------------------------------------------------------------------------------
@@ -83,6 +97,7 @@ notify_card() {
       slack)   _notify_slack "$payload"   || echo "WARN: notify: slack backend failed" >&2;;
       discord) _notify_discord "$payload" || echo "WARN: notify: discord backend failed" >&2;;
       generic) _notify_generic "$payload" || echo "WARN: notify: generic backend failed" >&2;;
+      push)    _notify_push "$payload"    || echo "WARN: notify: push backend failed" >&2;;
       none)    ;;
       *)       echo "WARN: notify: unknown backend '$b'" >&2;;
     esac
@@ -284,6 +299,29 @@ _notify_generic() {
   code=$(printf '%s' "$p" | curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 -X POST \
           "${hdr[@]}" --data-binary @- "$WEBHOOK_URL" 2>/dev/null) || code="000"
   case "$code" in 2*) ;; *) echo "WARN: notify: generic webhook returned $code" >&2;; esac
+  return 0
+}
+
+# --- web push ----------------------------------------------------------------------------------
+# One notification per device the requested reviewer enabled, through bin/rs_push.py. Title,
+# one line and the page to open — never the findings. `tag` collapses repeats for one PR.
+# review_requested is the card that matters on a phone; review_ready reaches the person who
+# started a run from their phone and locked it. Stops and QA guides stay on the chat backends.
+_notify_push() {
+  local p="$1" kind login title body url tag ref
+  kind=$(echo "$p" | jq -r .kind); login=$(echo "$p" | jq -r .login)
+  [ -n "$login" ] || return 0
+  if [ "$(repo_count)" -gt 1 ]; then ref=$(echo "$p" | jq -r '.repo + "#" + .pr')
+  else ref=$(echo "$p" | jq -r '"#" + .pr'); fi
+  case "$kind" in
+    review_requested) title="Review requested: $ref"; body=$(echo "$p" | jq -r .title);;
+    review_ready)     title="Review ready: $ref";     body=$(echo "$p" | jq -r '.header // .title');;
+    *) return 0;;
+  esac
+  url=$(echo "$p" | jq -r '.extra.detail // .url')
+  tag=$(echo "$p" | jq -r '"review:" + .repo + "#" + .pr')
+  python3 "$(dirname "${BASH_SOURCE[0]}")/rs_push.py" notify --login "$login" --title "$title" \
+    --body "$body" --url "$url" --tag "$tag" || return 1
   return 0
 }
 

@@ -37,6 +37,11 @@ x-app: &app
     # Pinned: the listen port inside the container is part of the image contract (healthcheck,
     # EXPOSE, the port published below). An RS_PORT in .env must not move it.
     RS_PORT: "8899"
+    # Web push knobs ride in from .env through env_file above: RS_PUSH (1/0),
+    # VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY (optional pinned pair) and VAPID_SUBJECT. Unset, the
+    # server generates a pair into the data volume (push_vapid.json) the first time a device
+    # enables notifications, so the pair survives rebuilds with the volume.
+    RS_PUSH: "${RS_PUSH:-1}"
   volumes:
     - reviewstage-data:/home/reviewstage/.reviewstage
   restart: unless-stopped

@@ -58,7 +58,7 @@
      rem utility rendered 7/8 of its name: text-sm was 12.25px and size-11 was 38.5px. These
      restate the scale so a utility means the pixel size it says, under this root. */
   --spacing: 0.2857rem;                      /* 4px */
-  --text-xs: 0.857rem;  --text-xs--line-height: 1.5;      /* 12px */
+  --text-xs: 0.8572rem; --text-xs--line-height: 1.5;      /* 12px: .857 rounds to 11.998 */
   --text-sm: 1rem;      --text-sm--line-height: 1.5;      /* 14px */
   --text-base: 1.143rem; --text-base--line-height: 1.55;  /* 16px */
   --text-lg: 1.286rem;  --text-lg--line-height: 1.45;     /* 18px */

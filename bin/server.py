@@ -52,6 +52,7 @@ import rs_diff
 import rs_learn
 import rs_md
 import rs_paths as P
+import rs_push
 import rs_profile
 import rs_review_body as RB
 import rs_rollup
@@ -171,6 +172,8 @@ def resolve_repo(q_repo, pr=""):
 # multi-user layout) are read as theirs, so history survives the upgrade.
 REVIEWER = ENV.get("REVIEWER", "")
 DRY_RUN = ENV.get("DRY_RUN", "1") == "1"
+# Web push (rs_push). On unless RS_PUSH=0; the VAPID pair is generated on first use.
+PUSH_ENABLED = ENV.get("RS_PUSH", os.environ.get("RS_PUSH", "1")) != "0"
 # Notification URLs are only inspected here (is it set?) for the Settings/Integrations pages;
 # posting goes through bin/notify.sh (see notify_card below).
 SLACK_WEBHOOK = ENV.get("SLACK_WEBHOOK", "")
@@ -3826,11 +3829,13 @@ RATE = {
     "login": RateLimiter(10, burst=5),          # PAT sign-in
     "device-start": RateLimiter(6, burst=3),    # starting a device sign-in
     "device-poll": RateLimiter(60, burst=20),   # ~one every 5s per browser, with slack
+    "push-test": RateLimiter(10, burst=5),      # "Send a test" — same shape as sign-in
 }
 RATE_ADDR = {
     "login": RateLimiter(200, burst=100),
     "device-start": RateLimiter(120, burst=60),
     "device-poll": RateLimiter(1200, burst=400),
+    "push-test": RateLimiter(200, burst=100),
 }
 
 # A reverse proxy in front of the server is the only thing allowed to say who the client is:
@@ -4136,6 +4141,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"error": "unauthorized"}, 401)
         if route == "/api/devices":
             return self.api_json(self.api_devices(user))
+        if route == "/api/push/key":
+            return self.api_json(*self.api_push_key())
+        if route == "/api/push/devices":
+            return self.api_json(self.api_push_devices(user))
         if route == "/api/queue":
             return self.api_json(self.api_queue(user, (q.get("tab") or ["todo"])[0],
                                                 (q.get("sort") or ["newest"])[0],
@@ -4777,6 +4786,58 @@ class Handler(BaseHTTPRequestHandler):
         self._reissue = session_cookie(user, self.headers.get("Host", ""), epoch=n["epoch"])
         return out, 200
 
+    # -- web push (rs_push; docs/guides/notifications "Phone and browser notifications") -------
+    # A push subscription is a sibling of the device token: per user, per browser, revocable
+    # from the panel. It can only ever make a phone show a title and open a page.
+    def api_push_key(self):
+        """The VAPID public key the browser subscribes with. Generates the pair on first use;
+        RS_PUSH=0 switches the feature off without deleting anything."""
+        if not PUSH_ENABLED:
+            return {"enabled": False, "error": "Push notifications are off on this server "
+                                                "(RS_PUSH=0)."}, 503
+        if not rs_push.HAVE_CRYPTO:
+            return {"enabled": False, "error": "This server's Python has no `cryptography` "
+                                                "package, so it cannot send push."}, 503
+        return {"enabled": True, "publicKey": rs_push.public_key(ROOT)}, 200
+
+    def api_push_devices(self, user):
+        return {"devices": rs_push.list_subs(user, ROOT), "max": rs_push.MAX_SUBS,
+                "enabled": PUSH_ENABLED and rs_push.HAVE_CRYPTO}
+
+    def api_push_subscribe(self, user, body):
+        sub = body.get("subscription")
+        if not rs_push.valid_subscription(sub):
+            return {"error": "That is not a web push subscription (endpoint + p256dh + auth)."}, 400
+        if not PUSH_ENABLED:
+            return {"error": "Push notifications are off on this server (RS_PUSH=0)."}, 503
+        row = rs_push.add_sub(user, sub, body.get("device"), self.headers.get("User-Agent", ""),
+                              ROOT)
+        print(f"push subscribed: {user} ({row['device']})", flush=True)
+        return {"ok": True, "device": row, "devices": rs_push.list_subs(user, ROOT)}, 200
+
+    def api_push_unsubscribe(self, user, body):
+        """By full endpoint (the browser knows its own) or by the masked row id (another
+        device's, from the list). Only this user's rows are touched either way."""
+        ep, rid = str(body.get("endpoint") or ""), str(body.get("id") or "")
+        if not ep and not rid:
+            return {"error": "Pass the subscription endpoint or a device id."}, 400
+        if not ep:
+            ep = next((s["endpoint"] for s in rs_push.user_subs(user, ROOT)
+                       if rs_push.endpoint_id(s["endpoint"]) == rid), "")
+        n = rs_push.remove_sub(user, ep, ROOT) if ep else 0
+        return {"ok": True, "removed": n, "devices": rs_push.list_subs(user, ROOT)}, 200
+
+    def api_push_test(self, user):
+        """The sample notification, to the caller's own devices only."""
+        if not PUSH_ENABLED or not rs_push.HAVE_CRYPTO:
+            return {"error": "Push notifications are off on this server."}, 503
+        res = rs_push.send(user, rs_push.notify_payload(
+            "ReviewStage test", "This is what a review request looks like.",
+            f"{PUBLIC_URL or ''}/", "test"), ROOT)
+        if not res["devices"]:
+            return {"error": "No subscribed devices — turn notifications on first.", **res}, 400
+        return {"ok": res["sent"] > 0, **res}, 200
+
     def api_queue(self, user, tab, sort, repo="", text=""):
         """The queue page. `repo` and `q` filter EVERY tab and tile, not just the rows: the
         client used to receive only the open tab's rows, so it could not recompute a count for
@@ -4978,6 +5039,14 @@ class Handler(BaseHTTPRequestHandler):
             self._reissue = None
             out, code = self.api_devices_revoke(user, body)
             return self.api_json(out, code, cookie=self._reissue if cookie_user else None)
+        if route == "/api/push/subscribe":
+            return self.api_json(*self.api_push_subscribe(user, body))
+        if route == "/api/push/unsubscribe":
+            return self.api_json(*self.api_push_unsubscribe(user, body))
+        if route == "/api/push/test":
+            if not self.rate_ok("push-test"):
+                return None
+            return self.api_json(*self.api_push_test(user))
 
         # Settings-token actions with no PR: skills, integrations settings, Claude connect.
         def settings_gate():

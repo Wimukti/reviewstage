@@ -18,8 +18,9 @@
  *                       wins and the cache only covers being offline.
  *   - navigations       network-first, falling back to the cached shell, then offline.html.
  *
- * No push handler yet: web push needs VAPID keys on the server and a subscription store per
- * device — see docs/MOBILE.md. */
+ *   - push             shows the notification the server encrypted for this device (title,
+ *                       one line, the page to open). A notification only ever opens a page.
+ *   - notificationclick focuses an open window on that URL, or opens one. */
 const VERSION = "rs-__BUILD__";
 const SHELL = ["/", "/offline.html", "/manifest.webmanifest", "/icons/icon-192.png"];
 
@@ -88,4 +89,38 @@ self.addEventListener("fetch", (e) => {
       )
     );
   }
+});
+
+// --- web push (bin/rs_push.py) ---------------------------------------------------------------
+// The payload is the JSON rs_push.notify_payload builds: {title, body, url, tag}. `tag` makes
+// a repeat for the same PR replace the earlier one instead of stacking. Both icons come from
+// the manifest set, so they are already cached by the install step above.
+self.addEventListener("push", (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { body: e.data && e.data.text() }; }
+  const title = data.title || "ReviewStage";
+  const url = typeof data.url === "string" && data.url ? data.url : "/";
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/maskable-192.png",
+      tag: data.tag || undefined,
+      renotify: !!data.tag,
+      data: { url },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const target = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      const same = wins.find((w) => w.url === target) || wins.find((w) => "focus" in w);
+      if (same && same.url === target) return same.focus();
+      if (same && "navigate" in same) return same.navigate(target).then((w) => (w || same).focus());
+      return self.clients.openWindow(target);
+    })
+  );
 });

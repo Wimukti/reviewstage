@@ -42,6 +42,9 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends gh nodejs; \
     npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"; \
+    # cryptography — web push (bin/rs_push.py): ECDH + AES-GCM for RFC 8291 and ES256 for the
+    # VAPID JWT. The only pip package in the image; the rest of the server is stdlib.
+    pip install --no-cache-dir "cryptography>=42"; \
     npm cache clean --force; \
     apt-get clean; rm -rf /var/lib/apt/lists/*
 

@@ -52,10 +52,9 @@ app-shaped window.
 - **iOS web push exists only for the home-screen app**, since iOS 16.4. A Safari tab gets
   nothing. Android Chrome delivers web push to tabs and installed apps alike.
 - **No background sync** worth relying on. The queue refreshes when the app is foregrounded.
-- **No push at all yet, on either platform.** Web push needs a VAPID key pair on the server,
-  a per-device subscription store, and a `notify` backend that fans out to those subscriptions.
-  None of that exists; it is the same work as Phase 2's push, so it is scheduled there rather
-  than built twice.
+- **Web push is shipped** (Phase 2b below): a VAPID key pair on the server, a per-device
+  subscription store, and the `push` backend of `notify.sh`. Turn it on per device from
+  Settings → *Notifications on this device*; on iOS only the home-screen app receives it.
 - iOS Safari evicts storage for installed web apps that go unused for weeks; the session
   cookie may need a fresh sign-in after a long gap. Acceptable for a work tool.
 
@@ -190,20 +189,32 @@ handlers in `bin/server.py`; deviations from the original spec are listed after 
 
 ## Push
 
-Push is implemented **once, server-side**, as a `push` backend of the `notify` abstraction being
-built now (`slack`, `discord`, `webhook`, later `email`, `push`). When `pr-watch.sh` finds a
-review request, `notify` fans out to every backend the requested user has enabled; the `push`
-backend looks up the user's registered devices and sends the card's title and deep link.
+Push is implemented **once, server-side**, as the `push` backend of `bin/notify.sh` (beside
+`slack`, `discord`, `generic`). When `pr-watch.sh` or the webhook finds a review request,
+`notify_card` fans out to every backend; `push` looks up the requested reviewer's subscribed
+devices and sends the title, the PR title and the review page's URL. Shipped for the installed
+PWA (web push); the FCM/APNs leg for a Capacitor wrapper is still roadmap.
 
-- **Registration.** `POST /api/devices/push` `{ "id": <device id>, "platform": "fcm" |
-  "apns" | "webpush", "token" | "subscription" }`, bearer auth. Stored beside the device record.
-- **Transport.** FCM HTTP v1 for Android and, via APNs relay, iOS from the Capacitor app; raw
-  web push (RFC 8291, VAPID) for the installed PWA. Both are a few hundred lines of stdlib
-  Python (JWT signing with `cryptography` or `openssl` as the rest of the codebase does).
-- **Payload.** Title, PR number, repo, and the deep link. Never the finding text: it goes
-  through a third-party relay.
+- **Server.** `bin/rs_push.py`: RFC 8291 content encryption (ECDH P-256 + HKDF + AES-128-GCM,
+  one `aes128gcm` record), RFC 8292 VAPID (ES256 JWT, `aud` = push-service origin, 12 h expiry),
+  RFC 8030 delivery (`TTL`, `Urgency`, `Topic` derived from the tag so repeats for one PR
+  collapse). `cryptography` is the one pip package in the image for this; HKDF is stdlib.
+- **Keys.** `$ROOT/push_vapid.json` (0600), generated on first use, or pinned with
+  `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY`; `VAPID_SUBJECT` is the contact claim.
+- **Subscriptions.** `$ROOT/push_subs.json` (0600, fcntl-locked like `users.json`): one row per
+  browser per user — `{login, endpoint, keys, device, added, ua}`. A `404`/`410` from the push
+  service removes the row. Ten per user; the oldest is evicted.
+- **Routes** (session cookie or bearer device token): `GET /api/push/key`,
+  `POST /api/push/subscribe` `{subscription, device}`, `POST /api/push/unsubscribe`
+  `{endpoint | id}`, `GET /api/push/devices` (endpoints masked), `POST /api/push/test`
+  (rate-limited like sign-in; the caller's own devices only).
+- **Client.** `dashboard-ui/src/push.ts` (`isSupported`, `permission`, `subscribe`,
+  `unsubscribe`, `usePush`) and the `PushDevices` panel; `public/sw.js` gained `push` and
+  `notificationclick` handlers (the caching policy is unchanged).
+- **Payload.** `{title, body, url, tag}` — the title, the PR title and a URL. Never the finding
+  text: it goes through a third-party relay.
 - **iOS caveat.** Web push only reaches the home-screen PWA; the native wrapper is the way to
-  reach every iPhone user.
+  reach every iPhone user. The panel shows an install hint on iOS Safari until then.
 
 ## Roadmap placement
 
@@ -211,10 +222,10 @@ backend looks up the user's registered devices and sends the card's title and de
 | --- | --- | --- | --- |
 | **1 — PWA** | Manifest, icons, root-scoped service worker, offline page, `mobile.css`, e2e checks | **Shipped** in this change | Done; ongoing cost nil |
 | **2a — Device tokens** | `bearer_user`, `/api/device-token`, `/api/devices`, `/api/devices/revoke`, `/device` pairing page, Settings → Devices | **Shipped** | Done |
-| **2b — Push** | `push` notify backend, web push (VAPID) for the PWA, FCM/APNs for the wrapper, device registration | Roadmap (P2 with email) | ~1 week |
+| **2b — Push** | `push` notify backend, web push (VAPID) for the PWA, per-device subscriptions, Settings panel | **Shipped** (web push); FCM/APNs waits for the wrapper | Done |
 | **2c — Capacitor apps** | Wrapper, in-app-browser sign-in, biometrics, deep links, multi-server picker, store listings | Roadmap (P2) | 2–3 weeks + store review |
 
-The order is deliberate: device tokens unblock both push registration and the wrapper, and are
+The order was deliberate: device tokens unblock both push registration and the wrapper, and are
 useful on their own (a CLI or a second browser could use one). Push before the wrapper, because
 the PWA on Android and the iOS home-screen app can receive it already. The wrapper last, when
 a team asks for the store icon or for iPhone push that reaches a Safari-tab user.

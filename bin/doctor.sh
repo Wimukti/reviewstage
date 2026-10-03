@@ -255,6 +255,21 @@ if [ -z "${SLACK_WEBHOOK:-}${SLACK_BOT_TOKEN:-}${DISCORD_WEBHOOK:-}${WEBHOOK_URL
   warn "no notification backend configured — no review-request cards; the dashboard is the inbox"
 fi
 [ -s "$ROOT/settings.json" ] && note "runtime settings in $ROOT/settings.json override .env (Settings page)"
+# Web push (bin/rs_push.py). Never a FAIL: the pair is generated the first time someone turns
+# notifications on in the dashboard, so its absence just means nobody has yet.
+if [ "${RS_PUSH:-1}" = "0" ]; then
+  warn "push: RS_PUSH=0 — phone/browser notifications off"
+elif { [ -n "${VAPID_PRIVATE_KEY:-}" ] && [ -n "${VAPID_PUBLIC_KEY:-}" ]; }; then
+  pass "push: VAPID pair present (from VAPID_PRIVATE_KEY/VAPID_PUBLIC_KEY)"
+elif [ -s "$ROOT/push_vapid.json" ]; then
+  pass "push: VAPID pair present ($ROOT/push_vapid.json)"
+  mode=$(stat -c %a "$ROOT/push_vapid.json" 2>/dev/null || stat -f %Lp "$ROOT/push_vapid.json" 2>/dev/null)
+  [ "${mode:-600}" = 600 ] || warn "push: $ROOT/push_vapid.json is mode $mode — should be 600 (it holds the private key)"
+else
+  warn "push: no VAPID pair — notifications off until someone enables them on a device"
+fi
+python3 -c 'import cryptography' 2>/dev/null \
+  || warn "push: python3 cannot import \`cryptography\` — subscriptions will be accepted but nothing can be sent"
 
 # --- skills ------------------------------------------------------------------------------------
 for s in pr-review pr-qa-guide; do

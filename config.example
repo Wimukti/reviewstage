@@ -53,9 +53,26 @@ WEBHOOK_SECRET=
 # endpoint answers 503 and polling does all the work. Restart the server after changing.
 GITHUB_WEBHOOK_SECRET=
 
+# --- phone and browser notifications (web push) ----------------------------------------------
+# On by default; nothing to configure. The first time someone turns notifications on for a
+# device (Settings -> Notifications on this device) the server generates a VAPID key pair into
+# ~/.reviewstage/push_vapid.json (chmod 600) and keeps it. Set RS_PUSH=0 to switch the feature
+# off everywhere without deleting anything. Restart the server after changing.
+RS_PUSH=1
+# Optional: pin the pair instead of letting the server generate one — the base64url raw keys
+# every web-push tool prints (`npx web-push generate-vapid-keys`). Both or neither. Changing the
+# pair invalidates every existing subscription: each device has to turn notifications on again.
+VAPID_PRIVATE_KEY=
+VAPID_PUBLIC_KEY=
+# The contact the push services may use about your sender: a mailto: or https URL. Defaults to
+# PUBLIC_URL when that is https, else mailto:reviewstage@localhost.
+VAPID_SUBJECT=
+
 # Which backends fire, comma-separated: slack, discord, generic, none. Empty = whichever of
 # the URLs above are set (so an existing Slack-only install changes nothing). Can be
-# overridden without a restart from the dashboard's Settings page.
+# overridden without a restart from the dashboard's Settings page. Web push is not in this
+# list: it fires for every reviewer who enabled it on a device whenever a VAPID pair exists,
+# unless the list is `none` or RS_PUSH=0.
 NOTIFY_BACKENDS=
 
 # --- per-install values (bootstrap prompts for these on first run) ----------------------------

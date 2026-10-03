@@ -58,6 +58,15 @@ test("StageQueueCard and StageProgress render from the fixture", () => {
   assert.match(q, /#38849/);
   assert.match(q, /1 should fix/);
   assert.match(q, /1 nit/);
+  // The queue's own row: the repository as a pill, the author as an avatar, the state as a
+  // badge — and none of the legacy row classes the site used to inline rules for.
+  assert.match(q, /data-testid="repo-pill"/);
+  assert.match(q, /data-testid="user-avatar"/);
+  assert.match(q, /data-testid="status-badge"[^>]*data-kind="reviewed"/);
+  assert.doesNotMatch(q, /class="[^"]*\b(row|rowlink|rowsub|repochip|list)\b/);
+  const fresh = renderToStaticMarkup(createElement(StageQueueCard, { state: "new" }));
+  assert.match(fresh, /data-kind="new"/);
+  assert.doesNotMatch(fresh, /should fix/);
   const p = renderToStaticMarkup(createElement(StageProgress, { cur: 2 }));
   assert.equal(count(p, 'data-state="done"'), 2);
   assert.equal(count(p, 'data-state="now"'), 1);

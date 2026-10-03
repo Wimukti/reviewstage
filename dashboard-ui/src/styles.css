@@ -77,26 +77,6 @@ margin-top:1px;font-size:var(--t-13)}
 /* ---- the running dot (SlowBusy) ----------------------------------------------------------- */
 .rundot{width:8px;height:8px;border-radius:var(--r-full);background:var(--amber);flex:none;display:inline-block}
 
-/* ---- the site's stage island (src/stage/StageQueueCard.tsx) still renders the legacy queue
-   row; these are its last rules, for lane S4 to delete when it moves the card onto Queue's
-   components. Nothing in the app consumes them. ---- */
-.muted{color:var(--graphite)}
-.sm{font-size:var(--t-12)}
-.list{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-m);overflow:hidden}
-.row{display:flex;align-items:center;min-height:var(--row)}
-.rowlink{display:block;flex:1;min-width:0;padding:8px 4px 8px var(--pad);color:inherit}
-.rowlink:hover{text-decoration:none}
-.rowact{font:inherit;font-size:var(--t-13);color:var(--graphite);background:none;border:0;padding:8px 10px;
-border-radius:var(--r-s);white-space:nowrap;cursor:pointer;min-height:var(--ctl)}
-.rowtop{display:flex;gap:10px;align-items:center;margin-bottom:3px;flex-wrap:wrap}
-.num{font-weight:500;color:var(--blue)}
-.ttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
-.rowsub{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.rowrun{color:var(--amber);font-size:var(--t-13)}
-.rowrun .runback{color:var(--graphite)}
-.repochip{display:inline-flex;align-items:center;font-size:var(--t-13);color:var(--graphite);border:1px solid var(--hairline);
-border-radius:var(--r-s);padding:0 6px;line-height:20px;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
-
 /* ---- phone --------------------------------------------------------------------------------------- */
 @media (max-width:899px){
   code{overflow-wrap:anywhere}

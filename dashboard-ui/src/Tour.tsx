@@ -1,6 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { api, type Me } from "./api";
 import { Link } from "./router";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Popover, PopoverAnchor } from "@/components/ui/popover";
+import {
+  Dialog as DialogPrimitive,
+  Popover as PopoverPrimitive,
+} from "radix-ui";
 
 interface TourStep {
   sel?: string;
@@ -41,7 +55,9 @@ const EVT = "reviewstage:start-tour";
 // The queue renders after its data loads, so the auto-start waits for the target this long.
 const AUTO_START_SEL = '[data-tour="queue"]';
 const AUTO_START_WAIT_MS = 5000;
-const FOCUSABLE = 'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])';
+const CARD_W = 340;
+const CARD_H_GUESS = 240;
+const GAP = 14;
 
 // Comma-separated selectors are tried in order: the first that matches wins (unlike
 // querySelector, which picks document order).
@@ -54,7 +70,10 @@ function findTarget(sel: string): HTMLElement | null {
 }
 
 // Resolve once `sel` is in the DOM (now, or when it appears within `ms`); false on timeout.
-function whenPresent(sel: string, ms: number): { promise: Promise<boolean>; cancel: () => void } {
+function whenPresent(
+  sel: string,
+  ms: number,
+): { promise: Promise<boolean>; cancel: () => void } {
   let cancel = () => {};
   const promise = new Promise<boolean>((resolve) => {
     if (document.querySelector(sel)) return resolve(true);
@@ -75,10 +94,17 @@ function whenPresent(sel: string, ms: number): { promise: Promise<boolean>; canc
   return { promise, cancel };
 }
 
-// Fire from anywhere (e.g. the sidebar) to (re)open the tour.
-export function startTour() {
-  window.dispatchEvent(new Event(EVT));
+// Fire from anywhere (e.g. the sidebar) to (re)open the tour. `returnTo` is where focus goes
+// when it ends; by default, whatever had focus when it started — which is wrong when that was
+// a menu item that closes with its menu.
+export function startTour(returnTo?: HTMLElement | null) {
+  window.dispatchEvent(
+    new CustomEvent(EVT, { detail: { returnTo: returnTo ?? null } }),
+  );
 }
+
+type Side = "top" | "right" | "bottom" | "left";
+type Ring = { left: number; top: number; width: number; height: number } | null;
 
 export function Tour({ me }: { me: Me }) {
   const [open, setOpen] = useState(false);
@@ -88,8 +114,13 @@ export function Tour({ me }: { me: Me }) {
   // and the same person on a new laptop saw it again. Held here as well so dismissing it takes
   // effect immediately rather than on the next /api/me.
   const [seen, setSeen] = useState(me.tour_seen !== false);
-  const ringRef = useRef<HTMLDivElement>(null);
+  // Where the ring sits (null: the step has no target and the card is centred) and which side
+  // of it the card goes; Radix does the exact placement and the collision shifting.
+  const [ring, setRing] = useState<Ring>(null);
+  const [side, setSide] = useState<Side>("right");
+  const rootRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
   // Whatever had focus when the tour opened gets it back when it closes.
   const trigger = useRef<HTMLElement | null>(null);
 
@@ -105,8 +136,12 @@ export function Tour({ me }: { me: Me }) {
   // an older server that cannot remember a dismissal — auto-starting then would reopen it on
   // every load, so we only ever offer it from the Help menu there.
   useEffect(() => {
-    const onStart = () => {
-      trigger.current = document.activeElement as HTMLElement | null;
+    const onStart = (e?: Event) => {
+      const returnTo = (
+        e as CustomEvent<{ returnTo?: HTMLElement | null }> | undefined
+      )?.detail?.returnTo;
+      trigger.current =
+        returnTo ?? (document.activeElement as HTMLElement | null);
       setI(0);
       setOpen(true);
     };
@@ -118,7 +153,7 @@ export function Tour({ me }: { me: Me }) {
       // checking once. Empty queue or not, the card is there — the tour still runs.
       waiter = whenPresent(AUTO_START_SEL, AUTO_START_WAIT_MS);
       waiter.promise.then((ok) => {
-        if (ok) t = window.setTimeout(onStart, 450);
+        if (ok) t = window.setTimeout(() => onStart(), 450);
       });
     }
     return () => {
@@ -130,136 +165,204 @@ export function Tour({ me }: { me: Me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Position the ring + card against the current step's target. The card never covers what it
-  // points at: on the phone it sits over the header and the target is scrolled to start beneath
-  // it (so a list that runs past the fold is still clear of it); on the desktop it goes to the
-  // right of the target when there is room, otherwise below, otherwise above.
+  // Put the ring on the current step's target and pick the card's side. The card never covers
+  // what it points at: on the phone the target is scrolled to start beneath where the card
+  // will sit and the card goes above it; on the desktop it goes to the right of the target
+  // when there is room, otherwise below, otherwise above.
   const place = useCallback(() => {
     const s = TOUR[i];
-    const ring = ringRef.current;
-    const card = cardRef.current;
-    if (!ring || !card) return;
-    card.classList.remove("at-top");
     const tgt = s.sel ? findTarget(s.sel) : null;
     if (!tgt) {
-      ring.style.display = "none";
-      card.style.left = "50%";
-      card.style.top = "50%";
-      card.style.transform = "translate(-50%,-50%)";
+      setRing(null);
       return;
     }
     const phone = window.innerWidth < 900;
-    const cardH = card.offsetHeight || 220;
     const pad = 6;
+    const cardH = cardRef.current?.offsetHeight || CARD_H_GUESS;
     if (phone) {
-      card.classList.add("at-top");
-      const under = 16 + cardH + 12 + pad;
-      window.scrollBy({ top: tgt.getBoundingClientRect().top - under, behavior: "auto" });
+      const under = 16 + cardH + GAP + pad;
+      window.scrollBy({
+        top: tgt.getBoundingClientRect().top - under,
+        behavior: "auto",
+      });
     } else {
       tgt.scrollIntoView({ block: "center", behavior: "auto" });
     }
     const r = tgt.getBoundingClientRect();
-    ring.style.display = "block";
-    ring.style.left = `${r.left - pad}px`;
-    ring.style.top = `${r.top - pad}px`;
-    ring.style.width = `${r.width + pad * 2}px`;
-    ring.style.height = `${r.height + pad * 2}px`;
-    if (phone) return;
-    const W = 340;
-    const gap = 14;
+    setRing({
+      left: r.left - pad,
+      top: r.top - pad,
+      width: r.width + pad * 2,
+      height: r.height + pad * 2,
+    });
+    if (phone) {
+      setSide("top");
+      return;
+    }
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    let left: number;
-    let top: number;
-    if (r.right + gap + W <= vw - 16) {
-      left = r.right + gap;
-      top = Math.min(Math.max(16, r.top), Math.max(16, vh - cardH - 16));
-    } else {
-      left = Math.max(16, Math.min(r.left, vw - W - 16));
-      top = r.bottom + gap + cardH <= vh - 16 ? r.bottom + gap : Math.max(16, r.top - gap - cardH);
-    }
-    card.style.left = `${left}px`;
-    card.style.top = `${top}px`;
-    card.style.transform = "none";
+    if (r.right + GAP + CARD_W <= vw - 16) setSide("right");
+    else if (r.bottom + GAP + cardH <= vh - 16) setSide("bottom");
+    else setSide("top");
   }, [i]);
 
-  useEffect(() => {
+  // Before paint, so a step never flashes centred before its ring and card land.
+  useLayoutEffect(() => {
     if (!open) return;
     place();
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
   }, [open, place]);
 
-  // A dialog: focus moves into it, Tab cycles inside it, Escape closes it.
+  // Focus lands on Next (Radix traps it inside the dialog and handles Tab). `ring` is a
+  // dependency because the card remounts inside the popover once the ring is placed.
   useEffect(() => {
     if (!open) return;
-    const card = cardRef.current;
-    (card?.querySelector<HTMLElement>(".btn.primary") ?? card?.querySelector<HTMLElement>(FOCUSABLE))?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        end();
-        return;
-      }
-      if (e.key !== "Tab" || !card) return;
-      const items = [...card.querySelectorAll<HTMLElement>(FOCUSABLE)];
-      if (items.length === 0) return;
-      const head = items[0];
-      const tail = items[items.length - 1];
-      const cur = document.activeElement as HTMLElement | null;
-      if (!cur || !card.contains(cur)) {
-        e.preventDefault();
-        head.focus();
-      } else if (e.shiftKey && cur === head) {
-        e.preventDefault();
-        tail.focus();
-      } else if (!e.shiftKey && cur === tail) {
-        e.preventDefault();
-        head.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, i, end]);
+    nextRef.current?.focus();
+  }, [open, i, ring]);
 
   if (!open) return null;
   const s = TOUR[i];
-  const dimmed = !s.sel;
+  const dimmed = !s.sel || !ring;
   const last = i === TOUR.length - 1;
 
-  return (
-    <div className={"tourv" + (dimmed ? " dim" : "")} data-testid="tour" role="dialog" aria-modal="true" aria-label="Guided tour">
-      <div className="tourmask" onClick={end} />
-      <div className="tourring" ref={ringRef} />
-      <div className="tourcard" ref={cardRef}>
-        <div className="tourh">{s.title}</div>
-        <div className="tourtext">{s.text}</div>
-        <div className="tourdots">
+  const card = (
+    <Card
+      ref={cardRef}
+      className="tourcard w-[340px] max-w-[calc(100vw-32px)] gap-0 rounded-xl bg-popover py-0 shadow-xl"
+    >
+      <CardContent className="px-4 py-4">
+        <DialogPrimitive.Title className="text-sm font-medium">
+          {s.title}
+        </DialogPrimitive.Title>
+        <DialogPrimitive.Description className="mt-1 mb-0 text-sm leading-relaxed text-muted-foreground">
+          {s.text}
+        </DialogPrimitive.Description>
+        <div className="my-3 flex gap-1.5" aria-hidden="true">
           {TOUR.map((_, j) => (
-            <span key={j} className={"tdot" + (j === i ? " on" : "")} />
+            <span
+              key={j}
+              className={cn(
+                "size-1.5 rounded-full",
+                j === i ? "bg-primary" : "bg-border",
+              )}
+            />
           ))}
         </div>
-        <div className="tourbtns">
-          <button className="btn quiet" type="button" onClick={end}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            className="text-muted-foreground"
+            onClick={end}
+          >
             Skip
-          </button>
-          <span className="spacer" />
+          </Button>
+          <span className="flex-1" />
           {i > 0 && (
-            <button className="btn secondary" type="button" onClick={() => setI((n) => n - 1)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={() => setI((n) => n - 1)}
+            >
               Back
-            </button>
+            </Button>
           )}
           {/* The tour ends where it started; the CTA is an offer, not the exit. */}
           {s.cta && (
-            <Link className="btn secondary" to={s.cta.to} onClick={end}>
-              {s.cta.label}
-            </Link>
+            <Button
+              asChild
+              variant="secondary"
+              size="sm"
+              className="hover:no-underline"
+            >
+              <Link to={s.cta.to} onClick={end}>
+                {s.cta.label}
+              </Link>
+            </Button>
           )}
-          <button className="btn primary" type="button" onClick={() => (last ? end() : setI((n) => n + 1))}>
+          <Button
+            ref={nextRef}
+            size="sm"
+            type="button"
+            onClick={() => (last ? end() : setI((n) => n + 1))}
+          >
             {last ? "Done" : "Next"}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    // A Radix dialog (role, aria-modal, focus trap, Escape); the mask, ring and card are its content.
+    <DialogPrimitive.Root open modal>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Content
+          ref={rootRef}
+          data-testid="tour"
+          aria-label="Guided tour"
+          aria-modal="true"
+          className="fixed inset-0 z-[70] outline-hidden"
+          // Portals mount a render after `open`, so focus is placed here, once the card exists.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            nextRef.current?.focus();
+          }}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => {
+            e.preventDefault();
+            end();
+          }}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <div
+            className={cn("absolute inset-0", dimmed && "bg-background/70")}
+            onClick={end}
+          />
+          {ring ? (
+            <Popover open modal={false}>
+              <PopoverAnchor asChild>
+                <div
+                  className="pointer-events-none absolute rounded-lg ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  style={{
+                    left: ring.left,
+                    top: ring.top,
+                    width: ring.width,
+                    height: ring.height,
+                  }}
+                />
+              </PopoverAnchor>
+              {/* Composed from the primitive: the shadcn wrapper does not expose the portal's
+              container, and the card has to live inside this dialog for the focus trap. */}
+              <PopoverPrimitive.Portal container={rootRef.current}>
+                <PopoverPrimitive.Content
+                  side={side}
+                  align="start"
+                  sideOffset={GAP}
+                  collisionPadding={16}
+                  onOpenAutoFocus={(e) => {
+                    e.preventDefault();
+                    nextRef.current?.focus();
+                  }}
+                  onCloseAutoFocus={(e) => e.preventDefault()}
+                  onInteractOutside={(e) => e.preventDefault()}
+                  onEscapeKeyDown={(e) => e.preventDefault()}
+                  className="z-50 outline-hidden"
+                >
+                  {card}
+                </PopoverPrimitive.Content>
+              </PopoverPrimitive.Portal>
+            </Popover>
+          ) : (
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              {card}
+            </div>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

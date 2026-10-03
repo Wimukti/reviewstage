@@ -282,7 +282,7 @@ test.describe("the running view and the counts", () => {
 
     await page.goto("/?running=1");
     const list = page.getByTestId("running-list");
-    await expect(list.locator(".row")).toHaveCount(2);
+    await expect(list.getByTestId("queue-row")).toHaveCount(2);
     await expect(list).toContainText(/reviewing the diff/i);
     await expect(list).toContainText(/reading the diff/i);
     await expect(list).toContainText("QA guide");
@@ -293,9 +293,9 @@ test.describe("the running view and the counts", () => {
     page,
   }) => {
     await page.goto("/?tab=reviewed");
-    const openTab = page.locator(".tab.on .cnt");
+    const openTab = page.getByRole("tab", { selected: true }).getByTestId("tab-count");
     const before = Number((await openTab.textContent())?.replace(/\D/g, "") || "0");
-    const rows = page.locator("#qlist .row");
+    const rows = page.locator("#qlist").getByTestId("queue-row");
     const rowsBefore = await rows.count();
     expect(before).toBe(rowsBefore);
 

@@ -1,59 +1,67 @@
 // Lane Q of the redesign (tasks.md): the queue without its stat tiles, the archive control as an
 // icon button that keyboard users can find, a command palette that announces the highlighted
 // option, a QA title that never repeats its own number, and Learnings as a table.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { PR, PR3, REPO, REPO2 } from "./fixture";
 
 const enc = (r: string) => encodeURIComponent(r);
 
+async function pickRepo(page: Page, label: string | RegExp) {
+  await page.getByLabel("Filter by repository").click();
+  await page.getByRole("option", { name: label }).click();
+}
+const tabCount = (page: Page, name: RegExp) => page.getByRole("tab", { name }).getByTestId("tab-count");
+
 test.describe("queue", () => {
   test("has no stat tiles and the tab counts still follow a repository filter", async ({ page }) => {
     await page.goto("/?tab=all");
-    await expect(page.locator(".row").first()).toBeVisible();
+    await expect(page.getByTestId("queue-row").first()).toBeVisible();
     await expect(page.locator(".stats, .stat")).toHaveCount(0);
-    const all = page.locator(".tab", { hasText: /^All/ }).locator(".cnt");
+    const all = tabCount(page, /^All/);
     const before = Number((await all.innerText()).replace(/,/g, ""));
     expect(before).toBeGreaterThan(1);
 
     const filtered = page.waitForRequest((r) => r.url().includes(`repo=${enc(REPO2)}`));
-    await page.getByLabel("Filter by repository").selectOption(REPO2);
+    await pickRepo(page, REPO2);
     await filtered;
-    await expect(page.locator(".row .repochip", { hasText: REPO })).toHaveCount(0);
-    const rows = await page.locator(".row").count();
+    await expect(page.getByTestId("queue-row").getByTestId("repo-pill").filter({ hasText: REPO })).toHaveCount(0);
+    const rows = await page.getByTestId("queue-row").count();
     await expect.poll(async () => Number((await all.innerText()).replace(/,/g, ""))).toBe(rows);
     expect(rows).toBeLessThan(before);
-    await page.getByLabel("Filter by repository").selectOption("");
+    await pickRepo(page, "All repositories");
   });
 
-  test("rows are two lines: title, then the state as a dot and a phrase", async ({ page }) => {
+  test("rows are two lines: title, then the state as a badge", async ({ page }) => {
     await page.goto("/?tab=reviewed");
-    const row = page.locator(".row", { hasText: `#${PR}` });
-    await expect(row.locator(".rowtop .ttl")).toBeVisible();
-    await expect(row.locator(".rowsub .status").first()).toHaveText("Reviewed");
-    await expect(row.locator(".rowsub .status i").first()).toBeVisible();
-    await expect(row.locator(".rowby")).toContainText("teammate");
-    // The sort options are one segmented control.
-    await expect(page.getByRole("group", { name: "Sort" }).locator(".sortopt")).toHaveCount(4);
+    const row = page.getByTestId("queue-row").filter({ hasText: `#${PR}` });
+    await expect(row.getByTestId("row-link")).toContainText("Add lead-time badge");
+    const state = row.getByTestId("row-state").getByTestId("status-badge").first();
+    await expect(state).toHaveText("Reviewed");
+    await expect(state.locator("svg")).toBeVisible();
+    await expect(row.getByTestId("row-by")).toContainText("teammate");
+    // The sort options are one row of four.
+    await expect(page.getByRole("group", { name: "Sort" }).getByRole("link")).toHaveCount(4);
     // One field in the page header filters the queue and opens a pasted PR.
-    await expect(page.locator(".pagehead .qsearch #qsearch")).toBeVisible();
-    await expect(page.locator(".pagehead .qsearch button[type=submit]")).toHaveCount(0);
+    const search = page.getByTestId("page-header").getByRole("search");
+    await expect(search.locator("#qsearch")).toBeVisible();
+    await expect(search.locator("button[type=submit]")).toHaveCount(0);
     await page.locator("#qsearch").fill(`#${PR}`);
-    await expect(page.locator(".pagehead .qsearch button[type=submit]")).toHaveText(`Open #${PR}`);
+    await expect(search.locator("button[type=submit]")).toHaveText(`Open #${PR}`);
   });
 
   test("the archive control is reachable by keyboard and visible on focus", async ({ page }) => {
     await page.goto("/?tab=reviewed");
-    const row = page.locator(".row", { hasText: `#${PR}` });
+    const row = page.getByTestId("queue-row").filter({ hasText: `#${PR}` });
     const archive = row.getByRole("button", { name: `Archive #${PR}` });
     await expect(archive).toHaveCount(1);
     // Hidden until the row is hovered or the control has focus — the mouse is parked at 0,0.
     await expect(archive).toHaveCSS("opacity", "0");
-    await row.locator(".rowlink").focus();
+    await row.getByTestId("row-link").focus();
     await page.keyboard.press("Tab");
     await expect(archive).toBeFocused();
     await expect(archive).toHaveCSS("opacity", "1");
-    const ring = await archive.evaluate((el) => getComputedStyle(el).outlineStyle);
-    expect(ring).not.toBe("none");
+    // The system's focus ring is a box-shadow, not an outline: at least one non-transparent layer.
+    await expect.poll(async () => archive.evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/(?:rgba?|oklab)\((?!0, 0, 0, 0\))(?![^)]*\/ 0\))[^)]*\)/);
   });
 });
 
@@ -62,23 +70,24 @@ test.describe("command palette", () => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+k");
-    const input = page.locator(".cmdk-in");
+    const input = page.getByTestId("palette-input");
     await expect(input).toHaveAttribute("role", "combobox");
-    const list = page.locator(".cmdk-list");
+    const list = page.locator("[cmdk-list]");
     await expect(list).toHaveAttribute("role", "listbox");
     const options = list.getByRole("option");
     await expect(options.first()).toBeVisible();
     const activeId = async () => (await input.getAttribute("aria-activedescendant")) || "";
+    await expect.poll(activeId).not.toBe("");
     const first = await activeId();
-    expect(first).not.toBe("");
-    await expect(page.locator(`#${first}`)).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator(`#${first}`)).toHaveAttribute("role", "option");
+    const byId = (id: string) => page.locator(`[id="${id}"]`);
+    await expect(byId(first)).toHaveAttribute("aria-selected", "true");
+    await expect(byId(first)).toHaveAttribute("role", "option");
     await input.press("ArrowDown");
+    await expect.poll(activeId).not.toBe(first);
     const second = await activeId();
-    expect(second).not.toBe(first);
-    await expect(page.locator(`#${second}`)).toHaveAttribute("aria-selected", "true");
+    await expect(byId(second)).toHaveAttribute("aria-selected", "true");
     await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1);
-    await expect(page.locator(".cmdk-list button")).toHaveCount(0);
+    await expect(list.locator("button")).toHaveCount(0);
   });
 });
 

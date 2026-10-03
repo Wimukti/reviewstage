@@ -68,15 +68,16 @@ test.describe("desktop shell at 1440", () => {
   test("sidebar is 216 wide with 36px items and no group labels", async ({ page }) => {
     await page.goto("/");
     await settled(page);
-    const side = await page.locator(".side").boundingBox();
+    const side = await page.getByTestId("sidebar").boundingBox();
     expect(Math.round(side!.width)).toBe(216);
-    const items = page.locator(".side nav.nav .ni");
+    const items = page.getByTestId("sidebar").getByRole("navigation", { name: "Main" }).getByRole("link");
     expect(await items.count()).toBe(7);
     for (const it of await items.all()) expect(Math.round((await it.boundingBox())!.height)).toBe(36);
     // The two groups are separated by space, not by a label or a line.
-    await expect(page.locator(".side nav.nav").getByText(/^(work|setup|configure)$/i)).toHaveCount(0);
+    await expect(page.getByTestId("sidebar").getByRole("navigation", { name: "Main" }).getByText(/^(work|setup|configure)$/i)).toHaveCount(0);
     const gap = await page.evaluate(() => {
-      const [a, b] = document.querySelectorAll(".side .navgroup");
+      const a = document.querySelector('[data-testid="nav-work"]')!;
+      const b = document.querySelector('[data-testid="nav-setup"]')!;
       return b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
     });
     expect(gap).toBeGreaterThanOrEqual(12);
@@ -87,7 +88,7 @@ test.describe("desktop shell at 1440", () => {
     await settled(page);
     const acct = page.getByTestId("account-card");
     expect(Math.round((await acct.boundingBox())!.height)).toBeLessThanOrEqual(40);
-    await expect(acct.locator(".status")).toHaveText(/^(Live|Dry run)$/);
+    await expect(acct.getByTestId("status-badge")).toHaveText(/^(Live|Dry run)$/);
     await expect(page.getByTestId("theme-control")).toHaveCount(0);
     await page.getByTestId("account-more").click();
     await expect(page.getByTestId("more-menu").getByTestId("theme-control")).toBeVisible();

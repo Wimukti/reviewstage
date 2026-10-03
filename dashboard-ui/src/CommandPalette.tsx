@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import { BarChart3, BookOpen, ClipboardCheck, Code2, GitPullRequest, Inbox, Plug, Settings } from "lucide-react";
 import { api, type Me, type QueueRow } from "./api";
 import { parsePrRef, prUrl } from "./pr";
 import { navigate } from "./router";
-import { Icon, NavIcon } from "./icons";
+import { RepoPill } from "./ui";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 // The command palette is the one place to search + review any PR. Opened by the sidebar's
 // "Review a PR" button, by ⌘K / Ctrl-K anywhere, or by the reviewstage:open-palette event.
@@ -21,35 +25,35 @@ interface Cmd {
   author?: string;
   label?: string; // action / nav rows
   sub?: string;
-  icon?: React.ReactNode;
+  icon?: LucideIcon;
 }
 
-const SECTIONS: [string, string, React.ReactNode][] = [
-  ["Queue", "/", NavIcon.queue],
-  ["QA guides", "/qa", NavIcon.qa],
-  ["Learnings", "/learnings", NavIcon.learnings],
-  ["Skills", "/skills", NavIcon.skills],
-  ["Integrations", "/integrations", NavIcon.integrations],
-  ["Settings", "/settings", NavIcon.settings],
+const SECTIONS: [string, string, LucideIcon][] = [
+  ["Queue", "/", Inbox],
+  ["QA guides", "/qa", ClipboardCheck],
+  ["Learnings", "/learnings", BookOpen],
+  ["Insights", "/dashboard", BarChart3],
+  ["Skills", "/skills", Code2],
+  ["Integrations", "/integrations", Plug],
+  ["Settings", "/settings", Settings],
 ];
 
-const optId = (i: number) => `cmdk-opt-${i}`;
+const ACTIONS = "Actions";
+const PRS = "Pull requests";
+const PAGES = "Pages";
 
 export function CommandPalette({ me }: { me: Me }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(0);
   const [rows, setRows] = useState<QueueRow[]>([]);
   // A bare number the queue does not know, with several repositories configured: the single
   // "Review PR #n" offer expands into one row per repository only once it is chosen.
   const [pickFor, setPickFor] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => {
     setOpen(false);
     setQ("");
-    setSel(0);
     setPickFor("");
   }, []);
   const go = useCallback(
@@ -78,8 +82,6 @@ export function CommandPalette({ me }: { me: Me }) {
 
   useEffect(() => {
     if (!open) return;
-    setSel(0);
-    inputRef.current?.focus();
     if (rows.length === 0) {
       api
         .queue("all", "newest")
@@ -93,6 +95,28 @@ export function CommandPalette({ me }: { me: Me }) {
   useEffect(() => {
     setPickFor("");
   }, [q]);
+
+  // cmdk 1.1 highlights the first option on mount but drops the scheduled update that tells the
+  // input about it (the scheduler's map is replaced while it runs), so until the first arrow key
+  // the combobox has no aria-activedescendant. Mirror the highlighted option onto the input
+  // whenever it changes; cmdk's own value wins once it starts setting one.
+  useEffect(() => {
+    if (!open) return;
+    // The content mounts in a portal a render after `open`, so watch the document, not the ref.
+    const sync = () => {
+      const root = rootRef.current;
+      if (!root) return;
+      const sel = root.querySelector<HTMLElement>('[cmdk-item][aria-selected="true"]');
+      const input = root.querySelector<HTMLElement>("[cmdk-input]");
+      if (sel && input && input.getAttribute("aria-activedescendant") !== sel.id) {
+        input.setAttribute("aria-activedescendant", sel.id);
+      }
+    };
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-selected"] });
+    return () => obs.disconnect();
+  }, [open]);
 
   const repos = useMemo(() => {
     const set = new Set<string>(me.repos || []);
@@ -109,10 +133,10 @@ export function CommandPalette({ me }: { me: Me }) {
       for (const r of repos) {
         out.push({
           id: `review-${r}`,
-          group: "Review",
+          group: ACTIONS,
           label: `Review PR #${pickFor} in ${r}`,
           sub: "open the review page",
-          icon: <Icon name="git" />,
+          icon: GitPullRequest,
           run: () => go(prUrl({ repo: r, num: pickFor })),
         });
       }
@@ -130,25 +154,23 @@ export function CommandPalette({ me }: { me: Me }) {
       if (parsed.repo) {
         out.push({
           id: "review",
-          group: "Review",
+          group: ACTIONS,
           label: `Review PR #${parsed.number}`,
           sub: multi ? `in ${parsed.repo}` : "open the review page",
-          icon: <Icon name="git" />,
+          icon: GitPullRequest,
           run: () => go(prUrl({ repo: parsed.repo, num: parsed.number })),
         });
       } else {
         const num = parsed.number;
         out.push({
           id: "review",
-          group: "Review",
+          group: ACTIONS,
           label: `Review PR #${num}`,
           sub: multi ? "choose the repository" : "open the review page",
-          icon: <Icon name="git" />,
+          icon: GitPullRequest,
           run: () => {
-            if (multi) {
-              setPickFor(num);
-              setSel(0);
-            } else go(prUrl({ repo: repos[0] || "", num }));
+            if (multi) setPickFor(num);
+            else go(prUrl({ repo: repos[0] || "", num }));
           },
         });
       }
@@ -156,7 +178,7 @@ export function CommandPalette({ me }: { me: Me }) {
     for (const r of matched) {
       out.push({
         id: `pr-${r.repo}-${r.num}`,
-        group: "Your PRs",
+        group: PRS,
         num: r.num,
         repo: multi ? r.repo : "",
         title: r.title,
@@ -166,122 +188,90 @@ export function CommandPalette({ me }: { me: Me }) {
     }
     for (const [label, to, icon] of SECTIONS) {
       if (needle && !label.toLowerCase().includes(needle)) continue;
-      out.push({ id: `go-${to}`, group: "Go to", label, icon, run: () => go(to) });
+      out.push({ id: `go-${to}`, group: PAGES, label, icon, run: () => go(to) });
     }
     return out;
   }, [parsed?.repo, parsed?.number, multi, repos, needle, rows, go, pickFor]);
 
-  useEffect(() => {
-    setSel((s) => Math.max(0, Math.min(s, cmds.length - 1)));
-  }, [cmds.length]);
-
-  // keep the highlighted row in view
-  useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-i="${sel}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [sel]);
-
-  if (!open) return null;
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      if (pickFor) setPickFor("");
-      else close();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSel((s) => Math.min(s + 1, cmds.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSel((s) => Math.max(s - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      cmds[sel]?.run();
-    }
-  };
-
   // Options are grouped so the group name is read once, not on every row.
-  const groups: { name: string; items: { c: Cmd; i: number }[] }[] = [];
-  cmds.forEach((c, i) => {
+  const groups: { name: string; items: Cmd[] }[] = [];
+  for (const c of cmds) {
     const last = groups[groups.length - 1];
-    if (last && last.name === c.group) last.items.push({ c, i });
-    else groups.push({ name: c.group, items: [{ c, i }] });
-  });
+    if (last && last.name === c.group) last.items.push(c);
+    else groups.push({ name: c.group, items: [c] });
+  }
 
   return (
-    <div className="cmdk-back" onMouseDown={close}>
-      <div className="cmdk" role="dialog" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="cmdk-inwrap">
-          <span className="cmdk-search" aria-hidden="true"><Icon name="search" /></span>
-          <input
-            ref={inputRef}
-            className="cmdk-in"
-            type="text"
+    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
+      <DialogContent
+        className="cmdk top-[12vh] translate-y-0 gap-0 overflow-hidden rounded-xl bg-popover p-0 sm:max-w-[600px]"
+        showCloseButton={false}
+        // Escape steps back out of the repository choice first; a second one closes.
+        onEscapeKeyDown={(e) => {
+          if (pickFor) {
+            e.preventDefault();
+            setPickFor("");
+          }
+        }}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Command palette</DialogTitle>
+          <DialogDescription>Search your pull requests, review one by number or URL, or jump to a page.</DialogDescription>
+        </DialogHeader>
+        <Command
+          ref={rootRef}
+          shouldFilter={false}
+          loop
+          className="bg-transparent [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-input-wrapper]]:h-12 [&_[cmdk-input-wrapper]]:px-4 [&_[cmdk-input]]:h-12 [&_[cmdk-input]]:text-base [&_[cmdk-item]]:min-h-9 [&_[cmdk-item]]:px-2"
+        >
+          <CommandInput
+            value={q}
+            onValueChange={setQ}
+            placeholder="PR URL, owner/name#123, or a number, or jump to…"
+            data-testid="palette-input"
             autoComplete="off"
             spellCheck={false}
-            role="combobox"
-            aria-expanded="true"
-            aria-autocomplete="list"
-            aria-controls="cmdk-listbox"
-            aria-activedescendant={cmds.length ? optId(sel) : undefined}
-            placeholder="PR URL, owner/name#123, or a number, or jump to…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={onKeyDown}
           />
-        </div>
-        <div className="cmdk-list" ref={listRef} role="listbox" id="cmdk-listbox" aria-label="Results">
-          {cmds.length === 0 && (
-            <div className="cmdk-empty">No matches — paste a PR URL, owner/name#123, or a number to review it.</div>
-          )}
-          {groups.map((g) => {
-            const hid = `cmdk-group-${g.name.replace(/\W+/g, "-").toLowerCase()}`;
-            return (
-              <div key={g.name} role="group" aria-labelledby={hid}>
-                <div className="cmdk-grouphead" id={hid} role="presentation">{g.name}</div>
-                {g.items.map(({ c, i }) => (
-                  <div
-                    key={c.id}
-                    id={optId(i)}
-                    role="option"
-                    aria-selected={i === sel}
-                    data-i={i}
-                    className={"cmdk-row" + (i === sel ? " sel" : "")}
-                    onMouseEnter={() => setSel(i)}
-                    onClick={c.run}
-                  >
+          <CommandList className="max-h-[min(56vh,460px)] p-1" data-testid="palette-list" aria-label="Results">
+            <CommandEmpty className="px-4 py-6 text-sm text-muted-foreground">
+              No matches — paste a PR URL, owner/name#123, or a number to review it.
+            </CommandEmpty>
+            {groups.map((g) => (
+              <CommandGroup key={g.name} heading={g.name}>
+                {g.items.map((c) => (
+                  <CommandItem key={c.id} value={c.id} onSelect={c.run} className="cursor-pointer gap-2.5 data-[selected=true]:bg-blue/14">
                     {c.num ? (
                       <>
-                        <span className="cmdk-num">#{c.num}</span>
-                        {c.repo && <span className="cmdk-repo">{c.repo}</span>}
-                        <span className="cmdk-title">{c.title}</span>
-                        {c.author && <span className="cmdk-sub">{c.author}</span>}
+                        <span className="shrink-0 text-sm font-medium text-primary">#{c.num}</span>
+                        {c.repo && <RepoPill repo={c.repo} />}
+                        <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                        {c.author && <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">{c.author}</span>}
                       </>
                     ) : (
                       <>
-                        {c.icon && <span className="cmdk-ico">{c.icon}</span>}
-                        <span className="cmdk-title">{c.label}</span>
-                        {c.sub && <span className="cmdk-sub">{c.sub}</span>}
+                        {c.icon && <c.icon aria-hidden="true" />}
+                        <span className="min-w-0 flex-1 truncate">{c.label}</span>
+                        {c.sub && <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">{c.sub}</span>}
                       </>
                     )}
-                  </div>
+                  </CommandItem>
                 ))}
-              </div>
-            );
-          })}
-        </div>
-        <div className="cmdk-foot">
-          <span>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd> navigate
-          </span>
-          <span>
-            <kbd>↵</kbd> open
-          </span>
-          <span>
-            <kbd>esc</kbd> close
-          </span>
-        </div>
-      </div>
-    </div>
+              </CommandGroup>
+            ))}
+          </CommandList>
+          <div className="flex gap-4 border-t px-3.5 py-2 text-xs text-muted-foreground">
+            <span>
+              <kbd>↑</kbd> <kbd>↓</kbd> navigate
+            </span>
+            <span>
+              <kbd>↵</kbd> open
+            </span>
+            <span>
+              <kbd>esc</kbd> close
+            </span>
+          </div>
+        </Command>
+      </DialogContent>
+    </Dialog>
   );
 }

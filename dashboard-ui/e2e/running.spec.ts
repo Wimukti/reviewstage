@@ -21,17 +21,17 @@ test.describe("a running review stays visible", () => {
 
     // 3. Walking away to the queue does not make it disappear: the row shows the live status
     //    where its meta line would be, and still links back to the PR.
-    await page.locator(".side").getByRole("link", { name: "Queue" }).click();
+    await page.getByTestId("sidebar").getByRole("link", { name: "Queue" }).click();
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
-    const row = page.locator(".row", { hasText: `#${PR4}` });
+    const row = page.getByTestId("queue-row").filter({ hasText: `#${PR4}` });
     await expect(row).toBeVisible();
     await expect(row.getByTestId("row-running")).toContainText(/reviewing the diff/i);
-    await expect(row.locator(".status.is-live i")).toBeVisible();
-    await expect(row.locator(".status")).toHaveText("Reviewing");
+    await expect(row.locator('[data-testid="status-badge"][data-live="true"] svg')).toBeVisible();
+    await expect(row.getByTestId("status-badge")).toHaveText("Reviewing");
     await expect(pill).toBeVisible();
 
     // 4. Back to the PR page — the progress panel is there again, still polling.
-    await row.locator(".rowlink").click();
+    await row.getByTestId("row-link").click();
     await expect(page).toHaveURL(new RegExp(`pr=${PR4}`));
     await expect(page.getByTestId("progress-panel")).toBeVisible();
     await expect(page.getByTestId("progress-panel")).toContainText(/reviewing the diff/i);
@@ -48,10 +48,10 @@ test.describe("a running review stays visible", () => {
 
   test("a finished PR keeps its ordinary meta line", async ({ page }) => {
     await page.goto("/?tab=reviewed");
-    const row = page.locator(".row", { hasText: `#${PR}` });
+    const row = page.getByTestId("queue-row").filter({ hasText: `#${PR}` });
     await expect(row).toBeVisible();
     await expect(row.getByTestId("row-running")).toHaveCount(0);
-    await expect(row.locator(".rowsub")).toBeVisible();
+    await expect(row.getByTestId("row-state")).toBeVisible();
   });
 });
 

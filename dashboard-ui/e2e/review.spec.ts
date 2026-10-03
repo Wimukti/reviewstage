@@ -148,14 +148,14 @@ test.describe("the sections", () => {
 test.describe("the queue's one field", () => {
   test("filters as you type and opens a pasted PR reference on Enter", async ({ page }) => {
     await page.goto("/?tab=all");
-    await expect(page.locator(".row").first()).toBeVisible();
+    await expect(page.getByTestId("queue-row").first()).toBeVisible();
     // Two fields became one: no paste-a-PR form, no sentence under the tabs.
     await expect(page.locator(".reviewany, .tabdesc")).toHaveCount(0);
     const field = page.locator("#qsearch");
     const sent = page.waitForRequest((r) => r.url().includes("q=rate-limit"));
     await field.fill("rate-limit");
     await sent;
-    await expect(page.locator(".row")).toHaveCount(1);
+    await expect(page.getByTestId("queue-row")).toHaveCount(1);
     await expect(page.getByTestId("open-pr")).toHaveCount(0);
     // A reference offers to open, and Enter goes there.
     await field.fill(`${REPO2}#${PR3}`);
@@ -167,15 +167,15 @@ test.describe("the queue's one field", () => {
 
   test("rows sit at the density token and the empty state is a title and one line", async ({ page }) => {
     await page.goto("/?tab=reviewed");
-    const row = page.locator(".row").first();
+    const row = page.getByTestId("queue-row").first();
     await expect(row).toBeVisible();
     const rowVar = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--row").trim());
     expect(rowVar).toBe("44px");
     expect(await row.evaluate((el) => getComputedStyle(el).minHeight)).toBe("44px");
     await page.goto("/?tab=approved");
-    const empty = page.locator(".empty");
-    await expect(empty.locator("b")).toHaveText("Nothing approved yet");
-    expect(await empty.locator("b").evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/Geist/);
+    const empty = page.getByTestId("empty-state");
+    await expect(empty.getByRole("heading")).toHaveText("Nothing approved yet");
+    expect(await empty.getByRole("heading").evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/Geist/);
     await expect(empty).toContainText("PRs you approve will be listed here.");
     // No light here: only the three §4 placements carry it.
     expect(await empty.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe("none");

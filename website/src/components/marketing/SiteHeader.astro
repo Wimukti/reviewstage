@@ -1,45 +1,42 @@
 ---
+/* The site's chrome, on the system (design §2): a canvas-toned bar with one divider under it,
+ * sans links, a ghost GitHub button and the one filled action. The phone menu is a popover card. */
+import { Menu } from "lucide-react";
 import Mark from "./Mark.astro";
 import ThemeToggle from "./ThemeToggle.astro";
+import GitHubIcon from "./GitHubIcon.astro";
+import { button } from "./variants";
 import { navLinks, repo, withBase } from "../../content/site-links";
 ---
-<header class="site-header">
+<header class="site-header sticky top-0 z-50 border-b bg-background/90 backdrop-blur">
   <div class="container-page flex h-[var(--nav-height)] items-center gap-4">
-    <a class="brand" href={withBase("/")} aria-label="ReviewStage home">
+    <a class="inline-flex min-h-11 items-center gap-2.5 text-base font-semibold tracking-tight text-foreground no-underline" href={withBase("/")} aria-label="ReviewStage home">
       <Mark size={22} />
       <span>ReviewStage</span>
     </a>
-    <nav class="ml-6 hidden items-center gap-6 lg:flex" aria-label="Primary">
-      {navLinks.map((l) => <a class="nav-link" href={withBase(l.href)}>{l.label}</a>)}
+    <nav class="ml-6 hidden items-center gap-1 lg:flex" aria-label="Primary">
+      {navLinks.map((l) => <a class={button({ variant: "ghost", size: "sm" }, "text-muted-foreground hover:text-foreground")} href={withBase(l.href)}>{l.label}</a>)}
     </nav>
     <div class="ml-auto flex items-center gap-2">
       <ThemeToggle />
-      <a class="btn btn-quiet hidden sm:inline-flex" href={repo} aria-label="ReviewStage on GitHub">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.35-1.3-1.7-1.3-1.7-1.05-.72.08-.71.08-.71 1.16.08 1.78 1.2 1.78 1.2 1.03 1.78 2.7 1.27 3.36.97.1-.75.4-1.27.73-1.56-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.5 3.17-1.18 3.17-1.18.63 1.59.24 2.76.12 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
+      <a class={button({ variant: "ghost", size: "sm" }, "hidden text-muted-foreground hover:text-foreground sm:inline-flex")} href={repo} aria-label="ReviewStage on GitHub">
+        <GitHubIcon />
         GitHub
       </a>
-      <a class="btn btn-secondary hidden sm:inline-flex" href={withBase("/start/")}>Get started</a>
-      <details class="mobile-menu lg:hidden">
-        <summary class="btn btn-secondary btn-icon" aria-label="Toggle navigation menu">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      <a class={button({ size: "sm" }, "hidden sm:inline-flex")} href={withBase("/start/")}>Get started</a>
+      <details class="mobile-menu relative lg:hidden">
+        <summary class={button({ variant: "secondary", size: "icon-sm" }, "list-none max-sm:size-11")} aria-label="Toggle navigation menu">
+          <Menu className="size-4" aria-hidden="true" />
         </summary>
-        <div class="mobile-panel panel">
-          {navLinks.map((l) => <a href={withBase(l.href)}>{l.label}</a>)}
-          <a href={repo}>GitHub</a>
-          <a class="mobile-cta sm:hidden" href={withBase("/start/")}>Get started</a>
+        <div class="absolute right-0 top-[calc(100%+0.5rem)] grid min-w-[13rem] rounded-lg bg-popover p-1 text-popover-foreground shadow-xl">
+          {navLinks.map((l) => <a class="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-foreground no-underline hover:bg-accent" href={withBase(l.href)}>{l.label}</a>)}
+          <a class="flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-medium text-foreground no-underline hover:bg-accent" href={repo}><GitHubIcon />GitHub</a>
+          <a class="mt-1 flex min-h-11 items-center rounded-md border-t px-3 text-sm font-medium text-primary no-underline hover:bg-accent sm:hidden" href={withBase("/start/")}>Get started</a>
         </div>
       </details>
     </div>
   </div>
 </header>
 <style>
-  .site-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--hairline); background-color: var(--paper); }
-  .brand { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 44px; color: var(--ink); font-size: var(--t-16); font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
-  .mobile-menu { position: relative; }
-  .mobile-menu summary { list-style: none; cursor: pointer; }
   .mobile-menu summary::-webkit-details-marker { display: none; }
-  .mobile-panel { position: absolute; right: 0; top: calc(100% + 0.5rem); display: grid; min-width: 13rem; padding: 0.35rem; }
-  .mobile-panel a { display: flex; align-items: center; min-height: 44px; padding: 0 0.75rem; border-radius: var(--r-s); color: var(--ink); font-size: var(--t-14); font-weight: 500; text-decoration: none; }
-  .mobile-panel a:hover { background-color: var(--paper); }
-  .mobile-panel .mobile-cta { margin-top: 0.35rem; border-top: 1px solid var(--hairline); color: var(--blue); }
 </style>

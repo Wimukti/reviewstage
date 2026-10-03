@@ -62,10 +62,10 @@ const ogMarkSvg = markSvg.replace(/url\(#dark\)/g, INK).replace(/url\(#blue\)/g,
 const ogMark = await sharp(Buffer.from(ogMarkSvg)).resize(88, 88).png().toBuffer();
 const text = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
   <rect width="${W}" height="${H}" fill="${PAPER}"/>
-  <text x="208" y="234" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="44" font-weight="600" fill="${INK}">ReviewStage</text>
-  ${descriptor.map((line, i) => `<text x="96" y="${380 + i * 62}" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="46" font-weight="600" letter-spacing="-1" fill="${i ? BLUE : INK}">${line}</text>`).join("")}
+  <text x="208" y="234" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="44" font-weight="600" fill="${INK}">ReviewStage</text>
+  ${descriptor.map((line, i) => `<text x="96" y="${380 + i * 62}" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="46" font-weight="600" letter-spacing="-1" fill="${i ? BLUE : INK}">${line}</text>`).join("")}
   <rect x="96" y="${H - 97}" width="${W - 192}" height="1" fill="${HAIRLINE}"/>
-  <text x="96" y="${H - 56}" font-family="IBM Plex Mono, Menlo, monospace" font-size="20" fill="${GRAPHITE}">wimukti.github.io/reviewstage · open source · self-hosted</text>
+  <text x="96" y="${H - 56}" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="20" fill="${GRAPHITE}">wimukti.github.io/reviewstage · open source · self-hosted</text>
 </svg>`;
 const og = await sharp(Buffer.from(text)).composite([{ input: ogMark, left: 96, top: 176 }]).png().toBuffer();
 writeFileSync(join(out, "og.png"), og);

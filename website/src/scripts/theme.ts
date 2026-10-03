@@ -24,6 +24,9 @@ export const stampOf = (t: Theme) => (t === "auto" ? "system" : t);
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = stampOf(theme);
   document.documentElement.dataset.themePreference = theme;
+  // The resolved scheme, for the few things that cannot read a media query through a selector
+  // (the code-block themes); tokens.css itself keys on data-theme.
+  document.documentElement.dataset.resolved = resolveTheme(theme);
   storeTheme(theme);
   for (const option of document.querySelectorAll<HTMLElement>("[data-theme-option]")) {
     option.setAttribute("aria-pressed", String(option.dataset.themeOption === theme));
@@ -32,6 +35,9 @@ export function applyTheme(theme: Theme): void {
 
 export function initTheme(): void {
   applyTheme(loadTheme());
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (loadTheme() === "auto") applyTheme("auto");
+  });
   for (const option of document.querySelectorAll<HTMLElement>("[data-theme-option]")) {
     option.addEventListener("click", () => applyTheme(parseTheme(option.dataset.themeOption)));
   }

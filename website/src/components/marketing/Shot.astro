@@ -1,6 +1,7 @@
 ---
-/* Theme-aware screenshot in a panel frame. Renders a <picture> whose dark/light source
- * swaps with the site theme. Sources live in src/assets/screenshots/{name}-{dark,light}.png. */
+/* Theme-aware screenshot in a card frame. Renders a <picture> whose dark/light source swaps
+ * with the site theme. Sources live in src/assets/screenshots/{name}-{dark,light}.png. */
+import { AppWindow } from "lucide-react";
 import { getImage } from "astro:assets";
 import type { ImageMetadata } from "astro";
 interface Props { name: string; alt: string; label?: string; loading?: "eager" | "lazy"; }
@@ -12,27 +13,20 @@ if (!dark || !light) throw new Error(`Missing screenshot pair for "${name}"`);
 const d = await getImage({ src: dark, widths: [640, 960, 1280, 1600], format: "webp" });
 const l = await getImage({ src: light, widths: [640, 960, 1280, 1600], format: "webp" });
 ---
-<figure class="shot">
-  <div class="shot-frame panel">
-    <div class="shot-bar"><span class="shot-label">{label}</span><span class="shot-dot" aria-hidden="true"></span></div>
-    <picture class="shot-dark">
+<figure class="shot m-0">
+  <div class="overflow-hidden rounded-lg bg-card text-card-foreground shadow-sm">
+    <div class="flex h-9 items-center gap-2 px-3 text-xs text-muted-foreground"><AppWindow className="size-3.5" aria-hidden="true" /><span class="truncate">{label}</span></div>
+    <picture class="shot-dark block leading-none">
       <source srcset={d.srcSet.attribute} sizes="(min-width: 72rem) 60rem, calc(100vw - 2rem)" type="image/webp" />
-      <img src={d.src} alt={alt} width={dark.width} height={dark.height} loading={loading} decoding="async" />
+      <img class="block h-auto w-full" src={d.src} alt={alt} width={dark.width} height={dark.height} loading={loading} decoding="async" />
     </picture>
-    <picture class="shot-light">
+    <picture class="shot-light block leading-none">
       <source srcset={l.srcSet.attribute} sizes="(min-width: 72rem) 60rem, calc(100vw - 2rem)" type="image/webp" />
-      <img src={l.src} alt={alt} width={light.width} height={light.height} loading={loading} decoding="async" />
+      <img class="block h-auto w-full" src={l.src} alt={alt} width={light.width} height={light.height} loading={loading} decoding="async" />
     </picture>
   </div>
 </figure>
 <style>
-  .shot { margin: 0; }
-  .shot-frame { overflow: hidden; }
-  .shot-bar { display: flex; align-items: center; justify-content: space-between; height: 2.4rem; padding-inline: 0.85rem; border-bottom: 1px solid var(--hairline); }
-  .shot-label { color: var(--graphite); font-family: var(--mono); font-size: 0.8rem; }
-  .shot-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--green); }
-  picture { display: block; line-height: 0; }
-  picture img { display: block; width: 100%; height: auto; }
   .shot-light { display: none; }
   /* data-theme is the choice, never the resolved value: "system" resolves through the media query. */
   :global(:root[data-theme="light"]) .shot-dark { display: none; }

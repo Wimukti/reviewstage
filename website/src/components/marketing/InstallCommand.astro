@@ -1,19 +1,13 @@
 ---
+/* The one-line install: code, so it is the one monospace thing on the page, in its own
+ * canvas-toned field inside the install card, with a ghost copy button. */
+import { Copy } from "lucide-react";
 import { installCommand as cmd } from "../../content/install";
+import { button } from "./variants";
 ---
-<div class="install" data-install>
-  <span class="prompt" aria-hidden="true">$</span>
-  <code>{cmd}</code>
-  <button type="button" class="copy" data-copy={cmd} aria-label="Copy install command">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+<div class="install flex w-full min-w-0 max-w-full items-center gap-2.5 rounded-md bg-background py-1 pl-3.5 pr-1" data-install>
+  <code class="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-foreground [contain:inline-size] [scrollbar-width:none] before:mr-2 before:font-medium before:text-primary before:content-['$']">{cmd}</code>
+  <button type="button" class={button({ variant: "ghost", size: "icon-sm" }, "copy shrink-0 text-muted-foreground data-[done]:text-green max-sm:size-11")} data-copy={cmd} aria-label="Copy install command">
+    <Copy aria-hidden="true" />
   </button>
 </div>
-<style>
-  .install { display: flex; align-items: center; width: 100%; min-width: 0; box-sizing: border-box; gap: 0.6rem; max-width: 100%; padding: 0.35rem 0.35rem 0.35rem 0.85rem; border: 1px solid var(--hairline); border-radius: var(--r-s); background: var(--panel); font-family: var(--mono); font-size: var(--t-13); }
-  .prompt { color: var(--blue); font-weight: 500; }
-  code { flex: 1; min-width: 0; contain: inline-size; overflow-x: auto; white-space: nowrap; color: var(--ink); scrollbar-width: none; }
-  .copy { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: var(--r-s); background: transparent; color: var(--graphite); cursor: pointer; }
-  .copy:hover { color: var(--ink); background: var(--paper); }
-  .copy[data-done] { color: var(--green); }
-  @media (max-width: 40rem) { .copy { width: 44px; height: 44px; } }
-</style>

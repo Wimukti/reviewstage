@@ -14,7 +14,7 @@ const ld = {
 };
 ---
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-resolved="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -49,12 +49,13 @@ const ld = {
         const pref = s === "light" || s === "dark" ? s : s === "auto" || s === "" ? "auto" : "dark";
         document.documentElement.dataset.theme = pref === "auto" ? "system" : pref;
         document.documentElement.dataset.themePreference = pref;
+        document.documentElement.dataset.resolved = pref === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : pref;
       })();
     </script>
     <script is:inline type="application/ld+json" set:html={JSON.stringify(ld)} />
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a class="skip-link fixed left-1/2 top-2 z-[100] -translate-x-1/2 -translate-y-[200%] rounded-md bg-popover px-4 py-2.5 text-sm font-medium text-popover-foreground no-underline shadow-xl focus-visible:translate-y-0" href="#main">Skip to content</a>
     <SiteHeader />
     <main id="main"><slot /></main>
     <SiteFooter />
@@ -64,9 +65,5 @@ const ld = {
       initTheme();
       initCopy();
     </script>
-    <style>
-      .skip-link { position: absolute; left: 50%; top: 0.5rem; z-index: 100; translate: -50% -200%; padding: 0.6rem 1rem; border: 1px solid var(--hairline); border-radius: var(--r-s); background: var(--panel); color: var(--ink); font-size: var(--t-14); font-weight: 500; text-decoration: none; }
-      .skip-link:focus-visible { translate: -50% 0; }
-    </style>
   </body>
 </html>

@@ -151,7 +151,7 @@ function LiveBadge({ me }: { me: Me }) {
     <StatusBadge
       kind={me.dry_run ? "dry" : "live"}
       title={me.dry_run ? "Dry run — nothing posts to GitHub" : "Live"}
-      className="shrink-0"
+      className="w-fit shrink-0"
     />
   );
 }
@@ -167,10 +167,14 @@ function AccountRow({ me, more }: { me: Me; more?: boolean }) {
   // tour starts as the menu closes, takes focus instead of ⋯, and hands it to ⋯ when it ends.
   const touring = useRef(false);
   return (
-    <div className="flex min-h-9 items-center gap-2 pl-1" data-testid="account-card">
-      <UserAvatar login={me.login || "?"} size="sm" />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{me.login}</span>
-      <LiveBadge me={me} />
+    <div className="flex min-h-10 items-center gap-2.5 pl-1" data-testid="account-card">
+      <UserAvatar login={me.login || "?"} />
+      {/* Name over state, so a badge and the menu button never squeeze the login to "ac…" in a
+          216px sidebar. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate text-sm font-medium leading-tight" title={me.login}>{me.login}</span>
+        <LiveBadge me={me} />
+      </div>
       {more && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

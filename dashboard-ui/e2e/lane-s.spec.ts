@@ -3,9 +3,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { REPO } from "./fixture";
 
+// Loading is a Skeleton in the shape of the content; settled means none is left.
 async function settled(page: Page) {
-  await expect(page.locator(".muted", { hasText: /^Loading…$/ })).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0, { timeout: 15_000 });
 }
+// The one primary action on a surface is the Button's default variant.
+const PRIMARY = '.main [data-slot="button"][data-variant="default"]:visible';
 
 const TABS: [string, RegExp][] = [
   ["which", /which skill/i],
@@ -51,8 +54,9 @@ test.describe("skills tabs", () => {
     for (const [hash] of TABS) {
       await page.goto(`/skills#${hash}`);
       await settled(page);
-      if (hash === "profiles") await page.getByTestId("repo-profile").filter({ hasText: REPO }).first().locator("> summary").click();
-      const n = await page.locator(".main .btn.primary:visible").count();
+      await expect(page.getByTestId(`panel-${hash}`)).toBeVisible();
+      if (hash === "profiles") await page.getByTestId("repo-profile").filter({ hasText: REPO }).first().getByTestId("profile-toggle").click();
+      const n = await page.locator(PRIMARY).count();
       expect(n, `${hash} has ${n} primaries`).toBeLessThanOrEqual(1);
     }
   });
@@ -72,14 +76,15 @@ test.describe("insights", () => {
   test("tiles are a number and a label; the method lives in one disclosure", async ({ page }) => {
     await page.goto("/dashboard");
     await settled(page);
-    const tiles = page.locator(".kpi");
+    const tiles = page.getByTestId("kpi");
+    await expect(tiles.first()).toBeVisible();
     expect(await tiles.count()).toBeGreaterThanOrEqual(6);
-    await expect(page.locator(".kpi p")).toHaveCount(0);
+    await expect(tiles.locator("p")).toHaveCount(0);
     for (const t of await tiles.all()) {
-      const label = (await t.locator(".kpi-l").textContent())?.trim() ?? "";
+      const label = (await t.getByTestId("kpi-label").textContent())?.trim() ?? "";
       expect(label.split(/\s+/).length, `"${label}" is two words`).toBeLessThanOrEqual(2);
-      await expect(t.locator(".kpi-l")).toHaveCount(1);
-      await expect(t.locator(".kpi-v")).toHaveCount(1);
+      await expect(t.getByTestId("kpi-label")).toHaveCount(1);
+      await expect(t.getByTestId("kpi-value")).toHaveCount(1);
     }
     // The method lives behind the page's one `?` (design §6), closed by default.
     await expect(page.getByTestId("methodology")).toHaveCount(0);
@@ -92,9 +97,10 @@ test.describe("insights", () => {
     // The dry-run notice is one sentence.
     const banner = (await page.getByTestId("dry-banner").textContent())?.trim() ?? "";
     expect(banner.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).length).toBe(1);
-    // Too few to rate is a quiet line, not a headline.
-    const thin = page.getByTestId("kpi-worth").locator(".kpi-v");
-    await expect(thin).toHaveClass(/kpi-thin/);
+    // Too few to rate is a quiet line and a graphite badge, not a headline.
+    const thin = page.locator('[data-testid="kpi"][data-key="worth"]').getByTestId("kpi-value");
+    await expect(thin).toHaveAttribute("data-thin", "true");
+    await expect(thin.getByTestId("status-badge")).toHaveAttribute("data-tone", "graphite");
     const size = await thin.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(size).toBeLessThanOrEqual(14);
   });
@@ -104,7 +110,7 @@ test.describe("insights", () => {
     test("the activity chart's axis labels are legible at 390", async ({ page }) => {
       await page.goto("/dashboard");
       await settled(page);
-      const labels = page.locator(".axis-x span");
+      const labels = page.getByTestId("axis-x").locator("span");
       expect(await labels.count()).toBeGreaterThan(0);
       for (const l of await labels.all()) {
         const size = await l.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
@@ -184,7 +190,7 @@ test.describe("settings", () => {
     test("label rows do not wrap a word per line", async ({ page }) => {
       await page.goto("/settings");
       await settled(page);
-      const hint = page.locator(".setrow .setlbl .hint").first();
+      const hint = page.getByTestId("setting-hint").first();
       const box = await hint.boundingBox();
       expect(box!.width).toBeGreaterThan(300);
     });
@@ -195,13 +201,14 @@ test.describe("integrations", () => {
   test("one panel of rows, states as status words, one primary", async ({ page }) => {
     await page.goto("/integrations");
     await settled(page);
-    await expect(page.getByTestId("integrations-list")).toHaveClass(/list/);
-    await expect(page.locator(".intglist .intg")).toHaveCount(5);
-    await expect(page.locator(".intg .status")).toHaveCount(5);
-    for (const s of await page.locator(".intg .iname .status").all()) {
+    const list = page.getByTestId("integrations-list");
+    await expect(list).toHaveAttribute("data-slot", "card");
+    await expect(list.getByTestId("integration")).toHaveCount(5);
+    await expect(list.getByTestId("integration-state")).toHaveCount(5);
+    for (const s of await list.getByTestId("integration-state").all()) {
       await expect(s).toHaveText(/^(Connected|Not connected|Required)$/);
     }
-    const primaries = page.locator(".main .btn.primary:visible");
+    const primaries = page.locator(PRIMARY);
     await expect(primaries).toHaveCount(1);
     await expect(primaries).toHaveText(/connect with claude/i);
   });

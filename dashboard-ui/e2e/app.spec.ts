@@ -186,8 +186,8 @@ test.describe("signed in", () => {
     await expect(page.getByText(/by repository/i)).toBeVisible();
     const pills = page.getByTestId("repo-pills");
     await expect(pills).toBeVisible();
-    await pills.getByRole("button", { name: REPO2 }).click();
-    await expect(pills.getByRole("button", { name: REPO2 })).toHaveClass(/on/);
+    await pills.getByRole("tab", { name: REPO2 }).click();
+    await expect(pills.getByRole("tab", { name: REPO2 })).toHaveAttribute("aria-selected", "true");
   });
 
   test("skills page offers a team default per repository", async ({ page }) => {
@@ -201,7 +201,7 @@ test.describe("signed in", () => {
     const profiles = page.getByTestId("repo-profile");
     await expect(profiles).toHaveCount(3);
     const first = profiles.filter({ hasText: REPO }).first();
-    await first.locator("> summary").click();
+    await first.getByTestId("profile-toggle").click();
     await expect(first).toContainText(/profiled/i);
     await expect(first.getByTestId("profile-status")).toContainText(/last run/i);
     await expect(first.getByTestId("profile-status")).toContainText(/claude-sonnet-4-5/);
@@ -209,7 +209,7 @@ test.describe("signed in", () => {
     await expect(first.getByTestId("profile-counts")).toContainText(/2 risk paths/);
     await expect(first).toContainText(/app\/billing/); // dropped glob is surfaced
     const second = profiles.filter({ hasText: REPO2 }).first();
-    await second.locator("> summary").click();
+    await second.getByTestId("profile-toggle").click();
     await expect(second.getByTestId("profile-status")).toContainText(/never run/i);
     await expect(second.getByTestId("profile-error")).toHaveCount(0);
   });
@@ -218,14 +218,14 @@ test.describe("signed in", () => {
     await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO3 }).first();
     await expect(card).toContainText(/failed/i);
-    await card.locator("> summary").click(); // the card's own summary, not the log tail's
+    await card.getByTestId("profile-toggle").click(); // the card's own summary, not the log tail's
     await expect(card.getByTestId("profile-status")).toContainText(/last run failed/i);
     const err = card.getByTestId("profile-error");
     await expect(err).toContainText(/failed: the model produced no result/);
     const log = card.getByTestId("profile-log");
-    await expect(log.locator("summary")).toContainText(/lines of the log/i);
+    await expect(log.getByRole("button")).toContainText(/lines of the log/i);
     await expect(log.locator("pre")).toBeHidden(); // collapsed until opened
-    await log.locator("summary").click();
+    await log.getByRole("button").click();
     await expect(log.locator("pre")).toContainText("error: unknown option '---'");
     const retry = card.getByTestId("profile-run");
     await expect(retry).toHaveText(/retry/i);
@@ -234,7 +234,7 @@ test.describe("signed in", () => {
     await expect(retry).toHaveAttribute("title", /connect your claude account/i);
     await expect(retry).not.toHaveAttribute("aria-busy", "true");
     const done = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
-    await done.locator("> summary").click();
+    await done.getByTestId("profile-toggle").click();
     await expect(done.getByTestId("profile-error")).toHaveCount(0);
   });
 
@@ -272,13 +272,13 @@ test.describe("signed in", () => {
 
     await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO3 }).first();
-    await card.locator("> summary").click();
+    await card.getByTestId("profile-toggle").click();
     const retry = card.getByTestId("profile-run");
     await expect(retry).toHaveText(/retry/i);
     await expect(retry).toBeEnabled();
 
     await retry.click(); // 1st click → started:true, the card shows Profiling
-    await expect(card.locator("> summary")).toContainText(/profiling/i);
+    await expect(card.getByTestId("profile-head")).toContainText(/profiling/i);
     await expect(card.getByTestId("profile-status")).toContainText(/queued — waiting for another job/i);
     // The poll comes back with the stale failed verdict; Retry is enabled again (the live bug's
     // pre-condition — the server no longer produces this, but the UI must survive it).
@@ -287,8 +287,8 @@ test.describe("signed in", () => {
 
     await retry.click(); // 2nd click → started:false, state running
     await expect.poll(() => runs.length).toBe(2);
-    await expect(card.locator("> summary")).toContainText(/profiling/i);
-    await expect(card.locator("> summary")).not.toContainText(/failed/i);
+    await expect(card.getByTestId("profile-head")).toContainText(/profiling/i);
+    await expect(card.getByTestId("profile-head")).not.toContainText(/failed/i);
     await expect(card.getByTestId("profile-status")).toContainText(/queued — waiting for another job/i);
     await expect(card.getByTestId("profile-error")).toHaveCount(0);
     await expect(page.locator(".banner.err")).toHaveCount(0);
@@ -297,14 +297,14 @@ test.describe("signed in", () => {
     await expect(retry).toBeDisabled();
     // Still Profiling after the next poll — nothing flips it back to FAILED.
     await expect.poll(() => polls, { timeout: 15_000 }).toBeGreaterThanOrEqual(4);
-    await expect(card.locator("> summary")).toContainText(/profiling/i);
+    await expect(card.getByTestId("profile-head")).toContainText(/profiling/i);
     expect(runs).toEqual([REPO3, REPO3]);
   });
 
   test("repository profile editor round-trips an edit", async ({ page }) => {
     await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
-    await card.locator("> summary").click();
+    await card.getByTestId("profile-toggle").click();
     await card.getByRole("button", { name: "Edit" }).click();
     const box = card.locator("textarea.fedit");
     const before = await box.inputValue();
@@ -316,7 +316,7 @@ test.describe("signed in", () => {
     await expect(card.getByTestId("profile-counts")).toContainText(/2 review rules/);
     await page.reload();
     const again = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
-    await again.locator("> summary").click();
+    await again.getByTestId("profile-toggle").click();
     await again.getByRole("button", { name: "Edit" }).click();
     await expect(again.locator("textarea.fedit")).toHaveValue(new RegExp(marker));
     await expect(again).toContainText(/edited by/i);
@@ -348,7 +348,7 @@ test.describe("signed in", () => {
     await expect(page.getByPlaceholder("123456789012345678")).toHaveValue("4242");
     await page.getByRole("button", { name: /show payload schema/i }).click();
     await expect(page.getByText(/X-ReviewStage-Signature/)).toBeVisible();
-    await expect(page.locator("pre.schema")).toContainText("review_requested");
+    await expect(page.getByTestId("payload-schema")).toContainText("review_requested");
   });
 
   test("settings page renders for the fixture admin and the interval round-trips", async ({ page }) => {
@@ -389,7 +389,8 @@ test.describe("signed in", () => {
     await expect(card.getByText("https://reviewstage.example.com/webhooks/github").first()).toBeVisible();
     await expect(card.getByText(/GITHUB_WEBHOOK_SECRET/).first()).toBeVisible();
     await expect(card.getByText(/0 events received/)).toBeVisible();
-    await expect(card.locator("pre.schema")).toContainText("Pull requests, Pull request reviews");
+    await card.getByRole("button", { name: /set it up on github/i }).click();
+    await expect(card.getByTestId("webhook-instructions")).toContainText("Pull requests, Pull request reviews");
     await expect(card.getByRole("button", { name: /copy instructions/i })).toBeVisible();
     // The "lower the poll interval" hint only appears once webhooks are active.
     await expect(card.getByText(/turn polling off/i)).toHaveCount(0);

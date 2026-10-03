@@ -1,11 +1,47 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Check,
+  ChevronRight,
+  Circle,
+  CircleCheck,
+  Copy,
+  Download,
+  ExternalLink,
+  FlaskConical,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Square,
+} from "lucide-react";
 import { api, errMessage, type Me, type PrRef, type QaDetail, type QaGuide } from "./api";
 import { Md } from "./Md";
 import { parsePrRef, prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { Link, navigate, useLocation } from "./router";
 import { pokeRunning, runningFor, useRunning } from "./running";
-import { Banner, Status } from "./ui";
-import { BrandIcon, Icon } from "./icons";
+import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge } from "./ui";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const NOTE = "text-xs text-muted-foreground";
+// Menu highlight: accent and popover share a tone in tw.css, so the system's own highlight is
+// invisible on a popover; the blue tint is what the legacy menus used.
+const ITEM = "focus:bg-blue/14";
+
+// The guide body: prose at 15px, with the markdown's headings, lists, task boxes and tables
+// sized for a document a tester works through. `qaguide` is a bare hook for the specs.
+const GUIDE =
+  "qaguide max-w-[80ch] text-[15px] leading-relaxed " +
+  "[&>:first-child]:mt-0 [&_p]:mt-0 [&_p]:mb-2.5 [&_li]:my-1 " +
+  "[&_h1]:font-sans [&_h1]:tracking-normal " +
+  "[&_:is(h1,h2,h3,h4,h5)]:mt-5 [&_:is(h1,h2,h3,h4,h5)]:mb-1.5 [&_:is(h1,h2,h3,h4,h5)]:text-base [&_:is(h1,h2,h3,h4,h5)]:font-semibold " +
+  "[&_li.task-list-item]:flex [&_li.task-list-item]:list-none [&_li.task-list-item]:items-start [&_li.task-list-item]:gap-2 " +
+  "[&_ul.contains-task-list]:pl-1 [&_li.task-list-item>input]:mt-[3px] [&_li.task-list-item>input]:size-4 [&_li.task-list-item>input]:shrink-0 " +
+  "[&_table]:my-2.5 [&_table]:block [&_table]:overflow-x-auto";
 
 function QaIndex({ me }: { me: Me }) {
   const [guides, setGuides] = useState<QaGuide[]>([]);
@@ -33,7 +69,7 @@ function QaIndex({ me }: { me: Me }) {
   const needsPick = !!parsed && !parsed.repo && multi;
   const form = (
     <form
-      className="qagen"
+      className="flex w-full flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         if (!parsed) return;
@@ -41,8 +77,8 @@ function QaIndex({ me }: { me: Me }) {
         navigate(prUrl({ repo, num: parsed.number }, "/qa"));
       }}
     >
-      <input
-        className="in"
+      <Input
+        className="min-w-[200px] flex-1"
         autoComplete="off"
         aria-label="PR to build a QA guide for"
         placeholder="PR URL, owner/name#123, or a number"
@@ -50,72 +86,87 @@ function QaIndex({ me }: { me: Me }) {
         onChange={(e) => setPr(e.target.value)}
       />
       {needsPick && (
-        <select aria-label="Repository" value={pickRepo || repos[0]} onChange={(e) => setPickRepo(e.target.value)}>
-          {repos.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
+        <Select value={pickRepo || repos[0]} onValueChange={setPickRepo}>
+          <SelectTrigger aria-label="Repository" className="max-w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {repos.map((r) => (
+              <SelectItem key={r} value={r} className={ITEM}>
+                {r}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )}
-      <button className="btn primary" type="submit" disabled={!parsed}>
+      <Button type="submit" disabled={!parsed}>
         Open
-      </button>
+      </Button>
     </form>
   );
   // With no guides yet the form IS the empty state: the one thing to do on the page.
   const none = loaded && guides.length === 0 && !err;
   return (
     <>
-      <div className="pagehead">
-        <div className="pagehead-t">
-          <h1>QA guides</h1>
-        </div>
-        {!none && form}
-      </div>
+      <PageHeader title="QA guides" actions={!none && form} />
       {err && (
         <Banner kind="err" data-testid="qa-index-error">{err}</Banner>
       )}
-      {guides.length > 0 ? (
-        <>
-          <h2>Recent guides</h2>
-          <div className="list">
-            {guides.map((g) => {
-              const status = runningFor(jobs, "qa", g.repo, g.num)?.status || (g.running ? g.status || "building" : "");
-              const to = prUrl({ repo: g.repo, num: g.num }, "/qa");
-              return (
-              <div className={"row" + (status ? " running" : "")} key={`${g.repo}#${g.num}`}>
-                <Link className="rowlink" to={to}>
-                  <div className="rowtop">
-                    {multi && g.repo && <span className="repochip" title={g.repo}>{g.repo}</span>}
-                    <span className="num">#{g.num}</span>
-                    <span className="ttl">{g.title}</span>
-                  </div>
+      {!loaded ? (
+        <Card className="gap-0 divide-y divide-border py-0" aria-busy="true">
+          <span className="sr-only" role="status">Loading your QA guides</span>
+          {[0, 1].map((i) => (
+            <div key={i} className="flex flex-col gap-2 px-4 py-3">
+              <Skeleton className="h-4 w-2/3 max-w-[420px]" />
+              <Skeleton className="h-3.5 w-1/3 max-w-[200px]" />
+            </div>
+          ))}
+        </Card>
+      ) : guides.length > 0 ? (
+        <Card className="gap-0 divide-y divide-border py-0" data-testid="qa-list">
+          {guides.map((g) => {
+            const status = runningFor(jobs, "qa", g.repo, g.num)?.status || (g.running ? g.status || "building" : "");
+            const to = prUrl({ repo: g.repo, num: g.num }, "/qa");
+            return (
+              <Link
+                key={`${g.repo}#${g.num}`}
+                to={to}
+                data-testid="qa-row"
+                data-running={status ? "true" : undefined}
+                className="flex min-h-[44px] items-start gap-3 px-4 py-2.5 text-inherit hover:bg-accent/40 hover:no-underline"
+              >
+                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted" aria-hidden="true">
+                  <FlaskConical className="size-4 text-muted-foreground" />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    {multi && g.repo && <RepoPill repo={g.repo} />}
+                    <span className="text-sm font-medium text-primary">#{g.num}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{g.title}</span>
+                  </span>
                   {status ? (
-                    <div className="rowsub rowrun" data-testid="row-running">
-                      <Status kind="reviewing" live>Building</Status>
-                      <span>{status}</span>
-                      <span className="runback">— open to watch</span>
-                    </div>
+                    <span className="flex flex-wrap items-center gap-2 text-xs" data-testid="row-running">
+                      <StatusBadge kind="reviewing" live>Building</StatusBadge>
+                      <span className="text-amber">{status}</span>
+                      <span className="text-muted-foreground">— open to watch</span>
+                    </span>
                   ) : (
-                    <div className="rowsub">
-                      <Status kind="done">Guide ready</Status>
-                      <span className="muted sm">{g.when}</span>
-                    </div>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <StatusBadge kind="done">Guide ready</StatusBadge>
+                      <span className={NOTE}>{g.when}</span>
+                    </span>
                   )}
-                </Link>
-              </div>
-              );
-            })}
-          </div>
-        </>
+                </span>
+              </Link>
+            );
+          })}
+        </Card>
       ) : none ? (
-        <div className="empty" data-testid="qa-empty">
-          <Icon name="flask" />
-          <b>Build your first QA guide</b>
-          Paste a PR URL, or type <code>owner/name#123</code> or a number.
-          {form}
-        </div>
+        <Card className="py-0">
+          <EmptyState icon={FlaskConical} title="Build your first QA guide" data-testid="qa-empty" action={<div className="w-[min(520px,calc(100vw-64px))]">{form}</div>}>
+            Paste a PR URL, or type <code>owner/name#123</code> or a number.
+          </EmptyState>
+        </Card>
       ) : null}
     </>
   );
@@ -142,11 +193,32 @@ function execCommandCopy(text: string): boolean {
 // Nothing more will happen to a guide in one of these states without another click.
 const TERMINAL = new Set(["done", "failed", "stopped"]);
 
+// The phase list a build walks: done green, current a spinner, pending graphite.
+function Progress({ phases, cur, testId }: { phases: string[]; cur: number; testId?: string }) {
+  return (
+    <ol className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm" data-testid={testId ?? "qa-progress"}>
+      {phases.map((ph, j) => (
+        <li key={ph} className={cn("flex items-center gap-2.5", j < cur ? "text-muted-foreground" : j === cur ? "font-medium" : "text-muted-foreground")}>
+          {j < cur ? (
+            <CircleCheck aria-hidden="true" className="size-4 shrink-0 text-green" />
+          ) : j === cur ? (
+            <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
+          ) : (
+            <Circle aria-hidden="true" className="size-4 shrink-0" />
+          )}
+          {ph}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function QaDetailView({ pr }: { pr: PrRef }) {
   const [d, setD] = useState<QaDetail | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [logOpen, setLogOpen] = useState(false);
   // Set the moment Generate is clicked. The server reports "none" for the seconds the job takes
   // to spawn, so arming the timer on state === "running" alone meant the first-ever Generate
   // never polled: the page sat on "No guide yet" while the guide was being written.
@@ -186,11 +258,43 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     return () => window.clearInterval(timer.current);
   }, [d, starting, load]);
 
+  const crumbs = (repo: string, ghUrl?: string) => (
+    <nav aria-label="Breadcrumb" className="mb-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      <Link to="/qa" className="text-muted-foreground hover:text-foreground">QA guides</Link>
+      <ChevronRight aria-hidden="true" className="size-3.5" />
+      {repo && <RepoPill repo={repo} />}
+      {ghUrl && (
+        <a href={ghUrl} target="_blank" rel="noopener" className="ml-auto inline-flex items-center gap-1 text-xs">
+          <ExternalLink aria-hidden="true" className="size-3.5" />
+          Open on GitHub
+        </a>
+      )}
+    </nav>
+  );
+
   if (loadErr && !d)
     return (
-      <Banner kind="err" data-testid="qa-load-error">{loadErr}</Banner>
+      <>
+        {crumbs(pr.repo)}
+        <PageHeader title={<span className="text-primary">#{pr.num}</span>} />
+        <Banner kind="err" data-testid="qa-load-error">{loadErr}</Banner>
+      </>
     );
-  if (!d) return <div className="muted">Loading…</div>;
+  if (!d)
+    return (
+      <>
+        {crumbs(pr.repo)}
+        <PageHeader title={<span className="text-primary">#{pr.num}</span>} />
+        <Card className="gap-3 py-5" aria-busy="true">
+          <span className="sr-only" role="status">Loading this QA guide</span>
+          <CardContent className="flex flex-col gap-3 px-5">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-4 w-11/12" />
+            <Skeleton className="h-4 w-2/3" />
+          </CardContent>
+        </Card>
+      </>
+    );
 
   // A failed or stopped run never hides a guide that is already on disk — the server keeps the
   // state at "done" for exactly that reason. What went wrong rides above the guide as a warning,
@@ -207,19 +311,28 @@ function QaDetailView({ pr }: { pr: PrRef }) {
           {d.md
             ? "The guide below is the one already on disk — it is unchanged, not a result of that run."
             : "No guide was written."}
-          {d.failed && <div className="qafail">{d.failed}</div>}
+          {d.failed && <div className="mt-1.5 [overflow-wrap:anywhere]">{d.failed}</div>}
           {d.logTail && d.logTail.length > 0 && (
-            <details className="proferr-log" data-testid="qa-log">
-              <summary>Last {d.logTail.length} lines of the log</summary>
-              <pre>{d.logTail.join("\n")}</pre>
-            </details>
+            <Collapsible open={logOpen} onOpenChange={setLogOpen} className="mt-1" data-testid="qa-log">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+                  <ChevronRight aria-hidden="true" className={cn("transition-transform", logOpen && "rotate-90")} />
+                  Last {d.logTail.length} lines of the log
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <pre className="mt-1 max-h-[260px] overflow-auto whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">
+                  {d.logTail.join("\n")}
+                </pre>
+              </CollapsibleContent>
+            </Collapsible>
           )}
         </>
       </Banner>
     ) : null;
 
   const chip = d.usage ? (
-    <span className="sideusage qausage" title={usageTitle(d.usage)} data-testid="qa-usage">
+    <span className={NOTE} title={usageTitle(d.usage)} data-testid="qa-usage">
       {usageChip(d.usage)}
     </span>
   ) : null;
@@ -229,40 +342,16 @@ function QaDetailView({ pr }: { pr: PrRef }) {
   const hasTitle = !!d.title && d.title.trim() !== `PR #${pr.num}` && d.title.trim() !== `#${pr.num}`;
   const header = (
     <>
-      <nav className="bc">
-        <Link to="/qa">QA guides</Link>
-        {d.repo && (
+      {crumbs(d.repo, d.ghUrl)}
+      <PageHeader
+        title={
           <>
-            <span className="sep">/</span>
-            <span className="muted">{d.repo}</span>
+            <span className="text-primary">#{pr.num}</span>
+            {hasTitle && <> {d.title}</>}
           </>
-        )}
-        <span className="sep">/</span>
-        <span className="cur">#{pr.num}</span>
-      </nav>
-      <h1 className="prtitle">
-        {d.repo && <span className="repo">{d.repo}</span>}#{pr.num}
-        {hasTitle && <> — {d.title}</>}
-      </h1>
-      <div className="meta">
-        <a href={d.ghUrl} target="_blank" rel="noopener">
-          open on GitHub
-        </a>
-      </div>
+        }
+      />
     </>
-  );
-
-  const gate = (
-    <div className="claudegate">
-      <div className="cg-ico">{BrandIcon.claude}</div>
-      <div className="cg-body">
-        <b>Connect your Claude account to generate a QA guide</b>
-        <p className="muted sm">Generating a QA guide runs on your own Claude subscription.</p>
-        <Link className="btn primary" to="/integrations">
-          Connect Claude
-        </Link>
-      </div>
-    </div>
   );
 
   async function gen() {
@@ -346,26 +435,29 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  const progressCard = (title: ReactNode, body: ReactNode, testId?: string) => (
+    <Card className="gap-3 py-5" data-testid={testId}>
+      <CardHeader className="px-5">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 px-5">{body}</CardContent>
+    </Card>
+  );
+
   // The spawn window: clicked, but the server has not yet admitted a run. Without this the page
   // says "No guide yet" while the guide is being written.
   if (starting && d.state !== "running") {
     return (
       <>
         {header}
-        <div className="card top" data-testid="qa-starting">
-          <div className="prog-hd">
-            Starting the QA guide for <b>{prLabel({ repo: d.repo, num: pr.num })}</b>
-          </div>
-          <ul className="prog">
-            <li className="now">
-              <span className="pm"><span className="rundot" aria-hidden="true" /></span>
-              Starting the job
-            </li>
-          </ul>
-          <div className="hint" style={{ marginTop: 10 }}>
-            This page refreshes itself; the phases appear as soon as the job is picked up.
-          </div>
-        </div>
+        {progressCard(
+          <>Starting the QA guide for <b>{prLabel({ repo: d.repo, num: pr.num })}</b></>,
+          <>
+            <Progress phases={["Starting the job"]} cur={0} />
+            <p className={cn(NOTE, "m-0")}>This page refreshes itself; the phases appear as soon as the job is picked up.</p>
+          </>,
+          "qa-starting",
+        )}
       </>
     );
   }
@@ -375,33 +467,25 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     return (
       <>
         {header}
-        <div className="card top">
-          <div className="prog-hd">
-            Building QA guide for <b>{prLabel({ repo: d.repo, num: pr.num })}</b>
-          </div>
-          <ul className="prog">
-            {r.phases.map((ph, j) => (
-              <li key={ph} className={j < r.cur ? "done" : j === r.cur ? "now" : ""}>
-                <span className="pm">
-                  {j < r.cur ? <Icon name="check" /> : j === r.cur ? <span className="rundot" aria-hidden="true" /> : <Icon name="circle" />}
-                </span>
-                {ph}
-              </li>
-            ))}
-          </ul>
-          {r.queued && <div className="hint">Waiting for another job to finish first.</div>}
-          <div className="hint" style={{ marginTop: 10 }}>
-            This page refreshes itself; reading the diff and review history takes a few minutes.
-          </div>
-          {err && (
-            <Banner kind="err" data-testid="qa-error">{err}</Banner>
-          )}
-          <div style={{ marginTop: 12 }}>
-            <button className="btn secondary" type="button" disabled={busy} onClick={stop}>
-              {busy ? "Stopping…" : "Stop"}
-            </button>
-          </div>
-        </div>
+        {progressCard(
+          <>Building QA guide for <b>{prLabel({ repo: d.repo, num: pr.num })}</b></>,
+          <>
+            <Progress phases={r.phases} cur={r.cur} />
+            {r.queued && <p className={cn(NOTE, "m-0")}>Waiting for another job to finish first.</p>}
+            <p className={cn(NOTE, "m-0")}>
+              This page refreshes itself; reading the diff and review history takes a few minutes.
+            </p>
+            {err && (
+              <Banner kind="err" data-testid="qa-error">{err}</Banner>
+            )}
+            <div>
+              <Button variant="secondary" type="button" disabled={busy} onClick={stop}>
+                <Square aria-hidden="true" />
+                {busy ? "Stopping…" : "Stop"}
+              </Button>
+            </div>
+          </>,
+        )}
       </>
     );
   }
@@ -411,28 +495,35 @@ function QaDetailView({ pr }: { pr: PrRef }) {
       <>
         {header}
         {lastRun}
-        <div className="qabar">
-          <Status kind="done">Guide ready</Status>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <StatusBadge kind="done">Guide ready</StatusBadge>
           {chip}
-          <span className="spacer" />
+          <span className="flex-1" />
           {d.connected && (
-            <button className="btn secondary" type="button" disabled={busy} onClick={gen}>
+            <Button variant="secondary" type="button" disabled={busy} onClick={gen}>
+              <RefreshCw aria-hidden="true" />
               {busy ? "Starting…" : "Regenerate"}
-            </button>
+            </Button>
           )}
-          <button className="btn secondary" type="button" onClick={download} data-testid="qa-download">
+          <Button variant="secondary" type="button" onClick={download} data-testid="qa-download">
+            <Download aria-hidden="true" />
             Download .md
-          </button>
-          <button className="btn primary" type="button" onClick={copy}>
+          </Button>
+          <Button type="button" onClick={copy}>
+            {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
             {copied ? "Copied" : "Copy guide"}
-          </button>
+          </Button>
         </div>
         {err && (
           <Banner kind="err" data-testid="qa-error">{err}</Banner>
         )}
-        <Md className="qaguide" tasks>
-          {d.md}
-        </Md>
+        <Card className="py-5">
+          <CardContent className="px-5">
+            <Md className={GUIDE} tasks>
+              {d.md}
+            </Md>
+          </CardContent>
+        </Card>
       </>
     );
   }
@@ -442,35 +533,40 @@ function QaDetailView({ pr }: { pr: PrRef }) {
     lastRun ??
     (d.state === "stopped" ? (
       <Banner kind="warn" icon="stop" data-testid="qa-last-run">
-          <b>Stopped.</b> Generate a new guide below.
-        </Banner>
+        <b>Stopped.</b> Generate a new guide below.
+      </Banner>
     ) : null);
 
   return (
     <>
       {header}
       {note}
-      {chip}
+      {chip && <div className="mb-3">{chip}</div>}
       {err && (
         <Banner kind="err" data-testid="qa-error">{err}</Banner>
       )}
-      <div className="card top">
-        {d.state === "none" && !note && <h2 style={{ marginTop: 0 }}>No guide yet</h2>}
-        {d.connected ? (
-          <button
-            className="btn primary"
-            type="button"
-            disabled={busy}
-            aria-busy={busy}
-            onClick={gen}
-            data-testid="qa-generate"
-          >
-            {busy ? "Starting…" : "Generate QA guide"}
-          </button>
-        ) : (
-          gate
-        )}
-      </div>
+      <Card className="py-0">
+        <EmptyState
+          icon={d.connected ? FlaskConical : Sparkles}
+          title={d.state === "none" && !note ? "No guide yet" : "Generate a new guide"}
+          action={
+            d.connected ? (
+              <Button type="button" disabled={busy} aria-busy={busy} onClick={gen} data-testid="qa-generate">
+                <FlaskConical aria-hidden="true" />
+                {busy ? "Starting…" : "Generate QA guide"}
+              </Button>
+            ) : (
+              <Button asChild>
+                <Link to="/integrations">Connect Claude</Link>
+              </Button>
+            )
+          }
+        >
+          {d.connected
+            ? "Risk-tiered manual test cases, grounded in the diff and the review history. It takes a few minutes."
+            : "Connect your Claude account first — generating a QA guide runs on your own Claude subscription."}
+        </EmptyState>
+      </Card>
     </>
   );
 }

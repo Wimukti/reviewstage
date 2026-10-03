@@ -87,7 +87,7 @@ test.describe("keyboard", () => {
   test("Tab walks the PR page with the ring visible on every stop", async ({ page }) => {
     await page.goto(`/pr?repo=${enc(REPO)}&pr=${PR}`);
     await settled(page);
-    await expect(page.locator("h1.prtitle")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     // The system's controls draw their ring as a box-shadow that transitions in; read the
     // settled value.
     await page.addStyleTag({ content: "*{transition:none!important}" });
@@ -225,10 +225,10 @@ test.describe("the staging area", () => {
     await expect(first).toHaveClass(/is-staged/);
     await expect(page.getByTestId("commit-bar")).toBeVisible();
     await expect(page.getByTestId("commit-bar")).toContainText("2 staged");
-    await first.locator("input.fsel").uncheck();
+    await first.getByTestId("finding-select").uncheck();
     await expect(first).not.toHaveClass(/is-staged/);
     await expect(page.getByTestId("commit-bar")).toContainText("1 staged");
-    // No filled pills anywhere: severities are dot + word.
-    await expect(first.locator(".status").first()).toHaveText(/^(Blocker|Should fix|Nit|Question)$/);
+    // Severity is one StatusBadge, icon and word.
+    await expect(first.getByTestId("status-badge").first()).toHaveText(/^(Blocker|Should fix|Nit|Question)$/);
   });
 });

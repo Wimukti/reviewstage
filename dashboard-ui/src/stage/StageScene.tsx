@@ -11,8 +11,10 @@
 import { useEffect, useMemo, useState } from "react";
 import fixture from "./fixture.json";
 import { CommitBar, FindingCard, KeyPoints, StatusLineView, Verdict } from "../ReviewParts";
-import { Status, toneOf, wordOf } from "../ui";
+import { PageHeader, RepoPill, StatusBadge, toneOf, wordOf } from "../ui";
 import { StageProgress } from "./StageProgress";
+import { Button } from "@/components/ui/button";
+import { Play } from "lucide-react";
 
 export type SceneState = "requested" | "drafting" | "staged" | "posted" | "approved";
 
@@ -122,14 +124,27 @@ export function StageScene({
   );
 }
 
+// The PR page's header: the repository as a pill on the breadcrumb line, the number and title
+// in the page header.
 function Header() {
   return (
-    <div className="prhead">
-      <h1 className="prtitle">
-        <span className="repo">{fixture.repo}</span>
-        <span className="num">#{fixture.pr}</span> {fixture.title}
-      </h1>
-    </div>
+    <>
+      <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>Queue</span>
+        <span aria-hidden="true">/</span>
+        <RepoPill repo={fixture.repo} />
+        <span aria-hidden="true">/</span>
+        <span className="text-foreground">#{fixture.pr}</span>
+      </div>
+      <PageHeader
+        className="mb-3"
+        title={
+          <>
+            <span className="text-primary">#{fixture.pr}</span> {fixture.title}
+          </>
+        }
+      />
+    </>
   );
 }
 
@@ -141,11 +156,12 @@ function Requested() {
         items={[{ key: "state", tone: toneOf("new"), word: wordOf("new") }]}
         meta={[`${fixture.author} asked for your review · +${fixture.additions} −${fixture.deletions} · ${fixture.changedFiles} files`]}
       />
-      <div className="practions">
-        <button className="btn primary" type="button" onClick={(e) => e.preventDefault()}>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button type="button" onClick={(e) => e.preventDefault()}>
+          <Play aria-hidden="true" />
           Review this PR
-        </button>
-        <span className="hint">Runs on your Claude plan. Nothing reaches GitHub.</span>
+        </Button>
+        <span className="text-xs text-muted-foreground">Runs on your Claude plan. Nothing reaches GitHub.</span>
       </div>
     </div>
   );
@@ -159,7 +175,7 @@ function Verdict_() {
       <Verdict
         tone={fix ? "amber" : "green"}
         text={fix ? `${fix} thing${fix > 1 ? "s" : ""} to fix before merge` : "Looks good — nothing to fix"}
-        about="The agent's read of this PR. Comments post as a plain review either way — nothing here blocks a merge unless you ask for changes."
+        chips={fix ? [{ kind: "should-fix", n: fix }, { kind: "nit", n: fixture.review.findings.length - fix }] : []}
       />
       <KeyPoints points={fixture.review.keyPoints} />
     </>
@@ -168,8 +184,8 @@ function Verdict_() {
 
 function Approved() {
   return (
-    <div className="approve-verdict">
-      <Status tone="green">Approved by {fixture.user} · LGTM — no blockers</Status>
+    <div className="mt-3">
+      <StatusBadge kind="approved">Approved by {fixture.user} · LGTM — no blockers</StatusBadge>
     </div>
   );
 }

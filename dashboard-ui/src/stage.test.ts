@@ -26,8 +26,9 @@ test("fixture.json is the e2e fixture's PR #38849 review", () => {
 
 test("StageScene staged: two .finding.is-staged and a commit bar reading 2 staged", () => {
   const html = renderToStaticMarkup(createElement(StageScene, { state: "staged" }));
-  assert.equal(count(html, 'class="finding is-staged"'), 2);
-  assert.match(html, /class="commit-bar has-staged"/);
+  // The hooks sit among the component's utilities; match the hook pair, not the whole attribute.
+  assert.equal((html.match(/class="[^"]*\bfinding is-staged\b[^"]*"/g) ?? []).length, 2);
+  assert.match(html, /class="[^"]*\bcommit-bar has-staged\b/);
   assert.match(html, /data-stage-count="2"/);
   assert.match(html, /Post selected to GitHub/);
   assert.match(html, /In summary/); // Badge.tsx is outside the diff
@@ -58,7 +59,7 @@ test("StageQueueCard and StageProgress render from the fixture", () => {
   assert.match(q, /1 should fix/);
   assert.match(q, /1 nit/);
   const p = renderToStaticMarkup(createElement(StageProgress, { cur: 2 }));
-  assert.equal(count(p, 'class="done"'), 2);
-  assert.equal(count(p, 'class="now"'), 1);
+  assert.equal(count(p, 'data-state="done"'), 2);
+  assert.equal(count(p, 'data-state="now"'), 1);
   assert.match(p, /Reviewing the diff/);
 });

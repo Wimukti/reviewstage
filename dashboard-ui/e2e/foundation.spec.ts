@@ -32,7 +32,7 @@ test.describe("phone", () => {
       await settled(page);
       const { scrollWidth, innerWidth } = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
-        innerWidth: window.innerWidth,
+        innerWidth: Math.round(window.visualViewport?.width ?? window.innerWidth),
       }));
       expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
     });

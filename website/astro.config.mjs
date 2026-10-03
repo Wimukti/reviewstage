@@ -18,7 +18,14 @@ export default defineConfig({
   trailingSlash: "always",
   vite: {
     plugins: [tailwindcss()],
-    resolve: { alias: { "@app": appSrc, "@": appSrc } },  // "@" is the app's own alias (shadcn imports @/lib/utils)
+    resolve: {
+      alias: { "@app": appSrc, "@": appSrc },  // "@" is the app's own alias (shadcn imports @/lib/utils)
+      // Bare imports inside dashboard-ui/src resolve from THAT directory's node_modules, which
+      // the site's CI job never installs — so the build broke on `radix-ui` from button.tsx.
+      // dedupe pins every package the app's source imports to the site's own copy.
+      dedupe: ["react", "react-dom", "radix-ui", "lucide-react", "class-variance-authority",
+               "clsx", "tailwind-merge", "cmdk", "react-markdown", "remark-gfm"],
+    },
     server: { fs: { allow: [".", appSrc] } },
   },
   integrations: [

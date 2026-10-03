@@ -627,7 +627,7 @@ export function Settings({ me }: { me: Me }) {
                 {meta.envLabel && (
                   <Badge
                     variant="outline"
-                    className={cn("block max-w-full truncate max-[899px]:ml-11", configured ? "text-green" : "text-muted-foreground")}
+                    className={cn("block min-w-0 max-w-full shrink truncate max-[899px]:ml-11", configured ? "text-green" : "text-muted-foreground")}
                     title={`${configured ? "Set" : "Not set"} in .env: ${meta.envLabel}`}
                   >
                     {configured ? "Configured" : "Not set"} · {meta.envLabel}

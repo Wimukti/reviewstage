@@ -415,7 +415,7 @@ export function Queue({ me }: { me: Me }) {
             </Select>
           </div>
         )}
-        <div className="flex items-center gap-0.5" role="group" aria-label="Sort">
+        <div className="flex min-w-0 flex-wrap items-center gap-0.5" role="group" aria-label="Sort">
           {SORTS.map(([k, lbl]) => (
             <Button
               key={k}

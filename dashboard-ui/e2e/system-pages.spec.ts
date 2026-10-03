@@ -183,7 +183,7 @@ test.describe("the six pages at 390", () => {
       }
       const { scrollWidth, innerWidth } = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
-        innerWidth: window.innerWidth,
+        innerWidth: Math.round(window.visualViewport?.width ?? window.innerWidth),
       }));
       expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
     });

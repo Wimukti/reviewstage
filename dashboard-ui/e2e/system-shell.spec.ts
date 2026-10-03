@@ -139,7 +139,7 @@ test.describe("phone shell at 390", () => {
     await expect(page.getByTestId("queue-row").first()).toBeVisible();
     const { scrollWidth, innerWidth } = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
-      innerWidth: window.innerWidth,
+      innerWidth: Math.round(window.visualViewport?.width ?? window.innerWidth),
     }));
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
     const archive = page.getByRole("button", { name: `Archive #${PR}` });

@@ -50,7 +50,7 @@ test.describe("pwa", () => {
       test(`${name} does not scroll horizontally at 390px`, async ({ page }) => {
         await page.goto(path);
         if (heading) await expect(page.getByRole("heading", { name: heading })).toBeVisible();
-        else await expect(page.locator("h1.prtitle")).toBeVisible();
+        else await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         // Sign out must be reachable: it lives in the More sheet on the phone.
         await page.getByTestId("more-tab").click();
         await expect(page.getByRole("button", { name: /sign out/i })).toBeInViewport();

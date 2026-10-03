@@ -134,7 +134,7 @@ test.describe("signed in", () => {
     await page.getByRole("option", { name: REPO2 }).click();
     await page.getByTestId("open-pr").click();
     await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO2)}&pr=${PR3}`));
-    await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(`#${PR3}`);
   });
 
   test("pasting a GitHub URL derives the repo — no picker", async ({ page }) => {
@@ -147,12 +147,12 @@ test.describe("signed in", () => {
 
   test("opens the PR detail with its drafted findings", async ({ page }) => {
     await page.goto(`/pr?repo=${enc(REPO)}&pr=${PR}`);
-    await expect(page.locator("h1.prtitle")).toContainText(`${REPO}#${PR}`);
-    await expect(page.locator("h1.prtitle")).toContainText(/lead-time badge/i);
-    // Breadcrumbs include the repo.
-    await expect(page.locator("nav.bc")).toContainText(REPO);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(`#${PR}`);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/lead-time badge/i);
+    // Breadcrumbs carry the repo, as a pill.
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByTestId("repo-pill")).toHaveText(REPO);
     await expect(page.getByText(/can crash the lead-time badge/i).first()).toBeVisible();
-    await expect(page.locator(".explain > summary", { hasText: /explain simply/i }).first()).toBeVisible();
+    await expect(page.getByTestId("explain").first()).toHaveText(/explain simply/i);
     await expect(page.getByText(/the badge logic is sound/i)).toBeVisible();
   });
 
@@ -166,19 +166,19 @@ test.describe("signed in", () => {
     await expect(off.getByTestId("placement")).toHaveText("In summary");
     await expect(off.getByTestId("placement")).toHaveAttribute("title", /not part of the PR's diff/);
     // Both are staged by default, so the commit bar splits them.
-    const bar = page.locator(".commit-bar .inner .muted");
+    const bar = page.getByTestId("commit-summary");
     await expect(bar).toContainText("2 staged");
     await expect(bar).toContainText("1 inline");
     await expect(bar).toContainText("1 in the summary");
     // Unselecting the off-diff one drops the split entirely.
-    await off.locator("input.fsel").uncheck();
+    await off.getByTestId("finding-select").uncheck();
     await expect(bar).toContainText("1 staged");
     await expect(bar).not.toContainText("in the summary");
   });
 
   test("a legacy /pr?pr=N link resolves when the number is unique across repos", async ({ page }) => {
     await page.goto(`/pr?pr=${PR3}`);
-    await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(`#${PR3}`);
   });
 
   test("insights has a repo breakdown and a repo filter", async ({ page }) => {

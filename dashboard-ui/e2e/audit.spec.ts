@@ -82,11 +82,11 @@ test.describe("Enter never writes to GitHub", () => {
     });
 
     await page.goto(prUrl(REPO, PR));
-    const box = page.locator(".finding input.fsel").first();
+    const box = page.locator(".finding").getByTestId("finding-select").first();
     await box.focus();
     await page.keyboard.press("Enter");
     // The "Request changes instead" toggle sits in the same panel and is just as reachable.
-    await page.locator(".rqtoggle input").focus();
+    await page.getByTestId("request-changes").focus();
     await page.keyboard.press("Enter");
 
     await expect(page.getByTestId("post-panel")).toBeVisible();
@@ -108,7 +108,7 @@ test.describe("Enter never writes to GitHub", () => {
     await page.getByTestId("sec-approve").click();
     const panel = page.getByTestId("approve-panel");
     await expect(panel).toBeVisible();
-    const ack = panel.locator("input[type=checkbox]");
+    const ack = panel.getByTestId("approve-ack");
     const approve = panel.getByRole("button", { name: /approve/i });
 
     // The gate `required` used to enforce is now on the button itself.

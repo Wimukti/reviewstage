@@ -1,5 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  ClipboardCheck,
+  Crosshair,
+  Ellipsis,
+  ExternalLink,
+  EyeOff,
+  FileText,
+  GitBranch,
+  GitCommitHorizontal,
+  GitMerge,
+  GitPullRequestClosed,
+  History,
+  Info,
+  Layers,
+  ListChecks,
+  ListFilter,
+  Loader2,
+  MapPinOff,
+  Play,
+  Plug,
+  RefreshCw,
+  RotateCcw,
+  SearchX,
+  ShieldAlert,
+  Square,
+  Unplug,
+  Users,
+} from "lucide-react";
+import {
   api,
   ApiError,
   errMessage,
@@ -21,7 +52,7 @@ import { prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
 import { pokeRunning } from "./running";
-import { BrandIcon, Icon } from "./icons";
+import { BrandIcon } from "./icons";
 import {
   CommitBar,
   FindingCard,
@@ -33,10 +64,35 @@ import {
   Verdict,
   type StatusItem,
 } from "./ReviewParts";
-import { Status, toneOf as toneOfState, wordOf, type Tone } from "./ui";
-import { Banner, RawBanner, SlowBusy } from "./ui";
+import { Banner, EmptyState, PageHeader, RawBanner, RepoPill, StatusBadge, UserAvatar, toneOf as toneOfState, wordOf, type Tone } from "./ui";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 const refOf = (d: PrData): PrRef => ({ repo: d.repo, num: d.pr });
+
+// The severity tone as a card's left accent (the history view's cards; FindingCard has its own).
+const SEV_BORDER: Record<Tone, string> = {
+  blue: "border-l-blue", amber: "border-l-amber", red: "border-l-red", green: "border-l-green", graphite: "border-l-graphite",
+};
+
+// Menu highlight: accent and popover share a tone in tw.css, so the system's own highlight is
+// invisible on a popover; the blue tint is what the legacy menus used.
+const ITEM = "focus:bg-blue/14";
 
 const REV_STATE: Record<string, [Tone, string]> = {
   APPROVED: ["green", "Approved"],
@@ -46,7 +102,20 @@ const REV_STATE: Record<string, [Tone, string]> = {
   AWAITING: ["amber", "Awaiting review"],
 };
 
+// A labelled field in a form: the label in metadata type above its control.
+function Field({ label, htmlFor, children }: { label: React.ReactNode; htmlFor?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
 function Reviewers({ data }: { data: ReviewersData }) {
+  const [open, setOpen] = useState(false);
   if (!data.reviewers.length) return null;
   const dec =
     data.decision === "CHANGES_REQUESTED"
@@ -57,42 +126,103 @@ function Reviewers({ data }: { data: ReviewersData }) {
       ? "Review required before merge."
       : "";
   return (
-    <details className="revcard">
-      <summary>Reviewers ({data.reviewers.length})</summary>
-      <div className="dbody">
-        {data.reviewers.map((r) => {
-          const [tone, lbl] = REV_STATE[r.state] || ["amber", "Pending"];
-          return (
-            <div className="revrow" key={r.login}>
-              <span className="revav">{(r.login[0] || "?").toUpperCase()}</span>
-              <div className="revmeta">
-                <span className="revname" title={r.login}>{r.login}</span>
-                <Status tone={tone}>{lbl}</Status>
+    <Collapsible open={open} onOpenChange={setOpen} className="mt-3" data-testid="reviewers">
+      <CollapsibleTrigger asChild>
+        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:text-foreground">
+          <Users aria-hidden="true" />
+          Reviewers ({data.reviewers.length})
+          <ChevronDown aria-hidden="true" className={cn("transition-transform", open && "rotate-180")} />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-1 divide-y divide-border">
+          {data.reviewers.map((r) => {
+            const [tone, lbl] = REV_STATE[r.state] || ["amber", "Pending"];
+            return (
+              <div className="flex min-h-[44px] items-center gap-2.5 py-1.5" key={r.login}>
+                <UserAvatar login={r.login} size="sm" />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium" title={r.login}>
+                  {r.login}
+                </span>
+                <StatusBadge tone={tone}>{lbl}</StatusBadge>
               </div>
-            </div>
-          );
-        })}
-        {dec && <div className="hint" style={{ marginTop: 8 }}>{dec}</div>}
-      </div>
-    </details>
+            );
+          })}
+        </div>
+        {dec && <p className="mb-0 mt-2 text-xs text-muted-foreground">{dec}</p>}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
 function ClaudeGate({ action }: { action: string }) {
   return (
-    <div className="claudegate">
-      <div className="cg-ico">{BrandIcon.claude}</div>
-      <div className="cg-body">
-        <b>Connect your Claude account to {action}</b>
-        <p className="muted sm">
+    <div className="flex items-start gap-3 py-1" data-testid="claude-gate">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-foreground [&>svg]:size-5">
+        {BrandIcon.claude}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">Connect your Claude account to {action}</div>
+        <p className="mb-3 mt-0.5 max-w-[52ch] text-xs text-muted-foreground">
           {action[0].toUpperCase() + action.slice(1)}s run on <b>your own</b> Claude subscription —
           nothing runs on anyone else's plan. Connect once and you're set.
         </p>
-        <Link className="btn primary" to="/integrations">
-          Connect Claude
-        </Link>
+        <Button asChild>
+          <Link to="/integrations" className="hover:no-underline">
+            <Plug aria-hidden="true" />
+            Connect Claude
+          </Link>
+        </Button>
       </div>
     </div>
+  );
+}
+
+// Effort or model as a Select: name on the row, its one-line description under it.
+function LevelSelect({
+  id,
+  value,
+  onChange,
+  levels,
+  suggested,
+  titles,
+  label,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  levels: { key: string; name: string; sub: string }[];
+  suggested?: string;
+  titles?: Record<string, string | undefined>;
+  label: string;
+}) {
+  const cur = levels.find((l) => l.key === value);
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger id={id} aria-label={label} className="w-full max-w-[420px]" title={titles?.[value]}>
+        <SelectValue>
+          <span className="truncate">{cur?.name ?? value}</span>
+          {cur && <span className="truncate text-xs text-muted-foreground">{cur.sub}</span>}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {levels.map((l) => (
+          <SelectItem key={l.key} value={l.key} className={ITEM} title={titles?.[l.key]}>
+            <span className="flex flex-col gap-0.5">
+              <span className="flex items-center gap-2">
+                {l.name}
+                {l.key === suggested && (
+                  <Badge variant="secondary" className="h-4 px-1.5 text-[10px] text-muted-foreground">
+                    Suggested
+                  </Badge>
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">{l.sub}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -119,8 +249,22 @@ function RunForm({
   const focusRef = useRef<HTMLTextAreaElement>(null);
   const others = form.othersOnHead || [];
   if (!connected) return <ClaudeGate action="review" />;
+  const estTitle = Object.fromEntries(
+    form.levels.map((l) => {
+      const est = form.estimates?.[l.key];
+      return [
+        l.key,
+        est?.source === "measured"
+          ? `Median of ${est.samples} ${l.name} run${est.samples === 1 ? "" : "s"} on this install`
+          : undefined,
+      ];
+    }),
+  );
+  const suggestedName = form.levels.find((l) => l.key === form.suggested)?.name;
   return (
     <form
+      className="flex flex-col gap-4"
+      data-testid="run-form"
       onSubmit={async (e) => {
         e.preventDefault();
         setErr("");
@@ -144,102 +288,79 @@ function RunForm({
         }
       }}
     >
-      {err && (
-        <Banner kind="err">{err}</Banner>
-      )}
+      {err && <Banner kind="err">{err}</Banner>}
       {others.length > 0 && (
-        <div className="nudge">
-          <div className="nudge-h">
+        <div className="rounded-md bg-muted/60 p-3 text-sm" data-testid="others-nudge">
+          <div className="mb-1 flex items-center gap-1.5 font-medium">
+            <Users aria-hidden="true" className="size-4 text-muted-foreground" />
             {others.length === 1
               ? `${others[0].login} already reviewed this commit`
               : `${others.length} reviewers already reviewed this commit`}
           </div>
-          <ul className="nudge-list">
+          <ul className="my-1 list-disc pl-5 text-xs text-muted-foreground">
             {others.map((o) => (
               <li key={o.login}>
-                <b>{o.login}</b> — {o.effort}
+                <b className="text-foreground">{o.login}</b> — {o.effort}
                 {o.model ? ` · ${o.model}` : ""} · {o.skill}
                 {o.focus ? ` · focus: “${o.focus}”` : " · no focus"}
                 {o.when ? ` · ${o.when}` : ""}
               </li>
             ))}
           </ul>
-          <div className="nudge-cta">
+          <p className="m-0 text-xs text-muted-foreground">
             A second review adds the most when it checks something the first didn’t — add a focus
             below, or switch skills on the Skills page. Or run the same way to compare notes.{" "}
-            <button type="button" className="linkbtn" onClick={() => focusRef.current?.focus()}>
+            <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => focusRef.current?.focus()}>
               Add a focus
-            </button>
-          </div>
+            </Button>
+          </p>
         </div>
       )}
-      <div className="effort-lbl">Effort</div>
-      <div className="effrow">
-        {form.levels.map((l) => {
-          const est = form.estimates?.[l.key];
-          return (
-            <label
-              key={l.key}
-              className={"eff" + (effort === l.key ? " hot" : "")}
-              title={
-                est?.source === "measured"
-                  ? `Median of ${est.samples} ${l.name} run${est.samples === 1 ? "" : "s"} on this install`
-                  : undefined
-              }
-            >
-              <input type="radio" name="effort" checked={effort === l.key} onChange={() => setEffort(l.key)} />
-              <span className="effname">
-                {l.name}
-                {l.key === form.suggested ? " · suggested" : ""}
-              </span>
-              <span className="effsub">{l.sub}</span>
-            </label>
-          );
-        })}
-      </div>
+      <Field
+        htmlFor="run-effort"
+        label={
+          <>
+            Effort
+            {suggestedName && (
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px] text-muted-foreground" data-testid="suggested-effort">
+                Suggested: {suggestedName}
+              </Badge>
+            )}
+          </>
+        }
+      >
+        <LevelSelect id="run-effort" label="Effort" value={effort} onChange={setEffort} levels={form.levels} suggested={form.suggested} titles={estTitle} />
+      </Field>
       {form.models && form.models.length > 0 && (
-        <>
-          <div className="effort-lbl">Model</div>
-          <div className="effrow">
-            {form.models.map((m) => (
-              <label key={m.key} className={"eff" + (model === m.key ? " hot" : "")}>
-                <input
-                  type="radio"
-                  name="model"
-                  checked={model === m.key}
-                  onChange={() => setModel(m.key)}
-                />
-                <span className="effname">{m.name}</span>
-                <span className="effsub">{m.sub}</span>
-              </label>
-            ))}
-          </div>
-        </>
+        <Field htmlFor="run-model" label="Model">
+          <LevelSelect id="run-model" label="Model" value={model} onChange={setModel} levels={form.models} />
+        </Field>
       )}
-      <div className="focuswrap">
-        <div className="effort-lbl">Focus — optional</div>
-        <textarea
+      <Field htmlFor="run-focus" label="Focus — optional">
+        <Textarea
+          id="run-focus"
           ref={focusRef}
-          className="in"
           rows={2}
+          className="min-h-14 max-w-[640px] font-sans"
           value={focus}
           onChange={(e) => setFocus(e.target.value)}
           placeholder="Anything specific to check? e.g. “pay close attention to the order-flow cost calculation.”"
         />
-      </div>
-      <div className="runrow">
-        <span className="hint" style={{ flex: 1 }}>
+      </Field>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="min-w-0 flex-1 basis-[200px] text-xs text-muted-foreground">
           Runs with {form.skillLabel} · deeper reviews cost more of your weekly usage.
         </span>
-        <button className="btn primary" type="submit" disabled={busy} aria-busy={busy}>
-          <SlowBusy busy={busy} />{busy ? "Starting…" : label}
-        </button>
+        <Button type="submit" disabled={busy} aria-busy={busy}>
+          {busy ? <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <Play aria-hidden="true" />}
+          {busy ? "Starting…" : label}
+        </Button>
       </div>
-      <div className="hint" style={{ marginTop: 6 }}>
+      <p className="m-0 text-xs text-muted-foreground">
         {Object.values(form.estimates ?? {}).some((e) => e.source === "measured")
           ? "“Typically” times are medians of this install’s own runs; ranges are estimates. Both depend on the PR’s size, the model and your plan."
           : "Times are estimates — they depend on the PR’s size, the model and your plan."}
-      </div>
+      </p>
     </form>
   );
 }
@@ -251,9 +372,11 @@ function StopStalled({ pr, token, onDone }: { pr: PrRef; token: Token; onDone: (
   const [err, setErr] = useState("");
   return (
     <>
-      <button
-        className="btn secondary"
+      <Button
+        variant="secondary"
+        size="sm"
         type="button"
+        className="ml-1 align-middle"
         disabled={stopping}
         onClick={async () => {
           setErr("");
@@ -268,9 +391,10 @@ function StopStalled({ pr, token, onDone }: { pr: PrRef; token: Token; onDone: (
           }
         }}
       >
+        <Square aria-hidden="true" />
         {stopping ? "Stopping…" : "Stop it"}
-      </button>
-      {err && <div className="ferr">{err}</div>}
+      </Button>
+      {err && <div className="mt-2 text-sm text-red">{err}</div>}
     </>
   );
 }
@@ -278,20 +402,27 @@ function StopStalled({ pr, token, onDone }: { pr: PrRef; token: Token; onDone: (
 function HistoryList({ pr, runs }: { pr: PrRef; runs: PrData["history"] }) {
   if (!runs || !runs.length) return null;
   return (
-    <div className="histwrap">
-      <div className="effort-lbl">Earlier runs ({runs.length})</div>
-      <div className="histlist">
+    <Card className="mt-3 gap-0 border-0 py-0 shadow-sm" data-testid="history">
+      <div className="flex items-center gap-2 px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+        <History aria-hidden="true" className="size-4" />
+        Earlier runs ({runs.length})
+      </div>
+      <div className="divide-y divide-border">
         {runs.map((h) => (
-          <Link key={h.ts} className="histrow" to={prUrl(pr, "/pr", `&v=${h.ts}`)}>
-            <span className="histwhen">earlier run</span>
-            <span className="muted sm">
+          <Link
+            key={h.ts}
+            className="flex min-h-[44px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 text-inherit hover:bg-accent/40 hover:no-underline"
+            to={prUrl(pr, "/pr", `&v=${h.ts}`)}
+          >
+            <span className="text-sm font-medium">earlier run</span>
+            <span className="text-xs text-muted-foreground">
               {h.effort} · {h.findings} finding(s)
               {h.focus ? ` · focus: “${h.focus.slice(0, 80)}”` : ""}
             </span>
           </Link>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -300,43 +431,47 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
   const [stopping, setStopping] = useState(false);
   const [err, setErr] = useState("");
   return (
-    <div className="card top" data-testid="progress-panel">
-      <div className="prog-hd">
-        Drafting review for <b>{prLabel(pr)}</b> · <span className="muted sm">{r.effortLabel} effort</span>
-      </div>
-      <ProgressSteps phases={r.phases} cur={r.cur} />
-      {r.focus && <div className="hint">Focusing on: “{r.focus}”</div>}
-      {r.queued && (
-        <div className="hint">Waiting for another review to finish first — one runs at a time on this box.</div>
-      )}
-      <div className="hint" style={{ marginTop: 10 }}>
-        This page refreshes itself; {r.effortHint}.
-      </div>
-      {err && (
-        <Banner kind="err">{err}</Banner>
-      )}
-      <div style={{ marginTop: 12 }}>
-        <button
-          className="btn secondary"
-          type="button"
-          disabled={stopping}
-          onClick={async () => {
-            setErr("");
-            setStopping(true);
-            try {
-              await api.stop(pr, data.tokens.stop);
-              onStop();
-            } catch (x) {
-              setErr(errMessage(x, "Couldn't stop the review."));
-            } finally {
-              setStopping(false);
-            }
-          }}
-        >
-          {stopping ? "Stopping…" : "Stop review"}
-        </button>
-      </div>
-    </div>
+    <Card className="mt-3 gap-3 border-0 py-4 shadow-sm" data-testid="progress-panel">
+      <CardHeader className="px-4">
+        <CardTitle className="text-sm">
+          Drafting review for {prLabel(pr)}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">{r.effortLabel} effort</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 px-4">
+        <ProgressSteps phases={r.phases} cur={r.cur} />
+        {r.focus && <p className="m-0 text-xs text-muted-foreground">Focusing on: “{r.focus}”</p>}
+        {r.queued && (
+          <p className="m-0 text-xs text-muted-foreground">
+            Waiting for another review to finish first — one runs at a time on this box.
+          </p>
+        )}
+        <p className="m-0 text-xs text-muted-foreground">This page refreshes itself; {r.effortHint}.</p>
+        {err && <Banner kind="err">{err}</Banner>}
+        <div>
+          <Button
+            variant="secondary"
+            type="button"
+            disabled={stopping}
+            onClick={async () => {
+              setErr("");
+              setStopping(true);
+              try {
+                await api.stop(pr, data.tokens.stop);
+                onStop();
+              } catch (x) {
+                setErr(errMessage(x, "Couldn't stop the review."));
+              } finally {
+                setStopping(false);
+              }
+            }}
+          >
+            <Square aria-hidden="true" />
+            {stopping ? "Stopping…" : "Stop review"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -386,57 +521,102 @@ function TeachPanel({ f, pr, token, teach, onTaught }: {
     }
   };
 
+  const shell = "mt-1 flex flex-col gap-2 rounded-md bg-muted/60 p-3";
   if (added) {
     return (
-      <div className="teach" data-testid="teach-added">
-        <Status tone="green">Added to {added}</Status>
-        <p className="teach-note">
+      <div className={shell} data-testid="teach-added">
+        <StatusBadge kind="done">Added to {added}</StatusBadge>
+        <p className="m-0 text-xs text-muted-foreground">
           Every review from now on reads this. <Link to="/skills#rules">See it on Skills</Link>.
         </p>
       </div>
     );
   }
   return (
-    <div className="teach" data-testid="teach">
+    <div className={shell} data-testid="teach">
       {!teach.connected ? (
-        <p className="teach-note" data-testid="teach-noclaude">
+        <p className="m-0 text-xs text-muted-foreground" data-testid="teach-noclaude">
           Drafting a rule runs on your own Claude account.{" "}
           <Link to="/integrations">Connect one</Link> to use this.
         </p>
       ) : (
         <>
-          <p className="teach-note">What should the next review do with this complaint?</p>
-          <div className="teach-dirs">
-            <button type="button" className={"btn" + (dir === "avoid" ? " is-on" : "")}
-                    disabled={!!busy} onClick={() => void draft("avoid")}
-                    data-testid="teach-avoid">
+          <p className="m-0 text-xs text-muted-foreground">What should the next review do with this complaint?</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={dir === "avoid" ? "default" : "secondary"}
+              size="sm"
+              className="max-[899px]:h-10 max-[899px]:flex-1"
+              disabled={!!busy}
+              onClick={() => void draft("avoid")}
+              data-testid="teach-avoid"
+            >
+              <EyeOff aria-hidden="true" />
               Don't raise it again
-            </button>
-            <button type="button" className={"btn" + (dir === "always" ? " is-on" : "")}
-                    disabled={!!busy} onClick={() => void draft("always")}
-                    data-testid="teach-always">
+            </Button>
+            <Button
+              type="button"
+              variant={dir === "always" ? "default" : "secondary"}
+              size="sm"
+              className="max-[899px]:h-10 max-[899px]:flex-1"
+              disabled={!!busy}
+              onClick={() => void draft("always")}
+              data-testid="teach-always"
+            >
+              <ListChecks aria-hidden="true" />
               Always check it
-            </button>
+            </Button>
           </div>
-          {busy === "draft" && <div className="hint">Writing the rule…</div>}
-          {err && <div className="ferr" data-testid="teach-err">{err}</div>}
+          {busy === "draft" && (
+            <div className="flex flex-col gap-2 py-1" aria-busy="true">
+              <span className="sr-only" role="status">Writing the rule</span>
+              <Skeleton className="h-3.5 w-10/12" />
+              <Skeleton className="h-3.5 w-2/3" />
+            </div>
+          )}
+          {err && (
+            <p className="m-0 text-sm text-red" data-testid="teach-err">
+              {err}
+            </p>
+          )}
           {rule && busy !== "draft" && (
             <>
-              <label className="teach-l" htmlFor={`teach-${f.i}`}>
+              <Label htmlFor={`teach-${f.i}`} className="mt-1 text-xs font-medium" data-testid="teach-label">
                 The rule, as it will be written to {teach.targetLabel}
-              </label>
-              <textarea id={`teach-${f.i}`} className="in teach-in" rows={2} value={rule}
-                        onChange={(e) => setRule(e.target.value)} />
-              {why && <p className="teach-note">{why}</p>}
-              <div className="teach-acts">
-                <button type="button" className="btn primary" disabled={busy === "add" || !rule.trim()}
-                        onClick={() => void add()} data-testid="teach-add">
+              </Label>
+              <Textarea
+                id={`teach-${f.i}`}
+                rows={2}
+                className="min-h-14 font-sans text-[15px] leading-relaxed"
+                value={rule}
+                onChange={(e) => setRule(e.target.value)}
+                data-testid="teach-rule"
+              />
+              {why && <p className="m-0 text-xs text-muted-foreground">{why}</p>}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="max-[899px]:h-10 max-[899px]:flex-1"
+                  disabled={busy === "add" || !rule.trim()}
+                  onClick={() => void add()}
+                  data-testid="teach-add"
+                >
+                  {busy === "add" ? <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <GitCommitHorizontal aria-hidden="true" />}
                   {busy === "add" ? "Adding…" : "Add this rule"}
-                </button>
-                <button type="button" className="btn" disabled={!!busy}
-                        onClick={() => void draft(dir as TeachDirection)}>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="max-[899px]:h-10 max-[899px]:flex-1"
+                  disabled={!!busy}
+                  onClick={() => void draft(dir as TeachDirection)}
+                >
+                  <RefreshCw aria-hidden="true" />
                   Redraft
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -449,12 +629,12 @@ function TeachPanel({ f, pr, token, teach, onTaught }: {
 function FindingBody({ body, onBody, suggestion }:
   { body: string; onBody: (v: string) => void; suggestion: string }) {
   return (
-    <div className="fbody">
+    <div className="max-w-[80ch]" data-testid="finding-body">
       <MdEditor value={body} onChange={onBody} />
       {suggestion && (
-        <div className="sugg">
-          <div className="sugglabel">Suggested change — the author can apply this in one click on GitHub</div>
-          <pre className="suggin-pre">
+        <div className="mt-2 overflow-hidden rounded-md bg-green/10">
+          <div className="px-3 py-1.5 text-xs text-green">Suggested change — the author can apply this in one click on GitHub</div>
+          <pre className="m-0 rounded-none border-0 bg-transparent">
             <code>{suggestion}</code>
           </pre>
         </div>
@@ -467,14 +647,14 @@ function ClampSummary({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const long = text.length > 260;
   return (
-    <div className="assess-summary">
-      <div className={!open && long ? "clamp" : ""}>
+    <div className="mb-3 max-w-[64ch] text-[15px] leading-relaxed">
+      <div className={!open && long ? "line-clamp-4" : ""}>
         <Md>{text}</Md>
       </div>
       {long && (
-        <button type="button" className="morebtn" onClick={() => setOpen((v) => !v)}>
+        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setOpen((v) => !v)}>
           {open ? "Show less" : "Show more"}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -515,53 +695,34 @@ const headMovedOf = (rev: ReviewData | undefined): boolean =>
     rev.approve.reviewedHead !== rev.approve.currentHead
   );
 
-// One segmented control for the four sections; at most one panel is open beneath it, so the
-// control itself never reflows. Arrow keys move between the segments, Enter or Space toggles.
+// The four sections as one tab list, one panel open at a time (Radix: arrow keys move and
+// select, Home/End jump). The first section is open on arrival.
 interface Section {
   key: string;
   label: string;
+  icon: typeof FileText;
   content: React.ReactNode;
 }
-function SectionSeg({ sections }: { sections: Section[] }) {
-  const [open, setOpen] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+function SectionTabs({ sections }: { sections: Section[] }) {
+  const [open, setOpen] = useState(sections[0]?.key ?? "");
   if (!sections.length) return null;
-  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
-    const btns = [...(ref.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-    const at = btns.indexOf(document.activeElement as HTMLButtonElement);
-    if (at < 0) return;
-    e.preventDefault();
-    const n = btns.length;
-    const to =
-      e.key === "Home" ? 0 : e.key === "End" ? n - 1 : e.key === "ArrowLeft" ? (at + n - 1) % n : (at + 1) % n;
-    btns[to].focus();
-  };
-  const cur = sections.find((s) => s.key === open);
+  const cur = sections.find((s) => s.key === open) ?? sections[0];
   return (
-    <>
-      <div className="seg secseg" role="group" aria-label="Sections" data-testid="section-row" ref={ref} onKeyDown={onKey}>
+    <Tabs value={cur.key} onValueChange={setOpen} className="mt-4 gap-2" data-testid="sections">
+      <TabsList variant="line" className="h-auto! w-full flex-wrap justify-start gap-x-0.5 gap-y-1 p-0" aria-label="Sections" data-testid="section-row">
         {sections.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            className={open === s.key ? "on" : ""}
-            id={`sec-${s.key}`}
-            aria-expanded={open === s.key}
-            aria-controls={`secpanel-${s.key}`}
-            data-testid={`sec-${s.key}`}
-            onClick={() => setOpen((o) => (o === s.key ? "" : s.key))}
-          >
+          <TabsTrigger key={s.key} value={s.key} data-testid={`sec-${s.key}`} className="h-9 flex-none gap-1.5 px-3 max-[899px]:h-10">
+            <s.icon aria-hidden="true" />
             {s.label}
-          </button>
+          </TabsTrigger>
         ))}
-      </div>
-      {cur && (
-        <section className="secpanel" id={`secpanel-${cur.key}`} aria-labelledby={`sec-${cur.key}`}>
-          {cur.content}
-        </section>
-      )}
-    </>
+      </TabsList>
+      <TabsContent value={cur.key} id={`secpanel-${cur.key}`}>
+        <Card className="gap-0 border-0 py-4 shadow-sm">
+          <CardContent className="px-4 [&>h2:first-child]:mt-0">{cur.content}</CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -589,20 +750,6 @@ function ReviewBody({
     return new Set(rev.findings.filter(pick).map((f) => f.i));
   });
   const [requestChanges, setRequestChanges] = useState(false);
-  // The commit bar slides up the first time a finding is staged in this session — the third
-  // of the three animations. Pre-selected findings count as staged, so it also plays on load
-  // when the server ticked something; it is instant on every later toggle.
-  const [entering, setEntering] = useState(false);
-  const everStaged = useRef(false);
-  useEffect(() => {
-    if (selected.size > 0 && !everStaged.current) {
-      everStaged.current = true;
-      setEntering(true);
-      const t = window.setTimeout(() => setEntering(false), 250);
-      return () => window.clearTimeout(t);
-    }
-    return undefined;
-  }, [selected]);
   const [banner, setBanner] = useState("");
   const [err, setErr] = useState("");
   const [stale, setStale] = useState(false); // the server refused: this run has been replaced
@@ -610,6 +757,7 @@ function ReviewBody({
   // The stage was committed in this session: the bar switches in place, no reload needed.
   const [postedNow, setPostedNow] = useState(false);
   const posted = postedNow || rev.posted;
+  const [maybeOpen, setMaybeOpen] = useState(false);
 
   // approve
   const [approveBody, setApproveBody] = useState(rev.approve?.defaultMsg || "");
@@ -726,11 +874,11 @@ function ReviewBody({
       onToggle={() => toggle(f.i)}
       explain={async () => {
         const r = await api.explain(refOf(data), data.tokens.explain, f.i);
-        return <Md className="dbody">{r.md}</Md>;
+        return <Md className="dbody p-0">{r.md}</Md>;
       }}
       editor={
         <>
-          {f.structured && <div className="fbody-note">This is the comment posted to GitHub — edit if needed.</div>}
+          {f.structured && <p className="m-0 text-xs text-muted-foreground">This is the comment posted to GitHub — edit if needed.</p>}
           <FindingBody
             body={bodies[f.i] ?? ""}
             onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
@@ -757,9 +905,9 @@ function ReviewBody({
       <b>This review was re-run — reload before posting.</b> The findings on the server are
       not the ones on this page, so your ticks and edits no longer line up with them.
       Nothing was posted.{" "}
-      <button type="button" className="linkbtn" onClick={() => window.location.reload()}>
+      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => window.location.reload()}>
         Reload the page
-      </button>
+      </Button>
       .
     </Banner>
   ) : err ? (
@@ -771,15 +919,16 @@ function ReviewBody({
     sections.push({
       key: "summary",
       label: "Full summary",
+      icon: FileText,
       content: (
         <>
           {rev.keyPoints && rev.keyPoints.length > 0 && rev.summary && (
-            <Md className="dbody">{rev.summary}</Md>
+            <Md className="dbody p-0">{rev.summary}</Md>
           )}
           {rev.analysis && (
             <>
               <h2>Reviewer's notes — what was checked, and what was dropped</h2>
-              <Md className="dbody">{rev.analysis}</Md>
+              <Md className="dbody p-0">{rev.analysis}</Md>
             </>
           )}
         </>
@@ -790,13 +939,15 @@ function ReviewBody({
     sections.push({
       key: "explainer",
       label: "What this PR does",
-      content: <Md className="dbody">{rev.explainer}</Md>,
+      icon: Info,
+      content: <Md className="dbody p-0">{rev.explainer}</Md>,
     });
   }
   if (rev.approved) {
     sections.push({
       key: "approve",
       label: "Approved",
+      icon: CheckCheck,
       content: <ApprovedBody a={rev.approved} ghUrl={data.ghUrl} reviewers={data.reviewers} />,
     });
   } else if (rev.approve) {
@@ -804,8 +955,9 @@ function ReviewBody({
     sections.push({
       key: "approve",
       label: "Approve",
+      icon: CheckCheck,
       content: (
-        <>
+        <div className="flex flex-col gap-3">
           {headMoved && (
             <Banner kind="warn" data-testid="head-moved">
               <b>The branch has moved since this review ran.</b> The verdict above was
@@ -815,64 +967,70 @@ function ReviewBody({
               approve the current commit anyway.
             </Banner>
           )}
-          <div className="approve-verdict">
+          <div>
             {a.lgtm ? (
-              <Status tone="green">LGTM — no blockers</Status>
+              <StatusBadge kind="approved" className="whitespace-normal">LGTM — no blockers</StatusBadge>
             ) : (
-              <Status tone="amber">
+              <StatusBadge tone="amber" className="whitespace-normal text-left">
                 Not LGTM —{" "}
                 {a.blockers ? `${a.blockers} blocker(s)` : "the agent's assessment is REQUEST_CHANGES"}
                 . Approving anyway needs the confirmation below.
-              </Status>
+              </StatusBadge>
             )}
           </div>
           {/* Not a <form>, for the same reason as the post panel: Enter must never approve
               a PR. The acknowledgement that `required` used to enforce gates the button. */}
-          <div data-testid="approve-panel">
-            <label className="muted sm">
-              Approval comment — posted on the PR as a whole, then the PR is approved
-            </label>
-            <MdEditor value={approveBody} onChange={setApproveBody} />
+          <div data-testid="approve-panel" className="flex flex-col gap-3">
+            <Field htmlFor="approve-body" label="Approval comment — posted on the PR as a whole, then the PR is approved">
+              <Textarea
+                id="approve-body"
+                rows={3}
+                className="max-w-[80ch] font-sans text-[15px] leading-relaxed"
+                value={approveBody}
+                onChange={(e) => setApproveBody(e.target.value)}
+              />
+            </Field>
             {needsAck && (
-              <p className="sm">
-                <label>
-                  <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />{" "}
+              <Label className="min-h-9 items-start gap-2.5 text-sm font-normal leading-snug">
+                <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} className="mt-0.5" data-testid="approve-ack" />
+                <span>
                   {headMoved && a.lgtm
                     ? "I know the branch has moved and want to approve the current commit."
                     : "I've read the findings above and want to approve anyway."}
-                </label>
-              </p>
+                </span>
+              </Label>
             )}
-            <p>
-              <button
-                className="btn primary"
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
                 type="button"
                 disabled={busy || noApprove || (needsAck && !ack)}
                 aria-busy={busy}
                 title={noApprove ? noApproveWhy : needsAck && !ack ? "Tick the confirmation above first" : ""}
                 onClick={submitApprove}
               >
+                {busy ? <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <CheckCheck aria-hidden="true" />}
                 {busy
                   ? "Approving…"
                   : data.dryRun
                     ? "Approve (dry run)"
                     : `Approve #${data.pr}`}
-              </button>
+              </Button>
               {noApprove && (
-                <span className="rownote" data-testid="no-approve">
+                <span className="text-xs text-muted-foreground" data-testid="no-approve">
                   {noApproveWhy}
                 </span>
               )}
-            </p>
+            </div>
           </div>
           {data.reviewers && <Reviewers data={data.reviewers} />}
-        </>
+        </div>
       ),
     });
   }
   sections.push({
     key: "rerun",
     label: "Re-run",
+    icon: RotateCcw,
     content: <RerunBody data={data} onDone={onDone} />,
   });
 
@@ -895,32 +1053,36 @@ function ReviewBody({
       ) : null}
 
       {rev.convergence && rev.convergence.total > 0 && (
-        <div className="conv-summary">
-          <b>{rev.convergence.confirmed}</b> of {rev.convergence.total} finding(s) confirmed by
+        <p className="mb-3 mt-0 max-w-[64ch] text-xs text-muted-foreground">
+          <b className="text-foreground">{rev.convergence.confirmed}</b> of {rev.convergence.total} finding(s) confirmed by
           independent reviews ({rev.convergence.rate}% agreement across {rev.convergence.nRuns}{" "}
           reviewers on this commit). A finding only counts as confirmed when a reviewer using a
           different skill/model/effort raised it too — a signal to build on, not a score.
-        </div>
+        </p>
       )}
       {/* Deliberately not a <form>: browsers implicitly submit one on Enter, and these are
           checkboxes. A stray keystroke while ticking findings would have posted the review. */}
       <div data-testid="post-panel">
         {rev.count === 0 ? (
-          <p className="muted">No findings — nothing to post.</p>
+          <p className="text-sm text-muted-foreground">No findings — nothing to post.</p>
         ) : (
           <>
             {shown.map(renderFinding)}
             {maybe.length > 0 && (
-              <details className="maybe">
-                <summary>
-                  Maybe — {maybe.length} lower-confidence finding{maybe.length !== 1 ? "s" : ""} (unchecked)
-                </summary>
-                <div className="dbody">{maybe.map(renderFinding)}</div>
-              </details>
+              <Collapsible open={maybeOpen} onOpenChange={setMaybeOpen} className="mt-3" data-testid="maybe">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:text-foreground">
+                    <ListFilter aria-hidden="true" />
+                    Maybe — {maybe.length} lower-confidence finding{maybe.length !== 1 ? "s" : ""} (unchecked)
+                    <ChevronDown aria-hidden="true" className={cn("transition-transform", maybeOpen && "rotate-180")} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>{maybe.map(renderFinding)}</CollapsibleContent>
+              </Collapsible>
             )}
           </>
         )}
-        <SectionSeg sections={sections} />
+        <SectionTabs sections={sections} />
         {rev.count > 0 && (
           <CommitBar
             staged={selected.size}
@@ -939,7 +1101,6 @@ function ReviewBody({
             busy={busy}
             stale={stale}
             maxPerPost={maxPerPost}
-            entering={entering}
           />
         )}
       </div>
@@ -957,35 +1118,38 @@ function ApprovedBody({
   reviewers?: ReviewersData | null;
 }) {
   return (
-    <>
-      <div className="approve-verdict">
-        <Status tone="green">
+    <div className="flex flex-col gap-3">
+      <div>
+        <StatusBadge kind="approved" className="whitespace-normal text-left">
           {a.manual ? "Marked as approved" : "Approved"} on {a.at} ({a.ago})
-          {!a.manual && <> as <code>{a.user}</code></>}
-        </Status>
+          {!a.manual && <> as {a.user}</>}
+        </StatusBadge>
       </div>
       {a.body && !a.manual && (
-        <>
-          <p className="muted sm">Comment posted with the approval:</p>
-          <pre>
+        <div>
+          <p className="mb-1 mt-0 text-xs text-muted-foreground">Comment posted with the approval:</p>
+          <pre className="m-0">
             <code>{a.body}</code>
           </pre>
-        </>
+        </div>
       )}
-      <p>
-        <a className="btn secondary" href={ghUrl} target="_blank" rel="noopener">
-          View on GitHub
-        </a>
-      </p>
+      <div>
+        <Button asChild variant="secondary">
+          <a href={ghUrl} target="_blank" rel="noopener" className="hover:no-underline">
+            <ExternalLink aria-hidden="true" />
+            View on GitHub
+          </a>
+        </Button>
+      </div>
       {reviewers && <Reviewers data={reviewers} />}
-    </>
+    </div>
   );
 }
 
 function RerunBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   return (
-    <div id="rerun">
-      <p className="muted sm" style={{ marginTop: 0 }}>
+    <div id="rerun" className="flex flex-col gap-3">
+      <p className="m-0 text-xs text-muted-foreground">
         Run it again — a fresh effort level or a focus note. The current review is kept in history below.
       </p>
       <RunForm
@@ -1001,89 +1165,90 @@ function RerunBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   );
 }
 
-// Breadcrumbs: Queue / owner/name / #123. Clicking the repo crumb filters the queue to it.
-function Crumbs({ repo, num, tail, linkNum }: { repo: string; num: string; tail?: React.ReactNode; linkNum?: boolean }) {
+// Breadcrumbs: Queue / repository pill / #123. Clicking the repo crumb filters the queue to it.
+const Sep = () => <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/60" />;
+export function Crumbs({ repo, num, tail, linkNum }: { repo: string; num: string; tail?: React.ReactNode; linkNum?: boolean }) {
   return (
-    <nav className="bc">
-      <Link to="/">Queue</Link>
+    <nav aria-label="Breadcrumb" data-testid="crumbs" className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <Link to="/" className="text-muted-foreground hover:text-foreground">
+        Queue
+      </Link>
       {repo && (
         <>
-          <span className="sep">/</span>
-          <Link to="/" className="repo" onClick={() => setRepoFilter(repo)} title="Filter the queue to this repository">
-            {repo}
+          <Sep />
+          <Link to="/" className="hover:no-underline" onClick={() => setRepoFilter(repo)} title="Filter the queue to this repository">
+            <RepoPill repo={repo} />
           </Link>
         </>
       )}
-      <span className="sep">/</span>
-      {tail || linkNum ? <Link to={prUrl({ repo, num })}>#{num}</Link> : <span className="cur">#{num}</span>}
+      <Sep />
+      {tail || linkNum ? (
+        <Link to={prUrl({ repo, num })} className="text-muted-foreground hover:text-foreground">
+          #{num}
+        </Link>
+      ) : (
+        <span className="text-foreground">#{num}</span>
+      )}
       {tail && (
         <>
-          <span className="sep">/</span>
-          <span className="cur">{tail}</span>
+          <Sep />
+          <span className="text-foreground">{tail}</span>
         </>
       )}
     </nav>
   );
 }
 
-// The one title pattern: mono repo, then #number — title. The Stack page reuses it.
-export function PrTitle({ repo, num, title }: { repo: string; num: string; title: string }) {
+// The one title pattern: the number in the accent, then the title. The repository lives in the
+// breadcrumb pill above, never in the title. The Stack page reuses it.
+export function PrTitle({ num, title }: { num: string; title: string }) {
   return (
-    <h1 className="prtitle">
-      {repo && <span className="repo">{repo}</span>}#{num}
-      {title ? <> — {title}</> : null}
-    </h1>
+    <>
+      <span className="text-primary">#{num}</span>
+      {title ? <> {title}</> : null}
+    </>
   );
 }
 
 // The one Actions menu, in place of the three side cards.
 function ActionsMenu({ data }: { data: PrData }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-  const close = () => setOpen(false);
   return (
-    <div className="actwrap" ref={ref}>
-      <button
-        className="btn secondary"
-        type="button"
-        aria-haspopup="true"
-        aria-expanded={open}
-        data-testid="pr-actions"
-        onClick={() => setOpen((o) => !o)}
-      >
-        Actions
-      </button>
-      {open && (
-        <div className="actmenu" data-testid="pr-actions-menu">
-          <a className="actitem" href={data.ghUrl} target="_blank" rel="noopener" onClick={close}>
-            <Icon name="external" /> Open on GitHub
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Actions"
+          title="Actions"
+          data-testid="pr-actions"
+          className="text-muted-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground max-[899px]:size-[44px]"
+        >
+          <Ellipsis aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60" data-testid="pr-actions-menu">
+        <DropdownMenuItem asChild className={cn(ITEM, "text-foreground hover:no-underline")}>
+          <a href={data.ghUrl} target="_blank" rel="noopener">
+            <ExternalLink aria-hidden="true" />
+            Open on GitHub
           </a>
-          <Link className="actitem" to={prUrl(refOf(data), "/qa")} onClick={close}>
-            <Icon name="flask" /> QA guide
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className={cn(ITEM, "text-foreground hover:no-underline")}>
+          <Link to={prUrl(refOf(data), "/qa")}>
+            <ClipboardCheck aria-hidden="true" />
+            QA guide
           </Link>
-          {data.stack?.isStack && (
-            <Link className="actitem" to={prUrl(refOf(data), "/stack")} onClick={close}>
-              <Icon name="layers" /> Stacked review ({data.stack.size} PRs)
+        </DropdownMenuItem>
+        {data.stack?.isStack && (
+          <DropdownMenuItem asChild className={cn(ITEM, "text-foreground hover:no-underline")}>
+            <Link to={prUrl(refOf(data), "/stack")}>
+              <Layers aria-hidden="true" />
+              Stacked review ({data.stack.size} PRs)
             </Link>
-          )}
-        </div>
-      )}
-    </div>
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1091,18 +1256,19 @@ function HeaderTop({ data, tail }: { data: PrData; tail?: React.ReactNode }) {
   return (
     <>
       <Crumbs repo={data.repo} num={data.pr} tail={tail} />
-      <div className="prhead">
-        <PrTitle repo={data.repo} num={data.pr} title={data.title} />
-        <ActionsMenu data={data} />
-      </div>
+      <PageHeader title={<PrTitle num={data.pr} title={data.title} />} className="mb-3 items-start">
+        <div className="ml-auto shrink-0">
+          <ActionsMenu data={data} />
+        </div>
+      </PageHeader>
     </>
   );
 }
 
-// One status line under the title. Every condition that used to be a banner is a dot and a
-// word here, ordered by what the reviewer must act on: things that block or mislead an approval
-// first, then the flags, then where the PR stands, then plain facts. The full sentence each
-// banner carried is the item's title.
+// One status line under the title. Every condition that used to be a banner is a badge with a
+// glyph and a word here, ordered by what the reviewer must act on: things that block or mislead
+// an approval first, then the flags, then where the PR stands, then plain facts. The full
+// sentence each banner carried is the item's title.
 function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
   const rev = data.review;
   const items: StatusItem[] = [];
@@ -1110,6 +1276,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "head-moved",
       tone: "amber",
+      icon: GitBranch,
       word: "Branch moved",
       testid: "status-head-moved",
       title:
@@ -1122,6 +1289,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "stale",
       tone: "amber",
+      icon: GitCommitHorizontal,
       word: "New commits since review",
       testid: "status-stale",
       title: "The author pushed new commits since this review. The findings may be out of date — re-run.",
@@ -1131,6 +1299,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "claude",
       tone: "amber",
+      icon: Unplug,
       word: "Claude not connected",
       testid: "status-claude",
       to: "/integrations",
@@ -1141,6 +1310,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "anchors",
       tone: "amber",
+      icon: MapPinOff,
       word: "Placement unknown",
       testid: "anchors-unknown",
       title:
@@ -1155,6 +1325,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "truncated",
       tone: "amber",
+      icon: ListFilter,
       word: `Showing ${rev.truncated.shown.toLocaleString("en-US")} of ${rev.truncated.total.toLocaleString("en-US")} findings`,
       testid: "truncated",
       title:
@@ -1166,18 +1337,20 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "precap",
       tone: "amber",
+      icon: ListChecks,
       word: `Pre-selection capped at ${rev.preselectCapped.max}`,
       testid: "preselect-capped",
       title: rev.preselectCapped.note,
     });
   }
   for (const r of data.risk) {
-    items.push({ key: `risk-${r.title}`, tone: "amber", word: r.title, title: r.note });
+    items.push({ key: `risk-${r.title}`, tone: "amber", icon: ShieldAlert, word: r.title, title: r.note });
   }
   if (data.stopped) {
     items.push({
       key: "stopped",
       tone: "amber",
+      kind: "stopped",
       word: "Review stopped",
       title: data.stopped.halted
         ? "No agent is running — Claude usage has halted. Start a new run below."
@@ -1188,6 +1361,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "dry",
       tone: "amber",
+      kind: "dry",
       word: "Dry run",
       testid: "status-dry",
       title: "Dry run — the buttons on this page do not write to GitHub.",
@@ -1197,6 +1371,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "prstate",
       tone: data.merged ? "green" : "graphite",
+      kind: data.merged ? "merged" : "closed",
       word: data.merged ? "Merged" : "Closed",
       testid: "pr-state",
       title: data.merged
@@ -1208,12 +1383,13 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
   }
   if (data.state && !data.stopped) {
     const kind = postedNow && data.state === "done" ? "posted" : data.state;
-    items.push({ key: "state", tone: toneOfState(kind), word: wordOf(kind), testid: "review-state" });
+    items.push({ key: "state", tone: toneOfState(kind), kind, word: wordOf(kind), testid: "review-state" });
   }
   if (data.focus && data.state === "done") {
     items.push({
       key: "focus",
       tone: "graphite",
+      icon: Crosshair,
       word: "Focused review",
       title: `You asked ReviewStage to focus on: “${data.focus}”.`,
     });
@@ -1222,22 +1398,29 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
     items.push({
       key: "reused",
       tone: "graphite",
+      icon: RefreshCw,
       word: "Reused earlier run",
       title: "Reused your earlier run of this exact configuration on this commit — 0 new tokens.",
     });
   }
   if (!data.awaiting) {
-    items.push({ key: "awaiting", tone: "graphite", word: "Not awaiting your review" });
+    items.push({ key: "awaiting", tone: "graphite", icon: EyeOff, word: "Not awaiting your review" });
   }
   return items;
 }
 function StatusLine({ data, postedNow }: { data: PrData; postedNow: boolean }) {
   const items = statusItems(data, postedNow);
   const meta: React.ReactNode[] = [];
-  if (data.author) meta.push(data.author);
+  if (data.author)
+    meta.push(
+      <span className="inline-flex items-center gap-1.5" data-testid="pr-author">
+        <UserAvatar login={data.author} size="sm" className="size-5" />
+        {data.author}
+      </span>,
+    );
   if (data.size) meta.push(data.size);
   if (data.effortBadge) meta.push(<span title={data.effortBadge.hint}>{data.effortBadge.label}</span>);
-  if (data.usage) meta.push(<span className="usage" title={usageTitle(data.usage)}>{usageChip(data.usage)}</span>);
+  if (data.usage) meta.push(<span title={usageTitle(data.usage)}>{usageChip(data.usage)}</span>);
   if (data.runner)
     meta.push(`Ran on ${data.runner !== "shared" ? `${data.runner}'s` : "the shared team"} Claude account`);
   const steps = data.timeline.map((s) =>
@@ -1250,13 +1433,59 @@ function StatusLine({ data, postedNow }: { data: PrData; postedNow: boolean }) {
         meta={meta}
         testid="status-line"
         link={(to, child, title) => (
-          <Link to={to} title={title}>
+          <Link to={to} title={title} className="hover:no-underline">
             {child}
           </Link>
         )}
       />
       <Steps steps={steps} />
     </>
+  );
+}
+
+// A loading PR in the shape of the page: breadcrumb, title, status line, two cards.
+function PrSkeleton() {
+  return (
+    <div className="prpage" aria-busy="true" data-testid="pr-loading">
+      <span className="sr-only" role="status">
+        Loading this pull request
+      </span>
+      <Skeleton className="mb-3 h-3.5 w-48" />
+      <Skeleton className="mb-3 h-7 w-3/4 max-w-[560px]" />
+      <div className="mb-5 flex gap-2">
+        <Skeleton className="h-5 w-24 rounded-full" />
+        <Skeleton className="h-5 w-16 rounded-full" />
+        <Skeleton className="h-5 w-32 rounded-full" />
+      </div>
+      {[0, 1].map((i) => (
+        <Card key={i} className="mt-3 gap-0 border-0 py-0 shadow-sm">
+          <div className="flex items-center gap-2 px-4 py-3">
+            <Skeleton className="size-[18px] rounded-[4px]" />
+            <Skeleton className="h-5 w-20 rounded-full" />
+            <Skeleton className="ml-auto h-5 w-44 rounded-full" />
+          </div>
+          <div className="flex flex-col gap-2 px-4 pb-4">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-3.5 w-1/2" />
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// A run card: "Not reviewed here", "Review stopped", the stalled re-run — a title, a line, the form.
+function RunCard({ title, description, children, testid }: { title?: string; description?: React.ReactNode; children: React.ReactNode; testid?: string }) {
+  return (
+    <Card className="mt-3 gap-3 border-0 py-4 shadow-sm" data-testid={testid}>
+      {title && (
+        <CardHeader className="px-4">
+          <CardTitle className="text-sm">{title}</CardTitle>
+          {description && <CardDescription className="text-xs">{description}</CardDescription>}
+        </CardHeader>
+      )}
+      <CardContent className="px-4">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -1311,80 +1540,90 @@ export function PrPage({ me }: { me: Me }) {
   if (pick) {
     const repos = pick.length ? pick : me.repos || [];
     return (
-      <>
-        <nav className="bc">
-          <Link to="/">Queue</Link>
-          <span className="sep">/</span>
-          <span className="cur">#{num}</span>
-        </nav>
-        <h1 className="prtitle">Which repository is #{num} in?</h1>
-        <div className="card top" data-testid="repo-pick">
-          <p className="muted sm">
+      <div className="prpage">
+        <Crumbs repo="" num={num} />
+        <PageHeader title={`Which repository is #${num} in?`} />
+        <Card className="gap-0 border-0 py-0 shadow-sm" data-testid="repo-pick">
+          <p className="m-0 px-4 py-3 text-sm text-muted-foreground">
             This link names a PR number but not a repository, and this ReviewStage reviews several.
             Pick one to continue.
           </p>
-          <div className="list">
+          <div className="divide-y divide-border">
             {repos.map((r) => (
-              <Link key={r} className="row" to={prUrl({ repo: r, num })}>
-                <span className="rowlink">
-                  <span className="repochip big">{r}</span> <span className="num">#{num}</span>
-                </span>
+              <Link
+                key={r}
+                className="flex min-h-[44px] items-center gap-2 px-4 py-2 text-inherit hover:bg-accent/40 hover:no-underline"
+                to={prUrl({ repo: r, num })}
+              >
+                <RepoPill repo={r} />
+                <span className="text-sm font-medium text-primary">#{num}</span>
+                <ChevronRight aria-hidden="true" className="ml-auto size-4 text-muted-foreground" />
               </Link>
             ))}
           </div>
-        </div>
-      </>
+        </Card>
+      </div>
     );
   }
   if (err)
     // The frame stays: breadcrumb, the reference as typed, and a way back or on. The error is
-    // the one banner the page allows.
+    // the one line the empty state carries.
     return (
       <div className="prpage" data-testid="pr-unknown">
         <Crumbs repo={repo} num={num} />
-        <div className="prhead">
-          <PrTitle repo={repo} num={num} title="" />
-        </div>
-        <Banner kind="err" data-testid="pr-error">{err}</Banner>
-        <p className="muted sm">
-          If this came from the queue, the queue and GitHub disagree about it — check the number
-          and the repository.
-        </p>
-        <div className="practions" data-testid="unknown-actions">
-          <Link className="btn secondary" to="/">
-            Back to queue
-          </Link>
-          <button className="btn quiet" type="button" onClick={openPalette}>
-            Try another
-          </button>
-        </div>
+        <PageHeader title={<PrTitle num={num} title="" />} className="mb-3" />
+        <Card className="border-0 py-0 shadow-sm">
+          <EmptyState
+            icon={SearchX}
+            title="Couldn't load this PR"
+            action={
+              <div className="flex flex-wrap justify-center gap-2" data-testid="unknown-actions">
+                <Button asChild variant="secondary">
+                  <Link to="/" className="hover:no-underline">
+                    Back to queue
+                  </Link>
+                </Button>
+                <Button variant="ghost" type="button" onClick={openPalette}>
+                  Try another
+                </Button>
+              </div>
+            }
+          >
+            <p className="m-0 text-foreground" data-testid="pr-error">
+              {err}
+            </p>
+            <p className="mb-0 mt-2">
+              If this came from the queue, the queue and GitHub disagree about it — check the number
+              and the repository.
+            </p>
+          </EmptyState>
+        </Card>
       </div>
     );
-  if (!data) return <div className="muted">Loading…</div>;
+  if (!data) return <PrSkeleton />;
 
   if (data.historyView) {
     return (
       <div className="prpage">
         <HeaderTop data={data} tail="earlier run" />
-        <div className="statusline">
-          <Status tone="graphite">Earlier run from {data.when}</Status>
-          <span className="meta-t">
-            <Link to={prUrl(refOf(data))}>Back to the current review</Link>
-          </span>
-        </div>
+        <StatusLineView
+          testid="status-line"
+          items={[{ key: "when", tone: "graphite", icon: History, word: `Earlier run from ${data.when}` }]}
+          meta={[<Link to={prUrl(refOf(data))}>Back to the current review</Link>]}
+        />
         <h2>Assessment</h2>
-        <Md className="assess-summary">{data.summary || ""}</Md>
+        <Md className="max-w-[72ch] text-[15px] leading-relaxed">{data.summary || ""}</Md>
         <h2>Findings ({data.findings?.length || 0})</h2>
         {(data.findings || []).map((f, i) => (
-          <div className="card" key={i}>
-            <div className="meta">
-              <Status kind={f.severity} />
-              <code>
+          <Card key={i} className={cn("mt-3 gap-2 border-0 border-l-[3px] py-3 shadow-sm", SEV_BORDER[toneOfState(f.severity)])}>
+            <div className="flex flex-wrap items-center gap-2 px-4">
+              <StatusBadge kind={f.severity} />
+              <Badge variant="outline" className="font-normal text-muted-foreground">
                 {f.path}:{f.line}
-              </code>
+              </Badge>
             </div>
-            <Md>{f.body}</Md>
-          </div>
+            <Md className="px-4 text-sm leading-relaxed">{f.body}</Md>
+          </Card>
         ))}
       </div>
     );
@@ -1407,69 +1646,92 @@ export function PrPage({ me }: { me: Me }) {
     <Banner kind="err">{data.failed}</Banner>
   ) : null;
 
+  const dead = data.canApprove === false;
+  const runForm = (label: string) => (
+    <RunForm
+      pr={pr}
+      token={data.tokens.review}
+      form={data.runForm}
+      label={label}
+      connected={data.claudeConnected}
+      onStarted={load}
+    />
+  );
+
   return (
-    <div className="prpage">
+    <div className="prpage max-[899px]:pb-[200px]">
       <HeaderTop data={data} />
       <StatusLine data={data} postedNow={postedNow} />
       {runError}
       {data.reviewing && <ProgressPanel pr={pr} data={data} onStop={load} />}
       {data.stopped && (
         <>
-          <div className="card top">
-            <h4 style={{ marginTop: 0 }}>Review stopped</h4>
-            <p className="muted sm">
-              {data.stopped.halted ? "No agent is running — Claude usage has halted." : "A process may still be running."}{" "}
-              Start a new run below.
-            </p>
-            <RunForm
-              pr={pr}
-              token={data.tokens.review}
-              form={data.runForm}
-              label="Start review"
-              connected={data.claudeConnected}
-              onStarted={load}
-            />
-          </div>
+          <RunCard
+            title="Review stopped"
+            description={
+              <>
+                {data.stopped.halted ? "No agent is running — Claude usage has halted." : "A process may still be running."}{" "}
+                Start a new run below.
+              </>
+            }
+          >
+            {runForm("Start review")}
+          </RunCard>
           <HistoryList pr={pr} runs={data.history} />
         </>
       )}
       {data.stalled && (
         <>
-          <div className="card top">
-            <RunForm
-              pr={pr}
-              token={data.tokens.review}
-              form={data.runForm}
-              label="Re-run review"
-              connected={data.claudeConnected}
-              onStarted={load}
-            />
-          </div>
+          <RunCard>{runForm("Re-run review")}</RunCard>
           <HistoryList pr={pr} runs={data.history} />
         </>
       )}
       {data.notReviewed && !data.approved && (
         <>
-          <div className="card top">
-            <h4 style={{ marginTop: 0 }}>Not reviewed here</h4>
-            <p className="muted sm">No review has been run for this PR on this box.</p>
-            <RunForm
-              pr={pr}
-              token={data.tokens.review}
-              form={data.runForm}
-              label="Run review"
-              connected={data.claudeConnected}
-              onStarted={load}
-            />
-          </div>
+          {dead ? (
+            // Merged or closed on GitHub and never reviewed here: a run would only be for the
+            // record, so the state leads and the form follows.
+            <Card className="mt-3 border-0 py-0 shadow-sm" data-testid="pr-dead">
+              <EmptyState
+                icon={data.merged ? GitMerge : GitPullRequestClosed}
+                title={data.merged ? "Merged on GitHub" : "Closed on GitHub"}
+                action={
+                  <Button asChild variant="secondary">
+                    <a href={data.ghUrl} target="_blank" rel="noopener" className="hover:no-underline">
+                      <ExternalLink aria-hidden="true" />
+                      Open on GitHub
+                    </a>
+                  </Button>
+                }
+              >
+                {data.merged
+                  ? "GitHub will not take an approval on it, and comments posted now cannot be acted on."
+                  : "An approval on it would not be actionable. Reopen it on GitHub if you still want to sign off."}
+              </EmptyState>
+            </Card>
+          ) : null}
+          <RunCard
+            title={dead ? "Review it anyway" : "Not reviewed here"}
+            description={dead ? "For the record — nothing here reaches the merge." : "No review has been run for this PR on this box."}
+          >
+            {runForm("Run review")}
+          </RunCard>
           <HistoryList pr={pr} runs={data.history} />
-          {data.reviewers && <Reviewers data={data.reviewers} />}
+          {data.reviewers && (
+            <Card className="mt-3 gap-0 border-0 py-2 shadow-sm">
+              <CardContent className="px-4">
+                <Reviewers data={data.reviewers} />
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
       {data.notReviewed && data.approved && (
-        <div className="card top">
-          <ApprovedBody a={data.approved} ghUrl={data.ghUrl} reviewers={data.reviewers} />
-        </div>
+        <Card className="mt-3 gap-0 border-0 py-4 shadow-sm">
+          <CardContent className="px-4">
+            <ApprovedBody a={data.approved} ghUrl={data.ghUrl} reviewers={data.reviewers} />
+          </CardContent>
+        </Card>
       )}
       {data.review && (
         <ReviewBody data={data} me={me} onDone={load} onPosted={() => setPostedNow(true)} />

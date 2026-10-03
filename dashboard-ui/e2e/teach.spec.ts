@@ -68,13 +68,13 @@ test.describe("teaching the skill from a finding", () => {
     await page.goto(prPath);
     await card(page).getByTestId("teach-open").click();
     await card(page).getByTestId("teach-always").click();
-    const box = card(page).locator(".teach-in");
+    const box = card(page).getByTestId("teach-rule");
     await expect(box).toHaveValue("Skip style-only nits about let versus const.");
     expect(seen).toHaveLength(1);
     expect(seen[0].direction).toBe("always");
     expect(seen[0].action).toBe("draft");
     // The panel names the exact skill before anything is written.
-    await expect(card(page).locator(".teach-l")).toContainText("the team default skill");
+    await expect(card(page).getByTestId("teach-label")).toContainText("the team default skill");
   });
 
   test("a draft is not a write: nothing is added until the button is pressed", async ({ page }) => {
@@ -86,7 +86,7 @@ test.describe("teaching the skill from a finding", () => {
     await page.goto(prPath);
     await card(page).getByTestId("teach-open").click();
     await card(page).getByTestId("teach-avoid").click();
-    await expect(card(page).locator(".teach-in")).toBeVisible();
+    await expect(card(page).getByTestId("teach-rule")).toBeVisible();
     expect(seen.every((r) => r.action === "draft")).toBe(true);
     await expect(card(page).getByTestId("teach-added")).toHaveCount(0);
   });
@@ -103,7 +103,7 @@ test.describe("teaching the skill from a finding", () => {
     await page.goto(prPath);
     await card(page).getByTestId("teach-open").click();
     await card(page).getByTestId("teach-avoid").click();
-    await card(page).locator(".teach-in").fill("My wording.");
+    await card(page).getByTestId("teach-rule").fill("My wording.");
     await card(page).getByTestId("teach-add").click();
     await expect(card(page).getByTestId("teach-added")).toContainText("the team default skill");
     const add = seen.find((r) => r.action === "add")!;

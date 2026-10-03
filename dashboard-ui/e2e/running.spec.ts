@@ -59,7 +59,7 @@ test.describe("the stacked-review action", () => {
   test("is offered, with the stack size, on a stacked PR", async ({ page }) => {
     await page.goto(prUrl(REPO, PR));
     await page.getByTestId("pr-actions").click();
-    const link = page.getByRole("link", { name: /stacked review/i });
+    const link = page.getByRole("menuitem", { name: /stacked review/i });
     await expect(link).toBeVisible();
     await expect(link).toHaveText(/stacked review \(2 PRs\)/i);
     await link.click();
@@ -71,7 +71,7 @@ test.describe("the stacked-review action", () => {
     await page.getByTestId("pr-actions").click();
     // The rest of the Actions menu is there — only the stack row is gone.
     const menu = page.getByTestId("pr-actions-menu");
-    await expect(menu.getByRole("link", { name: /qa guide/i })).toBeVisible();
-    await expect(menu.getByRole("link", { name: /stacked review/i })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: /qa guide/i })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /stacked review/i })).toHaveCount(0);
   });
 });

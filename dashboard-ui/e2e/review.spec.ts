@@ -1,7 +1,7 @@
 // Lane A2 of the stage light (design.md §4.2, §4.3, §5; tasks.md A2): the staged finding's head
 // is lit and the light leaves when it is unticked; the post button glows only while something is
 // staged; the count is a fresh element on every change and rolls; the four sections are one
-// segmented control with one panel open at a time, reachable by keyboard; under reduced motion
+// tab list with one panel open at a time, reachable by keyboard; under reduced motion
 // nothing on the count animates; the queue's one field filters and opens a pasted PR.
 import { expect, test, type Page } from "@playwright/test";
 import { PR, PR3, REPO, REPO2 } from "./fixture";
@@ -10,7 +10,7 @@ const enc = (r: string) => encodeURIComponent(r);
 const prPath = (repo: string, num: string) => `/pr?repo=${enc(repo)}&pr=${num}`;
 
 async function settled(page: Page) {
-  await expect(page.locator(".muted", { hasText: /^Loading…$/ })).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByTestId("pr-loading")).toHaveCount(0, { timeout: 15_000 });
 }
 
 test.describe("the stage light on a finding", () => {
@@ -22,14 +22,14 @@ test.describe("the stage light on a finding", () => {
     const bg = () => head.evaluate((el) => getComputedStyle(el).backgroundImage);
     await expect(card).toHaveClass(/is-staged/);
     expect(await bg()).toMatch(/gradient/);
-    await card.locator("input.fsel").uncheck();
+    await card.getByTestId("finding-select").uncheck();
     await expect(card).not.toHaveClass(/is-staged/);
     expect(await bg()).toBe("none");
-    await card.locator("input.fsel").check();
+    await card.getByTestId("finding-select").check();
     await expect(card).toHaveClass(/is-staged/);
     expect(await bg()).toMatch(/gradient/);
     // Light, not a colour: the head's text is unchanged by it.
-    const ink = await card.locator(".fhead .status").first().evaluate((el) => getComputedStyle(el).color);
+    const ink = await card.locator(".fhead").getByTestId("status-badge").first().evaluate((el) => getComputedStyle(el).color);
     const body = await page.evaluate(() => getComputedStyle(document.body).color);
     expect(ink).toBe(body);
   });
@@ -44,7 +44,7 @@ test.describe("the commit bar", () => {
     const shadow = () => post.evaluate((el) => getComputedStyle(el).boxShadow);
     await expect(bar).toHaveClass(/has-staged/);
     expect(await shadow()).not.toBe("none");
-    const sel = page.locator(".finding input.fsel");
+    const sel = page.locator(".finding").getByTestId("finding-select");
     await sel.nth(0).uncheck();
     await sel.nth(1).uncheck();
     await expect(bar).toContainText("0 staged");
@@ -64,7 +64,7 @@ test.describe("the commit bar", () => {
     expect(font).toMatch(/Geist/);
     // Tag the live node; after a change the node with the new value must not carry the tag.
     await count.evaluate((el) => ((el as HTMLElement).dataset.tagged = "1"));
-    await page.locator(".finding input.fsel").first().uncheck();
+    await page.locator(".finding").getByTestId("finding-select").first().uncheck();
     await expect(count).toHaveAttribute("data-stage-count", "1");
     await expect(count).not.toHaveAttribute("data-tagged", "1");
     // The bar still reads as one phrase once the outgoing digit has left.
@@ -79,7 +79,7 @@ test.describe("reduced motion", () => {
   test("the count swaps without any transition or animation", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await settled(page);
-    await page.locator(".finding input.fsel").first().uncheck();
+    await page.locator(".finding").getByTestId("finding-select").first().uncheck();
     const count = page.locator(".stage-count[data-stage-count]");
     await expect(count).toHaveAttribute("data-stage-count", "1");
     // No outgoing digit is rendered at all under reduced motion.
@@ -95,42 +95,39 @@ test.describe("reduced motion", () => {
 });
 
 test.describe("the sections", () => {
-  test("are one segmented control that opens one panel at a time, by mouse or keyboard", async ({ page }) => {
+  test("are one tab list that opens one panel at a time, by mouse or keyboard", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await settled(page);
     const seg = page.getByTestId("section-row");
-    await expect(seg).toHaveClass(/\bseg\b/);
-    const btns = seg.locator("button");
+    await expect(seg).toHaveRole("tablist");
+    const btns = seg.getByRole("tab");
     await expect(btns).toHaveText(["Full summary", "What this PR does", "Approve", "Re-run"]);
-    const panels = page.locator(".secpanel");
-    await expect(panels).toHaveCount(0);
+    // Exactly one panel at a time, the first open on arrival.
+    const panels = page.getByRole("tabpanel");
+    await expect(panels).toHaveCount(1);
+    await expect(btns.nth(0)).toHaveAttribute("aria-selected", "true");
     await btns.nth(1).click();
     await expect(panels).toHaveCount(1);
     await expect(panels.first()).toContainText(/COMMENT review/i);
     await btns.nth(2).click();
     await expect(panels).toHaveCount(1);
     await expect(page.getByTestId("approve-panel")).toBeVisible();
-    await expect(btns.nth(1)).toHaveAttribute("aria-expanded", "false");
-    await expect(btns.nth(2)).toHaveAttribute("aria-expanded", "true");
-    // Clicking the open one closes it.
-    await btns.nth(2).click();
-    await expect(panels).toHaveCount(0);
-    // Keyboard: arrows move between segments, Enter toggles.
-    await btns.nth(0).focus();
+    await expect(btns.nth(1)).toHaveAttribute("aria-selected", "false");
+    await expect(btns.nth(2)).toHaveAttribute("aria-selected", "true");
+    // Keyboard (Radix, automatic activation): arrows move and select, Home/End jump, it wraps.
+    await btns.nth(2).focus();
     await page.keyboard.press("ArrowRight");
-    await expect(btns.nth(1)).toBeFocused();
-    await page.keyboard.press("End");
     await expect(btns.nth(3)).toBeFocused();
+    await expect(btns.nth(3)).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("ArrowRight");
     await expect(btns.nth(0)).toBeFocused();
-    await page.keyboard.press("Enter");
+    await expect(btns.nth(0)).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("End");
+    await expect(btns.nth(3)).toBeFocused();
+    await page.keyboard.press("Home");
+    await expect(btns.nth(0)).toBeFocused();
     await expect(panels).toHaveCount(1);
-    await expect(btns.nth(0)).toHaveAttribute("aria-expanded", "true");
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("Space");
-    await expect(panels).toHaveCount(1);
-    await expect(btns.nth(0)).toHaveAttribute("aria-expanded", "false");
-    await expect(btns.nth(1)).toHaveAttribute("aria-expanded", "true");
+    await expect(panels.first()).toContainText(/lead-time badge/i);
   });
 
   test("the sentence under the verdict is behind the ? button", async ({ page }) => {
@@ -162,7 +159,7 @@ test.describe("the queue's one field", () => {
     await expect(page.getByTestId("open-pr")).toHaveText(`Open #${PR3}`);
     await field.press("Enter");
     await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO2)}&pr=${PR3}`));
-    await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(`#${PR3}`);
   });
 
   test("rows sit at the density token and the empty state is a title and one line", async ({ page }) => {

@@ -9,7 +9,7 @@ const enc = (r: string) => encodeURIComponent(r);
 const prPath = (repo: string, num: string) => `/pr?repo=${enc(repo)}&pr=${num}`;
 
 async function settled(page: Page) {
-  await expect(page.locator(".muted", { hasText: /^Loading…$/ })).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByTestId("pr-loading")).toHaveCount(0, { timeout: 15_000 });
 }
 
 test.describe("the commit bar", () => {
@@ -65,11 +65,11 @@ test.describe("posting", () => {
     // No navigation: the bar itself changes.
     await expect(bar.getByTestId("commit-posted")).toContainText(`Posted as ${USER}`);
     await expect(bar.getByRole("button", { name: /^posted$/i })).toBeDisabled();
-    await expect(bar.locator(".rqtoggle")).toHaveCount(0);
+    await expect(bar.getByTestId("request-changes")).toHaveCount(0);
     expect(reloads).toBe(0);
     // The progress step ticks, and the server's receipt is the only other change on the page.
     await expect(page.getByTestId("step-done")).toHaveCount(2);
-    await expect(page.locator(".step.hit", { hasText: "Comments posted" })).toBeVisible();
+    await expect(page.getByTestId("step-done").filter({ hasText: "Comments posted" })).toBeVisible();
     await expect(page.locator(".banner.warn")).toContainText(/dry run/i);
     await expect(page.locator(".banner:visible")).toHaveCount(1);
     // Findings stay readable and their edges keep the staged fill.
@@ -98,7 +98,7 @@ test.describe("the status line", () => {
     const line = page.getByTestId("status-line");
     await expect(line).toBeVisible();
     // Ordered by what the reviewer must act on: the moved branch first.
-    const words = await line.locator(".status").allInnerTexts();
+    const words = await line.locator("[data-slot=badge]").allInnerTexts();
     expect(words[0]).toBe("Branch moved");
     expect(words).toContain("New commits since review");
     expect(words).toContain("Claude not connected");
@@ -125,7 +125,7 @@ test.describe("the status line", () => {
     await page.goto(prPath(REPO, PR));
     await settled(page);
     const y = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
-    const order = ["nav.bc", "h1.prtitle", "[data-testid=status-line]", "[data-testid=verdict]", ".finding", "[data-testid=section-row]"];
+    const order = ["[data-testid=crumbs]", "h1", "[data-testid=status-line]", "[data-testid=verdict]", ".finding", "[data-testid=section-row]"];
     const ys = await Promise.all(order.map(y));
     for (let i = 1; i < ys.length; i++) expect(ys[i], `${order[i]} is below ${order[i - 1]}`).toBeGreaterThan(ys[i - 1]);
     // The bar is sticky, so its box says nothing about flow; it follows the sections in the DOM.
@@ -137,54 +137,56 @@ test.describe("the status line", () => {
     expect(barLast).toBe(true);
     // One Actions menu in the header, on the title's line.
     const actions = page.getByTestId("pr-actions");
-    expect(Math.abs((await actions.boundingBox())!.y - (await y("h1.prtitle")))).toBeLessThan(12);
+    expect(Math.abs((await actions.boundingBox())!.y - (await y("h1")))).toBeLessThan(12);
     await actions.click();
     const menu = page.getByTestId("pr-actions-menu");
-    await expect(menu.getByRole("link", { name: /open on github/i })).toBeVisible();
-    await expect(menu.getByRole("link", { name: /qa guide/i })).toBeVisible();
-    await expect(menu.getByRole("link", { name: /stacked review \(2 PRs\)/i })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /open on github/i })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /qa guide/i })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /stacked review \(2 PRs\)/i })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
-    // Four collapsed sections as one segmented control.
+    // Four sections as one tab list, the first open.
     const row = page.getByTestId("section-row");
-    await expect(row).toHaveClass(/seg/);
-    const btns = row.locator("button");
+    await expect(row).toHaveRole("tablist");
+    const btns = row.getByRole("tab");
     await expect(btns).toHaveText(["Full summary", "What this PR does", "Approve", "Re-run"]);
     const tops = await Promise.all([0, 1, 2, 3].map(async (i) => (await btns.nth(i).boundingBox())!.y));
     expect(new Set(tops.map(Math.round)).size).toBe(1);
     await expect(page.getByTestId("approve-panel")).toHaveCount(0);
     await btns.nth(2).click();
     await expect(page.getByTestId("approve-panel")).toBeVisible();
-    await expect(btns.nth(2)).toHaveAttribute("aria-expanded", "true");
+    await expect(btns.nth(2)).toHaveAttribute("aria-selected", "true");
   });
 
-  test("the finding card: path on its own line, Explain as a disclosure, one verb for the comment", async ({ page }) => {
+  test("the finding card: severity and path in the head, Explain as a disclosure, one verb for the comment", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await settled(page);
     const card = page.locator(".finding").first();
-    // Head row: checkbox, severity, and nothing else on an inline finding.
-    await expect(card.locator(".fhead > *")).toHaveCount(2);
-    await expect(card.locator(".fhead .status")).toHaveText("Should fix");
-    // The path is whole, under the title, and offers a copy.
-    const path = card.locator(".fpath code");
+    // Head row: checkbox, severity badge, the path — no placement chip on an inline finding.
+    const head = card.locator(".fhead");
+    await expect(head.getByTestId("status-badge")).toHaveCount(1);
+    await expect(head.getByTestId("status-badge")).toHaveText("Should fix");
+    await expect(head.getByTestId("placement")).toHaveCount(0);
+    // The path is whole, in sans, and offers a copy.
+    const path = head.getByTestId("finding-path");
     await expect(path).toHaveText("app/models/Product.php:42");
-    expect((await path.boundingBox())!.y).toBeGreaterThan((await card.locator(".ftitle").boundingBox())!.y);
+    expect(await path.evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/mono/i);
     await expect(card.getByRole("button", { name: /copy app\/models/i })).toBeVisible();
     // Explain opens and closes again.
-    const explain = card.locator(".explain");
-    await expect(explain.locator("summary")).toHaveText("Explain simply");
-    await expect(explain).not.toHaveAttribute("open");
-    await explain.locator("summary").click();
-    await expect(explain).toHaveAttribute("open", "");
-    await explain.locator("summary").click();
-    await expect(explain).not.toHaveAttribute("open");
+    const explain = card.getByTestId("explain");
+    await expect(explain).toHaveText("Explain simply");
+    await expect(explain).toHaveAttribute("aria-expanded", "false");
+    await explain.click();
+    await expect(explain).toHaveAttribute("aria-expanded", "true");
+    await explain.click();
+    await expect(explain).toHaveAttribute("aria-expanded", "false");
     // The comment toggle keeps one label whichever way it is.
     const toggle = card.getByRole("button", { name: "Edit comment" });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(toggle).toHaveText("Edit comment");
-    await expect(card.locator(".fbody")).toBeVisible();
+    await expect(card.getByTestId("finding-body")).toBeVisible();
   });
 });
 
@@ -193,9 +195,10 @@ test.describe("an unknown PR", () => {
     await page.goto(prPath(REPO, "999999"));
     await settled(page);
     const frame = page.getByTestId("pr-unknown");
-    await expect(frame.locator("nav.bc")).toContainText("Queue");
-    await expect(frame.locator("nav.bc")).toContainText(REPO);
-    await expect(frame.locator("h1.prtitle")).toContainText(`${REPO}#999999`);
+    const crumbs = frame.getByRole("navigation", { name: "Breadcrumb" });
+    await expect(crumbs).toContainText("Queue");
+    await expect(crumbs.getByTestId("repo-pill")).toHaveText(REPO);
+    await expect(frame.getByRole("heading", { level: 1 })).toContainText("#999999");
     await expect(frame.getByTestId("pr-error")).toBeVisible();
     const actions = frame.getByTestId("unknown-actions");
     await expect(actions.getByRole("link", { name: /back to queue/i })).toHaveAttribute("href", "/");
@@ -215,28 +218,29 @@ test.describe("keyboard", () => {
       reached = await target.evaluate((el) => el === document.activeElement);
     }
     expect(reached, "Tab lands on the Post button").toBe(true);
+    // The system's controls draw the ring as a box-shadow layer; the legacy 2px outline also passes.
     const ring = await target.evaluate((el) => {
       const cs = getComputedStyle(el);
-      return { style: cs.outlineStyle, width: cs.outlineWidth };
+      const shadowRing = /(?:rgba?|oklab)\((?!0, 0, 0, 0\))(?![^)]*\/ 0\))[^)]*\)/.test(cs.boxShadow);
+      return (cs.outlineStyle === "solid" && cs.outlineWidth === "2px") || shadowRing;
     });
-    expect(ring.style).toBe("solid");
-    expect(ring.width).toBe("2px");
+    expect(ring).toBe(true);
     await expect(target).toBeInViewport();
   });
 });
 
 test.describe("the stack page", () => {
-  test("uses the PR page's title pattern and .status rows", async ({ page }) => {
+  test("uses the PR page's title pattern and status badges on its rows", async ({ page }) => {
     await page.goto(`/stack?repo=${enc(REPO)}&pr=${PR}`);
     await settled(page);
-    const h1 = page.locator("h1.prtitle");
-    await expect(h1.locator(".repo")).toHaveText(REPO);
-    await expect(h1).toContainText(`#${PR} — Stacked review`);
-    await expect(h1).not.toContainText("·");
-    const rows = page.locator(".stackrow");
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(h1).toContainText(`#${PR} Stacked review`);
+    await expect(h1).not.toContainText(REPO);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByTestId("repo-pill")).toHaveText(REPO);
+    const rows = page.getByTestId("stack-row");
     await expect(rows).toHaveCount(2);
-    await expect(rows.first().locator(".status")).toHaveText("Reviewed");
-    await expect(page.locator(".stackrow .pill")).toHaveCount(0);
+    await expect(rows.first().getByTestId("status-badge")).toHaveText("Reviewed");
+    await expect(rows.first()).toHaveAttribute("data-current", "true");
   });
 });
 

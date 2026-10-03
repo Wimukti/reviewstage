@@ -1,7 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { PR, PR2, PR3, REPO, REPO2, REPO3, TOUR_USER, sessionCookie } from "./fixture";
 
 const enc = (r: string) => encodeURIComponent(r);
+
+// The repository filter is a Radix Select: open it, then pick the option by its label.
+async function pickRepo(page: Page, label: string | RegExp) {
+  await page.getByLabel("Filter by repository").click();
+  await page.getByRole("option", { name: label }).click();
+}
 
 // Unauthenticated: the SPA shell mounts and shows the login screen (no session cookie).
 test.describe("signed out", () => {
@@ -59,13 +65,13 @@ test.describe("first run", () => {
 
 test.describe("the tour on demand", () => {
   test("Take a tour reopens it for someone who has already dismissed it", async ({ page }) => {
-    // The shared fixture user has seen it: nothing opens by itself, and Help is the way back.
+    // The shared fixture user has seen it: nothing opens by itself, and the ⋯ menu is the way back.
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     const tour = page.getByTestId("tour");
     await expect(tour).toHaveCount(0);
-    await page.getByRole("button", { name: /help/i }).click();
-    await page.getByRole("button", { name: /take a tour/i }).click();
+    await page.getByTestId("account-more").click();
+    await page.getByRole("menuitem", { name: /take a tour/i }).click();
     await expect(tour).toBeVisible();
   });
 });
@@ -83,7 +89,7 @@ test.describe("signed in", () => {
   });
 
   test("archive button works: moves a PR to Archived and restores it", async ({ page }) => {
-    const rowFor = (num: string) => page.locator(".row", { hasText: `#${num}` });
+    const rowFor = (num: string) => page.getByTestId("queue-row").filter({ hasText: `#${num}` });
     await page.goto("/?tab=reviewed");
     await expect(rowFor(PR2)).toBeVisible();
 
@@ -100,18 +106,18 @@ test.describe("signed in", () => {
 
   test("queue rows carry a repo chip and the repo filter narrows the list", async ({ page }) => {
     await page.goto("/?tab=reviewed");
-    const rowFor = (num: string) => page.locator(".row", { hasText: `#${num}` });
-    await expect(rowFor(PR).locator(".repochip")).toHaveText(REPO);
-    await expect(rowFor(PR3).locator(".repochip")).toHaveText(REPO2);
+    const rowFor = (num: string) => page.getByTestId("queue-row").filter({ hasText: `#${num}` });
+    await expect(rowFor(PR).getByTestId("repo-pill")).toHaveText(REPO);
+    await expect(rowFor(PR3).getByTestId("repo-pill")).toHaveText(REPO2);
     // Filter to the second repo: only its PR remains …
-    await page.locator("#repofilter").selectOption(REPO2);
+    await pickRepo(page, REPO2);
     await expect(rowFor(PR3)).toBeVisible();
     await expect(rowFor(PR)).toHaveCount(0);
     // … and the choice survives a reload (localStorage).
     await page.reload();
-    await expect(page.locator("#repofilter")).toHaveValue(REPO2);
+    await expect(page.locator("#repofilter")).toContainText(REPO2);
     await expect(rowFor(PR)).toHaveCount(0);
-    await page.locator("#repofilter").selectOption("");
+    await pickRepo(page, "All repositories");
     await expect(rowFor(PR)).toBeVisible();
     // The search box matches the repo name too.
     await page.locator("#qsearch").fill("acme/api");
@@ -124,7 +130,8 @@ test.describe("signed in", () => {
     await page.locator("#qsearch").fill(PR3);
     const pick = page.getByTestId("repo-pick");
     await expect(pick).toBeVisible();
-    await pick.locator("select").selectOption(REPO2);
+    await pick.getByRole("combobox").click();
+    await page.getByRole("option", { name: REPO2 }).click();
     await page.getByTestId("open-pr").click();
     await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO2)}&pr=${PR3}`));
     await expect(page.locator("h1.prtitle")).toContainText(`${REPO2}#${PR3}`);
@@ -411,29 +418,29 @@ test.describe("signed in", () => {
     // on a cold start and the palette never opens).
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+k");
-    await expect(page.locator(".cmdk")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
     // A number the queue already knows lists that row — no "Review PR" offer beside it.
-    await page.locator(".cmdk-in").fill(PR);
+    await page.getByTestId("palette-input").fill(PR);
     await expect(page.getByRole("option", { name: new RegExp(`#${PR}`) })).toBeVisible();
     await expect(page.getByText(`Review PR #${PR}`, { exact: false })).toHaveCount(0);
-    await page.locator(".cmdk-in").press("Enter");
+    await page.getByTestId("palette-input").press("Enter");
     await expect(page).toHaveURL(new RegExp(`/pr\\?repo=${enc(REPO)}&pr=${PR}`));
     // A bare number the queue does not know is offered once; with two repos configured, choosing
     // it asks which repository, one row per repo.
     await page.keyboard.press("ControlOrMeta+k");
-    await page.locator(".cmdk-in").fill("424242");
+    await page.getByTestId("palette-input").fill("424242");
     await expect(page.getByRole("option", { name: /^Review PR #424242/ })).toHaveCount(1);
-    await page.locator(".cmdk-in").press("Enter");
+    await page.getByTestId("palette-input").press("Enter");
     await expect(page.getByText(`Review PR #424242 in ${REPO}`)).toBeVisible();
     await expect(page.getByText(`Review PR #424242 in ${REPO2}`)).toBeVisible();
     // Escape steps back out of the repository choice; a second one closes the palette.
     await page.keyboard.press("Escape");
     await expect(page.getByRole("option", { name: /^Review PR #424242 choose/ })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.locator(".cmdk")).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
     // A GitHub URL needs no picker.
     await page.keyboard.press("ControlOrMeta+k");
-    await page.locator(".cmdk-in").fill(`https://github.com/${REPO2}/pull/${PR3}`);
+    await page.getByTestId("palette-input").fill(`https://github.com/${REPO2}/pull/${PR3}`);
     await expect(page.getByText(`Review PR #${PR3}`)).toBeVisible();
     await expect(page.getByText(`in ${REPO2}`)).toBeVisible();
   });
@@ -441,14 +448,14 @@ test.describe("signed in", () => {
   test("the Review a PR button opens the palette", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: /review a pr/i }).click();
-    await expect(page.locator(".cmdk")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
   });
 
   test("How it works is under Help and links to the site, not to an app page", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("nav.nav").getByText(/how it works/i)).toHaveCount(0);
-    await page.getByRole("button", { name: /help/i }).click();
-    const how = page.getByRole("link", { name: /how it works/i });
+    await expect(page.getByRole("navigation", { name: "Main" }).getByText(/how it works/i)).toHaveCount(0);
+    await page.getByTestId("account-more").click();
+    const how = page.getByRole("menuitem", { name: /how it works/i });
     await expect(how).toHaveAttribute("href", "https://wimukti.github.io/reviewstage/#how-it-works");
     await expect(how).toHaveAttribute("target", "_blank");
   });

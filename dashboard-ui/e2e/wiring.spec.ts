@@ -154,7 +154,7 @@ test.describe("a QA guide whose last run failed", () => {
 test.describe("a merged pull request", () => {
   test("reads as merged, and does not offer an approval GitHub would refuse", async ({ page }) => {
     await page.goto("/?tab=posted");
-    const row = page.locator(".row").filter({ hasText: `#${PR5}` }).first();
+    const row = page.getByTestId("queue-row").filter({ hasText: `#${PR5}` }).first();
     await expect(row).toBeVisible();
     await expect(row.getByTestId("pr-state")).toHaveText("Merged");
     await expect(row.getByTestId("no-approve")).toBeVisible();
@@ -164,7 +164,7 @@ test.describe("a merged pull request", () => {
 
   test("an open PR says none of that", async ({ page }) => {
     await page.goto("/?tab=reviewed");
-    const row = page.locator(".row").filter({ hasText: `#${PR}` }).first();
+    const row = page.getByTestId("queue-row").filter({ hasText: `#${PR}` }).first();
     await expect(row).toBeVisible();
     await expect(row.getByTestId("pr-state")).toHaveCount(0);
     await expect(row.getByTestId("no-approve")).toHaveCount(0);
@@ -212,30 +212,30 @@ test.describe("decisions taken in dry run", () => {
 test.describe("the queue filters on the server", () => {
   test("every tab and tile counts the filtered set, not the whole install", async ({ page }) => {
     await page.goto("/?tab=all");
-    const tab = (name: RegExp) => page.locator(".tab").filter({ hasText: name }).first();
+    const count = (name: RegExp) => page.getByRole("tab", { name }).getByTestId("tab-count");
 
     // Unfiltered: both repositories are in reach.
-    await expect(page.locator(".row")).not.toHaveCount(0);
-    const allBefore = Number((await tab(/^All/).locator(".cnt").innerText()).replace(/,/g, ""));
+    await expect(page.getByTestId("queue-row")).not.toHaveCount(0);
+    const allBefore = Number((await count(/^All/).innerText()).replace(/,/g, ""));
     expect(allBefore).toBeGreaterThan(1);
 
     // The request really does carry the filter — the server, not the browser, narrows it.
     const filtered = page.waitForRequest((r) => r.url().includes(`repo=${enc(REPO2)}`));
-    await page.getByLabel("Filter by repository").selectOption(REPO2);
+    await page.getByLabel("Filter by repository").click();
+    await page.getByRole("option", { name: REPO2 }).click();
     await filtered;
 
     // Only acme/api is left, and the All count agrees with the rows rather than with the
     // whole install — which is what the old "all" caveat was apologising for.
-    await expect(page.locator(".row .repochip", { hasText: REPO })).toHaveCount(0);
-    const rows = await page.locator(".row").count();
-    await expect.poll(async () =>
-      Number((await tab(/^All/).locator(".cnt").innerText()).replace(/,/g, "")),
-    ).toBe(rows);
+    await expect(page.getByTestId("queue-row").getByTestId("repo-pill").filter({ hasText: REPO })).toHaveCount(0);
+    const rows = await page.getByTestId("queue-row").count();
+    await expect.poll(async () => Number((await count(/^All/).innerText()).replace(/,/g, ""))).toBe(rows);
     expect(rows).toBeLessThan(allBefore);
     await expect(page.getByTestId("filter-note")).toContainText(/every count above is for the filtered set/i);
 
     // Restore, so the shared server is left as it was found for the other specs.
-    await page.getByLabel("Filter by repository").selectOption("");
+    await page.getByLabel("Filter by repository").click();
+    await page.getByRole("option", { name: "All repositories" }).click();
   });
 
   test("a search narrows the counts too", async ({ page }) => {
@@ -243,8 +243,8 @@ test.describe("the queue filters on the server", () => {
     const sent = page.waitForRequest((r) => r.url().includes("q=rate-limit"));
     await page.locator("#qsearch").fill("rate-limit");
     await sent;
-    await expect(page.locator(".row")).toHaveCount(1);
-    await expect(page.locator(".row").first()).toContainText(/rate-limit the lead-time endpoint/i);
+    await expect(page.getByTestId("queue-row")).toHaveCount(1);
+    await expect(page.getByTestId("queue-row").first()).toContainText(/rate-limit the lead-time endpoint/i);
   });
 });
 

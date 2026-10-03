@@ -88,6 +88,9 @@ test.describe("keyboard", () => {
     await page.goto(`/pr?repo=${enc(REPO)}&pr=${PR}`);
     await settled(page);
     await expect(page.locator("h1.prtitle")).toBeVisible();
+    // The system's controls draw their ring as a box-shadow that transitions in; read the
+    // settled value.
+    await page.addStyleTag({ content: "*{transition:none!important}" });
     const seen = new Set<string>();
     let stops = 0;
     for (let i = 0; i < 80; i++) {
@@ -99,10 +102,11 @@ test.describe("keyboard", () => {
         const ring = el.closest(".eff") ?? el;
         const cs = getComputedStyle(ring);
         const r = el.getBoundingClientRect();
+        // Either the legacy 2px outline or the system's box-shadow ring (a non-transparent layer).
+        const shadowRing = /(?:rgba?|oklab)\((?!0, 0, 0, 0\))(?![^)]*\/ 0\))[^)]*\)/.test(cs.boxShadow);
         return {
           key: `${el.tagName}#${el.id}.${el.className}:${el.textContent?.slice(0, 20)}`,
-          outlineStyle: cs.outlineStyle,
-          outlineWidth: cs.outlineWidth,
+          ring: (cs.outlineStyle === "solid" && cs.outlineWidth === "2px") || shadowRing,
           visible: r.width > 0 && r.height > 0 && cs.visibility !== "hidden",
           ariaHidden: !!el.closest("[aria-hidden='true']"),
         };
@@ -113,8 +117,7 @@ test.describe("keyboard", () => {
       stops++;
       expect(info.ariaHidden, `${info.key} is not aria-hidden`).toBe(false);
       expect(info.visible, `${info.key} is visible`).toBe(true);
-      expect(info.outlineStyle, `${info.key} shows the ring`).toBe("solid");
-      expect(info.outlineWidth, `${info.key} ring is 2px`).toBe("2px");
+      expect(info.ring, `${info.key} shows the ring`).toBe(true);
     }
     // The page has far more than a handful of stops: sidebar, actions, findings, approve, re-run.
     expect(stops).toBeGreaterThan(15);
@@ -123,9 +126,10 @@ test.describe("keyboard", () => {
   test("the guided tour traps focus, closes on Escape, and ends where it started", async ({ page }) => {
     await page.goto("/?tab=reviewed");
     await settled(page);
-    const help = page.getByRole("button", { name: /help/i });
+    // Help lives in the account row's ⋯ menu beside the theme switch.
+    const help = page.getByTestId("account-more");
     await help.click();
-    await page.getByRole("button", { name: /take a tour/i }).click();
+    await page.getByRole("menuitem", { name: /take a tour/i }).click();
     const tour = page.getByTestId("tour");
     await expect(tour).toBeVisible();
     await expect(tour.getByRole("button", { name: "Next" })).toBeFocused();
@@ -143,7 +147,7 @@ test.describe("keyboard", () => {
     await expect(page).toHaveURL(/tab=reviewed/);
     // Escape closes it too, and focus goes back to the trigger.
     await help.click();
-    await page.getByRole("button", { name: /take a tour/i }).click();
+    await page.getByRole("menuitem", { name: /take a tour/i }).click();
     await expect(tour).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(tour).toHaveCount(0);

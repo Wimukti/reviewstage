@@ -13,6 +13,7 @@ import { PhoneShell, RunningBar, Sidebar } from "./Sidebar";
 import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
 import { Tour } from "./Tour";
+import { PageHeader } from "./ui";
 import { useLocation } from "./router";
 import { setRunning } from "./running";
 import { applyTheme, useIsPhone } from "./theme";
@@ -20,8 +21,8 @@ import { applyTheme, useIsPhone } from "./theme";
 function NotFound() {
   return (
     <>
-      <h1>Not found</h1>
-      <p className="muted">That page doesn't exist. Head back to your queue.</p>
+      <PageHeader title="Not found" />
+      <p className="text-sm text-muted-foreground">That page doesn't exist. Head back to your queue.</p>
     </>
   );
 }
@@ -70,15 +71,17 @@ export function App() {
     }
   }, [load]);
 
-  if (!me) return <div className="boot" />;
+  if (!me) return <div className="min-h-dvh" />;
   if (!me.authed) return <Login me={me} onDone={load} />;
 
+  // The shell: sidebar beside the page on the desktop, header above and tab bar below it on
+  // the phone. The page keeps clear of the fixed tab bar with its bottom padding.
   return (
-    <div className="app">
+    <div className="flex min-h-dvh items-stretch bg-background max-[899px]:flex-col">
       <RunningBar />
       {phone ? <PhoneShell me={me} onSignOut={signOut} /> : <Sidebar me={me} onSignOut={signOut} />}
-      <main className="main">
-        <div className="wrap">
+      <main className="main min-w-0 flex-1">
+        <div className="min-w-0 max-w-[960px] px-6 pb-14 pt-6 max-[899px]:px-4 max-[899px]:pb-[calc(80px+env(safe-area-inset-bottom,0px))] max-[899px]:pt-5">
           <Routed me={me} />
         </div>
       </main>

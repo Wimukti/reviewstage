@@ -94,7 +94,7 @@ test.describe("command palette", () => {
 test.describe("QA guides", () => {
   test("the detail title carries the number once when the server has no title", async ({ page }) => {
     await page.goto(`/qa?repo=${enc(REPO2)}&pr=${PR3}`);
-    const h1 = page.locator("h1.prtitle");
+    const h1 = page.getByTestId("page-header").locator("h1");
     await expect(h1).toContainText(`#${PR3}`);
     const text = (await h1.innerText()).trim();
     expect(text).not.toMatch(/#(\d+)\s*—\s*PR #\1/);
@@ -103,8 +103,8 @@ test.describe("QA guides", () => {
 
   test("index rows use the status vocabulary and the form sits in the header", async ({ page }) => {
     await page.goto("/qa");
-    await expect(page.locator(".pagehead .qagen input")).toBeVisible();
-    await expect(page.locator(".list .row .status").first()).toHaveText(/Guide ready|Building/);
+    await expect(page.getByTestId("page-header").getByLabel("PR to build a QA guide for")).toBeVisible();
+    await expect(page.getByTestId("qa-row").first().getByTestId("status-badge").first()).toHaveText(/Guide ready|Building/);
   });
 
   test("with no guides the empty state carries the form", async ({ page }) => {
@@ -118,7 +118,7 @@ test.describe("QA guides", () => {
     await expect(empty).toBeVisible();
     await expect(empty.locator("form input")).toBeVisible();
     await expect(empty.getByRole("button", { name: "Open" })).toBeVisible();
-    await expect(page.locator(".pagehead .qagen")).toHaveCount(0);
+    await expect(page.getByTestId("page-header").locator("form")).toHaveCount(0);
   });
 });
 
@@ -134,11 +134,11 @@ test.describe("learnings", () => {
     await expect(heads.filter({ hasText: "Path" })).toHaveCount(1);
     await expect(table.locator("tbody tr").first()).toBeVisible();
     // "Dropped" is a neutral outcome — graphite, never red.
-    const dropped = table.locator("tbody .status", { hasText: "Dropped" }).first();
-    await expect(dropped).toHaveClass(/is-graphite/);
-    await expect(table.locator("tbody .status.is-red", { hasText: "Dropped" })).toHaveCount(0);
-    // Dry-run rows keep their marker as a graphite status.
-    await expect(page.getByTestId("dry-mark").first()).toHaveClass(/is-graphite/);
+    const dropped = table.locator('tbody [data-testid="status-badge"]', { hasText: "Dropped" }).first();
+    await expect(dropped).toHaveAttribute("data-tone", "graphite");
+    await expect(table.locator('tbody [data-testid="status-badge"][data-tone="red"]', { hasText: "Dropped" })).toHaveCount(0);
+    // Dry-run rows keep their marker as a graphite badge.
+    await expect(page.getByTestId("dry-mark").first()).toHaveAttribute("data-tone", "graphite");
     // The retention note lives behind the page's one `?`, closed by default.
     await expect(page.getByTestId("retention-note")).toHaveCount(0);
     await page.getByRole("button", { name: "About this page" }).click();

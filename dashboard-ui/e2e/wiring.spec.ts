@@ -143,7 +143,7 @@ test.describe("a QA guide whose last run failed", () => {
     const log = page.getByTestId("qa-log");
     await expect(log).toBeVisible();
     await expect(log.locator("pre")).toBeHidden();
-    await log.locator("summary").click();
+    await log.getByRole("button").click();
     await expect(log.locator("pre")).toContainText(/stopped mid-section/i);
 
     // And what the build cost, the same chip the review page carries.
@@ -349,7 +349,7 @@ test.describe("a profile that has drifted from the checkout", () => {
     await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
     await expect(card.getByTestId("profile-stale")).toHaveText("Stale");
-    await card.locator("> summary").click();
+    await card.getByTestId("profile-toggle").click();
     const note = card.getByTestId("profile-stale-note");
     await expect(note).toContainText(/out of date with the checkout/i);
     await expect(note).toContainText("deadbeefcafe");
@@ -364,12 +364,12 @@ test.describe("a profile that has drifted from the checkout", () => {
   test("the earlier versions the card counts are reachable, and restorable", async ({ page }) => {
     await page.goto("/skills#profiles");
     const card = page.getByTestId("repo-profile").filter({ hasText: REPO }).first();
-    await card.locator("> summary").click();
+    await card.getByTestId("profile-toggle").click();
 
     const versions = card.getByTestId("profile-versions");
     await expect(versions).toBeVisible();
-    await expect(versions.locator("summary")).toContainText(/earlier version/i);
-    await versions.locator("summary").click();
+    await expect(versions.getByRole("button", { name: /earlier version/i })).toBeVisible();
+    await versions.getByRole("button", { name: /earlier version/i }).click();
 
     // Reading one changes nothing — restoring is a separate, explicit click.
     await expect(versions.getByRole("button", { name: "Restore" }).first()).toBeVisible();

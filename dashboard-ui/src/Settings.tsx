@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Check, ChevronDown, Copy, KeyRound, LogOut, MonitorSmartphone, Plus, Save } from "lucide-react";
 import {
   api,
   errMessage,
@@ -11,15 +12,24 @@ import {
   type SettingSource,
   type WebhooksStatus,
 } from "./api";
-import { PageHead } from "./About";
-import { Banner, RawBanner } from "./ui";
-import { Status } from "./ui";
+import { PushDevices } from "./PushDevices";
+import { Banner, PageHeader, RawBanner, StatusBadge } from "./ui";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 
 // Runtime settings — the knobs an operator changes without editing .env or restarting
 // anything. They live in $ROOT/settings.json (settings.json > .env > default); the poller and
 // the scripts re-read the file every cycle. Admin-only to save; everyone else sees a read-only
 // view. DRY_RUN is deliberately absent: it stays in .env as a restart-gated safety.
 
+const NOTE = "text-xs text-muted-foreground";
 const SRC_LABEL: Record<SettingSource, string> = {
   settings: "Settings",
   env: ".env",
@@ -28,35 +38,42 @@ const SRC_LABEL: Record<SettingSource, string> = {
 
 function Source({ s }: { s: SettingSource }) {
   return (
-    <span className="chip setsrc" title={`Where the current value comes from: ${SRC_LABEL[s]}`}>
+    <Badge variant="outline" className="text-muted-foreground" title={`Where the current value comes from: ${SRC_LABEL[s]}`}>
       {SRC_LABEL[s]}
-    </span>
+    </Badge>
   );
 }
 
-function Switch({
-  checked,
-  disabled,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  disabled: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
+// A settings group: a Card with a real heading, rows divided by one hairline.
+function Group({ title, description, children, className, ...rest }: { title: string; description?: ReactNode; children: ReactNode; className?: string } & Omit<React.HTMLAttributes<HTMLDivElement>, "title">) {
   return (
-    <label className="switch">
-      <input
-        type="checkbox"
-        role="switch"
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span />
-    </label>
+    <Card className={cn("gap-0 py-0", className)} {...rest}>
+      <CardHeader className="px-5 pb-0 pt-4">
+        <CardTitle>
+          <h2 className="m-0 text-sm font-medium leading-none">{title}</h2>
+        </CardTitle>
+        {description && <CardDescription className={NOTE}>{description}</CardDescription>}
+      </CardHeader>
+      <CardContent className="divide-y divide-border px-5 pb-1">{children}</CardContent>
+    </Card>
+  );
+}
+
+// A row: the words on the left, the control on the right; on a phone the control drops under
+// the label so a long hint never wraps a word per line beside a wide control.
+function Row({ label, hint, children, htmlFor }: { label: ReactNode; hint?: ReactNode; children?: ReactNode; htmlFor?: string }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 py-3 max-[899px]:grid-cols-1" data-testid="setting-row">
+      <div className="min-w-0">
+        {htmlFor ? (
+          <Label htmlFor={htmlFor} className="text-sm font-medium">{label}</Label>
+        ) : (
+          <div className="text-sm font-medium">{label}</div>
+        )}
+        {hint && <div className={cn(NOTE, "mt-0.5 leading-relaxed")} data-testid="setting-hint">{hint}</div>}
+      </div>
+      {children && <div className="flex shrink-0 flex-wrap items-center gap-2.5">{children}</div>}
+    </div>
   );
 }
 
@@ -90,6 +107,7 @@ function webhookInstructions(url: string): string {
 
 function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: number }) {
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
   const text = webhookInstructions(wh.url);
   const copy = async () => {
     try {
@@ -102,90 +120,88 @@ function WebhooksCard({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds: nu
   };
   const minutes = Math.round(pollSeconds / 60);
   return (
-    <div className="card" data-testid="webhooks-card">
-      <div className="cardhead">
-        <h2 style={{ margin: 0 }}>Webhooks</h2>
-        <Status tone="graphite">Read-only</Status>
-      </div>
-      <div className="hint" data-testid="webhooks-readonly">
-        Nothing to save here: the secret lives in <code>.env</code> and the hook is configured on GitHub.
-      </div>
-      <div className="setrow">
-        <div className="setlbl">
-          <b>Status</b>
-          <div className="hint">
-            {wh.active
+    <Card className="gap-0 py-0" data-testid="webhooks-card">
+      <CardHeader className="px-5 pb-0 pt-4">
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          <h2 className="m-0 text-sm font-medium leading-none">Webhooks</h2>
+          <StatusBadge tone="graphite" icon={null}>Read-only</StatusBadge>
+        </CardTitle>
+        <CardDescription className={NOTE} data-testid="webhooks-readonly">
+          Nothing to save here: the secret lives in <code>.env</code> and the hook is configured on GitHub.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="divide-y divide-border px-5 pb-1">
+        <Row
+          label="Status"
+          hint={
+            wh.active
               ? "A verified event arrived within two poll intervals — GitHub is reaching this server."
               : wh.configured
                 ? `No event in the last ${2 * minutes} minutes. The poller is keeping the queue fresh; add the hook on GitHub (or check its Recent Deliveries) to go instant.`
-                : "GITHUB_WEBHOOK_SECRET is not set in .env, so the endpoint answers 503 and the poller does all the work."}
-          </div>
-        </div>
-        <div className="setctl">
-          <Status kind={wh.active ? "ok" : "warn"} data-testid="webhooks-status">
+                : "GITHUB_WEBHOOK_SECRET is not set in .env, so the endpoint answers 503 and the poller does all the work."
+          }
+        >
+          <StatusBadge kind={wh.active ? "ok" : "warn"} data-testid="webhooks-status">
             {wh.active ? "Webhooks active" : "Polling only"}
-          </Status>
-        </div>
-      </div>
-      <div className="setrow">
-        <div className="setlbl">
-          <b>Payload URL</b>
-          <div className="hint">
-            <code>{wh.url}</code>
-          </div>
-        </div>
-      </div>
-      <div className="setrow">
-        <div className="setlbl">
-          <b>Secret</b>
-          <div className="hint">
-            {wh.configured ? (
-              <Status tone="green">Configured</Status>
+          </StatusBadge>
+        </Row>
+        <Row label="Payload URL" hint={<code className="[overflow-wrap:anywhere]">{wh.url}</code>} />
+        <Row
+          label="Secret"
+          hint={
+            wh.configured ? (
+              <StatusBadge tone="green">Configured</StatusBadge>
             ) : (
               <>
                 not set · <code>GITHUB_WEBHOOK_SECRET</code> in <code>.env</code> (restart the server after adding it)
               </>
-            )}
+            )
+          }
+        />
+        <Row
+          label="Deliveries"
+          hint={
+            <>
+              {wh.count.toLocaleString("en-US")} event{wh.count === 1 ? "" : "s"} received · last event{" "}
+              {wh.last_event_at ? `${agoText(wh.last_event_at)}${wh.last_event ? ` (${wh.last_event})` : ""}` : "never"}{" "}
+              · last ping {wh.last_ping ? agoText(wh.last_ping) : "never"}
+              {wh.last_error && (
+                <>
+                  {" "}
+                  · <span className="text-red">last error: {wh.last_error}</span>
+                </>
+              )}
+            </>
+          }
+        />
+        <Collapsible open={open} onOpenChange={setOpen} className="py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="-ml-2">
+                <ChevronDown aria-hidden="true" className={cn("transition-transform", open && "rotate-180")} />
+                Set it up on GitHub
+              </Button>
+            </CollapsibleTrigger>
+            <Button variant="ghost" size="sm" type="button" onClick={copy}>
+              {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              {copied ? "Copied" : "Copy instructions"}
+            </Button>
           </div>
-        </div>
-      </div>
-      <div className="setrow">
-        <div className="setlbl">
-          <b>Deliveries</b>
-          <div className="hint">
-            {wh.count.toLocaleString()} event{wh.count === 1 ? "" : "s"} received · last event{" "}
-            {wh.last_event_at ? `${agoText(wh.last_event_at)}${wh.last_event ? ` (${wh.last_event})` : ""}` : "never"}{" "}
-            · last ping {wh.last_ping ? agoText(wh.last_ping) : "never"}
-            {wh.last_error && (
-              <>
-                {" "}
-                · <span className="hint err">last error: {wh.last_error}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="setrow">
-        <div className="setlbl">
-          <b>Set it up on GitHub</b>
-          <pre className="schema" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-            {text}
-          </pre>
-        </div>
-        <div className="setctl">
-          <button className="btn quiet" type="button" onClick={copy}>
-            {copied ? "Copied" : "Copy instructions"}
-          </button>
-        </div>
-      </div>
-      {wh.active && (
-        <div className="hint ok">
-          Webhooks are doing the work now — you can lower the poll interval or turn polling off
-          in the Poller card. Polling stays on until you change it; it is the safety net for a
-          missed delivery.
-        </div>
-      )}
-    </div>
+          <CollapsibleContent>
+            <pre className="mt-1 mb-2 whitespace-pre-wrap font-mono text-xs [overflow-wrap:anywhere]" data-testid="webhook-instructions">
+              {text}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
+        {wh.active && (
+          <p className={cn(NOTE, "m-0 py-3 text-green")}>
+            Webhooks are doing the work now — you can lower the poll interval or turn polling off
+            in the Poller card. Polling stays on until you change it; it is the safety net for a
+            missed delivery.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -300,106 +316,129 @@ export function Devices({ me }: { me: Me }) {
   const viaBearer = me.auth === "bearer";
 
   return (
-    <div className={"card" + (devOnly ? " is-target" : "")} id="devices" tabIndex={-1}>
-      <div className="cardhead">
-        <h2 style={{ margin: 0 }}>Devices</h2>
-        <span className="muted sm">
-          Tokens for phones, the CLI and other browsers · expire after {meta.ttl_days} unused days ·
-          up to {meta.max}
-        </span>
-      </div>
-      {err && (
-        <Banner kind="err">{err}</Banner>
-      )}
-      {minted && (
-        <Banner kind="warn" icon="key" role="status">
+    <Card className={cn("gap-0 py-0 scroll-mt-4", devOnly && "ring-2 ring-primary")} id="devices" tabIndex={-1}>
+      <CardHeader className="px-5 pb-0 pt-4">
+        <CardTitle className="flex items-center gap-2">
+          <MonitorSmartphone aria-hidden="true" className="size-4" />
+          <h2 className="m-0 text-sm font-medium leading-none">Devices</h2>
+        </CardTitle>
+        <CardDescription className={NOTE}>
+          Tokens for phones, the CLI and other browsers · expire after {meta.ttl_days} unused days · up to {meta.max}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="px-5 pb-4">
+        {err && <Banner kind="err">{err}</Banner>}
+        {minted && (
+          <Banner kind="warn" icon="key" role="status">
             <b>Token for “{minted.name}” — copy it now.</b> It is shown once and cannot be
             recovered; the server keeps only a hash. Anyone holding it can act as you until you
             revoke it here.
-            <pre className="devtok" data-testid="device-token">{minted.token}</pre>
-            <div className="devnew">
-              <button className="btn secondary" type="button" onClick={copy}>
+            <pre className="my-2 select-all whitespace-pre-wrap font-mono text-xs [overflow-wrap:anywhere]" data-testid="device-token">{minted.token}</pre>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" type="button" onClick={copy}>
+                {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                 {copied ? "Copied" : "Copy token"}
-              </button>
-              <button className="btn quiet" type="button" onClick={() => setMinted(null)}>
+              </Button>
+              <Button variant="ghost" size="sm" type="button" onClick={() => setMinted(null)}>
                 I have saved it
-              </button>
+              </Button>
             </div>
-            <div className="hint" style={{ marginTop: 8 }}>
+            <p className={cn(NOTE, "mb-0 mt-2")}>
               Use it as <code>Authorization: Bearer &lt;token&gt;</code> on any <code>/api/*</code>{" "}
               call.{minted.warning ? ` ${minted.warning}` : ""}
-            </div>
+            </p>
           </Banner>
-      )}
-      {rows === null ? (
-        <div className="muted">Loading…</div>
-      ) : rows.length === 0 ? (
-        <p className="muted sm">No devices yet.</p>
-      ) : (
-        <div className="devlist">
-          {rows.map((d) => (
-            <div className="devrow" key={d.id} data-testid="device-row">
-              <div className="devmeta">
-                <b>{d.name}</b>
-                {d.current && <span className="devcur">this device</span>}
-                <div className="hint">
-                  Created {dateText(d.created)} · last seen {dateText(d.last_seen)}
-                </div>
-              </div>
-              <button
-                className="btn quiet"
-                type="button"
-                disabled={busy}
-                aria-label={`Revoke ${d.name}`}
-                onClick={() => run(() => api.revokeDevice(d.id))}
-              >
-                Revoke
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="devnew">
-        <input
-          className="in"
-          type="text"
-          maxLength={60}
-          placeholder="Name it — “CLI on laptop”, “iPhone”…"
-          aria-label="New device name"
-          value={name}
-          disabled={busy || viaBearer}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button className="btn primary" type="button" disabled={busy || viaBearer} onClick={mint}>
-          Create a token for the CLI/mobile
-        </button>
-        {rows && rows.length > 0 && (
-          <button
-            className="btn quiet"
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Sign out everywhere? Every device token AND every browser session — " +
-                    "including this one, on every machine — stops working. You stay signed in " +
-                    "here; everywhere else has to sign in again.",
-                )
-              ) {
-                run(() => api.revokeAllDevices());
-              }
-            }}
-          >
-            Sign out everywhere
-          </button>
         )}
-      </div>
-      {viaBearer && (
-        <div className="hint" style={{ marginTop: 8 }}>
-          You are signed in with a device token. Creating another one needs a browser session —
-          open Settings on the web.
+        {rows === null ? (
+          <div className="flex flex-col gap-2 py-3" aria-busy="true">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-1/3" />
+          </div>
+        ) : rows.length === 0 ? (
+          <p className={cn(NOTE, "my-3")}>No devices yet.</p>
+        ) : (
+          <ul className="m-0 list-none divide-y divide-border p-0" aria-label="Your devices">
+            {rows.map((d) => (
+              <li className="flex items-center gap-3 py-2.5" key={d.id} data-testid="device-row">
+                <KeyRound aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-sm font-medium">{d.name}</span>
+                    {d.current && <Badge variant="default">This device</Badge>}
+                  </div>
+                  <div className={NOTE}>
+                    Created {dateText(d.created)} · last seen {dateText(d.last_seen)}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Revoke ${d.name}`}
+                  onClick={() => run(() => api.revokeDevice(d.id))}
+                >
+                  Revoke
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Input
+            type="text"
+            className="min-w-[200px] flex-1"
+            maxLength={60}
+            placeholder="Name it — “CLI on laptop”, “iPhone”…"
+            aria-label="New device name"
+            value={name}
+            disabled={busy || viaBearer}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Button type="button" disabled={busy || viaBearer} onClick={mint}>
+            <Plus aria-hidden="true" />
+            Create a token for the CLI/mobile
+          </Button>
+          {rows && rows.length > 0 && (
+            <Button
+              variant="ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Sign out everywhere? Every device token AND every browser session — " +
+                      "including this one, on every machine — stops working. You stay signed in " +
+                      "here; everywhere else has to sign in again.",
+                  )
+                ) {
+                  run(() => api.revokeAllDevices());
+                }
+              }}
+            >
+              <LogOut aria-hidden="true" />
+              Sign out everywhere
+            </Button>
+          )}
         </div>
-      )}
+        {viaBearer && (
+          <p className={cn(NOTE, "mb-0 mt-2")}>
+            You are signed in with a device token. Creating another one needs a browser session —
+            open Settings on the web.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SettingsSkeleton() {
+  return (
+    <div className="flex flex-col gap-3" aria-busy="true">
+      <span className="sr-only" role="status">Loading your settings</span>
+      {[0, 1, 2].map((i) => (
+        <Skeleton key={i} className="h-28 rounded-xl" />
+      ))}
     </div>
   );
 }
@@ -426,11 +465,38 @@ export function Settings({ me }: { me: Me }) {
     load();
   }, [load]);
 
+  const header = (
+    <PageHeader
+      title="Settings"
+      help={
+        <>
+          Changes apply on the next poller cycle, with no restart and no <code>.env</code> edit.
+          Saved values win over <code>.env</code>, which wins over the default; the badge on each
+          row says where the value in effect comes from. Notification URLs stay in{" "}
+          <code>.env</code>. Behind a GitHub webhook, polling is only a safety net: lower the
+          interval or switch it off. See{" "}
+          <a href="https://wimukti.github.io/reviewstage/operations/configuration/#runtime-settings" target="_blank" rel="noopener">
+            Runtime settings
+          </a>{" "}
+          in the docs. Your <a href="#devices">devices</a> are at the foot of this page.
+        </>
+      }
+    />
+  );
   if (err && !d)
     return (
-      <Banner kind="err" data-testid="settings-error">{err}</Banner>
+      <>
+        {header}
+        <Banner kind="err" data-testid="settings-error">{err}</Banner>
+      </>
     );
-  if (!d || !form) return <div className="muted">Loading…</div>;
+  if (!d || !form)
+    return (
+      <>
+        {header}
+        <SettingsSkeleton />
+      </>
+    );
   const ro = !d.is_admin;
   const dirty = JSON.stringify(form) !== JSON.stringify(d.settings);
   const set = <K extends keyof RuntimeSettings>(k: K, v: RuntimeSettings[K]) =>
@@ -464,63 +530,47 @@ export function Settings({ me }: { me: Me }) {
 
   return (
     <>
-      <PageHead
-        title="Settings"
-        about={
-          <>
-            Changes apply on the next poller cycle, with no restart and no <code>.env</code> edit.
-            Saved values win over <code>.env</code>, which wins over the default; the chip on each
-            row says where the value in effect comes from. Notification URLs stay in{" "}
-            <code>.env</code>. Behind a GitHub webhook, polling is only a safety net: lower the
-            interval or switch it off. See{" "}
-            <a href="https://wimukti.github.io/reviewstage/operations/configuration/#runtime-settings" target="_blank" rel="noopener">
-              Runtime settings
-            </a>{" "}
-            in the docs. Your <a href="#devices">devices</a> are at the foot of this page.
-          </>
-        }
-        aboutTestId="settings-about"
-      />
+      {header}
       {ro && (
         <Banner kind="info" icon="eye">
-            Read-only: only the admin (<code>{d.admin || "the REVIEWER in .env"}</code>) can change
-            these. You can see what is in effect.
-          </Banner>
+          Read-only: only the admin (<code>{d.admin || "the REVIEWER in .env"}</code>) can change
+          these. You can see what is in effect.
+        </Banner>
       )}
       <RawBanner html={banner} />
 
-      <div className="setform" data-testid="settings-form">
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Poller</h2>
-        <div className="setrow">
-          <div className="setlbl">
-            <b>Poll GitHub for review requests</b>
-            <div className="hint">
-              Off pauses <code>pr-watch.sh</code> without stopping the service; the queue stops
-              updating and no cards go out.
-            </div>
-          </div>
-          <div className="setctl">
+      <div className="flex flex-col gap-3" data-testid="settings-form">
+        <Group title="Poller">
+          <Row
+            label="Poll GitHub for review requests"
+            hint={
+              <>
+                Off pauses <code>pr-watch.sh</code> without stopping the service; the queue stops
+                updating and no cards go out.
+              </>
+            }
+          >
             <Source s={d.sources.poller_enabled} />
             <Switch
-              label="Poller enabled"
+              aria-label="Poller enabled"
               checked={form.poller_enabled}
               disabled={ro}
-              onChange={(v) => set("poller_enabled", v)}
+              onCheckedChange={(v) => set("poller_enabled", v)}
             />
-          </div>
-        </div>
-        <div className="setrow">
-          <div className="setlbl">
-            <b>Poll interval</b>
-            <div className="hint">
-              Every <b>{minutes} minute{minutes === 1 ? "" : "s"}</b> ({form.poll_interval_seconds.toLocaleString()}s). 1 to 60 minutes.
-            </div>
-          </div>
-          <div className="setctl">
+          </Row>
+          <Row
+            label="Poll interval"
+            htmlFor="poll-minutes"
+            hint={
+              <>
+                Every <b className="text-foreground">{minutes} minute{minutes === 1 ? "" : "s"}</b> ({form.poll_interval_seconds.toLocaleString("en-US")}s). 1 to 60 minutes.
+              </>
+            }
+          >
             <Source s={d.sources.poll_interval_seconds} />
             <input
               type="range"
+              className="w-[160px] accent-primary max-[899px]:min-w-[120px] max-[899px]:flex-1"
               aria-label="Poll interval in minutes"
               min={1}
               max={60}
@@ -529,9 +579,10 @@ export function Settings({ me }: { me: Me }) {
               disabled={ro}
               onChange={(e) => set("poll_interval_seconds", Number(e.target.value) * 60)}
             />
-            <input
+            <Input
+              id="poll-minutes"
               type="number"
-              className="in"
+              className="w-[84px] tabular-nums"
               aria-label="Poll interval (minutes)"
               min={1}
               max={60}
@@ -542,63 +593,62 @@ export function Settings({ me }: { me: Me }) {
                 set("poll_interval_seconds", m * 60);
               }}
             />
-          </div>
-        </div>
-        <div className="setrow">
-          <div className="setlbl">
-            <b>Last poll</b>
-            <div className="hint">{agoText(d.poller.lastPoll)}</div>
-          </div>
-        </div>
-      </div>
+          </Row>
+          <Row label="Last poll" hint={agoText(d.poller.lastPoll)} />
+        </Group>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Notifications</h2>
-        {d.backends.map((b) => {
-          const meta = BACKEND_META[b];
-          const configured = meta.envKey(d.env);
-          const on = form.notify_backends.includes(b);
-          return (
-            <label className="chk" key={b}>
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={ro}
-                aria-label={`Backend ${meta.name}`}
-                onChange={(e) => toggleBackend(b, e.target.checked)}
-              />
-              <span>
-                <b>{meta.name}</b> <span className="muted sm">— {meta.sub}</span>
-              </span>
-              {meta.envLabel && (
-                <span className={"envnote" + (configured ? " on" : "")}>
-                  {configured ? "Configured" : "Not set"} · <code>{meta.envLabel}</code>
-                </span>
-              )}
-            </label>
-          );
-        })}
-        <div className="hint">
-          <Source s={d.sources.notify_backends} /> Per-person mentions come from the Slack /
-          Discord IDs each reviewer saves in Integrations.
-        </div>
-      </div>
+        <Group
+          title="Notifications"
+          description={
+            <>
+              <Source s={d.sources.notify_backends} /> Per-person mentions come from the Slack / Discord IDs each
+              reviewer saves in Integrations.
+            </>
+          }
+        >
+          {d.backends.map((b) => {
+            const meta = BACKEND_META[b];
+            const configured = meta.envKey(d.env);
+            const on = form.notify_backends.includes(b);
+            const id = `backend-${b}`;
+            return (
+              <div className="flex flex-wrap items-center gap-3 py-3" key={b} data-testid="setting-row">
+                <Switch
+                  id={id}
+                  aria-label={`Backend ${meta.name}`}
+                  checked={on}
+                  disabled={ro}
+                  onCheckedChange={(v) => toggleBackend(b, v)}
+                />
+                <div className="min-w-0 flex-1 basis-[200px]">
+                  <Label htmlFor={id} className="text-sm font-medium">{meta.name}</Label>
+                  <div className={cn(NOTE, "mt-0.5")} data-testid="setting-hint">{meta.sub}</div>
+                </div>
+                {meta.envLabel && (
+                  <Badge
+                    variant="outline"
+                    className={cn("block max-w-full truncate max-[899px]:ml-11", configured ? "text-green" : "text-muted-foreground")}
+                    title={`${configured ? "Set" : "Not set"} in .env: ${meta.envLabel}`}
+                  >
+                    {configured ? "Configured" : "Not set"} · {meta.envLabel}
+                  </Badge>
+                )}
+              </div>
+            );
+          })}
+        </Group>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>PR filters</h2>
-        <div className="setrow">
-          <div className="setlbl">
-            <b>Ignore review requests on PRs older than</b>
-            <div className="hint">
-              Days since the PR was opened. Old PRs stay in the dashboard; only the card is
-              suppressed. 0 disables the cutoff.
-            </div>
-          </div>
-          <div className="setctl">
+        <Group title="PR filters">
+          <Row
+            label="Ignore review requests on PRs older than"
+            htmlFor="max-age"
+            hint="Days since the PR was opened. Old PRs stay in the dashboard; only the card is suppressed. 0 disables the cutoff."
+          >
             <Source s={d.sources.max_pr_age_days} />
-            <input
+            <Input
+              id="max-age"
               type="number"
-              className="in"
+              className="w-[84px] tabular-nums"
               aria-label="Max PR age in days"
               min={0}
               max={3650}
@@ -606,56 +656,48 @@ export function Settings({ me }: { me: Me }) {
               disabled={ro}
               onChange={(e) => set("max_pr_age_days", Math.max(0, Number(e.target.value) || 0))}
             />
-            <span className="muted sm">days</span>
-          </div>
-        </div>
-        <div className="setrow">
-          <div className="setlbl">
-            <b>Skip PRs opened by bots</b>
-            <div className="hint">
-              Off by default: AI-written PRs are where a skeptical review pays off most.
-            </div>
-          </div>
-          <div className="setctl">
+            <span className={NOTE}>days</span>
+          </Row>
+          <Row
+            label="Skip PRs opened by bots"
+            hint="Off by default: AI-written PRs are where a skeptical review pays off most."
+          >
             <Source s={d.sources.skip_bot_prs} />
             <Switch
-              label="Skip bot PRs"
+              aria-label="Skip bot PRs"
               checked={form.skip_bot_prs}
               disabled={ro}
-              onChange={(v) => set("skip_bot_prs", v)}
+              onCheckedChange={(v) => set("skip_bot_prs", v)}
             />
+          </Row>
+        </Group>
+
+        {!ro && (
+          <div className="flex flex-wrap items-center gap-3 px-1 py-1" data-testid="settings-save">
+            <Button type="button" disabled={!dirty || saving} onClick={save}>
+              <Save aria-hidden="true" />
+              {saving ? "Saving…" : "Save settings"}
+            </Button>
+            <Button variant="ghost" type="button" disabled={!dirty || saving} onClick={() => setForm(d.settings)}>
+              Reset
+            </Button>
+            {dirty ? (
+              <StatusBadge tone="amber" data-testid="settings-dirty">Unsaved changes</StatusBadge>
+            ) : (
+              <span className={NOTE}>
+                Saves Poller, Notifications and PR filters to <code>settings.json</code> on the server.{" "}
+                <code>DRY_RUN</code> stays in <code>.env</code> on purpose.
+              </span>
+            )}
           </div>
-        </div>
+        )}
       </div>
 
-      {!ro && (
-        <div className={"setfoot" + (dirty ? " is-dirty" : "")} data-testid="settings-save">
-          <button className="btn primary" type="button" disabled={!dirty || saving} onClick={save}>
-            {saving ? "Saving…" : "Save settings"}
-          </button>
-          <button
-            className="btn quiet"
-            type="button"
-            disabled={!dirty || saving}
-            onClick={() => setForm(d.settings)}
-          >
-            Reset
-          </button>
-          {dirty ? (
-            <Status tone="amber" data-testid="settings-dirty">Unsaved changes</Status>
-          ) : (
-            <span className="muted sm">
-              Saves Poller, Notifications and PR filters to <code>settings.json</code> on the server.{" "}
-              <code>DRY_RUN</code> stays in <code>.env</code> on purpose.
-            </span>
-          )}
-        </div>
-      )}
+      <div className="mt-5 flex flex-col gap-3">
+        <WebhooksCard wh={d.webhooks} pollSeconds={form.poll_interval_seconds} />
+        <PushDevices />
+        <Devices me={me} />
       </div>
-
-      <WebhooksCard wh={d.webhooks} pollSeconds={form.poll_interval_seconds} />
-
-      <Devices me={me} />
     </>
   );
 }

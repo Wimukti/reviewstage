@@ -174,7 +174,7 @@ test.describe("the first QA guide", () => {
     await expect(page.getByRole("heading", { name: /no guide yet/i })).toHaveCount(0);
 
     // And it keeps going on its own — no reload, no second click.
-    await expect(page.locator("ul.prog")).toContainText(/reading the diff/i, { timeout: 15_000 });
+    await expect(page.getByTestId("qa-progress")).toContainText(/reading the diff/i, { timeout: 15_000 });
     await expect(page.locator(".qaguide")).toBeVisible({ timeout: 15_000 });
   });
 

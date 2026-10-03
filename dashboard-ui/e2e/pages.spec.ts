@@ -12,8 +12,9 @@ const PAGES: [string, string][] = [
   ["settings", "/settings"],
 ];
 
+// Loading is a Skeleton in the shape of the content; settled means none is left.
 async function settled(page: Page) {
-  await expect(page.locator(".muted", { hasText: /^Loading…$/ })).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0, { timeout: 15_000 });
 }
 
 const TEAM_SKILL = [
@@ -37,16 +38,15 @@ test.describe("words (design §6)", () => {
       await page.goto(path);
       await settled(page);
       await expect(page.locator("h1").first()).toBeVisible();
-      await expect(page.locator(".pagehead p")).toHaveCount(0);
-      await expect(page.locator(".lead, .tabdesc")).toHaveCount(0);
-      // At most one orientation disclosure, and it opens on demand only.
+      await expect(page.getByTestId("page-header").locator("p")).toHaveCount(0);
+      // At most one orientation disclosure, and it opens on demand only — a ? Popover.
       const about = page.getByRole("button", { name: "About this page" });
       expect(await about.count()).toBeLessThanOrEqual(1);
-      await expect(page.locator(".pagehead .explainbox")).toHaveCount(0);
+      await expect(page.getByTestId("about-box")).toHaveCount(0);
       if ((await about.count()) === 1) {
         await about.click();
         await expect(about).toHaveAttribute("aria-expanded", "true");
-        await expect(page.locator(".pagehead .explainbox")).toBeVisible();
+        await expect(page.getByTestId("about-box")).toBeVisible();
       }
     });
   }
@@ -76,8 +76,8 @@ test.describe("skills", () => {
     const row = table.locator("tbody tr").first();
     const box = await row.boundingBox();
     expect(Math.round(box!.height)).toBe(44);
-    // The old score cards are gone.
-    await expect(page.locator(".panel-which .row, .ratebar + .muted")).toHaveCount(0);
+    // The rating is one badge, not a dot and a word.
+    await expect(row.getByTestId("status-badge")).toHaveCount(1);
   });
 
   test("the editor is a code surface: a line-number gutter and the Team rules band", async ({ page }) => {
@@ -101,10 +101,14 @@ test.describe("skills", () => {
     await expect(rules).toHaveCount(5);
     await expect(area.locator(".ln.is-rules-h")).toHaveText("## Team rules");
     await expect(area.locator(".ln", { hasText: "## Output" })).not.toHaveClass(/is-rules/);
+    // The band's marker is a 2px left border in the accent.
     const blue = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--blue").trim());
-    const shadow = await area.locator(".ln.is-rules-h").evaluate((el) => getComputedStyle(el).boxShadow);
-    expect(shadow).toContain("inset");
-    expect(shadow.toLowerCase().replace(/\s/g, "")).toContain(hexToRgb(blue).replace(/\s/g, ""));
+    const marker = await area.locator(".ln.is-rules-h").evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return `${cs.borderLeftWidth} ${cs.borderLeftColor}`;
+    });
+    expect(marker).toContain("2px");
+    expect(marker.toLowerCase().replace(/\s/g, "")).toContain(hexToRgb(blue).replace(/\s/g, ""));
     // The mirror and the textarea share their metrics, so the caret lands on the mirrored glyph.
     const metrics = (sel: string) =>
       area.locator(sel).evaluate((el) => {
@@ -119,46 +123,42 @@ test.describe("skills", () => {
     await expect(lines).toHaveCount(TEAM_SKILL.split("\n").length + 1);
   });
 
-  test("every tab is dense: controls at --ctl, no paragraph under a heading", async ({ page }) => {
+  test("every tab is dense: a control-height tab, no paragraph under a heading", async ({ page }) => {
     for (const hash of ["which", "rules", "editors", "repos", "profiles", "depth"]) {
       await page.goto(`/skills#${hash}`);
       await settled(page);
-      await expect(page.locator(".tabpanel:not([hidden]) > p")).toHaveCount(0);
-      const tab = page.getByRole("tab", { selected: true });
-      expect(Math.round((await tab.boundingBox())!.height)).toBe(32);
+      await expect(page.locator('[role="tabpanel"]:not([hidden]) > p')).toHaveCount(0);
+      const tab = page.getByRole("tablist", { name: "Skills" }).getByRole("tab", { selected: true });
+      const h = Math.round((await tab.boundingBox())!.height);
+      expect(h).toBeGreaterThanOrEqual(32);
+      expect(h).toBeLessThanOrEqual(36);
     }
   });
 });
 
 test.describe("insights", () => {
-  test("the nine tiles sit in one row at 1440, charts have no panel border", async ({ page }) => {
+  test("the nine tiles sit in one row at 1440, every chart is a card with one title", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/dashboard");
     await settled(page);
-    const tiles = page.locator(".kpi");
+    const tiles = page.getByTestId("kpi");
     await expect(tiles).toHaveCount(9);
     const tops = await tiles.evaluateAll((els) => els.map((e) => (e as HTMLElement).offsetTop));
     expect(new Set(tops).size, `tile tops ${tops.join(",")}`).toBe(1);
-    // Charts sit on the canvas: a title and the drawing, no border, no panel background.
-    const charts = page.locator(".chartblock");
+    // Charts are Cards: the panel surface, one title each.
+    const charts = page.getByTestId("chart");
     expect(await charts.count()).toBeGreaterThanOrEqual(6);
     for (const c of await charts.all()) {
-      const { border, bg } = await c.evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return { border: cs.borderTopWidth, bg: cs.backgroundColor };
-      });
-      expect(border).toBe("0px");
-      expect(bg).toBe("rgba(0, 0, 0, 0)");
-      await expect(c.locator(".chart-h")).toHaveCount(1);
+      await expect(c).toHaveAttribute("data-slot", "card");
+      await expect(c.locator('[data-slot="card-title"]')).toHaveCount(1);
     }
-    await expect(page.locator(".panel")).toHaveCount(0);
   });
 
   test("the tiles wrap below 900", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 });
     await page.goto("/dashboard");
     await settled(page);
-    const tops = await page.locator(".kpi").evaluateAll((els) => els.map((e) => (e as HTMLElement).offsetTop));
+    const tops = await page.getByTestId("kpi").evaluateAll((els) => els.map((e) => (e as HTMLElement).offsetTop));
     expect(new Set(tops).size).toBeGreaterThan(1);
   });
 });

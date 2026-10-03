@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
+import { ChevronDown, Info, Lightbulb } from "lucide-react";
 import { api, errMessage, type LearningsData, type Me } from "./api";
-import { PageHead } from "./About";
-import { Banner } from "./ui";
-import { Icon } from "./icons";
-import { Status, wordOf, type Tone } from "./ui";
+import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge, wordOf, type Tone } from "./ui";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // The outcome of a decision, in the shared colour vocabulary: kept was posted (green), reworded
 // was posted after a change (amber), dropped is a neutral outcome — noise the reviewer declined,
@@ -12,20 +16,62 @@ import { Status, wordOf, type Tone } from "./ui";
 const OUTCOME_TONE: Record<string, Tone> = { dropped: "graphite", reworded: "amber", kept: "green" };
 const outcomeTone = (label: string): Tone => OUTCOME_TONE[label] ?? "graphite";
 
+const NOTE = "text-xs text-muted-foreground";
+const H2 = "mb-2 mt-6 text-sm font-medium";
+const TH = "h-10 whitespace-nowrap border-0 px-4 text-left font-medium";
+const TD = "border-0 px-4 py-2.5 align-top";
+
+// A stat tile: the same Card the Insights page uses, a number in display type and a label.
+function Tile({ value, label, testId }: { value: number; label: string; testId?: string }) {
+  return (
+    <Card className="min-w-0 gap-1 rounded-lg px-3 py-3" data-testid={testId ?? "stat"}>
+      <div className="truncate font-display text-2xl font-semibold leading-none tracking-tight tabular-nums">
+        {value.toLocaleString("en-US")}
+      </div>
+      <div className={cn(NOTE, "leading-tight")}>{label}</div>
+    </Card>
+  );
+}
+
+function LearningsSkeleton() {
+  return (
+    <div aria-busy="true">
+      <span className="sr-only" role="status">Loading what has been learned</span>
+      <div className="mb-6 grid grid-cols-4 gap-2 max-[599px]:grid-cols-2">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-16 rounded-lg" />
+        ))}
+      </div>
+      <Skeleton className="h-40 rounded-xl" />
+    </div>
+  );
+}
+
 export function Learnings({ me }: { me: Me }) {
   const [d, setD] = useState<LearningsData | null>(null);
   const [err, setErr] = useState("");
+  const [aboutOpen, setAboutOpen] = useState(false);
   useEffect(() => {
     api
       .learnings()
       .then(setD)
       .catch((e: unknown) => setErr(errMessage(e, "Couldn't load what has been learned.")));
   }, []);
+  const title = <>What {me.brand} has learned</>;
   if (err)
     return (
-      <Banner kind="err" data-testid="learnings-error">{err}</Banner>
+      <>
+        <PageHeader title={title} />
+        <Banner kind="err" data-testid="learnings-error">{err}</Banner>
+      </>
     );
-  if (!d) return <div className="muted">Loading…</div>;
+  if (!d)
+    return (
+      <>
+        <PageHeader title={title} />
+        <LearningsSkeleton />
+      </>
+    );
   // How many rows of each outcome a review actually reads back. These are the server's numbers
   // and it states them to the reader — a copy of them here would silently go stale the day
   // rs_learn changed either one, which is exactly how the old "last 40 decisions" got there.
@@ -36,7 +82,7 @@ export function Learnings({ me }: { me: Me }) {
   const multi = d.repos.length > 1;
 
   const about = (
-    <>
+    <div className="[&_p]:mt-0 [&_p:last-child]:mb-0">
       <p>
         Every finding you drop as noise or reword before posting is remembered and weighed on the
         next review, same-repository decisions first, then the team's general preferences. A
@@ -60,140 +106,150 @@ export function Learnings({ me }: { me: Me }) {
         not hard rules: a genuine higher-severity issue is still raised even if it resembles a
         past drop.
       </p>
-    </>
+    </div>
   );
 
   return (
     <>
-      <PageHead title={<>What {me.brand} has learned</>} about={about} aboutTestId="learnings-about" />
-      <div className="stats">
-        <div className="stat">
-          <div className="k">{d.counts.dropped.toLocaleString("en-US")}</div>
-          <div className="l">Dropped as noise</div>
-        </div>
-        <div className="stat">
-          <div className="k">{d.counts.edited.toLocaleString("en-US")}</div>
-          <div className="l">Reworded</div>
-        </div>
-        <div className="stat">
-          <div className="k">{d.counts.kept.toLocaleString("en-US")}</div>
-          <div className="l">Kept as-is</div>
-        </div>
-        <div className="stat">
-          <div className="k">{d.promoted.toLocaleString("en-US")}</div>
-          <div className="l">Promoted to rules</div>
-        </div>
-        {dry > 0 && (
-          <div className="stat" data-testid="dry-count">
-            <div className="k">{dry.toLocaleString("en-US")}</div>
-            <div className="l">Made in dry run</div>
-          </div>
-        )}
+      <PageHeader title={title} help={about} />
+      <div className={cn("grid gap-2 max-[599px]:grid-cols-2", dry > 0 ? "grid-cols-5" : "grid-cols-4")} data-testid="stats">
+        <Tile value={d.counts.dropped} label="Dropped as noise" />
+        <Tile value={d.counts.edited} label="Reworded" />
+        <Tile value={d.counts.kept} label="Kept as-is" />
+        <Tile value={d.promoted} label="Promoted to rules" />
+        {dry > 0 && <Tile value={dry} label="Made in dry run" testId="dry-count" />}
       </div>
       {dry > 0 && (
         <Banner kind="info" icon="flask" data-testid="dry-banner">
-            <b>
-              {dry.toLocaleString("en-US")} of these decisions were made while <code>DRY_RUN=1</code>.
-            </b>{" "}
-            Nothing was posted to GitHub, so they are in none of the keep rates here or on
-            Insights — but {me.brand} still reads them before every review, so they teach the
-            reviewer exactly as a live decision does. They are marked <b>dry run</b> below.
-          </Banner>
+          <b>
+            {dry.toLocaleString("en-US")} of these decisions were made while <code>DRY_RUN=1</code>.
+          </b>{" "}
+          Nothing was posted to GitHub, so they are in none of the keep rates here or on
+          Insights — but {me.brand} still reads them before every review, so they teach the
+          reviewer exactly as a live decision does. They are marked <b>dry run</b> below.
+        </Banner>
       )}
 
       {d.clusters.length > 0 && (
         <>
-          <h2>Hardening into a rule</h2>
-          <div className="list" data-testid="learning-clusters">
+          <h2 className={H2}>Hardening into a rule</h2>
+          <div className="flex flex-col gap-3" data-testid="learning-clusters">
             {d.clusters.map((c) => (
-              <div className="row" key={c.signature}>
-                <div className="rowlink">
-                  <div className="rowtop">
-                    <Status kind={c.status === "promoted" ? "promoted" : c.status === "dismissed" ? "dismissed" : "preference"}>
+              <Card key={c.signature} className="gap-0 py-4">
+                <CardContent className="flex flex-col gap-2 px-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge kind={c.status === "promoted" ? "promoted" : c.status === "dismissed" ? "dismissed" : "preference"}>
                       {c.status === "promoted"
                         ? "Promoted to a rule"
                         : c.status === "dismissed"
-                        ? "Dismissed"
-                        : "Rolling preference"}
-                    </Status>
-                    <Status kind={c.severity} />
-                    <span className="muted sm">
+                          ? "Dismissed"
+                          : "Rolling preference"}
+                    </StatusBadge>
+                    <StatusBadge kind={c.severity} />
+                    <span className={NOTE}>
                       {c.count} {c.outcome === "dropped" ? "drops" : "rewordings"} across {c.prs} PRs
                     </span>
                   </div>
-                  <div className="muted sm" style={{ marginTop: 5 }}>
-                    {c.gist}
-                  </div>
+                  <p className="m-0 text-sm text-muted-foreground">{c.gist}</p>
                   {c.rule && (
-                    <div className="suggrule" style={{ marginTop: 6 }}>
+                    <p className="m-0 border-l-2 border-l-primary pl-3 text-[15px] font-medium leading-relaxed">
                       {c.rule}
-                    </div>
+                    </p>
                   )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </>
       )}
       {d.rows.length === 0 ? (
-        <div className="empty">
-          <Icon name="bulb" />
-          <b>Nothing learned yet</b>
-          Post or drop a few findings and they'll show up here.
-        </div>
+        <Card className="mt-6 py-0">
+          <EmptyState icon={Lightbulb} title="Nothing learned yet">
+            Post or drop a few findings and they'll show up here.
+          </EmptyState>
+        </Card>
       ) : (
         <>
-          <h2>Recent decisions</h2>
-          <div className="list ltable" data-testid="learning-rows">
-            <table>
+          <h2 className={H2}>Recent decisions</h2>
+          <Card className="gap-0 overflow-x-auto py-0" data-testid="learning-rows">
+            <table className="w-full text-sm max-[899px]:min-w-[640px]">
               <thead>
-                <tr>
-                  <th scope="col">Decision</th>
-                  <th scope="col">Finding</th>
-                  {multi && <th scope="col">Repository</th>}
-                  <th scope="col">Path</th>
-                  <th scope="col">Severity</th>
+                <tr className="text-xs text-muted-foreground">
+                  <th scope="col" className={TH}>Decision</th>
+                  <th scope="col" className={TH}>Finding</th>
+                  {multi && <th scope="col" className={TH}>Repository</th>}
+                  <th scope="col" className={TH}>Path</th>
+                  <th scope="col" className={TH}>Severity</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border">
                 {d.rows.map((r, i) => (
                   <tr key={i} data-testid={r.dry ? "dry-row" : undefined}>
-                    <td>
-                      <div className="lcell">
-                        <Status tone={outcomeTone(r.label || r.kind)}>{wordOf(r.label || r.kind)}</Status>
+                    <td className={TD}>
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge tone={outcomeTone(r.label || r.kind)}>{wordOf(r.label || r.kind)}</StatusBadge>
                         {r.dry && (
-                          <Status
+                          <StatusBadge
+                            kind="dry"
                             tone="graphite"
                             data-testid="dry-mark"
                             title="Decided while DRY_RUN=1 — never posted to GitHub, and in no rate. It still teaches the reviewer."
                           >
                             Dry run
-                          </Status>
+                          </StatusBadge>
                         )}
                       </div>
                     </td>
-                    <td className="lgist">
+                    <td className={cn(TD, "min-w-[16rem] max-w-[40ch]")}>
                       {r.gist}
-                      {r.editedGist && <div className="sub">Reworded to: {r.editedGist}</div>}
+                      {r.editedGist && <div className={cn(NOTE, "mt-0.5")}>Reworded to: {r.editedGist}</div>}
                     </td>
                     {multi && (
-                      <td>
-                        <span className="repochip">{r.repo}</span>
+                      <td className={TD}>
+                        <RepoPill repo={r.repo} />
                       </td>
                     )}
-                    <td>
-                      <span className="loc">{r.loc}</span>
+                    <td className={TD}>
+                      <Badge variant="outline" className="max-w-[260px] truncate font-normal" title={r.loc}>
+                        {r.loc}
+                      </Badge>
                     </td>
-                    <td>
-                      <Status kind={r.severity} />
+                    <td className={TD}>
+                      <StatusBadge kind={r.severity} />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
         </>
       )}
+
+      <Collapsible open={aboutOpen} onOpenChange={setAboutOpen} className="mt-4" data-testid="about-log">
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+            <Info aria-hidden="true" />
+            About this log
+            <ChevronDown aria-hidden="true" className={cn("transition-transform", aboutOpen && "rotate-180")} />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="max-w-[72ch] px-2 py-2 text-sm leading-relaxed text-muted-foreground">
+            Before a review, {me.brand} reads back
+            {win ? (
+              <>
+                {" "}the most recent <b className="text-foreground">{win.dropped} drops</b> and{" "}
+                <b className="text-foreground">{win.edited} rewordings</b>
+              </>
+            ) : (
+              " the most recent drops and rewordings"
+            )}{" "}
+            from this log, same-repository decisions first. A complaint that recurs becomes a rolling
+            preference; it fades once it falls out of that window unless someone promotes it to a rule on
+            the Skills page. Decisions made in dry run are read the same way, but counted in no rate.
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </>
   );
 }

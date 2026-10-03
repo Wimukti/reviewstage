@@ -18,7 +18,7 @@ test.describe("suggested rules", () => {
     );
     await expect(s).toContainText("from 4 findings you dropped across 3 PRs");
     // The evidence is real rows, each linking at its PR.
-    await s.getByRole("group").getByText(/show the 4 findings behind it/i).click();
+    await s.getByRole("button", { name: /show the 4 findings behind it/i }).click();
     await expect(s.getByRole("link", { name: "acme/widgets#38849" })).toHaveAttribute(
       "href",
       "https://github.com/acme/widgets/pull/38849",

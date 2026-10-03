@@ -1,4 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  Check,
+  ChevronDown,
+  Circle,
+  CircleCheck,
+  CircleX,
+  Compass,
+  GitBranch,
+  Lightbulb,
+  Loader2,
+  Plus,
+  RotateCcw,
+  Save,
+  Target,
+} from "lucide-react";
 import {
   api,
   ApiError,
@@ -11,10 +26,26 @@ import {
   type Token,
 } from "./api";
 import { MdEditor } from "./MdEditor";
-import { PageHead } from "./About";
-import { Banner, RawBanner, SlowBusy } from "./ui";
-import { Icon } from "./icons";
-import { Status } from "./ui";
+import { Banner, EmptyState, PageHeader, RawBanner, RepoPill, SlowBusy, StatusBadge } from "./ui";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 // Fallback only: every stat the server sends carries its own sample floor, and one definition
 // of "enough data to rate" ships in this product.
@@ -22,10 +53,26 @@ const RATE_FLOOR = 20;
 const floorOf = (s: SkillStat) => s.minSample ?? RATE_FLOOR;
 const ratable = (s: SkillStat) => s.ratable ?? s.total >= floorOf(s);
 
+const H2 = "mb-2 mt-6 text-sm font-medium";
+const ROW = "flex flex-wrap items-center gap-2";
+
+// A small label-above-control stack and a section heading, both plain utilities.
+function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return (
+    <>
+      <h2 className={H2}>{title}</h2>
+      {children}
+    </>
+  );
+}
+
 // The skill editor: a plain <textarea> for a11y and for the tests, laid over a <pre> mirror that
-// draws the line numbers and marks the managed "## Team rules" section. Both share one font,
-// padding and wrap rule (pages.css), so the caret lands exactly on the mirrored glyph.
+// draws the line numbers and marks the managed "## Team rules" section. Both carry the same
+// metrics (CODE), so the caret lands exactly on the mirrored glyph. The only monospace on the
+// page: this is a code surface.
 const RULES_MARKER = "## Team rules";
+const CODE = "m-0 font-mono text-[13px] leading-[1.6] tracking-normal whitespace-pre-wrap [overflow-wrap:anywhere] [tab-size:4]";
+const GUTTER = "3.5rem";
 function CodeArea({
   value,
   onChange,
@@ -49,30 +96,45 @@ function CodeArea({
     }
   }
   return (
-    <div className="codearea" data-testid="code-area">
-      <pre className="codearea-mirror" aria-hidden="true">
+    <Card
+      className="relative gap-0 overflow-hidden rounded-lg bg-background py-0 shadow-none transition-[box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
+      data-testid="code-area"
+      style={{ "--gutter": GUTTER } as React.CSSProperties}
+    >
+      <pre
+        className={cn(CODE, "codearea-mirror min-h-[180px] overflow-visible rounded-none border-0 bg-transparent p-0 py-2.5 text-foreground")}
+        aria-hidden="true"
+      >
         {lines.map((l, i) => {
           const rules = start >= 0 && i >= start && i < end;
           return (
             <div
               key={i}
-              className={"ln" + (rules ? " is-rules" : "") + (i === start ? " is-rules-h" : "")}
+              className={cn(
+                "ln relative min-h-[1.6em] border-l-2 border-l-transparent pl-[var(--gutter)] pr-3",
+                "before:absolute before:left-0 before:top-0 before:w-[calc(var(--gutter)-14px)] before:select-none before:text-right before:text-muted-foreground before:tabular-nums before:content-[attr(data-n)]",
+                rules && "is-rules border-l-primary bg-primary/8",
+                i === start && "is-rules-h text-primary",
+              )}
               data-n={i + 1}
             >
-              {l || "\u200b"}
+              {l || "​"}
             </div>
           );
         })}
       </pre>
       <textarea
-        className="in codearea-in"
+        className={cn(
+          CODE,
+          "fedit absolute inset-0 h-full min-h-0 w-full resize-none overflow-hidden rounded-none border-0 border-l-2 border-l-transparent bg-transparent py-2.5 pl-[var(--gutter)] pr-3 text-transparent caret-foreground outline-none placeholder:text-muted-foreground",
+        )}
         aria-label={label}
         spellCheck={false}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
       />
-    </div>
+    </Card>
   );
 }
 
@@ -87,38 +149,41 @@ function RuleForm({
 }) {
   const [rule, setRule] = useState("");
   const [busy, setBusy] = useState(false);
+  const id = `quick-rule-${target.replace(/[^a-z0-9]/gi, "-")}`;
   return (
-    <div className="rulebox">
-      <div className="rule-lbl">Quick-add a rule</div>
-      <form
-        className="rulerow"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (!rule.trim() || busy) return;
-          setBusy(true);
-          try {
-            const r = await api.skillAction("rule", { ...token, target, from: "skills", rule });
-            setRule("");
-            onDone(r.bannerHtml);
-          } catch (x) {
-            onDone(errBanner(x, "Couldn't add that rule."));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <input
-          className="in"
-          autoComplete="off"
-          placeholder="e.g. Don’t ask for a Jira ticket link in code comments"
-          value={rule}
-          onChange={(e) => setRule(e.target.value)}
-        />
-        <button className="btn secondary" type="submit" disabled={busy}>
-          {busy ? "Adding…" : "Add rule"}
-        </button>
-      </form>
-    </div>
+    <form
+      className="mt-5 flex flex-wrap items-center gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!rule.trim() || busy) return;
+        setBusy(true);
+        try {
+          const r = await api.skillAction("rule", { ...token, target, from: "skills", rule });
+          setRule("");
+          onDone(r.bannerHtml);
+        } catch (x) {
+          onDone(errBanner(x, "Couldn't add that rule."));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <Label htmlFor={id} className="basis-full text-xs text-muted-foreground">
+        Quick-add a rule
+      </Label>
+      <Input
+        id={id}
+        className="min-w-[200px] flex-1"
+        autoComplete="off"
+        placeholder="e.g. Don’t ask for a Jira ticket link in code comments"
+        value={rule}
+        onChange={(e) => setRule(e.target.value)}
+      />
+      <Button variant="secondary" type="submit" disabled={busy}>
+        <Plus aria-hidden="true" />
+        {busy ? "Adding…" : "Add rule"}
+      </Button>
+    </form>
   );
 }
 
@@ -139,6 +204,7 @@ function SkillEditor({
 }) {
   const [text, setText] = useState(value);
   const [confirm, setConfirm] = useState("");
+  const [restoring, setRestoring] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => setText(value), [value]);
   // One wrapper for every write on this card: a rejection becomes a banner, never a dead button.
@@ -175,66 +241,78 @@ function SkillEditor({
             isGlobal
               ? "The shared reviewing approach — edit it right here."
               : isRepo
-              ? `A reviewing approach just for ${repoName} — leave blank to use the team default.`
-              : "Paste your pr-review SKILL.md here — or leave blank to use the team default."
+                ? `A reviewing approach just for ${repoName} — leave blank to use the team default.`
+                : "Paste your pr-review SKILL.md here — or leave blank to use the team default."
           }
         />
-        <div className="inrow" style={{ marginTop: 10 }}>
-          <button className="btn primary" type="submit" disabled={busy}>
+        <div className={cn(ROW, "mt-3")}>
+          <Button type="submit" disabled={busy}>
+            <Save aria-hidden="true" />
             {busy ? "Saving…" : "Save skill"}
-          </button>
+          </Button>
           {!isGlobal && value && (
-            <button
-              className="btn secondary"
+            <Button
+              variant="ghost"
               type="button"
               disabled={busy}
               onClick={() =>
-                act(
-                  () => api.skillAction("reset", { ...token, target, from: "skills" }),
-                  "Couldn't clear it.",
-                )
+                act(() => api.skillAction("reset", { ...token, target, from: "skills" }), "Couldn't clear it.")
               }
             >
               {isRepo ? "Clear override (use team default)" : "Clear (use team default)"}
-            </button>
+            </Button>
+          )}
+          {isGlobal && builtinAvailable !== false && (
+            <Button variant="ghost" type="button" disabled={busy} onClick={() => setRestoring(true)}>
+              <RotateCcw aria-hidden="true" />
+              Restore built-in
+            </Button>
           )}
         </div>
       </form>
       {isGlobal && builtinAvailable !== false && (
-        <details className="restorebox">
-          <summary>Restore built-in skill…</summary>
-          <form
-            className="rulerow"
-            style={{ marginTop: 8 }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              act(async () => {
-                const r = await api.skillAction("restore", {
-                  ...token,
-                  target: "global",
-                  from: "skills",
-                  confirm,
-                });
-                setConfirm("");
-                return r;
-              }, "Couldn't restore the built-in skill.");
-            }}
-          >
-            <input
-              className="in"
-              autoComplete="off"
-              placeholder="Type restore to confirm"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-            />
-            <button className="btn destructive" type="submit" disabled={busy}>
-              {busy ? "Restoring…" : "Restore"}
-            </button>
-          </form>
-          <div className="hint">
-            Discards the team's edits and reverts everyone to the built-in review skill.
-          </div>
-        </details>
+        <Dialog open={restoring} onOpenChange={(o) => { setRestoring(o); if (!o) setConfirm(""); }}>
+          <DialogContent>
+            <form
+              className="contents"
+              onSubmit={(e) => {
+                e.preventDefault();
+                act(async () => {
+                  const r = await api.skillAction("restore", { ...token, target: "global", from: "skills", confirm });
+                  setConfirm("");
+                  setRestoring(false);
+                  return r;
+                }, "Couldn't restore the built-in skill.");
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Restore the built-in skill?</DialogTitle>
+                <DialogDescription>
+                  Discards the team's edits and reverts everyone to the built-in review skill.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="restore-confirm">Type <b>restore</b> to confirm</Label>
+                <Input
+                  id="restore-confirm"
+                  autoComplete="off"
+                  autoFocus
+                  placeholder="restore"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" type="button" onClick={() => setRestoring(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" type="submit" disabled={busy || confirm.trim() !== "restore"}>
+                  {busy ? "Restoring…" : "Restore"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
       <RuleForm token={token} target={target} onDone={onDone} />
     </>
@@ -262,51 +340,42 @@ function DepthEditor({ token, level, d, onDone }: {
     }
   };
   return (
-    <div className="depthed" data-testid="depth-editor">
-      <div className="depthmeta">
-        <b>{d.name}</b>
-        <span className="muted">{d.meta}</span>
-        <Status kind={d.edited ? "edited" : "archived"}>{d.edited ? "Edited" : "Default"}</Status>
+    <div data-testid="depth-editor">
+      <div className={cn(ROW, "mb-3 min-h-9")}>
+        <span className="text-sm font-medium">{d.name}</span>
+        <span className="text-xs text-muted-foreground">{d.meta}</span>
+        <StatusBadge kind={d.edited ? "edited" : "archived"}>{d.edited ? "Edited" : "Default"}</StatusBadge>
       </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           act(
-            () =>
-              api.skillAction("save", {
-                ...token,
-                target: `effort_${level}`,
-                from: "skills",
-                skill: text,
-              }),
+            () => api.skillAction("save", { ...token, target: `effort_${level}`, from: "skills", skill: text }),
             "Couldn't save that depth.",
           );
         }}
       >
         <CodeArea label={`${d.name} depth instructions`} value={text} onChange={setText} />
-        <div className="inrow" style={{ marginTop: 10 }}>
-          <button className="btn primary" type="submit" disabled={busy}>
+        <div className={cn(ROW, "mt-3")}>
+          <Button type="submit" disabled={busy}>
+            <Save aria-hidden="true" />
             {busy ? "Saving…" : "Save depth"}
-          </button>
+          </Button>
           {d.edited && (
-            <button
-              className="btn secondary"
+            <Button
+              variant="ghost"
               type="button"
               disabled={busy}
               onClick={() =>
                 act(
-                  () =>
-                    api.skillAction("reset", {
-                      ...token,
-                      target: `effort_${level}`,
-                      from: "skills",
-                    }),
+                  () => api.skillAction("reset", { ...token, target: `effort_${level}`, from: "skills" }),
                   "Couldn't reset that depth.",
                 )
               }
             >
+              <RotateCcw aria-hidden="true" />
               Reset to default
-            </button>
+            </Button>
           )}
         </div>
       </form>
@@ -314,6 +383,36 @@ function DepthEditor({ token, level, d, onDone }: {
   );
 }
 
+// A row of small disclosure: a ghost button with a chevron that turns, and the content under it.
+function Disclosure({
+  label,
+  children,
+  testId,
+  className,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  testId?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} data-testid={testId} className={className}>
+      <CollapsibleTrigger asChild>
+        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+          <ChevronDown aria-hidden="true" className={cn("transition-transform", open && "rotate-180")} />
+          {label}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+const fmtWhen = (ts: number) =>
+  new Date(ts * 1000).toLocaleString("en-US", {
+    month: "2-digit", day: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
 
 // One repository's profile: the critical paths, risk paths and rules every Standard/Deep review
 // of it is told to walk. Built by bin/profile-repo.sh (one Sonnet call), editable here as
@@ -323,6 +422,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
   const [md, setMd] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [open, setOpen] = useState(false);
   // An earlier version being read, or null for the live profile. Reading one does not change
   // anything; Restore is a separate, explicit click.
   const [viewing, setViewing] = useState<ProfileData | null>(null);
@@ -352,21 +452,35 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
     return () => clearInterval(t);
   }, [d?.state, load]);
 
+  const head = (badges: ReactNode, body: ReactNode) => (
+    <Card className="gap-0 py-0" data-testid="repo-profile">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex min-h-[52px] w-full flex-wrap items-center gap-2 rounded-xl px-4 py-2.5 text-left outline-none hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            data-testid="profile-toggle"
+          >
+            <span className={ROW} data-testid="profile-head">
+              <RepoPill repo={repo} />
+              {badges}
+            </span>
+            <ChevronDown aria-hidden="true" className={cn("ml-auto size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="border-t px-4 pb-4 pt-3 text-sm">{body}</CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+
   if (!d) {
-    return (
-      <details className="skilled" data-testid="repo-profile">
-        <summary>
-          Profile for <code>{repo}</code>{" "}
-          {err ? <Status tone="red">Unavailable</Status> : <Status tone="graphite">Loading</Status>}
-        </summary>
-        {err && (
-          <div className="dbody">
-            <div className="proferr" role="alert" data-testid="profile-error">
-              <div className="proferr-text">{err}</div>
-            </div>
-          </div>
-        )}
-      </details>
+    return head(
+      err ? <StatusBadge tone="red">Unavailable</StatusBadge> : <StatusBadge tone="graphite" live>Loading</StatusBadge>,
+      err ? (
+        <Banner kind="err" role="alert" data-testid="profile-error">{err}</Banner>
+      ) : (
+        <Skeleton className="h-4 w-2/3" />
+      ),
     );
   }
 
@@ -396,13 +510,13 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
   };
   const tag =
     d.state === "running" ? (
-      <Status tone="amber" live>Profiling</Status>
+      <StatusBadge tone="amber" live>Profiling</StatusBadge>
     ) : d.state === "done" ? (
-      <Status tone="green">Profiled</Status>
+      <StatusBadge tone="green">Profiled</StatusBadge>
     ) : d.state === "failed" ? (
-      <Status tone="red">Failed</Status>
+      <StatusBadge tone="red">Failed</StatusBadge>
     ) : (
-      <Status tone="graphite">Never run</Status>
+      <StatusBadge tone="graphite" icon={Circle}>Never run</StatusBadge>
     );
   const usage = d.last?.usage;
   const c = d.counts;
@@ -417,304 +531,282 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
   const drifted = !!st?.stale;
   const capped = meta?.capped_critical_paths ?? 0;
   const degraded = meta?.degraded ?? [];
+  const hint = "text-xs text-muted-foreground";
 
-  return (
-    <details className="skilled" data-testid="repo-profile">
-      <summary>
-        Profile for <code>{repo}</code> {tag}
-        {drifted && (
-          <Status kind="stale" data-testid="profile-stale">Stale</Status>
-        )}
-        {d.invalid && (
-          <Status tone="red">Unreadable</Status>
-        )}
-      </summary>
-      <div className="dbody">
-        {d.invalid && (
-          <div className="proferr" role="alert" data-testid="profile-invalid">
-            <div className="proferr-text">
-              <b>This repository's profile.json could not be read, so no review is using it:</b>{" "}
-              {d.invalid}. Fix the file on the box, or re-profile to replace it.
-            </div>
-          </div>
-        )}
-        {drifted && st && (
-          <Banner kind="warn" data-testid="profile-stale-note">
-              <b>This profile is out of date with the checkout.</b>{" "}
-              {st.head !== st.currentHead && (
-                <>
-                  Built against <code>{st.head}</code>; the clone is now at{" "}
-                  <code>{st.currentHead}</code>
-                  {st.commitsBehind ? `, ${st.commitsBehind.toLocaleString("en-US")} commit(s) later` : ""}.{" "}
-                </>
-              )}
-              {st.unmatchedPaths > 0 && (
-                <>
-                  {st.unmatchedPaths.toLocaleString("en-US")} of{" "}
-                  {st.criticalPaths.toLocaleString("en-US")} critical path(s) no longer match
-                  anything in the tree — those are dead weight in every review of this repo until
-                  it is re-profiled or edited.
-                </>
-              )}
-            </Banner>
-        )}
-        {unchecked && (
-          <Banner kind="warn" data-testid="profile-unvalidated">
-              <b>These paths were never checked against the repository.</b> The profile was saved
-              with no clone of <code>{repo}</code> on this box, so nothing confirmed the globs
-              match real files — and reviews are handed it as fact.
-              {meta?.validated_note ? <> ({meta.validated_note})</> : null}
-            </Banner>
-        )}
-        {degraded.length > 0 && (
-          <div className="hint" data-testid="profile-degraded">
-            Some signals were not gathered when this was built, so it was written from less than
-            the full picture: {degraded.join("; ")}.
-          </div>
-        )}
-        {capped > 0 && (
-          <div className="hint" data-testid="profile-capped">
-            {capped.toLocaleString("en-US")} further critical path(s) were over the cap and were
-            not stored.
-          </div>
-        )}
-        {d.state === "running" && d.running ? (
-          <div className="profstat" data-testid="profile-status">
-            <span className="dot run" />
-            <span>
-              {d.running.queued
-                ? "Queued — waiting for another job to finish"
-                : `${d.running.phases[d.running.cur]} (${d.running.cur + 1}/${d.running.phases.length})`}
-            </span>
-            <button
-              className="btn secondary"
-              type="button"
-              disabled={busy}
-              onClick={() => act(() => api.profileStop(repo, d.token))}
-            >
-              Stop
-            </button>
-          </div>
-        ) : d.state === "done" && d.last ? (
-          <div className="profstat" data-testid="profile-status">
-            <span className="dot ok" />
-            <span>
-              Last run {d.last.when}
-              {d.last.model ? ` · ${d.last.model}` : ""}
-              {usage ? ` · ${usage.tokens.toLocaleString("en-US")} tokens` : ""}
-              {d.last.runner && d.last.runner !== "shared" ? ` · on ${d.last.runner}'s account` : ""}
-              {d.last.editedBy ? ` · edited by ${d.last.editedBy}` : ""}
-            </span>
-          </div>
-        ) : d.state === "failed" ? (
-          <div className="profstat" data-testid="profile-status">
-            <span className="dot bad" />
-            <span>The last run failed.</span>
-          </div>
-        ) : (
-          <div className="profstat" data-testid="profile-status">
-            <span className="dot" />
-            <span>{d.stopped ? "Stopped before it finished." : "Never run."}</span>
-          </div>
-        )}
+  const status = (
+    <div className={cn(ROW, "mb-3 text-sm text-muted-foreground")} data-testid="profile-status">
+      {d.state === "running" && d.running ? (
+        <>
+          <Loader2 aria-hidden="true" className="size-4 animate-spin text-amber motion-reduce:animate-none" />
+          <span>
+            {d.running.queued
+              ? "Queued — waiting for another job to finish"
+              : `${d.running.phases[d.running.cur]} (${d.running.cur + 1}/${d.running.phases.length})`}
+          </span>
+          <Button variant="secondary" size="sm" type="button" disabled={busy} onClick={() => act(() => api.profileStop(repo, d.token))}>
+            Stop
+          </Button>
+        </>
+      ) : d.state === "done" && d.last ? (
+        <>
+          <CircleCheck aria-hidden="true" className="size-4 text-green" />
+          <span>
+            Last run {d.last.when}
+            {d.last.model ? ` · ${d.last.model}` : ""}
+            {usage ? ` · ${usage.tokens.toLocaleString("en-US")} tokens` : ""}
+            {d.last.runner && d.last.runner !== "shared" ? ` · on ${d.last.runner}'s account` : ""}
+            {d.last.editedBy ? ` · edited by ${d.last.editedBy}` : ""}
+          </span>
+        </>
+      ) : d.state === "failed" ? (
+        <>
+          <CircleX aria-hidden="true" className="size-4 text-red" />
+          <span>The last run failed.</span>
+        </>
+      ) : (
+        <>
+          <Circle aria-hidden="true" className="size-4" />
+          <span>{d.stopped ? "Stopped before it finished." : "Never run."}</span>
+        </>
+      )}
+    </div>
+  );
 
-        {d.failed && d.state !== "running" && (
-          <div className="proferr" role="alert" data-testid="profile-error">
-            <div className="proferr-text">{d.failed}</div>
-            {d.logTail && d.logTail.length > 0 && (
-              <details className="proferr-log" data-testid="profile-log">
-                <summary>Last {d.logTail.length} lines of the log</summary>
-                <pre>{d.logTail.join("\n")}</pre>
-              </details>
-            )}
-          </div>
-        )}
-
-        {c && (
-          <div className="profcounts" data-testid="profile-counts">
-            {c.critical} critical paths · {c.risk} risk paths · {c.rules} review rules ·{" "}
-            {c.doNotFlag} do-not-flag
-            {d.sections?.summary === 0 ? " · no summary" : ""}
-          </div>
-        )}
-        {d.unknownHeadings && d.unknownHeadings.length > 0 && (
-          <div className="proferr" role="alert" data-testid="profile-unknown-headings">
-            <div className="proferr-text">
-              <b>Heading(s) the parser did not recognise, so nothing under them was saved:</b>{" "}
-              {d.unknownHeadings.join(", ")}.
-            </div>
-          </div>
-        )}
-        {d.versions.length > 0 && (
-          <details className="profvers" data-testid="profile-versions">
-            <summary>
-              {d.versions.length} earlier version{d.versions.length === 1 ? "" : "s"}
-            </summary>
-            <div className="dbody">
-              <ul className="verlist">
-                {d.versions.map((ts) => (
-                  <li key={ts}>
-                    <span className="verwhen">
-                      {new Date(ts * 1000).toLocaleString("en-US", {
-                        month: "2-digit", day: "2-digit", year: "2-digit",
-                        hour: "2-digit", minute: "2-digit",
-                      })}
-                    </span>
-                    <button
-                      type="button"
-                      className="linkbtn"
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          setViewing(await api.profileVersion(repo, ts));
-                        } catch (e) {
-                          onBanner(errBanner(e, "Couldn't read that version."));
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    >
-                      View
-                    </button>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      data-testid="profile-restore"
-                      disabled={busy || running}
-                      onClick={() => {
-                        setViewing(null);
-                        act(() => api.restoreProfile(repo, d.token, ts));
-                      }}
-                    >
-                      Restore
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {viewing?.json && (
-                <div className="verview" data-testid="profile-version-view">
-                  <div className="rule-lbl">
-                    Version from{" "}
-                    {new Date((viewing.ts ?? 0) * 1000).toLocaleString("en-US")} — read only
-                  </div>
-                  <pre>{viewing.md}</pre>
-                  <button type="button" className="linkbtn" onClick={() => setViewing(null)}>
-                    Close
-                  </button>
-                </div>
-              )}
-            </div>
-          </details>
-        )}
-
-        <div className="inrow">
-          <button
-            className={"btn " + (d.state === "done" ? "secondary" : "primary")}
-            type="button"
-            data-testid="profile-run"
-            disabled={busy || running || !d.connected}
-            aria-busy={running || undefined}
-            title={d.connected ? "" : "Connect your Claude account in Integrations first"}
-            onClick={() => act(() => api.profileRun(repo, d.token))}
-          >
-            <SlowBusy busy={running} />
-            {running
-              ? `Profiling… (${d.running?.text || "starting"})`
-              : d.state === "failed" || d.failed
-                ? "Retry"
-                : d.state === "done"
-                  ? "Re-profile this repo"
-                  : "Profile this repo"}
-          </button>
-          {!d.connected && (
-            <span className="hint" style={{ margin: 0 }}>
-              Runs on your Claude account — connect it in Integrations first.
-            </span>
+  return head(
+    <>
+      {tag}
+      {drifted && <StatusBadge kind="stale" data-testid="profile-stale">Stale</StatusBadge>}
+      {d.invalid && <StatusBadge tone="red">Unreadable</StatusBadge>}
+    </>,
+    <>
+      {d.invalid && (
+        <Banner kind="err" role="alert" data-testid="profile-invalid">
+          <b>This repository's profile.json could not be read, so no review is using it:</b>{" "}
+          {d.invalid}. Fix the file on the box, or re-profile to replace it.
+        </Banner>
+      )}
+      {drifted && st && (
+        <Banner kind="warn" data-testid="profile-stale-note">
+          <b>This profile is out of date with the checkout.</b>{" "}
+          {st.head !== st.currentHead && (
+            <>
+              Built against <code>{st.head}</code>; the clone is now at <code>{st.currentHead}</code>
+              {st.commitsBehind ? `, ${st.commitsBehind.toLocaleString("en-US")} commit(s) later` : ""}.{" "}
+            </>
           )}
+          {st.unmatchedPaths > 0 && (
+            <>
+              {st.unmatchedPaths.toLocaleString("en-US")} of {st.criticalPaths.toLocaleString("en-US")} critical
+              path(s) no longer match anything in the tree — those are dead weight in every review of this repo
+              until it is re-profiled or edited.
+            </>
+          )}
+        </Banner>
+      )}
+      {unchecked && (
+        <Banner kind="warn" data-testid="profile-unvalidated">
+          <b>These paths were never checked against the repository.</b> The profile was saved with no clone of{" "}
+          <code>{repo}</code> on this box, so nothing confirmed the globs match real files — and reviews are
+          handed it as fact.
+          {meta?.validated_note ? <> ({meta.validated_note})</> : null}
+        </Banner>
+      )}
+      {degraded.length > 0 && (
+        <p className={cn(hint, "my-2")} data-testid="profile-degraded">
+          Some signals were not gathered when this was built, so it was written from less than the full picture:{" "}
+          {degraded.join("; ")}.
+        </p>
+      )}
+      {capped > 0 && (
+        <p className={cn(hint, "my-2")} data-testid="profile-capped">
+          {capped.toLocaleString("en-US")} further critical path(s) were over the cap and were not stored.
+        </p>
+      )}
+      {status}
+
+      {d.failed && d.state !== "running" && (
+        <Banner kind="err" role="alert" data-testid="profile-error">
+          <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{d.failed}</div>
+          {d.logTail && d.logTail.length > 0 && (
+            <Disclosure label={`Last ${d.logTail.length} lines of the log`} testId="profile-log" className="mt-1">
+              <pre className="mt-1 max-h-[260px] overflow-auto whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">
+                {d.logTail.join("\n")}
+              </pre>
+            </Disclosure>
+          )}
+        </Banner>
+      )}
+
+      {c && (
+        <div className={cn(hint, "mb-3 tabular-nums")} data-testid="profile-counts">
+          {c.critical} critical paths · {c.risk} risk paths · {c.rules} review rules · {c.doNotFlag} do-not-flag
+          {d.sections?.summary === 0 ? " · no summary" : ""}
         </div>
-        {d.last && d.last.dropped.length > 0 && (
-          <div className="profdrop">
-            Dropped as not in the tree:{" "}
-            {d.last.dropped.map((g) => (
-              <code key={g} style={{ marginRight: 6 }}>
-                {g}
-              </code>
+      )}
+      {d.unknownHeadings && d.unknownHeadings.length > 0 && (
+        <Banner kind="err" role="alert" data-testid="profile-unknown-headings">
+          <b>Heading(s) the parser did not recognise, so nothing under them was saved:</b>{" "}
+          {d.unknownHeadings.join(", ")}.
+        </Banner>
+      )}
+      {d.versions.length > 0 && (
+        <Disclosure
+          label={`${d.versions.length} earlier version${d.versions.length === 1 ? "" : "s"}`}
+          testId="profile-versions"
+          className="mb-3"
+        >
+          <ul className="m-0 mt-1 flex list-none flex-col gap-1.5 p-0">
+            {d.versions.map((ts) => (
+              <li key={ts} className={ROW}>
+                <span className="min-w-[11rem] text-xs text-muted-foreground tabular-nums">{fmtWhen(ts)}</span>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      setViewing(await api.profileVersion(repo, ts));
+                    } catch (e) {
+                      onBanner(errBanner(e, "Couldn't read that version."));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  View
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid="profile-restore"
+                  disabled={busy || running}
+                  onClick={() => {
+                    setViewing(null);
+                    act(() => api.restoreProfile(repo, d.token, ts));
+                  }}
+                >
+                  Restore
+                </Button>
+              </li>
             ))}
-          </div>
-        )}
+          </ul>
+          {viewing?.json && (
+            <div className="mt-3" data-testid="profile-version-view">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                Version from {new Date((viewing.ts ?? 0) * 1000).toLocaleString("en-US")} — read only
+              </div>
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs">{viewing.md}</pre>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setViewing(null)}>
+                Close
+              </Button>
+            </div>
+          )}
+        </Disclosure>
+      )}
 
-        {d.state === "done" && (
-          <form
-            style={{ marginTop: 14 }}
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (busy) return;
-              setBusy(true);
-              try {
-                const r = await api.saveProfile(repo, d.token, md, confirmEmpty);
-                setD(r);
-                setMd(r.md);
-                setConfirmEmpty(false);
-                if (r.bannerHtml) onBanner(r.bannerHtml);
-              } catch (x) {
-                if (x instanceof ApiError && x.data.needsConfirm) setConfirmEmpty(true);
-                onBanner(errBanner(x, "Couldn't save the profile."));
-              } finally {
-                setBusy(false);
-              }
+      <div className={ROW}>
+        <Button
+          variant={d.state === "done" ? "secondary" : "default"}
+          type="button"
+          data-testid="profile-run"
+          disabled={busy || running || !d.connected}
+          aria-busy={running || undefined}
+          title={d.connected ? "" : "Connect your Claude account in Integrations first"}
+          onClick={() => act(() => api.profileRun(repo, d.token))}
+        >
+          <SlowBusy busy={running} />
+          {running
+            ? `Profiling… (${d.running?.text || "starting"})`
+            : d.state === "failed" || d.failed
+              ? "Retry"
+              : d.state === "done"
+                ? "Re-profile this repo"
+                : "Profile this repo"}
+        </Button>
+        {!d.connected && <span className={hint}>Runs on your Claude account — connect it in Integrations first.</span>}
+      </div>
+      {d.last && d.last.dropped.length > 0 && (
+        <div className={cn(hint, "mt-2 flex flex-wrap items-center gap-1.5")}>
+          Dropped as not in the tree:
+          {d.last.dropped.map((g) => (
+            <code key={g}>{g}</code>
+          ))}
+        </div>
+      )}
+
+      {d.state === "done" && (
+        <form
+          className="mt-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (busy) return;
+            setBusy(true);
+            try {
+              const r = await api.saveProfile(repo, d.token, md, confirmEmpty);
+              setD(r);
+              setMd(r.md);
+              setConfirmEmpty(false);
+              if (r.bannerHtml) onBanner(r.bannerHtml);
+            } catch (x) {
+              if (x instanceof ApiError && x.data.needsConfirm) setConfirmEmpty(true);
+              onBanner(errBanner(x, "Couldn't save the profile."));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <MdEditor
+            value={md}
+            onChange={(v) => {
+              setConfirmEmpty(false);
+              setMd(v);
             }}
-          >
-            <MdEditor
-              value={md}
-              onChange={(v) => {
-                setConfirmEmpty(false);
-                setMd(v);
-              }}
-            />
-            <div className="hint">
-              Edit the markdown and save — it is parsed back into the profile reviews read. The
-              previous version is kept.{" "}
-              {d.canValidate === false ? (
-                <b data-testid="profile-cannot-validate">
-                  There is no clone of this repository on the box, so your paths will be saved
-                  without being checked against the tree.
-                </b>
-              ) : (
-                "Paths that match nothing in the tree are dropped."
-              )}
-            </div>
-            <div className="inrow" style={{ marginTop: 10 }}>
-              <button
-                className={"btn " + (confirmEmpty ? "destructive" : "primary")}
-                type="submit"
-                disabled={busy || md === d.md}
-              >
-                {confirmEmpty ? "Save anyway — a section will be emptied" : "Save profile"}
-              </button>
-            </div>
-          </form>
-        )}
-
-        <label className="profauto">
-          <input
-            type="checkbox"
-            checked={d.autoProfile}
-            disabled={busy || !d.isAdmin}
-            onChange={(e) => act(() => api.setAutoProfile(repo, d.token, e.target.checked))}
           />
+          <p className={cn(hint, "mt-2")}>
+            Edit the markdown and save — it is parsed back into the profile reviews read. The previous version is
+            kept.{" "}
+            {d.canValidate === false ? (
+              <b data-testid="profile-cannot-validate">
+                There is no clone of this repository on the box, so your paths will be saved without being
+                checked against the tree.
+              </b>
+            ) : (
+              "Paths that match nothing in the tree are dropped."
+            )}
+          </p>
+          <div className={cn(ROW, "mt-3")}>
+            <Button variant={confirmEmpty ? "destructive" : "default"} type="submit" disabled={busy || md === d.md}>
+              <Save aria-hidden="true" />
+              {confirmEmpty ? "Save anyway — a section will be emptied" : "Save profile"}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      <div className="mt-4 flex items-start gap-2.5">
+        <Checkbox
+          id={`auto-${repo}`}
+          className="mt-0.5"
+          checked={d.autoProfile}
+          disabled={busy || !d.isAdmin}
+          onCheckedChange={(v) => act(() => api.setAutoProfile(repo, d.token, v === true))}
+        />
+        <Label htmlFor={`auto-${repo}`} className="flex-col items-start gap-0.5 font-normal leading-snug">
           <span>
             Re-profile automatically when the file tree changes materially
-            {!d.isAdmin && <span className="muted"> (admin only)</span>}
-            <br />
-            <span className="muted sm">
-              Checked at most once a day by the poller; runs on the admin's Claude account and skips when
-              it isn't connected.
-            </span>
+            {!d.isAdmin && <span className="text-muted-foreground"> (admin only)</span>}
           </span>
-        </label>
+          <span className={hint}>
+            Checked at most once a day by the poller; runs on the admin's Claude account and skips when it isn't
+            connected.
+          </span>
+        </Label>
       </div>
-    </details>
+    </>,
   );
 }
 
@@ -731,6 +823,7 @@ function Suggestion({
   onDone: (d: SkillsData, banner: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [evidence, setEvidence] = useState(false);
   // The drafted sentence goes into the team's shared skill, so it has to be editable first —
   // accept-verbatim-or-dismiss is the wrong shape for a human-gated product. The server already
   // prefers a `rule` in the body over its own draft.
@@ -740,12 +833,7 @@ function Suggestion({
   const act = async (action: "accept" | "dismiss" | "undismiss" | "draft") => {
     setBusy(true);
     try {
-      const r = await api.skillSuggestion(
-        token,
-        s.signature,
-        action,
-        action === "accept" ? draft.trim() : undefined,
-      );
+      const r = await api.skillSuggestion(token, s.signature, action, action === "accept" ? draft.trim() : undefined);
       onDone(r, r.bannerHtml);
     } catch (e) {
       onDone(
@@ -757,125 +845,128 @@ function Suggestion({
     }
   };
   const verb = s.outcome === "dropped" ? "you dropped" : "you reworded";
-  const evidence = `from ${s.count} finding${s.count === 1 ? "" : "s"} ${verb} across ${s.prs} PR${
-    s.prs === 1 ? "" : "s"
-  }`;
+  const from = `from ${s.count} finding${s.count === 1 ? "" : "s"} ${verb} across ${s.prs} PR${s.prs === 1 ? "" : "s"}`;
+  const drafting = busy || !!s.drafting;
 
   return (
-    <div className="row" data-testid="rule-suggestion">
-      <div className="rowlink">
-        <div className="rowtop">
-          <Status tone="blue">Suggested rule</Status>
-          <Status kind={s.severity} />
-          {s.repos.length === 1 && <span className="repochip">{s.repos[0]}</span>}
-          <span className="muted sm">{evidence}</span>
+    <Card className="gap-0 py-4" data-testid="rule-suggestion">
+      <CardContent className="flex flex-col gap-3 px-4">
+        <div className={ROW}>
+          <StatusBadge tone="blue" icon={Lightbulb}>Suggested rule</StatusBadge>
+          <StatusBadge kind={s.severity} />
+          {s.repos.length === 1 && <RepoPill repo={s.repos[0]} />}
+          <span className="text-xs text-muted-foreground">{from}</span>
         </div>
         {s.rule ? (
           s.dismissed ? (
-            <div className="suggrule" data-testid="rule-sentence">
+            <p className="m-0 text-[15px] font-medium leading-relaxed" data-testid="rule-sentence">
               {s.rule}
-            </div>
+            </p>
           ) : (
-            <div className="suggedit">
-              <label className="rule-lbl" htmlFor={`rule-${s.signature}`}>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`rule-${s.signature}`} className="text-xs text-muted-foreground">
                 The rule that will be added — edit it before you accept
-              </label>
-              <textarea
+              </Label>
+              <Textarea
                 id={`rule-${s.signature}`}
-                className="in suggrule-in"
                 data-testid="rule-sentence"
                 rows={2}
                 spellCheck={false}
+                className="min-h-0 text-[15px] font-medium leading-relaxed md:text-[15px]"
                 value={draft}
                 disabled={busy}
                 onChange={(e) => setDraft(e.target.value)}
               />
-              {edited && (
-                <div className="hint" style={{ margin: "4px 0 0" }}>
-                  Your wording will be added, not the draft.
-                </div>
-              )}
+              {edited && <p className="m-0 text-xs text-muted-foreground">Your wording will be added, not the draft.</p>}
             </div>
           )
         ) : (
-          <div className="muted sm" style={{ marginTop: 6 }} data-testid="rule-pending">
+          <div className="text-sm text-muted-foreground" data-testid="rule-pending">
             The complaint: <i>{s.gist}</i>
-            <div style={{ marginTop: 8 }}>
+            {drafting ? (
+              <div className="mt-3 flex flex-col gap-2" aria-busy="true">
+                <Skeleton className="h-4 w-11/12" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+            ) : null}
+            <div className={cn(ROW, "mt-3")}>
               {/* Drafting spends the acting user's Claude quota, so it happens on a click and
                   never on a page load — this page used to burn two model calls per render. */}
               {s.connected ? (
-                <button
-                  className="btn secondary"
-                  type="button"
-                  data-testid="rule-draft"
-                  disabled={busy || s.drafting}
-                  aria-busy={busy || s.drafting || undefined}
-                  onClick={() => act("draft")}
-                >
-                  {busy || s.drafting ? "Drafting…" : "Draft a rule"}
-                </button>
+                <>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    data-testid="rule-draft"
+                    disabled={drafting}
+                    aria-busy={drafting || undefined}
+                    onClick={() => act("draft")}
+                  >
+                    {drafting ? <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <Lightbulb aria-hidden="true" />}
+                    {drafting ? "Drafting…" : "Draft a rule"}
+                  </Button>
+                  <span className="text-xs">One Haiku call on your own Claude account.</span>
+                </>
               ) : (
                 "Connect your Claude account in Integrations to draft a rule from this."
               )}
-              {s.connected && (
-                <span className="hint" style={{ margin: "0 0 0 8px" }}>
-                  One Haiku call on your own Claude account.
-                </span>
-              )}
             </div>
             {s.draftError && (
-              <div className="ferr" style={{ marginTop: 8 }} data-testid="rule-draft-error">
+              <p className="m-0 mt-2 text-sm text-destructive" role="alert" data-testid="rule-draft-error">
                 The last attempt to draft this failed: {s.draftError}
-              </div>
+              </p>
             )}
           </div>
         )}
-        {s.rationale && (
-          <div className="muted sm" style={{ marginTop: 4 }}>
-            {s.rationale}
-          </div>
-        )}
-        <details className="suggev">
-          <summary>Show the {s.count} findings behind it</summary>
-          <ul>
-            {s.findings.map((f, i) => (
-              <li key={i}>
-                <a href={`https://github.com/${f.repo}/pull/${f.pr}`} target="_blank" rel="noreferrer">
-                  {f.repo}#{f.pr}
-                </a>{" "}
-                <span className="loc">
-                  {f.path}
-                  {f.line ? `:${f.line}` : ""}
-                </span>{" "}
-                — {f.gist}
-              </li>
-            ))}
-          </ul>
-        </details>
-        <div className="inrow" style={{ marginTop: 10 }}>
+        {s.rationale && <p className="m-0 text-xs text-muted-foreground">{s.rationale}</p>}
+        <Collapsible open={evidence} onOpenChange={setEvidence}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+              <ChevronDown aria-hidden="true" className={cn("transition-transform", evidence && "rotate-180")} />
+              {evidence ? "Hide" : "Show"} the {s.count} findings behind it
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="m-0 mt-1 flex list-none flex-col gap-1.5 p-0 text-sm text-muted-foreground">
+              {s.findings.map((f, i) => (
+                <li key={i} className="flex flex-wrap items-baseline gap-x-1.5">
+                  <a href={`https://github.com/${f.repo}/pull/${f.pr}`} target="_blank" rel="noreferrer">
+                    {f.repo}#{f.pr}
+                  </a>
+                  <Badge variant="outline" className="max-w-[260px] truncate font-normal">
+                    {f.path}
+                    {f.line ? `:${f.line}` : ""}
+                  </Badge>
+                  <span>— {f.gist}</span>
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+        <div className={ROW}>
           {s.dismissed ? (
-            <button className="btn secondary" type="button" disabled={busy} onClick={() => act("undismiss")}>
+            <Button variant="secondary" type="button" disabled={busy} onClick={() => act("undismiss")}>
               Undo dismiss
-            </button>
+            </Button>
           ) : (
             <>
-              <button
-                className="btn primary"
+              <Button
                 type="button"
                 disabled={busy || !draft.trim()}
                 title={draft.trim() ? "" : "Write the rule first, or dismiss this suggestion"}
                 onClick={() => act("accept")}
               >
+                <Check aria-hidden="true" />
                 Accept — add to {s.targetLabel}
-              </button>
-              <button className="btn quiet" type="button" disabled={busy} onClick={() => act("dismiss")}>
+              </Button>
+              <Button variant="ghost" type="button" disabled={busy} onClick={() => act("dismiss")}>
                 Dismiss
-              </button>
+              </Button>
             </>
           )}
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -891,36 +982,28 @@ function SuggestedRules({
   const dismissed = d.suggestions.filter((s) => s.dismissed);
 
   return (
-    <div data-testid="suggested-rules">
-      {live.length > 0 && (
-        <div className="list" style={{ marginTop: 0 }}>
-          {live.map((s) => (
-            <Suggestion key={s.signature} s={s} token={d.token} onDone={onDone} />
-          ))}
-        </div>
-      )}
+    <div data-testid="suggested-rules" className="flex flex-col gap-3">
+      {live.map((s) => (
+        <Suggestion key={s.signature} s={s} token={d.token} onDone={onDone} />
+      ))}
       {live.length === 0 && (
-        <div className="empty" data-testid="rules-empty">
-          <Icon name="bulb" />
-          <b>{dismissed.length > 0 ? "Nothing pending" : "No suggestions yet"}</b>
-          {dismissed.length > 0
-            ? "Every suggestion has been accepted or dismissed."
-            : `Drop the same kind of finding ${d.suggestMin} times across different PRs and a rule is drafted here.`}
-        </div>
+        <Card className="py-0">
+          <EmptyState icon={Lightbulb} title={dismissed.length > 0 ? "Nothing pending" : "No suggestions yet"} data-testid="rules-empty">
+            {dismissed.length > 0
+              ? "Every suggestion has been accepted or dismissed."
+              : `Drop the same kind of finding ${d.suggestMin} times across different PRs and a rule is drafted here.`}
+          </EmptyState>
+        </Card>
       )}
       {dismissed.length > 0 && (
         <>
-          <button
-            className="btn secondary"
-            type="button"
-            style={{ marginTop: 10 }}
-            data-testid="show-dismissed"
-            onClick={() => setShowDismissed((v) => !v)}
-          >
-            {showDismissed ? "Hide dismissed" : `Show dismissed (${dismissed.length})`}
-          </button>
+          <div>
+            <Button variant="secondary" type="button" data-testid="show-dismissed" onClick={() => setShowDismissed((v) => !v)}>
+              {showDismissed ? "Hide dismissed" : `Show dismissed (${dismissed.length})`}
+            </Button>
+          </div>
           {showDismissed && (
-            <div className="list" style={{ marginTop: 10 }} data-testid="dismissed-list">
+            <div className="flex flex-col gap-3" data-testid="dismissed-list">
               {dismissed.map((s) => (
                 <Suggestion key={s.signature} s={s} token={d.token} onDone={onDone} />
               ))}
@@ -934,7 +1017,7 @@ function SuggestedRules({
 
 // Orientation per tab, behind the page's one `?` (design §6). Everything that used to be a
 // sentence under a heading lives here and nowhere else.
-const ABOUT: Record<string, React.ReactNode> = {
+const ABOUT: Record<string, ReactNode> = {
   which: (
     <>
       The skill is the reviewing approach ReviewStage follows. Quick, Standard and Deep all run
@@ -968,7 +1051,7 @@ const ABOUT: Record<string, React.ReactNode> = {
     <>
       A profile names the paths where a mistake hurts most in each repository. When a PR touches
       one, Standard and Deep reviews verify it explicitly and its findings carry a{" "}
-      <span className="cpbadge">critical path</span> badge. Profiling gathers the tree, churn,
+      <Badge variant="outline" className="align-middle">critical path</Badge> badge. Profiling gathers the tree, churn,
       CODEOWNERS and CI names with no model call, then makes one Sonnet call; every path is
       checked against the tree.
     </>
@@ -1015,75 +1098,48 @@ function useHashTab(): [string, (k: string) => void] {
   return [tab, go];
 }
 
-function SkillTabs({ tab, go, counts }: { tab: string; go: (k: string) => void; counts: Record<string, number> }) {
-  const refs = useRef<Record<string, HTMLAnchorElement | null>>({});
-  // Arrow keys move between tabs and select as they go; Tab leaves the list for the panel.
-  const onKey = (e: React.KeyboardEvent, i: number) => {
-    let j = -1;
-    if (e.key === "ArrowRight") j = (i + 1) % TABS.length;
-    else if (e.key === "ArrowLeft") j = (i + TABS.length - 1) % TABS.length;
-    else if (e.key === "Home") j = 0;
-    else if (e.key === "End") j = TABS.length - 1;
-    if (j < 0) return;
-    e.preventDefault();
-    const k = TABS[j][0];
-    go(k);
-    refs.current[k]?.focus();
-  };
-  return (
-    <div className="tabs skilltabs" role="tablist" aria-label="Skills" data-testid="skill-tabs">
-      {TABS.map(([k, label], i) => (
-        <a
-          key={k}
-          href={`#${k}`}
-          id={`tab-${k}`}
-          role="tab"
-          aria-selected={tab === k}
-          aria-controls={`panel-${k}`}
-          tabIndex={tab === k ? 0 : -1}
-          className={"tab" + (tab === k ? " on" : "")}
-          ref={(el) => {
-            refs.current[k] = el;
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            go(k);
-          }}
-          onKeyDown={(e) => onKey(e, i)}
-        >
-          {label}
-          {counts[k] ? <span className="cnt">{counts[k]}</span> : null}
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function Seg<T extends string>({
+// A small choice between a few named things (which editor, which depth): the queue's sort
+// control, a group of small buttons with the chosen one filled.
+function Choice<T extends string>({
   value,
   options,
   onChange,
   label,
 }: {
   value: T;
-  options: [T, React.ReactNode][];
+  options: [T, ReactNode][];
   onChange: (v: T) => void;
   label: string;
 }) {
   return (
-    <div className="seg" role="group" aria-label={label}>
+    <div className="mb-3 flex flex-wrap items-center gap-0.5" role="group" aria-label={label}>
       {options.map(([k, text]) => (
-        <button
+        <Button
           key={k}
           type="button"
+          variant={value === k ? "secondary" : "ghost"}
+          size="sm"
           aria-pressed={value === k}
-          className={value === k ? "on" : ""}
+          className={cn(value !== k && "text-muted-foreground")}
           onClick={() => onChange(k)}
         >
           {text}
-        </button>
+        </Button>
       ))}
     </div>
+  );
+}
+
+function SkillsSkeleton() {
+  return (
+    <Card className="gap-3 py-5" aria-busy="true">
+      <span className="sr-only" role="status">Loading your skills</span>
+      <CardContent className="flex flex-col gap-3 px-5">
+        <Skeleton className="h-4 w-1/3" />
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-4 w-1/2" />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1114,154 +1170,196 @@ export function Skills() {
     load();
   };
 
+  const header = <PageHeader title="Review skills" help={ABOUT[tab]} />;
   if (err && !d)
     return (
-      <Banner kind="err" data-testid="skills-error">{err}</Banner>
+      <>
+        {header}
+        <Banner kind="err" data-testid="skills-error">{err}</Banner>
+      </>
     );
-  if (!d) return <div className="muted">Loading…</div>;
+  if (!d)
+    return (
+      <>
+        {header}
+        <SkillsSkeleton />
+      </>
+    );
 
-  const opt = (v: "team" | "own", name: string, sub: string, dis: boolean) => (
-    <label className={"eff" + (d.choice === v ? " hot" : "") + (dis ? " off" : "")}>
-      <input
-        type="radio"
-        name="choice"
-        checked={d.choice === v}
+  const choose = async (v: "team" | "own") => {
+    if (d.choice === v) return;
+    try {
+      const r = await api.skillAction("use", { ...d.token, choice: v, from: "skills" });
+      onDone(r.bannerHtml);
+    } catch (x) {
+      onDone(errBanner(x, "Couldn't switch skills."));
+    }
+  };
+  const opt = (v: "team" | "own", name: string, sub: string, dis: boolean) => {
+    const on = d.choice === v;
+    return (
+      <button
+        type="button"
+        role="radio"
+        aria-checked={on}
         disabled={dis}
-        onChange={async () => {
-          try {
-            const r = await api.skillAction("use", { ...d.token, choice: v, from: "skills" });
-            onDone(r.bannerHtml);
-          } catch (x) {
-            onDone(errBanner(x, "Couldn't switch skills."));
-          }
-        }}
-      />
-      <span className="effname">{name}</span>
-      <span className="effsub">{sub}</span>
-    </label>
-  );
+        data-testid="skill-choice"
+        className="group rounded-xl text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={() => choose(v)}
+      >
+        <Card className={cn("h-full gap-0 py-4 transition-colors group-hover:bg-accent/40", on && "bg-accent/30 ring-2 ring-primary")}>
+          <CardContent className="flex items-start gap-3 px-4">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full",
+                on ? "bg-primary text-primary-foreground" : "border border-input",
+              )}
+            >
+              {on && <Check className="size-3.5" strokeWidth={3} />}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{name}</span>
+              <span className="block text-xs text-muted-foreground">{sub}</span>
+            </span>
+          </CardContent>
+        </Card>
+      </button>
+    );
+  };
 
   const live = d.suggestions.filter((s) => !s.dismissed).length;
   const counts: Record<string, number> = { rules: live };
   const repos = d.repoSkills;
   const curRepo = repos.find((r) => r.repo === repo) ?? repos[0];
-  const panel = (k: string, children: React.ReactNode) => (
-    <div
-      role="tabpanel"
-      id={`panel-${k}`}
-      aria-labelledby={`tab-${k}`}
-      className="tabpanel"
-      hidden={tab !== k}
-      data-testid={`panel-${k}`}
-    >
-      {tab === k && children}
-    </div>
+  const panel = (k: string, children: ReactNode) => (
+    <TabsContent value={k} data-testid={`panel-${k}`} className="mt-3">
+      {children}
+    </TabsContent>
   );
 
   return (
     <>
-      <PageHead title="Review skills" about={ABOUT[tab]} aboutTestId="skills-about" />
+      {header}
       {banner && <RawBanner html={banner} />}
 
-      <SkillTabs tab={tab} go={go} counts={counts} />
+      <Tabs value={tab} onValueChange={go}>
+        <TabsList variant="line" className="h-auto! flex-wrap justify-start gap-x-0.5 gap-y-1 p-0" aria-label="Skills" data-testid="skill-tabs">
+          {TABS.map(([k, label]) => (
+            <TabsTrigger key={k} value={k} className="h-9 flex-none gap-1.5 px-3">
+              {label}
+              {counts[k] ? (
+                <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-[11px] tabular-nums text-muted-foreground in-data-[state=active]:text-foreground">
+                  {counts[k]}
+                </Badge>
+              ) : null}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {panel(
-        "which",
-        <>
-          <div className="skillsel">
-            {opt("team", "Team default", "the shared reviewing approach", false)}
-            {opt(
-              "own",
-              "My own skill",
-              d.hasMySkill ? "your personal skill" : "add one on the Editors tab to use it",
-              !d.hasMySkill
-            )}
-          </div>
-          <div className="skillnow" data-testid="skill-now">
-            <span className="muted">Runs with</span> <b>{d.effLabel}</b>
-            {repos.some((r) => r.has) && (
-              <>
-                <span className="muted">· overrides</span>
-                {repos.filter((r) => r.has).map((r) => (
-                  <span key={r.repo} className="repochip">
-                    {r.repo}
-                  </span>
-                ))}
-              </>
-            )}
-          </div>
-
-          <h2>Scores</h2>
-          {d.stats.length === 0 ? (
-            <div className="empty">
-              <Icon name="compass" />
-              <b>No scores yet</b>
-              Post a few reviews and each skill's kept-rate will show up here.
+        {panel(
+          "which",
+          <>
+            <div className="grid grid-cols-2 gap-3 max-[599px]:grid-cols-1" role="radiogroup" aria-label="Which skill">
+              {opt("team", "Team default", "the shared reviewing approach", false)}
+              {opt(
+                "own",
+                "My own skill",
+                d.hasMySkill ? "your personal skill" : "add one on the Editors tab to use it",
+                !d.hasMySkill,
+              )}
             </div>
-          ) : (
-            <div className="list skilltable">
-              <table data-testid="skill-stats">
-                <thead>
-                  <tr>
-                    <th scope="col">Skill</th>
-                    <th scope="col" className="num">Kept</th>
-                    <th scope="col" className="num">Reworded</th>
-                    <th scope="col" className="num">Dropped</th>
-                    <th scope="col" className="num">Findings</th>
-                    <th scope="col">Rating</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.stats.map((s) => (
-                    <tr key={s.skill} data-testid="skill-stat">
-                      <td>
-                        {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
-                        {s.skill === d.user && <span className="chip">you</span>}
-                      </td>
-                      <td className="num">{s.kept.toLocaleString("en-US")}</td>
-                      <td className="num">{s.edited.toLocaleString("en-US")}</td>
-                      <td className="num">{s.dropped.toLocaleString("en-US")}</td>
-                      <td className="num">{s.total.toLocaleString("en-US")}</td>
-                      <td>
-                        {ratable(s) ? (
-                          <span className="rating">
-                            <span className="ratebar">
-                              <span className="ratefill" style={{ width: `${s.rate}%` }} />
-                            </span>
-                            <span className="num">{s.rate.toFixed(1)}%</span>
-                          </span>
-                        ) : (
-                          <span className="muted">
-                            n = {s.total.toLocaleString("en-US")} of {floorOf(s).toLocaleString("en-US")} · too few
-                          </span>
-                        )}
-                      </td>
-                    </tr>
+            <div className={cn(ROW, "mt-3 min-h-9 text-sm text-muted-foreground")} data-testid="skill-now">
+              <span>Runs with</span>
+              <b className="text-foreground">{d.effLabel}</b>
+              {repos.some((r) => r.has) && (
+                <>
+                  <span>· overrides</span>
+                  {repos.filter((r) => r.has).map((r) => (
+                    <RepoPill key={r.repo} repo={r.repo} />
                   ))}
-                </tbody>
-              </table>
+                </>
+              )}
             </div>
-          )}
-        </>,
-      )}
 
-      {panel(
-        "rules",
-        <SuggestedRules
-          d={d}
-          onDone={(fresh, b) => {
-            setBanner(b);
-            if (fresh) setD(fresh);
-            else load();
-          }}
-        />,
-      )}
+            <Section title="Scores">
+              {d.stats.length === 0 ? (
+                <Card className="py-0">
+                  <EmptyState icon={Compass} title="No scores yet">
+                    Post a few reviews and each skill's kept-rate will show up here.
+                  </EmptyState>
+                </Card>
+              ) : (
+                <Card className="gap-0 overflow-x-auto py-0">
+                  <table data-testid="skill-stats" className="w-full text-sm">
+                    <thead>
+                      <tr className="text-xs text-muted-foreground">
+                        <th scope="col" className="h-10 whitespace-nowrap border-0 px-4 text-left font-medium">Skill</th>
+                        <th scope="col" className="h-10 whitespace-nowrap border-0 px-3 text-right font-medium">Kept</th>
+                        <th scope="col" className="h-10 whitespace-nowrap border-0 px-3 text-right font-medium">Reworded</th>
+                        <th scope="col" className="h-10 whitespace-nowrap border-0 px-3 text-right font-medium">Dropped</th>
+                        <th scope="col" className="h-10 whitespace-nowrap border-0 px-3 text-right font-medium">Findings</th>
+                        <th scope="col" className="h-10 w-[38%] whitespace-nowrap border-0 px-4 text-left font-medium">Rating</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {d.stats.map((s) => {
+                        const num = "whitespace-nowrap border-0 px-3 py-0 text-right align-middle tabular-nums";
+                        return (
+                          <tr key={s.skill} data-testid="skill-stat" className="h-11">
+                            <td className="whitespace-nowrap border-0 px-4 py-0 align-middle font-medium">
+                              {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
+                              {s.skill === d.user && (
+                                <Badge variant="outline" className="ml-1.5 align-middle">you</Badge>
+                              )}
+                            </td>
+                            <td className={num}>{s.kept.toLocaleString("en-US")}</td>
+                            <td className={num}>{s.edited.toLocaleString("en-US")}</td>
+                            <td className={num}>{s.dropped.toLocaleString("en-US")}</td>
+                            <td className={num}>{s.total.toLocaleString("en-US")}</td>
+                            <td className="border-0 px-4 py-0 align-middle">
+                              {ratable(s) ? (
+                                <div className="flex items-center gap-2.5">
+                                  <div className="h-1.5 min-w-20 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                                    <div className="h-full rounded-full bg-primary" style={{ width: `${s.rate}%` }} />
+                                  </div>
+                                  <StatusBadge tone={s.rate >= 70 ? "green" : s.rate >= 40 ? "amber" : "red"} icon={null} className="tabular-nums">
+                                    {s.rate.toFixed(1)}%
+                                  </StatusBadge>
+                                </div>
+                              ) : (
+                                <StatusBadge tone="graphite" icon={null} className="tabular-nums">
+                                  n = {s.total.toLocaleString("en-US")} of {floorOf(s).toLocaleString("en-US")} · too few
+                                </StatusBadge>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </Card>
+              )}
+            </Section>
+          </>,
+        )}
 
-      {panel(
-        "editors",
-        <>
-          <div className="rowtop" style={{ marginBottom: 12 }}>
-            <Seg
+        {panel(
+          "rules",
+          <SuggestedRules
+            d={d}
+            onDone={(fresh, b) => {
+              setBanner(b);
+              if (fresh) setD(fresh);
+              else load();
+            }}
+          />,
+        )}
+
+        {panel(
+          "editors",
+          <>
+            <Choice
               label="Which skill to edit"
               value={editor}
               onChange={setEditor}
@@ -1269,145 +1367,144 @@ export function Skills() {
                 [
                   "global",
                   <>
-                    Team default{" "}
+                    Team default
                     {d.globalEdited === true ? (
-                      <Status kind="edited">Edited</Status>
+                      <StatusBadge kind="edited">Edited</StatusBadge>
                     ) : d.globalEdited === false ? (
-                      <Status tone="graphite">Built-in</Status>
+                      <StatusBadge tone="graphite" icon={null}>Built-in</StatusBadge>
                     ) : null}
                   </>,
                 ],
                 [
                   "me",
                   <>
-                    My own skill{" "}
-                    <Status tone={d.hasMySkill ? "green" : "graphite"}>{d.hasMySkill ? "Custom" : "None yet"}</Status>
+                    My own skill
+                    <StatusBadge tone={d.hasMySkill ? "green" : "graphite"} icon={d.hasMySkill ? undefined : null}>
+                      {d.hasMySkill ? "Custom" : "None yet"}
+                    </StatusBadge>
                   </>,
                 ],
               ]}
             />
-          </div>
-          {editor === "global" ? (
-            <div data-testid="editor-global">
-              <SkillEditor
-                token={d.token}
-                target="global"
-                value={d.teamSkill}
-                onDone={onDone}
-                builtinAvailable={d.builtinAvailable}
-              />
-              {d.teamHistory && d.teamHistory.length > 0 && (
-                <div className="skillhist">
-                  <div className="skillhist-h">Revision history</div>
-                  <ul>
-                    {d.teamHistory.map((h) => (
-                      <li key={h.hash}>
-                        <span className="skillhist-msg">{h.msg}</span>
-                        <span className="skillhist-meta">
-                          {h.author} · {new Date(h.at * 1000).toLocaleDateString("en-US")}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div data-testid="editor-me">
-              <SkillEditor token={d.token} target="me" value={d.mySkill} onDone={onDone} />
-            </div>
-          )}
-        </>,
-      )}
+            {editor === "global" ? (
+              <div data-testid="editor-global">
+                <SkillEditor
+                  token={d.token}
+                  target="global"
+                  value={d.teamSkill}
+                  onDone={onDone}
+                  builtinAvailable={d.builtinAvailable}
+                />
+                {d.teamHistory && d.teamHistory.length > 0 && (
+                  <Section title="Revision history">
+                    <Card className="gap-0 divide-y divide-border py-0">
+                      {d.teamHistory.map((h) => (
+                        <div key={h.hash} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-4 py-2.5 text-sm">
+                          <span className="min-w-0 flex-1">{h.msg}</span>
+                          <span className="whitespace-nowrap text-xs text-muted-foreground">
+                            {h.author} · {new Date(h.at * 1000).toLocaleDateString("en-US")}
+                          </span>
+                        </div>
+                      ))}
+                    </Card>
+                  </Section>
+                )}
+              </div>
+            ) : (
+              <div data-testid="editor-me">
+                <SkillEditor token={d.token} target="me" value={d.mySkill} onDone={onDone} />
+              </div>
+            )}
+          </>,
+        )}
 
-      {panel(
-        "repos",
-        repos.length === 0 ? (
-          <div className="empty">
-            <Icon name="git" />
-            <b>No repositories configured</b>
-            Add repositories to <code>REPOS</code> in <code>.env</code> and each gets its own team default here.
-          </div>
-        ) : (
-          <>
-            <div className="list" style={{ marginTop: 0 }} data-testid="repo-skill-list">
-              {repos.map((r) => {
-                const on = curRepo?.repo === r.repo;
-                return (
-                  <div className={"row" + (on ? " is-current" : "")} key={r.repo} data-testid="repo-skill">
-                    <div className="rowlink">
-                      <div className="rowtop">
-                        <span className="repochip big">{r.repo}</span>
-                        <Status tone={r.has ? "green" : "graphite"}>{r.has ? "Override" : "Shared default"}</Status>
-                      </div>
-                    </div>
-                    <div className="rowmeta">
-                      <button
+        {panel(
+          "repos",
+          repos.length === 0 ? (
+            <Card className="py-0">
+              <EmptyState icon={GitBranch} title="No repositories configured">
+                Add repositories to <code>REPOS</code> in <code>.env</code> and each gets its own team default here.
+              </EmptyState>
+            </Card>
+          ) : (
+            <>
+              <Card className="gap-0 divide-y divide-border py-0" data-testid="repo-skill-list">
+                {repos.map((r) => {
+                  const on = curRepo?.repo === r.repo;
+                  return (
+                    <div
+                      className={cn("flex min-h-[44px] flex-wrap items-center gap-2 px-4 py-2", on && "bg-accent/40")}
+                      key={r.repo}
+                      data-testid="repo-skill"
+                    >
+                      <RepoPill repo={r.repo} />
+                      <StatusBadge tone={r.has ? "green" : "graphite"} icon={r.has ? undefined : null}>
+                        {r.has ? "Override" : "Shared default"}
+                      </StatusBadge>
+                      <Button
                         type="button"
-                        className="rowact"
+                        variant={on ? "secondary" : "ghost"}
+                        size="sm"
+                        className={cn("ml-auto", !on && "text-muted-foreground")}
                         aria-pressed={on}
                         onClick={() => setRepo(r.repo)}
                       >
                         {on ? "Editing" : "Edit"}
-                      </button>
+                      </Button>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-            {curRepo && (
-              <div className="repoed" data-testid="repo-skill-editor">
-                <h2>
-                  Team default for <code>{curRepo.repo}</code>
-                </h2>
-                <SkillEditor
-                  key={curRepo.repo}
-                  token={d.token}
-                  target={`repo:${curRepo.repo}`}
-                  value={curRepo.content}
-                  onDone={onDone}
-                />
-              </div>
-            )}
-          </>
-        ),
-      )}
+                  );
+                })}
+              </Card>
+              {curRepo && (
+                <div data-testid="repo-skill-editor">
+                  <h2 className={cn(H2, "flex flex-wrap items-center gap-2")}>
+                    Team default for <RepoPill repo={curRepo.repo} />
+                  </h2>
+                  <SkillEditor
+                    key={curRepo.repo}
+                    token={d.token}
+                    target={`repo:${curRepo.repo}`}
+                    value={curRepo.content}
+                    onDone={onDone}
+                  />
+                </div>
+              )}
+            </>
+          ),
+        )}
 
-      {panel(
-        "profiles",
-        repos.length === 0 ? (
-          <div className="empty">
-            <Icon name="target" />
-            <b>No repositories configured</b>
-            A profile names the paths where a mistake hurts most; there is nothing to profile yet.
-          </div>
-        ) : (
-          <>
-            <div className="stack">
+        {panel(
+          "profiles",
+          repos.length === 0 ? (
+            <Card className="py-0">
+              <EmptyState icon={Target} title="No repositories configured">
+                A profile names the paths where a mistake hurts most; there is nothing to profile yet.
+              </EmptyState>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-3">
               {repos.map((r) => (
                 <RepoProfile key={r.repo} repo={r.repo} onBanner={setBanner} />
               ))}
             </div>
-          </>
-        ),
-      )}
+          ),
+        )}
 
-      {panel(
-        "depth",
-        <>
-          <div className="rowtop" style={{ marginBottom: 12 }}>
-            <Seg
+        {panel(
+          "depth",
+          <>
+            <Choice
               label="Which depth to edit"
               value={depth}
               onChange={setDepth}
-              options={["quick", "standard", "deep"].map((lv) => [lv, d.depths[lv]?.name ?? lv] as [string, React.ReactNode])}
+              options={["quick", "standard", "deep"].map((lv) => [lv, d.depths[lv]?.name ?? lv] as [string, ReactNode])}
             />
-          </div>
-          {d.depths[depth] && (
-            <DepthEditor key={depth} token={d.token} level={depth} d={d.depths[depth]} onDone={onDone} />
-          )}
-        </>,
-      )}
+            {d.depths[depth] && (
+              <DepthEditor key={depth} token={d.token} level={depth} d={d.depths[depth]} onDone={onDone} />
+            )}
+          </>,
+        )}
+      </Tabs>
     </>
   );
 }

@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Cpu } from "lucide-react";
 import { api, errMessage, type KeepBlock, type RollupData, type RollupSeriesPoint } from "./api";
 import { Link } from "./router";
-import { PageHead } from "./About";
-import { Banner } from "./ui";
+import { Banner, PageHeader, RepoPill, StatusBadge, UserAvatar } from "./ui";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Insights — ReviewStage's activity, precision and agreement, aggregated from files it already writes.
-// All charts are hand-rolled SVG (no chart dependency), matching ReviewStage's no-framework style.
-// Tiles carry a number and a two-word label in one dense row; how each is measured lives behind
-// the page's one `?`, so the page reads as numbers first and method on request.
+// All charts are hand-rolled SVG (no chart dependency); each sits in a Card with its title. The
+// tiles are one grid row of Cards: a number in display type and a two-word label. How each is
+// measured lives behind the page's one `?`, so the page reads as numbers first and method on request.
 
 // Chart colours are the tokens, so the charts follow the theme like everything else.
 const C = {
@@ -59,6 +63,13 @@ function dur(sec: number | null): string {
   return `${(sec / 86400).toFixed(1)} days`;
 }
 
+const NOTE = "text-xs text-muted-foreground";
+const TooFew = () => (
+  <StatusBadge tone="graphite" icon={null} className="font-sans font-medium tracking-normal">
+    too few to rate
+  </StatusBadge>
+);
+
 // ---- charts ---------------------------------------------------------------------------------
 
 // Bars in an SVG that stretches to the container; the axis labels are HTML underneath so they
@@ -73,9 +84,9 @@ function BarChart({ points, color, partialLast }:
   const bw = (w - pad * 2) / n;
   const ticks = [0, Math.floor(n / 2), n - 1].filter((t, i, a) => a.indexOf(t) === i);
   return (
-    <div className="barchart">
-      <div className="axis-max muted sm">max {max}/day</div>
-      <svg viewBox={`0 0 ${w} ${h}`} className="chart" preserveAspectRatio="none" role="img"
+    <div>
+      <div className={cn(NOTE, "mb-1 tabular-nums")}>max {max}/day</div>
+      <svg viewBox={`0 0 ${w} ${h}`} className="block h-[130px] w-full" preserveAspectRatio="none" role="img"
            aria-label="Reviews per day">
         <defs>
           {/* Today's bar covers part of a day, so it is drawn hatched — otherwise every chart
@@ -101,9 +112,12 @@ function BarChart({ points, color, partialLast }:
           );
         })}
       </svg>
-      <div className="axis-x muted sm" aria-hidden="true">
-        {ticks.map((t) => (
-          <span key={t}>{points[t]?.date}</span>
+      {/* text-xs rounds to 11.998px under the 14px root; the phone legibility floor is a true 12. */}
+      <div className="mt-1 flex justify-between text-[12px] text-muted-foreground tabular-nums" aria-hidden="true" data-testid="axis-x">
+        {ticks.map((t, i) => (
+          <span key={t} className={cn(i === 1 && ticks.length === 3 && "text-center", i === ticks.length - 1 && "text-right")}>
+            {points[t]?.date}
+          </span>
         ))}
       </div>
     </div>
@@ -119,8 +133,8 @@ function Donut({ segments, center, sub }:
   const circ = 2 * Math.PI * r;
   let offset = 0;
   return (
-    <div className="donutwrap">
-      <svg viewBox="0 0 132 132" width={132} height={132}>
+    <div className="flex flex-wrap items-center gap-5">
+      <svg viewBox="0 0 132 132" width={132} height={132} className="font-display">
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={C.faint} strokeWidth={16} />
         {total > 0 &&
           segments.map((s, i) => {
@@ -138,60 +152,101 @@ function Donut({ segments, center, sub }:
         <text x={cx} y={cy - 2} textAnchor="middle" fontSize={22} fontWeight={600} fill={C.ink}>
           {center}
         </text>
-        <text x={cx} y={cy + 16} textAnchor="middle" fontSize={9} fill={C.dim}>{sub}</text>
+        <text x={cx} y={cy + 16} textAnchor="middle" fontSize={9} fill={C.dim} className="font-sans">{sub}</text>
       </svg>
-      <div className="legend">
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm">
         {segments.map((s) => (
-          <div key={s.label} className="legrow">
-            <span className="legdot" style={{ background: s.color }} />
-            {s.label} <b>{num(s.value)}</b>
-          </div>
+          <li key={s.label} className="flex items-center gap-2 text-muted-foreground">
+            <span className="inline-block size-2.5 rounded-sm" style={{ background: s.color }} aria-hidden="true" />
+            {s.label} <b className="text-foreground tabular-nums">{num(s.value)}</b>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
 
-function HBars({ rows, color }: { rows: { label: string; value: number; note?: string }[]; color: string }) {
+type HBarRow = { key: string; label: ReactNode; title: string; value: number; note?: string };
+function HBars({ rows, color }: { rows: HBarRow[]; color: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
-    <div className="hbars">
-      {rows.length === 0 && <div className="muted sm">No data yet.</div>}
+    <div className="flex flex-col gap-2">
+      {rows.length === 0 && <div className={NOTE}>No data yet.</div>}
       {rows.map((r) => (
-        <div key={r.label} className="hbar">
-          <div className="hbar-label" title={r.label}>{r.label}</div>
-          <div className="hbar-track">
-            <div className="hbar-fill" style={{ width: `${(r.value / max) * 100}%`, background: color }} />
+        <div key={r.key} className="grid grid-cols-[150px_1fr_auto] items-center gap-2.5 text-sm max-[899px]:grid-cols-[110px_1fr_auto]">
+          <div className="flex min-w-0 items-center" title={r.title}>{r.label}</div>
+          <div className="h-3.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <div className="h-full min-w-0.5 rounded-full" style={{ width: `${(r.value / max) * 100}%`, background: color }} />
           </div>
-          <div className="hbar-val">{r.note ?? num(r.value)}</div>
+          <div className={cn(NOTE, "whitespace-nowrap tabular-nums")}>{r.note ?? num(r.value)}</div>
         </div>
       ))}
     </div>
   );
 }
 
-// A tile is a number and a two-word label. A sample too small to rate is a quiet graphite line
-// in the number's place, never a headline.
-function Kpi({ label, value, thin, testId, all }:
-  { label: string; value: string; thin?: boolean; testId?: string; all?: boolean }) {
+// A tile is a Card with a number in display type and a two-word label. A sample too small to
+// rate shows the sample and a quiet graphite badge in the number's place, never a headline.
+function Kpi({ label, value, thin, id, all }:
+  { label: string; value: string; thin?: boolean; id?: string; all?: boolean }) {
   return (
-    <div className={"kpi" + (all ? " is-all" : "")} data-testid={testId}>
-      <div className={"kpi-v" + (thin ? " kpi-thin" : "")} title={thin ? "Too few to rate" : undefined}>
+    <Card
+      className={cn("min-w-0 gap-1 rounded-lg px-3 py-3", all && "max-[899px]:order-3")}
+      data-testid="kpi"
+      data-key={id}
+    >
+      <div
+        className={cn(
+          "min-h-6 min-w-0",
+          thin
+            ? "flex flex-wrap items-center gap-1.5 text-sm font-medium leading-none tabular-nums"
+            : "truncate font-display text-2xl font-semibold leading-none tracking-tight tabular-nums",
+        )}
+        data-testid="kpi-value"
+        data-thin={thin ? "true" : undefined}
+        title={thin ? "Too few to rate" : undefined}
+      >
         {value}
-        {thin && <span className="kpi-thin-note">too few to rate</span>}
+        {thin && <TooFew />}
       </div>
-      <div className="kpi-l">{label}</div>
+      <div className={cn(NOTE, "leading-tight")} data-testid="kpi-label">{label}</div>
+    </Card>
+  );
+}
+
+// A chart: a Card with a title and the drawing.
+function Chart({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Card className="min-w-0 gap-3 py-4" data-testid="chart">
+      <CardHeader className="px-4">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4">{children}</CardContent>
+    </Card>
+  );
+}
+
+// The two headline figures (agreement, cycle time) in display type.
+function Big({ value, thin, testId }: { value: string; thin?: boolean; testId?: string }) {
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2 font-display text-3xl font-semibold leading-none tracking-tight tabular-nums" data-testid={testId}>
+      {value}
+      {thin && <TooFew />}
     </div>
   );
 }
 
-// A chart on the canvas: a title and the drawing, no panel around it (design: Insights).
-function Chart({ title, children }: { title: string; children: React.ReactNode }) {
+function InsightsSkeleton() {
   return (
-    <section className="chartblock">
-      <h2 className="chart-h">{title}</h2>
-      {children}
-    </section>
+    <div aria-busy="true">
+      <span className="sr-only" role="status">Loading insights</span>
+      <div className="mb-6 grid grid-cols-9 gap-2 max-[899px]:grid-cols-3">
+        {Array.from({ length: 9 }, (_, i) => (
+          <Skeleton key={i} className="h-16 rounded-lg" />
+        ))}
+      </div>
+      <Skeleton className="h-48 rounded-xl" />
+    </div>
   );
 }
 
@@ -202,6 +257,8 @@ const RANGES: [string, number][] = [
   ["30 days", 30],
   ["90 days", 90],
 ];
+// Radix Tabs cannot carry an empty-string value, so "every repository" travels under a key.
+const ALL = "__all__";
 
 export function Rollup() {
   const [d, setD] = useState<RollupData | null>(null);
@@ -215,7 +272,7 @@ export function Rollup() {
       .rollup(repo)
       .then((r) => {
         setD(r);
-        // The unfiltered call knows every repo; keep that list for the pills while filtering.
+        // The unfiltered call knows every repo; keep that list for the filter while filtering.
         if (!repo) setAllRepos(r.repos.map((x) => x.repo));
       })
       .catch((e: unknown) => setErr(errMessage(e, "Couldn't load insights.")));
@@ -234,11 +291,32 @@ export function Rollup() {
              keepRate: kt ? (100 * kept) / kt : null };
   }, [d, range]);
 
+  const rangeTabs = (
+    <Tabs value={String(range)} onValueChange={(v) => setRange(Number(v))} className="ml-auto">
+      <TabsList aria-label="Range" title="Applies to the activity chart and the first three tiles" data-testid="range-tabs">
+        {RANGES.map(([label, days]) => (
+          <TabsTrigger key={days} value={String(days)} className="px-3">
+            {label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  );
+
   if (err)
     return (
-      <Banner kind="err" data-testid="insights-error">{err}</Banner>
+      <>
+        <PageHeader title="Insights" />
+        <Banner kind="err" data-testid="insights-error">{err}</Banner>
+      </>
     );
-  if (!d || !period) return <div className="wrap-load muted">Loading…</div>;
+  if (!d || !period)
+    return (
+      <>
+        <PageHeader title="Insights">{rangeTabs}</PageHeader>
+        <InsightsSkeleton />
+      </>
+    );
 
   const sev = d.severity;
   const allSev = sev.blocker + sev["should-fix"] + sev.nit + sev.question;
@@ -268,7 +346,7 @@ export function Rollup() {
   const cpKeep = keepRate(cp);
   const worth = keepRate(kt, "keepRate");
   const method = (
-    <div data-testid="methodology">
+    <div data-testid="methodology" className="[&_li]:my-1 [&_p]:mt-0 [&_ul]:mb-0 [&_ul]:mt-2 [&_ul]:pl-4">
       <p>
         Activity, precision and agreement for this install: early signal, not proof. Run counts
         and tokens come from every run this install has kept. The keep, severity and agreement
@@ -279,7 +357,7 @@ export function Rollup() {
         , not from day one. The range control applies to the activity chart and the first three
         tiles; everything else is all time.
       </p>
-      <ul>
+      <ul className="text-muted-foreground [&_b]:text-foreground">
         <li>
           <b>Kept as-is</b> — findings posted unchanged, as a share of every finding decided
           in the range ({num(period.decided)} decided; {allKeep.value}
@@ -327,30 +405,23 @@ export function Rollup() {
       </ul>
     </div>
   );
+  const eyebrow = "text-xs font-medium text-muted-foreground";
   return (
     <>
-      <PageHead title="Insights" about={method} aboutTestId="insights-about">
-        <div className="rangepills" title="Applies to the activity chart and the first three tiles">
-          {RANGES.map(([label, days]) => (
-            <button key={days} type="button"
-                    className={"rangepill" + (range === days ? " on" : "")}
-                    onClick={() => setRange(days)}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </PageHead>
+      <PageHeader title="Insights" help={method}>
+        {rangeTabs}
+      </PageHeader>
       {allRepos.length > 1 && (
-        <div className="rangepills" style={{ marginBottom: 14 }} data-testid="repo-pills" aria-label="Filter by repository">
-          <button type="button" className={"rangepill" + (repo === "" ? " on" : "")} onClick={() => setRepo("")}>
-            All repositories
-          </button>
-          {allRepos.map((r) => (
-            <button key={r} type="button" className={"rangepill" + (repo === r ? " on" : "")} onClick={() => setRepo(r)}>
-              {r}
-            </button>
-          ))}
-        </div>
+        <Tabs value={repo || ALL} onValueChange={(v) => setRepo(v === ALL ? "" : v)} className="mb-3">
+          <TabsList aria-label="Filter by repository" data-testid="repo-pills" className="h-auto! flex-wrap">
+            <TabsTrigger value={ALL} className="flex-none px-3">All repositories</TabsTrigger>
+            {allRepos.map((r) => (
+              <TabsTrigger key={r} value={r} className="flex-none px-3">
+                {r}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       )}
 
       {dry > 0 && (
@@ -361,99 +432,129 @@ export function Rollup() {
         </Banner>
       )}
 
-      {/* One dense row (design: Insights): the range group, then all time, split by a rule. The
-          eyebrows sit in their own grid row so every tile shares one top edge. */}
-      <div className="kpigrid" data-testid="kpis">
-        <div className="kpi-g" data-testid="kpis-range-h">Last {range} days</div>
-        <div className="kpi-g kpi-g-all" data-testid="kpis-all-h">All time</div>
+      {/* One row of nine tiles at 1440: the range group, then all time. The eyebrows take the
+          first grid row so every tile shares one top edge; below 900 the grid is three across
+          and the all-time group follows the range group. */}
+      <div className="mt-1 mb-4 grid grid-cols-9 gap-2 max-[899px]:grid-cols-3" data-testid="kpis">
+        <div className={cn(eyebrow, "col-span-3 max-[899px]:col-span-full")} data-testid="kpis-range-h">Last {range} days</div>
+        <div className={cn(eyebrow, "col-span-6 max-[899px]:order-2 max-[899px]:col-span-full max-[899px]:mt-2")} data-testid="kpis-all-h">All time</div>
         <Kpi label="Reviews run" value={num(period.reviews)} />
         <Kpi label="Tokens used" value={num(period.tokens)} />
-        <Kpi label="Kept as-is" value={periodKeep.value} thin={periodKeep.thin} testId="kpi-kept" />
+        <Kpi label="Kept as-is" value={periodKeep.value} thin={periodKeep.thin} id="kept" />
         <Kpi label="Reviews recorded" all value={num(d.reviews.total)} />
         <Kpi label="PRs reviewed" all value={num(d.prs)} />
         <Kpi label="Active reviewers" all value={num(d.reviewers.length)} />
         <Kpi label="Rules promoted" all value={num(d.promotedRules ?? 0)} />
         <Kpi label="Critical-path keep" all value={cpKeep.value} thin={cpKeep.thin} />
-        <Kpi label="Worth posting" all value={worth.value} thin={worth.thin} testId="kpi-worth" />
+        <Kpi label="Worth posting" all value={worth.value} thin={worth.thin} id="worth" />
       </div>
 
-      <Chart title="Review activity per day">
-        <BarChart points={period.pts} color={C.accent} partialLast={partialLast} />
-        {partialLast && <div className="muted sm">The hatched bar is today, still in progress.</div>}
-      </Chart>
+      <div className="flex flex-col gap-3">
+        <Chart title="Review activity per day">
+          <BarChart points={period.pts} color={C.accent} partialLast={partialLast} />
+          {partialLast && <div className={cn(NOTE, "mt-2")}>The hatched bar is today, still in progress.</div>}
+        </Chart>
 
-      <div className="grid2">
-        <Chart title="Findings kept, edited, dropped">
-          <Donut
-            center={thin(period.decided, floor) ? `n = ${num(period.decided)}` : pct(period.keepRate)}
-            sub={thin(period.decided, floor) ? "too few to rate" : "kept as-is"}
-            segments={[
-              { label: "Kept", value: period.kept, color: C.green },
-              { label: "Edited", value: period.edited, color: C.amber },
-              { label: "Dropped", value: period.dropped, color: C.red },
-            ]}
-          />
-          {dry > 0 && (
-            <div className="muted sm" data-testid="dry-donut-note">
-              Excludes {num(dry)} decision{dry === 1 ? "" : "s"} made in dry run.
+        <div className="grid grid-cols-2 gap-3 max-[899px]:grid-cols-1">
+          <Chart title="Findings kept, edited, dropped">
+            <Donut
+              center={thin(period.decided, floor) ? `n = ${num(period.decided)}` : pct(period.keepRate)}
+              sub={thin(period.decided, floor) ? "too few to rate" : "kept as-is"}
+              segments={[
+                { label: "Kept", value: period.kept, color: C.green },
+                { label: "Edited", value: period.edited, color: C.amber },
+                { label: "Dropped", value: period.dropped, color: C.red },
+              ]}
+            />
+            {dry > 0 && (
+              <div className={cn(NOTE, "mt-2")} data-testid="dry-donut-note">
+                Excludes {num(dry)} decision{dry === 1 ? "" : "s"} made in dry run.
+              </div>
+            )}
+          </Chart>
+          <Chart title="Findings by severity">
+            <HBars
+              color={C.blue}
+              rows={(["blocker", "should-fix", "nit", "question"] as const).map((k) => ({
+                key: k,
+                label: <StatusBadge kind={k} />,
+                title: k,
+                value: sev[k],
+              }))}
+            />
+            <div className={cn(NOTE, "mt-2")}>{num(allSev)} logged decisions.</div>
+          </Chart>
+        </div>
+
+        {!repo && d.repos.length > 0 && (
+          <Chart title="Runs by repository">
+            <HBars
+              color={C.blue}
+              rows={d.repos.map((r) => ({
+                key: r.repo,
+                label: <RepoPill repo={r.repo} className="max-w-full" />,
+                title: r.repo,
+                value: r.runs,
+                note: `${num(r.runs)} runs · ${num(r.prs)} PRs · ${num(r.tokens)} tok`,
+              }))}
+            />
+          </Chart>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 max-[899px]:grid-cols-1">
+          <Chart title="Runs by reviewer">
+            <HBars
+              color={C.accent}
+              rows={d.reviewers.map((r) => ({
+                key: r.login,
+                label: (
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <UserAvatar login={r.login} size="sm" />
+                    <span className="truncate">{r.login}</span>
+                  </span>
+                ),
+                title: r.login,
+                value: r.runs,
+              }))}
+            />
+          </Chart>
+          <Chart title="Runs by model">
+            <HBars
+              color={C.green}
+              rows={d.models.map((m) => ({
+                key: m.model,
+                label: (
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Cpu aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{m.model.replace(/^claude-/, "")}</span>
+                  </span>
+                ),
+                title: m.model,
+                value: m.runs,
+                note: `${num(m.runs)} · ${num(m.tokens)} tok`,
+              }))}
+            />
+          </Chart>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 max-[899px]:grid-cols-1">
+          <Chart title="Agreement across reviewers">
+            <Big value={agreement.value} thin={agreement.thin} testId="agreement" />
+            <div className={NOTE}>
+              {num(ag.confirmedFindings)} confirmed of {num(ag.totalFindings ?? 0)} findings on{" "}
+              {num(ag.multiReviewerPRs)} multi-reviewer PR{ag.multiReviewerPRs === 1 ? "" : "s"}.
             </div>
-          )}
-        </Chart>
-        <Chart title="Findings by severity">
-          <HBars
-            color={C.blue}
-            rows={[
-              { label: "Blocker", value: sev.blocker },
-              { label: "Should fix", value: sev["should-fix"] },
-              { label: "Nit", value: sev.nit },
-              { label: "Question", value: sev.question },
-            ]}
-          />
-          <div className="muted sm" style={{ marginTop: 8 }}>{num(allSev)} logged decisions.</div>
-        </Chart>
+          </Chart>
+          <Chart title="Cycle time">
+            <Big value={dur(d.cycle.medianReviewToPostSec)} />
+            <div className={NOTE}>
+              {d.cycle.n
+                ? `Median over ${num(d.cycle.n)} posted review${d.cycle.n === 1 ? "" : "s"}.`
+                : "Needs requested-at data — captured from now on."}
+            </div>
+          </Chart>
+        </div>
       </div>
-
-      {!repo && d.repos.length > 0 && (
-        <Chart title="Runs by repository">
-          <HBars color={C.blue}
-                 rows={d.repos.map((r) => ({ label: r.repo, value: r.runs,
-                                             note: `${num(r.runs)} runs · ${num(r.prs)} PRs · ${num(r.tokens)} tok` }))} />
-        </Chart>
-      )}
-
-      <div className="grid2">
-        <Chart title="Runs by reviewer">
-          <HBars color={C.accent}
-                 rows={d.reviewers.map((r) => ({ label: r.login, value: r.runs }))} />
-        </Chart>
-        <Chart title="Runs by model">
-          <HBars color={C.green}
-                 rows={d.models.map((m) => ({ label: m.model, value: m.runs,
-                                              note: `${num(m.runs)} · ${num(m.tokens)} tok` }))} />
-        </Chart>
-      </div>
-
-      <div className="grid2">
-        <Chart title="Agreement across reviewers">
-          <div className={"agreebig" + (agreement.thin ? " kpi-thin" : "")} data-testid="agreement">
-            {agreement.value}
-            {agreement.thin && <span className="kpi-thin-note"> · too few to rate</span>}
-          </div>
-          <div className="muted sm">
-            {num(ag.confirmedFindings)} confirmed of {num(ag.totalFindings ?? 0)} findings on{" "}
-            {num(ag.multiReviewerPRs)} multi-reviewer PR{ag.multiReviewerPRs === 1 ? "" : "s"}.
-          </div>
-        </Chart>
-        <Chart title="Cycle time">
-          <div className="agreebig">{dur(d.cycle.medianReviewToPostSec)}</div>
-          <div className="muted sm">
-            {d.cycle.n
-              ? `Median over ${num(d.cycle.n)} posted review${d.cycle.n === 1 ? "" : "s"}.`
-              : "Needs requested-at data — captured from now on."}
-          </div>
-        </Chart>
-      </div>
-
     </>
   );
 }

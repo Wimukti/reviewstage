@@ -1,7 +1,9 @@
 /* Website stylesheet entry. Loaded once through Starlight `customCss`, which routes it
  * through Vite so `@tailwindcss/vite` compiles these imports. */
 @import "tailwindcss";
-@import "@astrojs/starlight-tailwind";
+/* Not @astrojs/starlight-tailwind: it stamps its own zinc palette and a `[data-theme=dark]`-only
+   dark variant, both wrong for a site whose palette is tokens.css and whose themes are
+   "dark" / "light" / "system" (see starlight.css for the bridge). */
 
 /* The display face (design §2). Declared here, in the light DOM: @font-face does not cross into
    the shadow roots the stage islands render in, but the family name does. */
@@ -9,6 +11,11 @@
 @import "@fontsource-variable/geist-mono/index.css";
 
 @source "../**/*.astro";
+/* The app's component layer is composed into the site's own markup (buttons, badges, tabs,
+   StatusBadge, RepoPill), so its classes have to be in this build's output too. */
+@source "../../../dashboard-ui/src/components/ui";
+@source "../../../dashboard-ui/src/ui.tsx";
+@custom-variant dark (&:is(:root:not([data-theme="light"]) *));
 
 @import "./tokens.css";
 @import "./base.css";

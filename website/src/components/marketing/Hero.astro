@@ -1,20 +1,23 @@
 ---
 /* The fold (proposal §"Home" 1): two lines, one sentence, two buttons, then the real PR page
  * playing the staging sequence under the stage light. Nothing else is above the frame. */
+import { Copy } from "lucide-react";
 import HeroStage from "./HeroStage";
 import GitHubIcon from "./GitHubIcon.astro";
+import { button } from "./variants";
 import { installCommand } from "../../content/install";
 import { repo } from "../../content/site-links";
 ---
 <section class="hero">
-  <div class="container-page hero-copy">
-    <h1 class="display-title">AI wrote the PR.<br /><span class="accent">You still have to review it.</span></h1>
-    <p class="hero-line">Stage every finding privately. Post the ones you mean, as yourself.</p>
-    <div class="hero-actions">
-      <button type="button" class="btn btn-primary" data-copy={installCommand} aria-label="Copy the one-line install command">
+  <div class="container-page grid justify-items-center gap-6 text-center">
+    <h1 class="display-title">AI wrote the PR.<br /><span class="text-primary">You still have to review it.</span></h1>
+    <p class="m-0 max-w-[40rem] text-balance text-base text-muted-foreground">Stage every finding privately. Post the ones you mean, as yourself.</p>
+    <div class="flex flex-wrap justify-center gap-3">
+      <button type="button" class={button({ size: "lg" }, "min-w-[9rem] max-sm:h-11")} data-copy={installCommand} aria-label="Copy the one-line install command">
+        <Copy aria-hidden="true" />
         <span data-copy-label>Install</span>
       </button>
-      <a class="btn btn-secondary" href={repo}><GitHubIcon />GitHub</a>
+      <a class={button({ variant: "secondary", size: "lg" }, "max-sm:h-11")} href={repo}><GitHubIcon />GitHub</a>
     </div>
   </div>
   <div class="container-page hero-stage stage-hero">
@@ -24,13 +27,11 @@ import { repo } from "../../content/site-links";
 <style>
   /* overflow-x: clip keeps the light's 140%-wide gradient from widening the page on a phone without
      making the section a scroll container. */
-  .hero { padding-block: clamp(3rem, 7vw, 6rem) var(--section-pad); border-bottom: 1px solid var(--hairline); overflow-x: clip; }
-  .hero-copy { display: grid; justify-items: center; gap: 1.5rem; text-align: center; }
-  .hero-line { margin: 0; max-width: 40rem; color: var(--graphite); font-size: var(--t-16); line-height: 1.5; text-wrap: balance; }
-  .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; }
-  .hero-actions .btn-primary { min-width: 8rem; }
+  .hero { padding-block: clamp(3rem, 7vw, 6rem) var(--section-pad); overflow-x: clip; }
   .hero-stage { margin-top: clamp(2.5rem, 5vw, 4rem); }
-  /* The island renders client-only; the reserved height keeps the fold from jumping when it mounts. */
-  .hero-stage :global([data-hero-stage]) { min-height: 34rem; }
-  @media (max-width: 40rem) { .hero-stage :global([data-hero-stage]) { min-height: 40rem; } }
+  /* The island renders client-only (no server markup at all), so its wrapper reserves the mounted
+     frame's measured height at each width and the fold does not shift when it arrives (CLS). */
+  .hero-stage { min-height: 680px; }
+  @media (max-width: 64rem) { .hero-stage { min-height: 720px; } }
+  @media (max-width: 40rem) { .hero-stage { min-height: 1040px; } }
 </style>

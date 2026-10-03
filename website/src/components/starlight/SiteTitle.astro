@@ -1,14 +1,10 @@
 ---
 import Mark from "../marketing/Mark.astro";
+import { badge } from "../marketing/variants";
 import { withBase } from "../../content/site-links";
 ---
-<a class="brand" href={withBase("/")} translate="no">
+<a class="inline-flex min-w-0 items-center gap-2.5 whitespace-nowrap text-base font-semibold tracking-tight text-foreground no-underline" href={withBase("/")} translate="no">
   <Mark size={22} />
   <span>ReviewStage</span>
-  <span class="brand-chip">Docs</span>
+  <span class={badge({ variant: "secondary" }, "text-muted-foreground max-lg:hidden")}>Docs</span>
 </a>
-<style>
-  .brand { display: inline-flex; align-items: center; gap: 0.55rem; min-width: 0; color: var(--ink); font-size: var(--t-16); font-weight: 600; letter-spacing: -0.01em; text-decoration: none; white-space: nowrap; }
-  .brand-chip { padding: 0 0.45rem; border: 1px solid var(--hairline); border-radius: var(--r-s); color: var(--graphite); font-size: var(--t-13); font-weight: 500; line-height: 1.5; }
-  @media (max-width: 50rem) { .brand-chip { display: none; } }
-</style>

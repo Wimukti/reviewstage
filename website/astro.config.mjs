@@ -52,9 +52,12 @@ export default defineConfig({
       },
       expressiveCode: {
         themes: ["github-dark-default", "github-light"],
-        useStarlightDarkModeSwitch: true,
         useStarlightUiThemeColors: true,
-        styleOverrides: { borderRadius: "8px", codeFontFamily: "var(--mono)" },
+        // data-theme carries the *choice* ("dark", "light", "system"); the resolved scheme is
+        // stamped beside it as data-resolved (scripts/theme.ts), so a light-system machine gets
+        // the light code theme too. Starlight's own switch keys on data-theme alone.
+        themeCssSelector: (theme) => `[data-resolved='${theme.type}']`,
+        styleOverrides: { borderRadius: "12px", codeFontFamily: "var(--mono)" },
       },
       editLink: { baseUrl: "https://github.com/Wimukti/reviewstage/edit/main/website/" },
       lastUpdated: true,

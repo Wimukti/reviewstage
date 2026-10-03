@@ -17,7 +17,7 @@ const description =
   <section id="how-it-works" class="home-section" aria-labelledby="how-title">
     <div class="container-page section-inner">
       <h2 id="how-title" class="section-title">How it works</h2>
-      <HowItWorks client:only="react" />
+      <div class="how-slot"><HowItWorks client:only="react" /></div>
     </div>
   </section>
 
@@ -36,7 +36,11 @@ const description =
   </section>
 </MarketingLayout>
 <style>
-  .home-section { padding-block: var(--section-pad); border-bottom: 1px solid var(--hairline); scroll-margin-top: calc(var(--nav-height) + 1rem); }
-  .home-section:last-of-type { border-bottom: 0; }
+  .home-section { padding-block: var(--section-pad); scroll-margin-top: calc(var(--nav-height) + 1rem); }
   .section-inner { display: grid; gap: var(--section-gap); }
+  /* The strip is a client-only island; its slot is reserved at the mounted height per width so
+     the sections below it do not shift when it arrives (Lighthouse CLS). */
+  .how-slot { min-height: 860px; }
+  @media (max-width: 64rem) { .how-slot { min-height: 880px; } }
+  @media (max-width: 40rem) { .how-slot { min-height: 1200px; } }
 </style>

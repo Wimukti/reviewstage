@@ -10,6 +10,7 @@
     const pref = s === "light" || s === "dark" ? s : s === "auto" || s === "" ? "auto" : "dark";
     document.documentElement.dataset.theme = pref === "auto" ? "system" : pref;
     document.documentElement.dataset.themePreference = pref;
+    document.documentElement.dataset.resolved = pref === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : pref;
     return { updatePickers() {} };
   })();
 </script>

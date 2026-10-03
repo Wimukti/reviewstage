@@ -2,38 +2,25 @@
 import Mark from "./Mark.astro";
 import { marketingFooterColumns as columns, withBase } from "../../content/site-links";
 ---
-<footer class="site-footer">
+<footer class="border-t">
   <div class="container-page">
     <div class="grid gap-10 py-14 md:grid-cols-[1.2fr_2.6fr]">
       <div class="max-w-xs">
-        <a class="brand" href={withBase("/")}><Mark size={20} /><span>ReviewStage</span></a>
-        <p class="body-text mt-4">Stage your review. Post it as yourself.</p>
+        <a class="inline-flex items-center gap-2.5 text-base font-semibold tracking-tight text-foreground no-underline" href={withBase("/")}><Mark size={20} /><span>ReviewStage</span></a>
+        <p class="mt-4 text-sm text-muted-foreground">Stage your review. Post it as yourself.</p>
       </div>
-      <nav class="footer-grid" aria-label="Footer">
+      <nav class="grid grid-cols-2 gap-8 md:grid-cols-4" aria-label="Footer">
         {columns.map((c) => (
           <div>
-            <h2 class="footer-heading">{c.title}</h2>
-            <ul>{c.links.map((l) => <li><a href={withBase(l.href)}>{l.label}</a></li>)}</ul>
+            <h2 class="m-0 mb-2 text-sm font-medium text-foreground">{c.title}</h2>
+            <ul class="m-0 grid list-none gap-0.5 p-0">{c.links.map((l) => <li><a class="inline-flex min-h-8 items-center text-sm text-muted-foreground no-underline hover:text-foreground max-sm:min-h-11" href={withBase(l.href)}>{l.label}</a></li>)}</ul>
           </div>
         ))}
       </nav>
     </div>
-    <div class="footer-base">
-      <p class="meta-text">MIT licensed · Beta software · Self-hosted</p>
-      <p class="meta-text">Built on Claude Code. Not affiliated with Anthropic or GitHub.</p>
+    <div class="flex flex-wrap items-center justify-between gap-4 border-t pb-10 pt-6 text-xs text-muted-foreground">
+      <p class="m-0">MIT licensed · Beta software · Self-hosted</p>
+      <p class="m-0">Built on Claude Code. Not affiliated with Anthropic or GitHub.</p>
     </div>
   </div>
 </footer>
-<style>
-  .site-footer { border-top: 1px solid var(--hairline); }
-  .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); font-size: var(--t-16); font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
-  .footer-grid { display: grid; gap: 2rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  @media (min-width: 768px) { .footer-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .footer-heading { margin: 0 0 0.75rem; color: var(--ink); font-size: var(--t-13); font-weight: 600; }
-  .footer-grid ul { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
-  .footer-grid a { display: inline-flex; align-items: center; min-height: 32px; color: var(--graphite); font-size: var(--t-14); text-decoration: none; }
-  .footer-grid a:hover { color: var(--ink); }
-  .footer-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.5rem 2.5rem; border-top: 1px solid var(--hairline); }
-  .footer-base p { margin: 0; }
-  @media (max-width: 40rem) { .footer-grid a { min-height: 44px; } }
-</style>

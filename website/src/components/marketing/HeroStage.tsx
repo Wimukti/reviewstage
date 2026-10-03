@@ -2,6 +2,8 @@
 // staging sequence once, with a Replay control that bumps the island's playKey. One island for
 // the whole hero, as design §7 asks; the light behind it is the light DOM's `.stage-hero`.
 import { useState } from "react";
+import { EyeOff, RotateCcw } from "lucide-react";
+import { Button } from "@app/components/ui/button";
 import StageIsland from "../stage/StageIsland";
 import { FrameBar } from "./FrameBar";
 
@@ -9,11 +11,13 @@ export default function HeroStage() {
   const [playKey, setPlayKey] = useState(0);
   const [playing, setPlaying] = useState(true);
   return (
-    <div className="stage-frame lift" data-hero-stage data-playing={playing ? "1" : undefined}>
-      <FrameBar title="private stage">
-        <button
+    <div className="stage-frame lift grid content-start overflow-hidden rounded-lg bg-card shadow-sm" data-hero-stage data-playing={playing ? "1" : undefined}>
+      <FrameBar tone="graphite" icon={EyeOff} title="Private stage">
+        <Button
           type="button"
-          className="frame-btn"
+          variant="secondary"
+          size="sm"
+          className="max-sm:h-11"
           data-replay
           disabled={playing}
           onClick={() => {
@@ -21,12 +25,9 @@ export default function HeroStage() {
             setPlayKey((k) => k + 1);
           }}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3 12a9 9 0 1 0 3-6.7" />
-            <path d="M3 4v5h5" />
-          </svg>
+          <RotateCcw aria-hidden="true" />
           Replay
-        </button>
+        </Button>
       </FrameBar>
       <StageIsland
         scene="scene"

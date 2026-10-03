@@ -100,9 +100,18 @@ async function up() {
 }
 
 async function settle(page: Page) {
-  await page.locator(".muted", { hasText: /^Loading…$/ }).waitFor({ state: "detached", timeout: 15_000 }).catch(() => {});
+  await page.getByTestId("page-header").waitFor({ timeout: 15_000 }).catch(() => {});
+  await page.locator('[data-slot="skeleton"]').first().waitFor({ state: "detached", timeout: 15_000 }).catch(() => {});
   await page.waitForTimeout(500);
 }
+
+// GitHub avatars are fetched by the browser from github.com; the shots must not depend on the
+// network, so every avatar is answered with a flat tile in the login's hue.
+const AVATAR_SVG = (seed: string) => {
+  let h = 0;
+  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="hsl(${h} 45% 55%)"/><circle cx="32" cy="26" r="11" fill="rgba(255,255,255,.85)"/><ellipse cx="32" cy="52" rx="18" ry="11" fill="rgba(255,255,255,.85)"/></svg>`;
+};
 
 /** The union of these elements' boxes, padded, as a screenshot clip. */
 async function box(page: Page, parts: Locator[], pad = 20) {
@@ -165,25 +174,24 @@ const SHOTS: Shot[] = [
     path: `/pr?repo=${enc(REPO)}&pr=${PR4}`,
     height: 1400,
     shoot: async (p) => {
-      await p.locator("textarea.in").fill(
-        "Pay close attention to the retry back-off — a 502 storm must not hammer the vendor.",
-      );
-      await p.locator("textarea.in").blur();
+      const focus = p.getByTestId("run-form").locator("textarea");
+      await focus.fill("Pay close attention to the retry back-off — a 502 storm must not hammer the vendor.");
+      await focus.blur();
       await p.waitForTimeout(200);
-      return p.screenshot({ clip: await box(p, [p.locator(".card.top").first()], 18) });
+      return p.screenshot({ clip: await box(p, [p.getByTestId("run-form").locator('xpath=ancestor::*[@data-slot="card"][1]')], 18) });
     },
   },
   {
     name: "team",
     path: "/?tab=reviewed",
     height: 900,
-    shoot: (p) => topCrop(p, p.locator(".list").first()),
+    shoot: (p) => topCrop(p, p.locator("#qlist").first()),
   },
   {
     name: "learnings",
     path: "/skills",
-    height: 900,
-    shoot: (p) => topCrop(p, p.locator(".list").last()),
+    height: 1100,
+    shoot: (p) => topCrop(p, p.getByTestId("skill-stats").locator('xpath=ancestor::*[@data-slot="card"][1]')),
   },
   {
     name: "qa",
@@ -195,7 +203,7 @@ const SHOTS: Shot[] = [
     name: "insights",
     path: "/dashboard",
     height: 1400,
-    shoot: (p) => topCrop(p, p.locator(".grid2").first()),
+    shoot: (p) => topCrop(p, p.getByTestId("chart").first()),
   },
   {
     name: "integrations",
@@ -208,8 +216,9 @@ const SHOTS: Shot[] = [
     path: "/skills#profiles",
     height: 1600,
     shoot: async (p) => {
-      const prof = p.getByTestId("repo-profile").first();
-      await prof.locator("> summary").click();
+      const prof = p.getByTestId("repo-profile").filter({ hasText: REPO }).first();
+      await prof.getByTestId("profile-toggle").click();
+      await p.getByTestId("profile-status").first().waitFor();
       await p.waitForTimeout(400);
       return topCrop(p, prof);
     },
@@ -252,6 +261,10 @@ async function main() {
           reducedMotion: "reduce",
         });
         await ctx.addCookies([sessionCookie()]);
+        await ctx.route(/https:\/\/github\.com\/([^/]+)\.png/, (route) => {
+          const login = route.request().url().match(/github\.com\/([^/.]+)\.png/)?.[1] || "";
+          return route.fulfill({ contentType: "image/svg+xml", body: AVATAR_SVG(login) });
+        });
         // Dark is the app's default whatever the OS says (theme.ts), so the light pair needs the
         // stored choice; the dark pair needs it absent.
         await ctx.addInitScript((t: string) => {

@@ -260,7 +260,7 @@ sudo systemctl restart reviewstage
 
 Every outstanding link is immediately invalid, including your own; every stored token must be
 re-entered; and **every device token and session cookie stops working**, so phones and CLIs
-pair again. See [OPERATIONS.md](OPERATIONS.md#re-notifying-stale-slack-cards) to
+pair again. See [OPERATIONS.md](OPERATIONS.md#re-notifying-stale-cards) to
 re-announce your queue.
 
 ## Slack

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import type { Me } from "./api";
 import { openPalette } from "./CommandPalette";
-import { phoneBridge, usePhoneStatus } from "./phone";
 import { Link, useLocation } from "./router";
 import { useRunning } from "./running";
 import { startTour } from "./Tour";
@@ -55,14 +54,10 @@ const SETUP: NavItem[] = [
 ];
 // Personal mode picks its repositories in the app; a team install's live in .env.
 const REPOS: NavItem = ["repos", "Repositories", "/repos", FolderGit2];
-// The desktop app only (the preload's phone bridge is present): Settings → Your phone.
-const PHONE: NavItem = ["phone", "Phone", "/settings#phone", Smartphone];
-const inDesktopApp = (me: Me) => !!me.personal && !!phoneBridge();
-const setupFor = (me: Me) => [...(me.personal ? [REPOS] : []), ...SETUP, ...(inDesktopApp(me) ? [PHONE] : [])];
+const setupFor = (me: Me) => (me.personal ? [REPOS, ...SETUP] : SETUP);
 
-function activeKey(path: string, hash = ""): string {
+function activeKey(path: string): string {
   if (path === "/") return "queue";
-  if (path.startsWith("/settings") && hash === "#phone") return "phone";
   if (path.startsWith("/repos")) return "repos";
   if (path.startsWith("/qa")) return "qa";
   if (path.startsWith("/learnings")) return "learnings";
@@ -104,7 +99,7 @@ export function RunningBar() {
 }
 
 // A nav entry: a ghost button that is really a link; the active one sits on the accent surface.
-function NavLink({ item, active, className, trailing }: { item: NavItem; active: boolean; className?: string; trailing?: ReactNode }) {
+function NavLink({ item, active, className }: { item: NavItem; active: boolean; className?: string }) {
   const [k, label, to, Glyph] = item;
   return (
     <Button
@@ -115,20 +110,8 @@ function NavLink({ item, active, className, trailing }: { item: NavItem; active:
       <Link to={to} aria-current={active ? "page" : undefined} data-tour={k} data-active={active || undefined}>
         <Glyph aria-hidden="true" className={cn(active && "text-primary")} />
         <span>{label}</span>
-        {trailing}
       </Link>
     </Button>
-  );
-}
-
-// The Phone item's dot: green while phone access is on.
-function PhoneDot() {
-  const status = usePhoneStatus();
-  if (!status?.enabled) return null;
-  return (
-    <span className="ml-auto size-2 rounded-full bg-green" data-testid="phone-dot" title="Phone access is on">
-      <span className="sr-only">on</span>
-    </span>
   );
 }
 
@@ -207,8 +190,8 @@ function AccountMenu({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: ()
 }
 
 export function Sidebar({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: () => void; onSwitchAccount?: () => void }) {
-  const { path, hash } = useLocation();
-  const active = activeKey(path, hash);
+  const { path } = useLocation();
+  const active = activeKey(path);
   const setup = setupFor(me);
   return (
     <aside
@@ -234,7 +217,7 @@ export function Sidebar({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut:
         </div>
         <div className="mt-5 flex flex-col gap-0.5" data-testid="nav-setup">
           {setup.map((it) => (
-            <NavLink key={it[0]} item={it} active={active === it[0]} trailing={it[0] === "phone" ? <PhoneDot /> : undefined} />
+            <NavLink key={it[0]} item={it} active={active === it[0]} />
           ))}
         </div>
       </nav>

@@ -56,9 +56,8 @@ export function onPhoneData(fn: (p: PhoneData) => void): () => void {
 
 const POLL_MS = 30_000;
 
-// One status for the whole app (the Settings card and the sidebar's dot read the same one):
-// polled every 30 s while anything shows it, refreshed on every phone event and after an
-// enable or disable this page made.
+// One status for the whole app, however many places show it: polled every 30 s while anything
+// does, refreshed on every phone event and after an enable or disable this page made.
 let current: PhoneStatus | null = null;
 const watchers = new Set<(s: PhoneStatus | null) => void>();
 let poll: number | undefined;

@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // The shared status vocabulary: one component for every state and severity, a tone and a
@@ -272,6 +273,42 @@ export function PageHeader({
       {actions && <div className="flex min-w-0 flex-1 basis-[420px] items-center gap-2 max-[899px]:basis-full">{actions}</div>}
       {children}
     </header>
+  );
+}
+
+// A settings row: the words on the left, the control on the right at a fixed column so the
+// controls line up down a card; on a phone the control drops under the label so a long hint
+// never wraps a word per line beside a wide control. Rows stack under `divide-y`.
+export function SettingRow({
+  label,
+  hint,
+  children,
+  htmlFor,
+  className,
+  ...rest
+}: {
+  label: ReactNode;
+  hint?: ReactNode;
+  children?: ReactNode;
+  htmlFor?: string;
+  className?: string;
+} & React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-3 py-4 max-[899px]:grid-cols-1", className)}
+      data-testid="setting-row"
+      {...rest}
+    >
+      <div className="min-w-0">
+        {htmlFor ? (
+          <Label htmlFor={htmlFor} className="text-sm font-medium">{label}</Label>
+        ) : (
+          <div className="text-sm font-medium">{label}</div>
+        )}
+        {hint && <div className="mt-1 text-xs leading-relaxed text-muted-foreground" data-testid="setting-hint">{hint}</div>}
+      </div>
+      {children && <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2.5 max-[899px]:justify-start">{children}</div>}
+    </div>
   );
 }
 

@@ -36,16 +36,6 @@ export function useLocation(): { path: string; search: URLSearchParams; hash: st
   return loc;
 }
 
-/** True while `#id` is the URL's hash; the element is scrolled into view when it becomes so. */
-export function useHashTarget(id: string): boolean {
-  const { hash } = useLocation();
-  const here = hash === `#${id}`;
-  useEffect(() => {
-    if (here) document.getElementById(id)?.scrollIntoView({ block: "start" });
-  }, [here, id]);
-  return here;
-}
-
 export function Link(
   props: React.AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }
 ) {

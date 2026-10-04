@@ -71,15 +71,16 @@ for (const [vp, tag] of [[{ width: 1440, height: 900 }, "1440"], [{ width: 390, 
   await ctx.addCookies([cookie]);
   const page = await ctx.newPage();
 
-  // Settings: the phone card off, then on with the code.
-  await page.goto(`${PERSONAL_ORIGIN}/settings`, { waitUntil: "networkidle" });
-  await page.getByTestId("phone-card").waitFor();
+  // Settings: the Your phone section off, then on with the code.
+  await page.goto(`${PERSONAL_ORIGIN}/settings#phone`, { waitUntil: "networkidle" });
+  await page.locator("#phone").waitFor();
   await shot(page, `settings-phone-off-dark-${tag}.png`);
   await page.getByRole("button", { name: "Enable phone access" }).click();
   await page.getByTestId("phone-qr").waitFor();
   await shot(page, `settings-phone-on-dark-${tag}.png`);
-  // Appearance: the segmented theme control, scrolled into view.
-  await page.getByTestId("theme-control").scrollIntoViewIfNeeded();
+  // Appearance: the segmented theme control.
+  await page.goto(`${PERSONAL_ORIGIN}/settings#appearance`, { waitUntil: "networkidle" });
+  await page.getByTestId("theme-control").waitFor();
   await shot(page, `settings-appearance-dark-${tag}.png`);
 
   // The Queue "?" popover with the Help items.

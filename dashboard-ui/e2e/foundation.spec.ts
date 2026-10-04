@@ -156,9 +156,11 @@ test.describe("keyboard", () => {
   });
 });
 
-// The theme switch is Settings → Appearance (shell-polish D2).
+// The theme switch is Settings → Appearance (shell-polish D2); in a browser it is also the
+// section an unhashed /settings opens on (settings-redesign E2).
 async function openTheme(page: Page) {
   await page.goto("/settings");
+  await expect(page.locator("#appearance")).toBeVisible();
   await expect(page.getByTestId("theme-control")).toBeVisible();
 }
 

@@ -50,7 +50,7 @@ the count; a system notification fires when it rises.
 
 ## Repositories and accounts
 
-- **Repositories** in the sidebar (also the first card on Settings, and `/repos`) lists the
+- **Repositories** in the sidebar (also Settings → Repositories, and `/repos`) lists the
   repositories you own, collaborate on or belong to through an organisation. Tick or untick and
   save; the queue filter and the badge follow at once, no restart.
 - **Switch GitHub account** is in the account ⋯ menu at the foot of the sidebar, above
@@ -76,9 +76,9 @@ the count; a system notification fires when it rises.
 
 In the app, **Settings → Your phone → Enable phone access** starts a
 [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
-to the local server and the card shows a QR code, with the `https://….trycloudflare.com`
-address under it (the **Phone** item in the sidebar takes you there and carries a green dot
-while it is on). The same lives in the menu bar — **ReviewStage → Enable phone access…**, also
+to the local server and the section shows a QR code, with the `https://….trycloudflare.com`
+address under it (`/settings#phone` is its address; it is the section Settings opens on in the
+app). The same lives in the menu bar — **ReviewStage → Enable phone access…**, also
 in the Dock menu — which opens it in a window of its own. On the phone:
 
 1. **Scan the code with the camera.** The phone is signed in as the person signed in on the

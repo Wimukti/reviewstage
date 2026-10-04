@@ -148,25 +148,32 @@ test.describe("the six pages at 1440", () => {
     expect(await page.locator('.main [data-slot="button"].bg-primary').count()).toBe(1);
   });
 
-  test("settings: the push panel sits above Devices, and Save wakes only when a field changes", async ({ page }) => {
-    await page.goto("/settings");
+  test("settings: one section at a time, the push rows live in Notifications, and the save bar wakes only when a field changes", async ({ page }) => {
+    await page.goto("/settings#notifications");
     await settled(page);
+    // One section in the DOM; the others are reached through the section nav.
+    await expect(page.getByTestId("settings-section")).toHaveCount(1);
     await expect(page.locator("#notifications")).toHaveCount(1);
-    const push = page.getByTestId("push-devices");
+    await expect(page.locator("#notifications").locator('[data-slot="card"]')).toHaveCount(1);
+    const push = page.locator("#notifications").getByTestId("push-devices");
     await expect(push).toBeVisible();
-    const pushBox = (await push.boundingBox())!;
-    const devBox = (await page.locator("#devices").boundingBox())!;
-    expect(pushBox.y + pushBox.height).toBeLessThanOrEqual(devBox.y + 1);
-    const save = page.getByRole("button", { name: /save settings/i });
-    await expect(save).toBeDisabled();
-    await expect(page.getByTestId("settings-dirty")).toHaveCount(0);
+    await expect(push.getByRole("switch", { name: "Notifications on this device" })).toBeVisible();
+    await expect(page.locator("#devices")).toHaveCount(0);
+
+    await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "PR filters" }).click();
+    await expect(page.locator("#filters")).toBeVisible();
+    await expect(page.locator("#notifications")).toHaveCount(0);
+    const bar = page.getByTestId("settings-save");
+    await expect(bar).toBeHidden();
+    await expect(page.getByTestId("settings-dirty")).toBeHidden();
     const age = page.getByLabel("Max PR age in days");
     const before = await age.inputValue();
     await age.fill(String(Number(before) + 1));
-    await expect(save).toBeEnabled();
-    await expect(page.getByTestId("settings-dirty")).toHaveAttribute("data-tone", "amber");
-    await page.getByRole("button", { name: "Reset" }).click();
-    await expect(save).toBeDisabled();
+    await expect(bar).toBeVisible();
+    await expect(page.getByTestId("settings-dirty")).toBeVisible();
+    await expect(bar.getByRole("button", { name: "Save" })).toBeEnabled();
+    await bar.getByRole("button", { name: "Discard" }).click();
+    await expect(bar).toBeHidden();
     await expect(age).toHaveValue(before);
   });
 });

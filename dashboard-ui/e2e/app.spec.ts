@@ -354,19 +354,24 @@ test.describe("signed in", () => {
   test("settings page renders for the fixture admin and the interval round-trips", async ({ page }) => {
     await page.goto("/settings");
     await expect(page.getByRole("heading", { name: /^settings$/i })).toBeVisible();
-    await expect(page.getByText(/^poller$/i)).toBeVisible();
-    await expect(page.getByText(/^notifications$/i)).toBeVisible();
-    await expect(page.getByText(/^pr filters$/i)).toBeVisible();
-    // The fixture user is REVIEWER, hence admin: the save button exists (non-admins get read-only).
-    const save = page.getByRole("button", { name: /save settings/i });
-    await expect(save).toBeVisible();
-    await expect(save).toBeDisabled(); // nothing dirty yet
+    // One section at a time; the others are a click away in the section nav.
+    const nav = page.getByRole("navigation", { name: "Settings sections" });
+    for (const name of ["Poller", "Notifications", "PR filters"]) await expect(nav.getByRole("link", { name })).toBeVisible();
+    await nav.getByRole("link", { name: "Poller" }).click();
+    await expect(page).toHaveURL(/\/settings#poller$/);
+    await expect(page.locator("#poller").getByRole("heading", { name: "Poller" })).toBeVisible();
+    // The fixture user is REVIEWER, hence admin: the save bar exists (non-admins get read-only),
+    // and it stays hidden until something is dirty.
+    const bar = page.getByTestId("settings-save");
+    await expect(bar).toHaveAttribute("data-state", "hidden");
+    await expect(bar).toBeHidden();
 
     const minutes = page.getByLabel("Poll interval (minutes)");
     await minutes.fill("7");
-    await expect(save).toBeEnabled();
-    await save.click();
-    await expect(page.locator(".banner.ok")).toContainText(/saved/i);
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText(/unsaved changes · 1 field/i);
+    await bar.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByTestId("settings-saved")).toContainText(/saved/i);
 
     // Round-trip: a fresh load shows 7 minutes and marks the value as coming from Settings.
     await page.reload();
@@ -375,15 +380,15 @@ test.describe("signed in", () => {
 
     // Put it back so the fixture stays deterministic for the other tests.
     await page.getByLabel("Poll interval (minutes)").fill("3");
-    await page.getByRole("button", { name: /save settings/i }).click();
-    await expect(page.locator(".banner.ok")).toBeVisible();
+    await bar.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByTestId("settings-saved")).toBeVisible();
   });
 
-  test("settings shows the Webhooks card as polling-only for the fixture", async ({ page }) => {
-    // The fixture .env has no GITHUB_WEBHOOK_SECRET and no webhooks.json, so the card must show
-    // the payload URL GitHub needs, an unset secret, and the amber "polling only" light.
-    await page.goto("/settings");
-    const card = page.getByTestId("webhooks-card");
+  test("settings shows the Webhooks section as polling-only for the fixture", async ({ page }) => {
+    // The fixture .env has no GITHUB_WEBHOOK_SECRET and no webhooks.json, so the section must
+    // show the payload URL GitHub needs, an unset secret, and the amber "polling only" light.
+    await page.goto("/settings#webhooks");
+    const card = page.locator("#webhooks");
     await expect(card.getByRole("heading", { name: /^webhooks$/i })).toBeVisible();
     await expect(page.getByTestId("webhooks-status")).toHaveText(/polling only/i);
     await expect(card.getByText("https://reviewstage.example.com/webhooks/github").first()).toBeVisible();

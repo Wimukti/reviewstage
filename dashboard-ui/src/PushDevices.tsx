@@ -1,21 +1,14 @@
-// Settings → "Notifications on this device". Self-contained: mount it anywhere signed-in.
-// Turning the switch on asks the browser for permission, subscribes this browser and files the
-// subscription under the signed-in user; the list below is every browser/device that user has
-// turned on, each removable from here. A notification only ever opens a page — it never runs
-// or posts anything (openspec/config.yaml).
-import { BellRing, Loader2, Send, Smartphone, Trash2 } from "lucide-react";
+// Settings → Notifications → "Notifications on this device". Self-contained rows: mount them
+// inside any settings card signed-in. Turning the switch on asks the browser for permission,
+// subscribes this browser and files the subscription under the signed-in user; the list below
+// is every browser/device that user has turned on, each removable from here. It acts at once
+// and never makes the page dirty. A notification only ever opens a page — it never runs or
+// posts anything (openspec/config.yaml).
+import { Loader2, Send, Smartphone, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { SettingRow } from "./ui";
 import { deviceName, usePush, type PushDevice } from "./push";
 
 function when(ts: number): string {
@@ -27,7 +20,7 @@ function when(ts: number): string {
   return `${mm}/${dd}/${yy}`;
 }
 
-function Row({
+function DeviceRow({
   d,
   current,
   busy,
@@ -39,7 +32,7 @@ function Row({
   onRemove: () => void;
 }) {
   return (
-    <li className="flex items-center gap-3 py-2" data-testid="push-device">
+    <li className="flex items-center gap-3 py-2.5" data-testid="push-device">
       <Smartphone className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -83,51 +76,50 @@ export function PushDevices() {
         : "";
 
   return (
-    <Card id="notifications" data-testid="push-devices">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BellRing className="size-4" aria-hidden />
-          Notifications on this device
-        </CardTitle>
-        <CardDescription>
-          Get a notification here when someone requests your review. It opens the review page;
-          nothing runs and nothing is posted until you choose to.
-        </CardDescription>
-        <CardAction>
-          <Switch
-            aria-label="Notifications on this device"
-            checked={p.enabled}
-            disabled={!canToggle}
-            onCheckedChange={(on) => (on ? void p.enable(deviceName()) : void p.disable())}
-          />
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <div className="divide-y divide-border" data-testid="push-devices">
+      <SettingRow
+        label="Notifications on this device"
+        hint={
+          <>
+            A notification here when someone requests your review. It opens the review page;
+            nothing runs and nothing is posted until you choose to.
+            {offReason && (
+              <>
+                {" "}
+                <span data-testid="push-off-reason">{offReason}</span>
+              </>
+            )}
+          </>
+        }
+      >
+        <Switch
+          aria-label="Notifications on this device"
+          checked={p.enabled}
+          disabled={!canToggle}
+          onCheckedChange={(on) => (on ? void p.enable(deviceName()) : void p.disable())}
+        />
+      </SettingRow>
+      <div className="flex flex-col gap-3 py-4">
         {p.iosNeedsInstall && (
-          <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="ios-hint">
+          <p className="m-0 rounded-md border border-dashed px-3 py-2 text-xs leading-relaxed text-muted-foreground" data-testid="ios-hint">
             Add to Home Screen first — Safari only delivers push to installed apps. Tap Share, then
             “Add to Home Screen”, and open ReviewStage from there.
           </p>
         )}
-        {offReason && (
-          <p className="text-sm text-muted-foreground" data-testid="push-off-reason">
-            {offReason}
-          </p>
-        )}
         {p.error && (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="m-0 text-xs text-red" role="alert">
             {p.error}
           </p>
         )}
         {p.notice && !p.error && (
-          <p className="text-sm text-muted-foreground" role="status">
+          <p className="m-0 text-xs text-muted-foreground" role="status">
             {p.notice}
           </p>
         )}
         {p.devices.length > 0 ? (
-          <ul className="divide-y" aria-label="Subscribed devices">
+          <ul className="m-0 list-none divide-y divide-border p-0" aria-label="Subscribed devices">
             {p.devices.map((d) => (
-              <Row
+              <DeviceRow
                 key={d.id}
                 d={d}
                 current={d.id === p.currentId}
@@ -137,24 +129,25 @@ export function PushDevices() {
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="m-0 text-xs leading-relaxed text-muted-foreground">
             No devices yet. Turn the switch on here, and on your phone from its home-screen app.
           </p>
         )}
-      </CardContent>
-      <CardFooter className="flex flex-wrap items-center gap-3">
-        <Button
-          variant="secondary"
-          disabled={p.busy || p.devices.length === 0}
-          onClick={() => void p.test()}
-        >
-          {p.busy ? <Loader2 className="animate-spin" aria-hidden /> : <Send aria-hidden />}
-          Send a test
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          Up to {p.max} devices. The server keeps only each device’s push address and public keys.
-        </span>
-      </CardFooter>
-    </Card>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={p.busy || p.devices.length === 0}
+            onClick={() => void p.test()}
+          >
+            {p.busy ? <Loader2 className="animate-spin" aria-hidden /> : <Send aria-hidden />}
+            Send a test
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Up to {p.max} devices. The server keeps only each device’s push address and public keys.
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

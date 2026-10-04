@@ -109,8 +109,8 @@ for (const [vp, tag] of [[{ width: 1440, height: 900 }, "1440"], [{ width: 390, 
   await ctx.addInitScript(() => localStorage.removeItem("rs-theme"));
   await ctx.addCookies([cookie]);
   const page = await ctx.newPage();
-  await page.goto(`${PERSONAL_ORIGIN}/settings`, { waitUntil: "networkidle" });
-  await page.getByTestId("repos-card").waitFor();
+  await page.goto(`${PERSONAL_ORIGIN}/settings#repositories`, { waitUntil: "networkidle" });
+  await page.locator("#repositories").waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: join(OUT, "settings-repos-card-dark-1440.png") });
   console.log("wrote", join(OUT, "settings-repos-card-dark-1440.png"));

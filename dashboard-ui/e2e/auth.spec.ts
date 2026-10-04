@@ -73,7 +73,7 @@ test.describe("devices", () => {
   test.use({ storageState: { cookies: [sessionCookie(DEVICES_USER)], origins: [] } });
 
   test("mints a token that authenticates /api/me until it is revoked", async ({ page }) => {
-    await page.goto("/settings");
+    await page.goto("/settings#devices");
     const card = page.locator("#devices");
     await expect(card.getByRole("heading", { name: "Devices" })).toBeVisible();
 
@@ -119,7 +119,7 @@ test.describe("devices", () => {
   });
 
   test("sign out everywhere clears every device", async ({ page }) => {
-    await page.goto("/settings");
+    await page.goto("/settings#devices");
     const card = page.locator("#devices");
     await card.getByLabel("New device name").fill("all-1");
     await card.getByRole("button", { name: "Create a token for the CLI/mobile" }).click();

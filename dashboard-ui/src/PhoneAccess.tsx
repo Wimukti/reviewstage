@@ -1,20 +1,20 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, Smartphone } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { PHONE_STRINGS as S, onPhoneData, phoneBridge, refreshPhoneStatus, usePhoneStatus, type PhoneData } from "./phone";
-import { useHashTarget } from "./router";
-import { StatusBadge } from "./ui";
+import { SettingRow, StatusBadge } from "./ui";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const NOTE = "text-xs text-muted-foreground";
 
 // Settings → Your phone: the desktop app's phone access, in the app. The same data and words
-// as the phone window (desktop/pages/phone.html) — main.js sends both the same payload.
-export function PhoneCard() {
+// as the phone window (desktop/pages/phone.html) — main.js sends both the same payload. The
+// section header carries the title; this is the one card under it. Off: a short explanation
+// and the Enable button. On: the state row, then the code block.
+export function PhoneAccess() {
   const bridge = phoneBridge();
-  const here = useHashTarget("phone");
   const status = usePhoneStatus();
   const [data, setData] = useState<PhoneData>({});
   const [busy, setBusy] = useState<"enable" | "disable" | null>(null);
@@ -74,61 +74,60 @@ export function PhoneCard() {
     }
   };
 
+  const off = !enabled && !opening;
+
   return (
-    <Card className={cn("gap-0 py-0 scroll-mt-4", here && "ring-2 ring-primary")} id="phone" tabIndex={-1} data-testid="phone-card">
-      <CardHeader className="px-5 pb-0 pt-4">
-        <CardTitle className="flex items-center gap-2">
-          <Smartphone aria-hidden="true" className="size-4" />
-          <h2 className="m-0 text-sm font-medium leading-none">Your phone</h2>
-        </CardTitle>
-        <CardDescription className={NOTE}>
-          A secure tunnel to this computer and a code that signs your phone in as you. The queue,
-          the findings and the Post button are the same app at phone width.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="px-5 pb-4">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3" data-testid="setting-row">
-          <div className="min-w-0 flex-1 basis-[200px]">
-            <div className="text-sm font-medium">Phone access</div>
-            <div className={cn(NOTE, "mt-1 flex min-w-0 flex-wrap items-center gap-2")} data-testid="phone-state">
-              {opening ? (
-                <StatusBadge tone="amber" live>Opening…</StatusBadge>
-              ) : enabled ? (
-                <>
-                  <StatusBadge tone="green">On</StatusBadge>
-                  {url && <code className="truncate">{url}</code>}
-                </>
-              ) : (
-                <StatusBadge tone="graphite" icon={null}>Off</StatusBadge>
+    <Card className="gap-0 py-0">
+      <CardContent className="divide-y divide-border px-5 py-0">
+        <SettingRow
+          label="Phone access"
+          hint={
+            <>
+              <span className="flex min-w-0 flex-wrap items-center gap-2" data-testid="phone-state">
+                {opening ? (
+                  <StatusBadge tone="amber" live>Opening…</StatusBadge>
+                ) : enabled ? (
+                  <>
+                    <StatusBadge tone="green">On</StatusBadge>
+                    {url && <code className="min-w-0 max-w-full truncate">{url}</code>}
+                  </>
+                ) : (
+                  <StatusBadge tone="graphite" icon={null}>Off</StatusBadge>
+                )}
+              </span>
+              {off && (
+                <span className="mt-1.5 block">
+                  Opens a secure tunnel to this computer and shows a code that signs your phone in as
+                  you. Turn it off and every link points back at this computer.
+                </span>
               )}
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {enabled ? (
-              <>
-                <Button variant="secondary" size="sm" type="button" disabled={!!busy} onClick={enable}>
-                  {data.dataUrl ? "New code" : "Show code"}
-                </Button>
-                <Button variant="ghost" size="sm" type="button" disabled={!!busy} onClick={disable} data-testid="phone-off">
-                  {busy === "disable" ? "Turning off…" : "Turn off"}
-                </Button>
-              </>
-            ) : (
-              <Button type="button" disabled={!!busy} onClick={enable} data-testid="phone-enable">
-                {opening ? "Opening…" : "Enable phone access"}
+            </>
+          }
+        >
+          {enabled ? (
+            <>
+              <Button variant="secondary" size="sm" type="button" disabled={!!busy} onClick={enable}>
+                {data.dataUrl ? "New code" : "Show code"}
               </Button>
-            )}
-          </div>
-        </div>
+              <Button variant="ghost" size="sm" type="button" disabled={!!busy} onClick={disable} data-testid="phone-off">
+                {busy === "disable" ? "Turning off…" : "Turn off"}
+              </Button>
+            </>
+          ) : (
+            <Button type="button" disabled={!!busy} onClick={enable} data-testid="phone-enable">
+              {opening ? "Opening…" : "Enable phone access"}
+            </Button>
+          )}
+        </SettingRow>
 
         {(error || data.stopped) && (
-          <p className="m-0 pb-2 text-xs text-red" role="alert" data-testid="phone-error">
+          <p className="m-0 py-3 text-xs text-red" role="alert" data-testid="phone-error">
             {data.stopped || error}
           </p>
         )}
 
         {(enabled || opening) && (
-          <div className="flex flex-wrap gap-5 border-t pt-4" data-testid="phone-code">
+          <div className="flex flex-wrap gap-5 py-4" data-testid="phone-code">
             {data.dataUrl ? (
               <img
                 src={data.dataUrl}

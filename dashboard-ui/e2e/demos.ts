@@ -7,7 +7,7 @@
 //   phone-access  the desktop "Review from your phone" window with a QR code (static, 6 s)
 //
 // Each is recorded with Playwright's recordVideo at 2x in the dark theme with motion on, then
-// cut with ffmpeg into website/src/assets/demos/<name>.{mp4,gif,png} and copied to docs/demos/.
+// cut with ffmpeg into website/src/assets/demos/<name>.{mp4,gif,jpg} and copied to docs/demos/.
 // Budgets: MP4 ≤ 2.5 MB (h264, yuv420p, faststart), GIF ≤ 4 MB (12 fps, palette-optimised).
 //
 //   RS_E2E_PORT=8995 pnpm demos            # all four
@@ -301,7 +301,8 @@ function encode(name: string, r: { webm: string; ss: number; to: number; poster:
   mkdirSync(SITE_OUT, { recursive: true });
   const mp4 = join(SITE_OUT, `${name}.mp4`);
   const gif = join(SITE_OUT, `${name}.gif`);
-  const png = join(SITE_OUT, `${name}.png`);
+  // A JPEG poster, not PNG: a 1 MB PNG poster on the landing page took Lighthouse from 99 to 77.
+  const png = join(SITE_OUT, `${name}.jpg`);
   const cut = ["-ss", r.ss.toFixed(2), "-to", r.to.toFixed(2), "-i", r.webm];
   // MP4: the whole 2x frame, even dimensions, crf tuned down until it fits the budget.
   for (const crf of [26, 29, 32, 35]) {
@@ -317,12 +318,12 @@ function encode(name: string, r: { webm: string; ss: number; to: number; poster:
     if (statSync(gif).size <= GIF_BUDGET) break;
   }
   // Poster: the frame the clip is about, at the MP4's size.
-  ff(["-ss", r.poster.toFixed(2), "-i", r.webm, "-frames:v", "1", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", png]);
+  ff(["-ss", r.poster.toFixed(2), "-i", r.webm, "-frames:v", "1", "-vf", "scale='min(1440,iw)':-2", "-q:v", "4", png]);
   mkdirSync(DOCS_OUT, { recursive: true });
   for (const f of [mp4, gif, png]) copyFileSync(f, join(DOCS_OUT, f.slice(f.lastIndexOf("/") + 1)));
   const dur = execFileSync(FFMPEG.replace(/ffmpeg$/, "ffprobe"), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp4]).toString().trim();
   const kb = (p: string) => `${(statSync(p).size / 1024).toFixed(0)} KB`;
-  console.log(`${name}: mp4 ${kb(mp4)} (${Number(dur).toFixed(1)} s), gif ${kb(gif)}, png ${kb(png)}`);
+  console.log(`${name}: mp4 ${kb(mp4)} (${Number(dur).toFixed(1)} s), gif ${kb(gif)}, jpg ${kb(png)}`);
   if (statSync(mp4).size > MP4_BUDGET) throw new Error(`${name}.mp4 is over 2.5 MB`);
   if (statSync(gif).size > GIF_BUDGET) throw new Error(`${name}.gif is over 4 MB`);
 }

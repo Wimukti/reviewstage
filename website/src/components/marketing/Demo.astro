@@ -9,7 +9,7 @@ interface Props { name: string; alt: string; label?: string; }
 const { name, alt, label = "demo" } = Astro.props;
 const all = import.meta.glob<string>("../../assets/demos/*.{mp4,gif,png,jpg}", { eager: true, query: "?url", import: "default" });
 const pick = (ext: string) => all[`../../assets/demos/${name}.${ext}`];
-const mp4 = pick("mp4"), gif = pick("gif"), poster = pick("png") ?? pick("jpg");
+const mp4 = pick("mp4"), gif = pick("gif"), poster = pick("jpg") ?? pick("png");
 // Without a still, the first frame stands in for the poster; a multi-megabyte GIF as poster
 // would defeat preload="none".
 const preload = poster ? "none" : "metadata";

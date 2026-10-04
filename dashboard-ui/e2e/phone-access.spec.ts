@@ -6,12 +6,9 @@
 // the team fixture is patched to say so.
 import { expect, test, type Page } from "@playwright/test";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { patchMe, USER } from "./fixture";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(resolve(HERE, "..", "..", "desktop", "package.json"));
+const require = createRequire(import.meta.url); // qrcode is a dev dependency here, same version as the desktop package
 const QRCode = require("qrcode") as { toDataURL(text: string, opts: object): Promise<string> };
 
 const URL = "https://headline-attach-along-referred.trycloudflare.com";

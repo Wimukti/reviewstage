@@ -17,7 +17,7 @@ mkdirSync(OUT, { recursive: true });
 const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
 
 // The desktop package's own qrcode, so the code in the shot is the one the app would draw.
-const require = createRequire(resolve(HERE, "..", "..", "desktop", "package.json"));
+const require = createRequire(import.meta.url); // qrcode is a dev dependency here, same version as the desktop package
 const QRCode = require("qrcode") as { toDataURL(text: string, opts: object): Promise<string> };
 
 const browser = await chromium.launch();

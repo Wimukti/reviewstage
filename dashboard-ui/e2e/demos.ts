@@ -503,9 +503,9 @@ const wizard: Demo = {
   },
 };
 
-// A QR code the way desktop/main.js draws it (the `qrcode` package in desktop/node_modules).
+// A QR code the way desktop/main.js draws it (`qrcode`, a dev dependency here at the desktop's version).
 async function qrDataUrl(url: string) {
-  const mod = await import(join(ROOT, "desktop", "node_modules", "qrcode", "lib", "index.js"));
+  const mod = await import("qrcode");
   const QRCode = (mod.default ?? mod) as { toDataURL: (s: string, o: object) => Promise<string> };
   return QRCode.toDataURL(url, { margin: 1, width: 280, color: { dark: "#ECEEF3", light: "#0B0C10" } });
 }

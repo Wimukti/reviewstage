@@ -17,6 +17,9 @@ COPY dashboard-ui/ ./
 # scripts/icons.mjs renders the PWA icons from assets/logo-light.svg. Copy the whole directory
 # so adding another variant does not silently break the image build.
 COPY assets/ /build/assets/
+# The phone-access card and the desktop's phone window share their words from one file that
+# lives with the desktop pages; src/phone.ts imports it, so the image build needs it too.
+COPY desktop/pages/phone-strings.cjs desktop/pages/phone-strings.d.cts /build/desktop/pages/
 # esbuild writes the bundle to ../bin/static, which scripts/icons.mjs then fingerprints as
 # app-<hash>.js / app-<hash>.css and records in assets.json (see package.json "build").
 RUN pnpm build && ls -1 /build/bin/static

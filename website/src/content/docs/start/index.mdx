@@ -1,0 +1,36 @@
+---
+title: What you get
+description: ReviewStage drafts your PR review from the real diff and stages it. You post it as yourself.
+sidebar:
+  order: 1
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+ReviewStage drafts a pull-request review from the real diff and stages it for you. You tick the findings worth posting and post them under your own GitHub name. Nothing reaches GitHub until you click.
+
+```bash
+npx reviewstage
+```
+
+## What you get
+
+- A **queue** of the PRs waiting for your review, on your laptop and on your phone.
+- A **drafted review** for each one: an assessment, then findings with file and line, every one editable.
+- **Post** as a plain `COMMENT` review, as you. **Approve** is a separate click.
+- A **learnings loop**: what you drop or reword shapes the next review of that repository.
+- Reviews run on **your own Claude plan**, through [Claude Code](https://docs.anthropic.com/en/docs/claude-code), only when you click.
+
+## Install
+
+<CardGrid>
+  <LinkCard title="One person" description="npx reviewstage on your Mac or Linux laptop. A window opens; three steps; your phone over a QR code." href="/reviewstage/start/install/#desktop-app-one-person" />
+  <LinkCard title="A team" description="Docker Compose on one server. Every reviewer signs in as themselves; one install, many repositories." href="/reviewstage/start/install/#team-docker-compose" />
+</CardGrid>
+
+## Then
+
+- [Your first review](/reviewstage/start/first-review/) — from a PR URL to a posted comment, as a numbered walk.
+- [Team workflow](/reviewstage/guides/team-workflow/) — how it fits the review process your team already has.
+
+It is a reviewer's assistant, not a review bot: it never posts on its own, never posts as a bot, never requests changes, and never approves. The agent can only produce a file; every write to GitHub is your click with your token.

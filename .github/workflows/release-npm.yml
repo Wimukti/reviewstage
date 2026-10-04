@@ -71,7 +71,9 @@ jobs:
         working-directory: desktop
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish reviewstage-*.tgz --provenance --access public
+        # npm refuses a prerelease without an explicit dist-tag. Pre-releases go to `latest` while
+        # there is no stable version for `npx reviewstage` to resolve to (see docs/INSTALL-DESKTOP.md).
+        run: npm publish reviewstage-*.tgz --provenance --access public --tag latest
       - name: Summary
         run: |
           {

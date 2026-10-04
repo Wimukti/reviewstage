@@ -5,9 +5,9 @@
 <title>ReviewStage</title>
 <style>
   :root { --paper:#0B0C10; --panel:#12141A; --ink:#ECEEF3; --graphite:#9AA0B4; --hairline:#22262F; --blue:#7A83FF; --red:#F0718A; --green:#3DD98F; --light: rgba(255,225,176,.17); }
-  html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-app-region: drag; }
+  html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif; }
   body { display: grid; place-items: center; }
-  .card { position: relative; width: min(440px, calc(100vw - 32px)); padding: 32px 28px 24px; border-radius: 12px; background: var(--panel); box-shadow: 0 24px 64px -24px rgba(0,0,0,.8); -webkit-app-region: no-drag; }
+  .card { position: relative; width: min(440px, calc(100vw - 32px)); padding: 32px 28px 24px; border-radius: 12px; background: var(--panel); box-shadow: 0 24px 64px -24px rgba(0,0,0,.8); }
   .card::before { content: ""; position: absolute; left: 50%; top: -46%; width: 120%; height: 112%; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(60% 55% at 50% 0%, var(--light), transparent 70%); pointer-events: none; animation: breathe 8s ease-in-out infinite alternate; }
   @keyframes breathe { from { opacity: .7 } to { opacity: 1 } }
   @media (prefers-reduced-motion: reduce) { .card::before { animation: none } }
@@ -29,9 +29,11 @@
   button { font: inherit; font-weight: 500; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; background: var(--blue); color: var(--paper) }
   button.ghost { background: transparent; color: var(--graphite) }
   .fine { margin-top: 18px; text-align: center; color: var(--graphite); font-size: 12px }
+  .drag { position: fixed; inset: 0 0 auto 0; height: 40px; -webkit-app-region: drag; }
 </style>
 </head>
 <body>
+  <div class="drag" aria-hidden="true"></div>
   <div class="card">
     <svg class="mark" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 10h12v28H8z" fill="#ECEEF3"/><path d="M22 14h6v24h-6z" fill="#3947FF"/><path d="M30 10h10v28H30z" fill="#ECEEF3" opacity=".85"/></svg>
     <h1>ReviewStage</h1>

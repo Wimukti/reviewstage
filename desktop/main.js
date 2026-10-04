@@ -265,6 +265,8 @@ async function boot() {
   refreshMenu(); // "Enable phone access" is available once the server is
   if (!ok) return; // the page shows the error and a Retry
   await win.loadURL(`http://127.0.0.1:${server.port}/`);
+  // Belt and braces: whatever drag region the preparing page declared, the dashboard has none.
+  await win.webContents.insertCSS("html, body { -webkit-app-region: no-drag; }");
   pollBadge();
   badgeTimer = setInterval(pollBadge, 60_000);
   if (SMOKE) {

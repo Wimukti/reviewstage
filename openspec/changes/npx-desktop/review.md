@@ -71,6 +71,21 @@ workflow now publishes with `--tag latest`. From the public registry, empty npm 
 ROOT: `npx -y reviewstage@latest` with `RS_SMOKE=1` → `RS_SMOKE_OK`, `.env` written with
 `RS_PERSONAL=1` and the chosen port.
 
+## Live findings from the maintainer's first run (10/04/26, rc.24 → rc.28)
+
+1. **Dead buttons below the middle of the window** (rc.25–rc.27). The preparing page made
+   its whole body a window-drag region with the centred card excepted; Electron keeps a page's
+   drag regions across `loadURL`, so the dashboard inherited them — controls inside the old
+   card's rectangle worked, everything below it moved the window instead. Keyboard worked
+   throughout, which was the tell. Playwright could not reproduce it: CDP injects clicks past
+   the native layer where drag regions act. Fix: both desktop pages drag only a 40px top
+   strip, and the dashboard gets `html, body { -webkit-app-region: no-drag }` after it loads.
+2. **Connect with Claude opened the dashboard in a second window.** The SPA never POSTed
+   `/api/claude/start` (minting moved there in the audit), so the anchor's href was empty.
+3. **Device-flow "Open" label spilled past its button** at the wizard's width.
+4. Dock said "Electron" with Electron's icon; the Claude button wore a generic sparkle; the
+   stepper used generic circles. All replaced.
+
 ## Left for the maintainer
 
 - `NPM_TOKEN` is a 90-day granular token (added 10/04/26); when it expires the release fails

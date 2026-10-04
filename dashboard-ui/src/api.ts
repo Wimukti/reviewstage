@@ -913,6 +913,10 @@ export const api = {
   settings: () => get<SettingsData>("/settings"),
   saveRuntimeSettings: (t: Token, settings: Partial<RuntimeSettings>) =>
     put<SettingsData>("/settings", { ...t, settings }),
+  // Mints (or reuses) the in-flight connect and returns Claude's authorize URL. A GET never
+  // mints — see api_integrations in server.py — so the button asks for it on click.
+  claudeStart: (t: Token) =>
+    post<BannerResult & { connected: boolean; authUrl: string }>("/claude/start", { ...t }),
   claudeCode: (t: Token, code: string) =>
     post<BannerResult & { connected: boolean }>("/claude/code", { ...t, code }),
   claudeDisconnect: (t: Token) =>

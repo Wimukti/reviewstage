@@ -96,8 +96,27 @@ test("signing in advances to the Claude step; 'later' skips to repositories", as
   await expect(page).toHaveURL(/\/welcome\/claude$/);
   await expect(steps(page).nth(0)).toHaveAttribute("data-state", "done");
   await expect(steps(page).nth(1)).toHaveAttribute("data-state", "current");
-  // The Integrations control, as is: Connect with Claude opens Claude's authorize page.
-  await expect(page.getByRole("link", { name: /Connect with Claude/ })).toBeVisible();
+  // The Integrations control, as is. No connect is in flight, so the control is a button that
+  // mints one (POST /api/claude/start) and opens the address it gets back; an anchor with an
+  // empty href used to open the dashboard itself in a second window.
+  const AUTH = "https://claude.ai/oauth/authorize?code=true&state=e2e";
+  let starts = 0;
+  await page.route("**/api/claude/start", (route) => {
+    starts++;
+    return route.fulfill({ json: { bannerHtml: "", connected: false, authUrl: AUTH } });
+  });
+  await page.evaluate(() => {
+    (window as unknown as { __opened: string[] }).__opened = [];
+    window.open = ((u: string) => { (window as unknown as { __opened: string[] }).__opened.push(u); return null; }) as typeof window.open;
+  });
+  const connect = page.getByRole("button", { name: /Connect with Claude/ });
+  await expect(connect).toBeVisible();
+  await expect(page.getByRole("link", { name: /Connect with Claude/ })).toHaveCount(0);
+  await connect.click();
+  await expect(page.getByRole("link", { name: /Reopen Claude/ })).toHaveAttribute("href", AUTH);
+  expect(await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened)).toEqual([AUTH]);
+  expect(starts).toBe(1);
+  await expect(page.getByLabel(/code/i).first()).toBeVisible(); // the paste-the-code form is revealed
   await page.getByTestId("claude-later").click();
   await expect(page).toHaveURL(/\/welcome\/repos$/);
   await expect(steps(page).nth(2)).toHaveAttribute("data-state", "current");

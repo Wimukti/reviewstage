@@ -28,6 +28,10 @@ desktop apps run, and why no Apple Developer account is involved.
    **pinned by version and SHA-256** in the package's `tools.json`, into `~/.reviewstage/bin`.
    A checksum mismatch stops the install; it is never skipped. `flock` is a small Python shim
    covering the three call shapes the scripts use.
+   On macOS the Electron bundle npm installed is renamed and re-iconed once (`ReviewStage` in
+   the Dock and the app switcher, the app's own mark) and ad-hoc re-signed with the system
+   `codesign`, as Electron's npm build already is; if any of that fails, the app runs under
+   Electron's own name and icon.
 2. **Claude Code** is looked for on PATH. Missing → the window says so and how to install it.
 3. **Server.** A free loopback port is chosen; `~/.reviewstage/.env` is written on the first run
    with a random `RS_SECRET`, `RS_PERSONAL=1`, `GH_DEVICE_FLOW=1` and `DRY_RUN=1`; the bundled

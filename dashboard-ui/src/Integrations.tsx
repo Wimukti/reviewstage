@@ -210,6 +210,28 @@ export function ClaudeCtl({
   // Verifying takes several seconds (a round-trip to Anthropic, then a `claude` call): say so.
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState("");
+  // The authorize URL exists only once a connect is in flight. A GET never mints one, so on
+  // the first click we POST /api/claude/start and open what comes back. An empty href here
+  // used to open the dashboard itself in a second window.
+  const [authUrl, setAuthUrl] = useState(d.claude.authUrl);
+  const [starting, setStarting] = useState(false);
+  useEffect(() => setAuthUrl(d.claude.authUrl), [d.claude.authUrl]);
+  async function begin() {
+    if (starting) return;
+    setStarting(true);
+    setErr("");
+    try {
+      const r = await api.claudeStart(d.token);
+      if (!r.authUrl) throw new Error(r.bannerHtml || "Claude did not return a sign-in address.");
+      setAuthUrl(r.authUrl);
+      setReveal(true);
+      window.open(r.authUrl, "_blank", "noopener");
+    } catch (x) {
+      setErr(errMessage(x, "Could not start the Claude connection."));
+    } finally {
+      setStarting(false);
+    }
+  }
   if (d.claude.connected)
     return (
       <Button
@@ -231,13 +253,21 @@ export function ClaudeCtl({
     );
   return (
     <>
-      <Button asChild variant={reveal ? "secondary" : "default"} className="w-full">
-        <a target="_blank" rel="noopener" href={d.claude.authUrl} onClick={() => setReveal(true)}>
+      {authUrl ? (
+        <Button asChild variant={reveal ? "secondary" : "default"} className="w-full">
+          <a target="_blank" rel="noopener" href={authUrl} onClick={() => setReveal(true)}>
+            {BrandIcon.claude}
+            {reveal ? "Reopen Claude" : "Connect with Claude"}
+            <ExternalLink aria-hidden="true" className="size-3.5 opacity-70" />
+          </a>
+        </Button>
+      ) : (
+        <Button type="button" className="w-full" onClick={() => void begin()} disabled={starting} aria-busy={starting}>
           {BrandIcon.claude}
-          {reveal ? "Reopen Claude" : "Connect with Claude"}
+          {starting ? "Opening Claude…" : "Connect with Claude"}
           <ExternalLink aria-hidden="true" className="size-3.5 opacity-70" />
-        </a>
-      </Button>
+        </Button>
+      )}
       <p className={HINT}>
         Opens Claude in a new tab — sign in with <em>your</em> account and click <b>Authorize</b>.
         Claude shows you a code; paste it below.

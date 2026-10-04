@@ -8,13 +8,16 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
-import { ensureEnv, freePort, spawnServer, stopServer } from "./server.js";
+import { ensureEnv, freePort, spawnServer, stopServer, SERVER_DIR } from "./server.js";
 import { ensureTools } from "./tools.js";
 import { startTunnel, stopTunnel, tunnelStatus } from "./tunnel.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.ROOT || join(homedir(), ".reviewstage");
 const SMOKE = process.env.RS_SMOKE === "1"; // the Playwright smoke test: no notifications, exit cleanly
+// The app's own mark, rendered at build time from assets/logo-light.svg and shipped with the
+// server's static files. The dock and the Linux window manager show it instead of Electron's.
+const ICON = join(SERVER_DIR, "static", "icons", "icon-512.png");
 
 let win = null;
 let server = null; // { child, port }
@@ -40,13 +43,16 @@ function createWindow() {
     backgroundColor: "#0B0C10",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 14, y: 14 },
+    icon: ICON,
     webPreferences: { preload: join(here, "preload.cjs"), contextIsolation: true, sandbox: false },
     show: false,
   });
   win.once("ready-to-show", () => win.show());
   // Links to GitHub and the docs open in the person's browser, not inside the app.
+  // Nothing ever opens a second window: the app's own pages stay in this one, everything
+  // else goes to the person's browser (GitHub's device page, Claude's authorize page, docs).
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (server && url.startsWith(`http://127.0.0.1:${server.port}`)) return { action: "allow" };
+    if (server && url.startsWith(`http://127.0.0.1:${server.port}`)) { win.loadURL(url); return { action: "deny" }; }
     shell.openExternal(url);
     return { action: "deny" };
   });
@@ -161,6 +167,7 @@ function openPhoneWindow() {
     backgroundColor: "#0B0C10",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 14, y: 14 },
+    icon: ICON,
     webPreferences: { preload: join(here, "preload.cjs"), contextIsolation: true, sandbox: false },
     show: false,
   });
@@ -265,7 +272,7 @@ ipcMain.handle("phone:disable", () => disablePhone());
 ipcMain.handle("phone:status", () => { const { enabled, url } = tunnelStatus(); return { enabled, url }; });
 
 app.setName("ReviewStage");
-app.whenReady().then(() => { refreshMenu(); return boot(); });
+app.whenReady().then(() => { if (process.platform === "darwin") app.dock?.setIcon(ICON); refreshMenu(); return boot(); });
 app.on("activate", () => { if (!win) createWindow(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", async (e) => {

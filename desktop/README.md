@@ -39,11 +39,11 @@ more); **Disable phone access** or quitting the app ends it.
 ## Where things live
 
 Everything is under `~/.reviewstage`: `.env` (the app writes it: a random `RS_SECRET`,
-`RS_PERSONAL=1`, `DRY_RUN=1`), `settings.json` (the repositories you picked), `bin/` (the fetched
-tools), `state/` (every run, staged findings, posted-review records), `repos/` (one blobless
-clone per repository). Delete the directory to start over. `DRY_RUN=1` is on by default:
-everything works except the final write to GitHub, so you can compare its output with your own
-reviews first; switch it off from the Settings page.
+`RS_PERSONAL=1`), `settings.json` (the repositories you picked), `bin/` (the fetched tools),
+`state/` (every run, staged findings, posted-review records), `repos/` (one blobless clone per
+repository). Delete the directory to start over. Posting is live from the first run: the Post
+button is the gate, and nothing reaches GitHub until you press it. To rehearse without posting,
+add `DRY_RUN=1` to `.env` and relaunch.
 
 ## Problems
 

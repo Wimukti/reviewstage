@@ -267,6 +267,15 @@ async function boot() {
   await win.loadURL(`http://127.0.0.1:${server.port}/`);
   // Belt and braces: whatever drag region the preparing page declared, the dashboard has none.
   await win.webContents.insertCSS("html, body { -webkit-app-region: no-drag; }");
+  if (process.platform === "darwin") {
+    // hiddenInset puts the traffic lights over the page's top-left corner. Push the sidebar's
+    // brand row (and the phone header, at narrow widths) below them, and let that strip drag.
+    await win.webContents.insertCSS(
+      '[data-testid="sidebar"] { padding-top: 40px; } ' +
+      '[data-testid="sidebar"]::before { content: ""; position: fixed; top: 0; left: 0; width: 216px; height: 40px; -webkit-app-region: drag; } ' +
+      '.phone-head { padding-left: 84px; -webkit-app-region: drag; } .phone-head * { -webkit-app-region: no-drag; }',
+    );
+  }
   pollBadge();
   badgeTimer = setInterval(pollBadge, 60_000);
   if (SMOKE) {

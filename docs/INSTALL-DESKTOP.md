@@ -34,7 +34,7 @@ desktop apps run, and why no Apple Developer account is involved.
    Electron's own name and icon.
 2. **Claude Code** is looked for on PATH. Missing → the window says so and how to install it.
 3. **Server.** A free loopback port is chosen; `~/.reviewstage/.env` is written on the first run
-   with a random `RS_SECRET`, `RS_PERSONAL=1`, `GH_DEVICE_FLOW=1` and `DRY_RUN=1`; the bundled
+   with a random `RS_SECRET`, `RS_PERSONAL=1`, `GH_DEVICE_FLOW=1` and `DRY_RUN=0`; the bundled
    server starts and the window loads once `/health` answers.
 4. **Three steps.** *Continue with GitHub* (device flow: a short code at
    github.com/login/device, or paste a fine-grained token), *Connect Claude* (the same
@@ -81,7 +81,7 @@ closes the tunnel. `cloudflared` is fetched like the other tools, pinned by chec
 
 ```
 ~/.reviewstage/
-  .env            written by the app; RS_SECRET, RS_PERSONAL=1, PUBLIC_URL=http://127.0.0.1:<port>
+  .env            written by the app; RS_SECRET, RS_PERSONAL=1, DRY_RUN=0, PUBLIC_URL=http://127.0.0.1:<port>
   settings.json   repositories picked in the wizard, poller interval, notifier settings
   bin/            gh, jq, cloudflared, flock (fetched or shimmed), with .<tool>.version stamps
   state/          every run: staged findings, posted-review records, learnings
@@ -90,9 +90,10 @@ closes the tunnel. `cloudflared` is fetched like the other tools, pinned by chec
   server.log      the server's output from the last launch
 ```
 
-Delete the directory to start over. `DRY_RUN=1` is on by default: everything works except the
-final write to GitHub, so you can compare its output with your own reviews before letting it
-carry your name; switch it off from the Settings page.
+Delete the directory to start over. Posting is live from the first run: in the desktop app the
+Post button is the gate, and nothing reaches GitHub until you press it (the team install keeps
+`DRY_RUN=1` so a shared server's output can be compared before it carries anyone's name). To
+rehearse without posting, add `DRY_RUN=1` to `.env` and relaunch.
 
 ## Diagnostics
 

@@ -31,7 +31,8 @@ test("launches, boots the server, loads the window, quits", async (t) => {
     return;
   }
   const root = mkdtempSync(join(tmpdir(), "rs-smoke-"));
-  // Personal mode is lane D1; until then the server insists on a repository.
+  // An .env as the rc.24–rc.28 launcher wrote it (no defaults stamp, dry run on): the upgrade
+  // path turns dry run off and stamps it.
   writeFileSync(join(root, ".env"), `RS_SECRET=${"a".repeat(48)}\nREPOS=acme/widgets\nRS_PERSONAL=1\nGH_DEVICE_FLOW=1\nDRY_RUN=1\n`);
   const { code, text } = await launch(root);
   const ok = /RS_SMOKE_OK port=(\d+) title=ReviewStage/.exec(text);
@@ -40,6 +41,8 @@ test("launches, boots the server, loads the window, quits", async (t) => {
   const env = readFileSync(join(root, ".env"), "utf8");
   assert.match(env, new RegExp(`PUBLIC_URL=http://127\\.0\\.0\\.1:${ok[1]}`), "the launcher records the port it chose");
   assert.ok(existsSync(join(root, "bin", "flock")) || process.platform === "linux", "the flock shim is installed where the OS lacks flock");
+  assert.match(env, /DRY_RUN=0/, "a pre-stamp personal .env is upgraded to live");
+  assert.match(env, /RS_DESKTOP_DEFAULTS=2/);
 });
 
 test("a fresh root gets a secret and personal-mode defaults", async (t) => {
@@ -52,7 +55,8 @@ test("a fresh root gets a secret and personal-mode defaults", async (t) => {
   assert.match(env, /RS_SECRET=[0-9a-f]{48}/);
   assert.match(env, /RS_PERSONAL=1/);
   assert.match(env, /GH_DEVICE_FLOW=1/);
-  assert.match(env, /DRY_RUN=1/);
+  assert.match(env, /DRY_RUN=0/, "the desktop app posts live; the Post click is the gate");
+  assert.match(env, /RS_DESKTOP_DEFAULTS=2/);
   assert.doesNotMatch(env, /^REPOS=/m, "the launcher writes no repository");
   assert.match(text, /RS_SMOKE_OK port=\d+ title=ReviewStage/, `expected RS_SMOKE_OK without REPOS, got:\n${text.split("\n").filter((l) => !/ERROR:gpu|ERROR:components|objc\[/.test(l)).slice(-25).join("\n")}`);
   assert.equal(code, 0);

@@ -7,6 +7,7 @@ import {
   Code2,
   Compass,
   Ellipsis,
+  LogOut,
   ExternalLink,
   Inbox,
   Monitor,
@@ -160,7 +161,7 @@ function LiveBadge({ me }: { me: Me }) {
 // switch and the Help items; on the phone the sheet shows those directly.
 const MENU_ITEM = "focus:bg-blue/14";
 
-function AccountRow({ me, more }: { me: Me; more?: boolean }) {
+function AccountRow({ me, more, onSignOut }: { me: Me; more?: boolean; onSignOut?: () => void }) {
   const [choice, setChoice] = useTheme();
   const moreBtn = useRef<HTMLButtonElement>(null);
   // Starting the tour from the menu: the menu's focus trap is still up inside onSelect, so the
@@ -221,6 +222,15 @@ function AccountRow({ me, more }: { me: Me; more?: boolean }) {
               <Compass aria-hidden="true" />
               Take a tour
             </DropdownMenuItem>
+            {onSignOut && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className={MENU_ITEM} onSelect={onSignOut}>
+                  <LogOut aria-hidden="true" />
+                  Sign out
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -260,13 +270,8 @@ export function Sidebar({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
         </div>
       </nav>
 
-      <div className="mt-auto flex flex-col gap-1 pt-3">
-        <AccountRow me={me} more />
-        <div className="flex items-center justify-end">
-          <Button variant="ghost" size="sm" type="button" className="text-muted-foreground" onClick={onSignOut}>
-            Sign out
-          </Button>
-        </div>
+      <div className="mt-auto pt-3">
+        <AccountRow me={me} more onSignOut={onSignOut} />
       </div>
     </aside>
   );

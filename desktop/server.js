@@ -45,9 +45,15 @@ export function writeEnv(root, env) {
 }
 
 /**
- * First launch writes a personal-mode .env: a real secret, the device-flow sign-in, dry run on,
- * and a loopback PUBLIC_URL for the port we chose. Later launches keep every value the user or
- * the app has set and only refresh the loopback PUBLIC_URL when it still points at loopback.
+ * First launch writes a personal-mode .env: a real secret, the device-flow sign-in, posting
+ * live, and a loopback PUBLIC_URL for the port we chose. Later launches keep every value the
+ * user or the app has set and only refresh the loopback PUBLIC_URL when it still points at
+ * loopback.
+ *
+ * Live, not dry run: in the desktop app the Post click is the gate — nothing reaches GitHub
+ * without it — and DRY_RUN is an .env-only switch that needs a restart, so for one person it
+ * is friction with no second gate behind it. The team install keeps DRY_RUN=1 so a shared
+ * server's output can be compared before it carries anyone's name.
  */
 export function ensureEnv(root, port) {
   const env = readEnv(root);
@@ -57,8 +63,13 @@ export function ensureEnv(root, port) {
       RS_SECRET: randomBytes(24).toString("hex"),
       RS_PERSONAL: "1",
       GH_DEVICE_FLOW: "1",
-      DRY_RUN: "1",
+      DRY_RUN: "0",
+      RS_DESKTOP_DEFAULTS: "2",
     });
+  } else if (!env.RS_DESKTOP_DEFAULTS && env.RS_PERSONAL === "1") {
+    // An .env this launcher wrote before it stamped its defaults (rc.24–rc.28 set DRY_RUN=1).
+    if (env.DRY_RUN === "1") env.DRY_RUN = "0";
+    env.RS_DESKTOP_DEFAULTS = "2";
   }
   if (!env.PUBLIC_URL || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(env.PUBLIC_URL)) {
     env.PUBLIC_URL = `http://127.0.0.1:${port}`;

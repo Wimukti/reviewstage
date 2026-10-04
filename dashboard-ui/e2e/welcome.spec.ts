@@ -234,10 +234,13 @@ test("/repos is in the sidebar's setup group and saves to /api/me.repos", async 
   await page.keyboard.press("Escape");
   const me = await page.evaluate(() => fetch("/api/me").then((r) => r.json()));
   expect(me.repos).toEqual(["acme-solo/widgets", "acme/api", "acme/billing"]);
-  // Settings' first card says the same and links back.
-  await page.goto("/settings");
-  await expect(page.getByTestId("repos-card")).toContainText("3 watched");
-  await expect(page.getByTestId("repos-card").getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/repos");
+  // Settings → Repositories says the same, shows the pills and links back.
+  await page.goto("/settings#repositories");
+  const repos = page.locator("#repositories");
+  await expect(repos.getByTestId("repos-count")).toHaveText("3 watched");
+  await expect(repos.getByTestId("repo-pill")).toHaveCount(3);
+  for (const [i, r] of ["acme-solo/widgets", "acme/api", "acme/billing"].entries()) await expect(repos.getByTestId("repo-pill").nth(i)).toHaveAttribute("title", r);
+  await expect(repos.getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/repos");
   // The queue's setup state points at /repos too, and the wizard route still answers.
   await page.goto("/welcome/repos");
   await expect(page.getByTestId("welcome-repos")).toBeVisible();

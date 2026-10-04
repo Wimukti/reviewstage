@@ -1,7 +1,7 @@
-// shell-polish screenshots: Settings with the phone card off and on (QR via a fake bridge, as
-// phone-access.spec.ts drives it), the account menu, Settings → Appearance and the Queue "?"
-// popover; 1440 and 390, dark, against the personal fixture. Usage, from dashboard-ui/:
-//   RS_E2E_PORT=8993 RS_E2E_PERSONAL_PORT=8997 OUT=../openspec/changes/shell-polish/after node --import tsx e2e/shots-shell-polish.ts
+// settings-redesign screenshots: every Settings section at 1440 dark, and #phone, #poller and
+// #notifications at 390, against the personal fixture with a fake desktop phone bridge (so the
+// Your phone section exists), plus the save bar in its dirty state. Usage, from dashboard-ui/:
+//   RS_E2E_PORT=8993 RS_E2E_PERSONAL_PORT=8997 OUT=../openspec/changes/settings-redesign/after node --import tsx e2e/shots-settings.ts
 import { chromium, type Page } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -50,7 +50,7 @@ for (let i = 0; i < 150; i++) {
 const cookie = sessionCookie(PERSONAL_USER);
 await fetch(`${PERSONAL_ORIGIN}/api/repos`, {
   method: "POST", headers: { "Content-Type": "application/json", Cookie: `${cookie.name}=${cookie.value}` },
-  body: JSON.stringify({ repos: ["acme-solo/widgets", "acme/api"] }),
+  body: JSON.stringify({ repos: ["acme-solo/widgets", "acme/api", "acme/billing"] }),
 });
 
 const browser = await chromium.launch();
@@ -60,8 +60,17 @@ const shot = async (page: Page, name: string) => {
   await page.screenshot({ path: file });
   console.log("wrote", file);
 };
+const settled = async (page: Page) => {
+  await page.getByTestId("settings-section").waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('[data-slot="skeleton"]').length === 0);
+};
 
-for (const [vp, tag] of [[{ width: 1440, height: 900 }, "1440"], [{ width: 390, height: 844 }, "390"]] as const) {
+const SECTIONS = ["phone", "appearance", "repositories", "poller", "filters", "notifications", "webhooks", "devices"];
+for (const [vp, tag, sections] of [
+  [{ width: 1440, height: 900 }, "1440", SECTIONS],
+  [{ width: 1024, height: 768 }, "1024", ["poller"]],
+  [{ width: 390, height: 844 }, "390", ["phone", "poller", "notifications"]],
+] as const) {
   const phone = vp.width < 900;
   const ctx = await browser.newContext({ viewport: vp, isMobile: phone, hasTouch: phone, deviceScaleFactor: 1, reducedMotion: "reduce" });
   await ctx.addInitScript(() => localStorage.removeItem("rs-theme"));
@@ -71,34 +80,31 @@ for (const [vp, tag] of [[{ width: 1440, height: 900 }, "1440"], [{ width: 390, 
   await ctx.addCookies([cookie]);
   const page = await ctx.newPage();
 
-  // Settings: the Your phone section off, then on with the code.
-  await page.goto(`${PERSONAL_ORIGIN}/settings#phone`, { waitUntil: "networkidle" });
-  await page.locator("#phone").waitFor();
-  await shot(page, `settings-phone-off-dark-${tag}.png`);
-  await page.getByRole("button", { name: "Enable phone access" }).click();
-  await page.getByTestId("phone-qr").waitFor();
-  await shot(page, `settings-phone-on-dark-${tag}.png`);
-  // Appearance: the segmented theme control.
-  await page.goto(`${PERSONAL_ORIGIN}/settings#appearance`, { waitUntil: "networkidle" });
-  await page.getByTestId("theme-control").waitFor();
-  await shot(page, `settings-appearance-dark-${tag}.png`);
+  // The page top: no hash, so the first section this install has (the desktop app: Your phone).
+  await page.goto(`${PERSONAL_ORIGIN}/settings`, { waitUntil: "networkidle" });
+  await settled(page);
+  if (tag !== "1024") await shot(page, `settings-top-dark-${tag}.png`);
 
-  // The Queue "?" popover with the Help items.
-  await page.goto(`${PERSONAL_ORIGIN}/`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "About this page" }).click();
-  await page.getByTestId("help-menu").waitFor();
-  await shot(page, `queue-help-dark-${tag}.png`);
-  await page.keyboard.press("Escape");
-
-  // The account menu (desktop) / the More sheet (phone).
-  if (!phone) {
-    await page.getByTestId("account-card").click();
-    await page.getByTestId("account-menu").waitFor();
-    await shot(page, `account-menu-dark-${tag}.png`);
-  } else {
-    await page.getByTestId("more-tab").click();
-    await page.getByTestId("more-sheet").waitFor();
-    await shot(page, `more-sheet-dark-${tag}.png`);
+  for (const id of sections) {
+    await page.goto(`${PERSONAL_ORIGIN}/settings#${id}`, { waitUntil: "networkidle" });
+    await settled(page);
+    if (id === "phone") {
+      await shot(page, `settings-phone-off-dark-${tag}.png`);
+      await page.getByRole("button", { name: "Enable phone access" }).click();
+      await page.getByTestId("phone-qr").waitFor();
+      await shot(page, `settings-phone-on-dark-${tag}.png`);
+      await page.getByTestId("phone-off").click();
+      continue;
+    }
+    await shot(page, `settings-${id}-dark-${tag}.png`);
+    if (id === "poller" && tag !== "1024") {
+      // The save bar, dirty: two fields changed.
+      await page.getByRole("switch", { name: "Poller enabled" }).click();
+      await page.getByLabel("Poll interval (minutes)").fill("7");
+      await page.getByTestId("settings-save").waitFor();
+      await shot(page, `settings-savebar-dark-${tag}.png`);
+      await page.getByRole("button", { name: "Discard" }).click();
+    }
   }
   await ctx.close();
 }

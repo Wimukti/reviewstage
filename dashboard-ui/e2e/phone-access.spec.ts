@@ -1,9 +1,10 @@
 // shell-polish D1: phone access inside the app. The desktop preload exposes
 // `window.reviewstage.phone`; a fake one is installed here with a STRING init script (tsx's
 // function init scripts inject a `__name` helper the page lacks). The fake answers the way
-// main.js does — enable() pushes the presentPhone payload on the "phone" channel — so the card
-// is driven by the same data shape the real app sends. Personal mode is the desktop app's mode;
-// the team fixture is patched to say so.
+// main.js does — enable() pushes the presentPhone payload on the "phone" channel — so the
+// section is driven by the same data shape the real app sends. Personal mode is the desktop
+// app's mode; the team fixture is patched to say so. Phone access is reached through Settings
+// only (settings-redesign E1): there is no Phone item in the sidebar.
 import { expect, test, type Page } from "@playwright/test";
 import { createRequire } from "node:module";
 import { patchMe, USER } from "./fixture";
@@ -41,35 +42,45 @@ const push = (page: Page, p: Record<string, unknown>) =>
 
 test.describe("phone access in Settings (desktop app)", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
+  const sections = (page: Page) => page.getByRole("navigation", { name: "Settings sections" });
 
-  test("without the bridge — a browser — there is no card and no Phone item", async ({ page }) => {
+  test("without the bridge — a browser — there is no Your phone section and Settings opens on Appearance", async ({ page }) => {
     await patchMe(page, { personal: true });
     await page.goto("/settings");
     await expect(page.getByTestId("settings-form")).toBeVisible();
-    await expect(page.getByTestId("phone-card")).toHaveCount(0);
+    await expect(page.locator("#phone")).toHaveCount(0);
+    await expect(page.locator("#appearance")).toBeVisible();
+    await expect(sections(page).getByRole("link", { name: "Your phone" })).toHaveCount(0);
     await expect(page.getByTestId("nav-setup").getByRole("link", { name: "Phone" })).toHaveCount(0);
+    // A stale deep link falls back to the first section this install has.
+    await page.goto("/settings#phone");
+    await expect(page.locator("#appearance")).toBeVisible();
+    await expect(page.locator("#phone")).toHaveCount(0);
   });
 
-  test("in team mode the card stays hidden even with the bridge", async ({ page }) => {
+  test("in team mode the section stays hidden even with the bridge", async ({ page }) => {
     await fakeBridge(page);
     await page.goto("/settings");
     await expect(page.getByTestId("settings-form")).toBeVisible();
-    await expect(page.getByTestId("phone-card")).toHaveCount(0);
+    await expect(page.locator("#phone")).toHaveCount(0);
+    await expect(page.locator("#appearance")).toBeVisible();
+    await expect(sections(page).getByRole("link", { name: "Your phone" })).toHaveCount(0);
     await expect(page.getByTestId("nav-setup").getByRole("link", { name: "Phone" })).toHaveCount(0);
   });
 
-  test("the card is first, Enable shows the QR from onData, New code re-mints, Turn off hides it, and the sidebar dot follows status", async ({ page }) => {
+  test("Settings opens on Your phone, Enable shows the QR from onData, New code re-mints, Turn off hides it", async ({ page }) => {
     await fakeBridge(page);
     await patchMe(page, { personal: true });
     await page.goto("/settings");
-    const card = page.getByTestId("phone-card");
+    const card = page.locator("#phone");
     await expect(card).toBeVisible();
-    await expect(page.getByTestId("settings-form").locator("> *").first()).toHaveAttribute("data-testid", "phone-card");
+    await expect(page.getByTestId("settings-section")).toHaveCount(1);
+    await expect(sections(page).getByRole("link", { name: "Your phone" })).toHaveAttribute("aria-current", "page");
     await expect(card.getByRole("heading", { name: "Your phone" })).toBeVisible();
     await expect(card.getByTestId("phone-state")).toHaveText("Off");
     await expect(card.getByTestId("phone-code")).toHaveCount(0);
-    const item = page.getByTestId("nav-setup").getByRole("link", { name: "Phone" });
-    await expect(item).toHaveAttribute("href", "/settings#phone");
+    // No sidebar item, no dot: Settings is the only way in.
+    await expect(page.getByTestId("nav-setup").getByRole("link", { name: "Phone" })).toHaveCount(0);
     await expect(page.getByTestId("phone-dot")).toHaveCount(0);
     expect(await calls(page)).toContain("status");
 
@@ -89,8 +100,9 @@ test.describe("phone access in Settings (desktop app)", () => {
     ]);
     await expect(card.getByRole("button", { name: "Turn off" })).toBeVisible();
     await expect(card.getByRole("button", { name: "New code" })).toBeVisible();
-    await expect(page.getByTestId("phone-dot")).toBeVisible();
     expect((await calls(page)).filter((c) => c === "enable")).toHaveLength(1);
+    // Phone access acts at once: nothing here makes the page dirty.
+    await expect(page.getByTestId("settings-save")).toBeHidden();
 
     // The reachability check lands later, as a second event with only `check` in it.
     await push(page, { check: "ok" });
@@ -106,15 +118,14 @@ test.describe("phone access in Settings (desktop app)", () => {
     await expect(card.getByTestId("phone-state")).toHaveText("Off");
     await expect(card.getByTestId("phone-code")).toHaveCount(0);
     await expect(card.getByRole("button", { name: "Enable phone access" })).toBeVisible();
-    await expect(page.getByTestId("phone-dot")).toHaveCount(0);
     expect(await calls(page)).toContain("disable");
   });
 
-  test("the tunnel giving up is said on the card and the code goes away", async ({ page }) => {
+  test("the tunnel giving up is said in the section and the code goes away", async ({ page }) => {
     await fakeBridge(page);
     await patchMe(page, { personal: true });
-    await page.goto("/settings");
-    const card = page.getByTestId("phone-card");
+    await page.goto("/settings#phone");
+    const card = page.locator("#phone");
     await card.getByRole("button", { name: "Enable phone access" }).click();
     await expect(card.getByTestId("phone-qr")).toBeVisible();
     await push(page, { stopped: "Phone access turned itself off: cloudflared exited again. Links point at this computer again." });
@@ -122,16 +133,26 @@ test.describe("phone access in Settings (desktop app)", () => {
     await expect(card.getByTestId("phone-qr")).toHaveCount(0);
   });
 
-  test("the sidebar's Phone item lands on the card and lights it", async ({ page }) => {
+  test("/settings#phone opens the Your phone section, with Settings current in the sidebar", async ({ page }) => {
     await fakeBridge(page);
     await patchMe(page, { personal: true });
-    await page.goto("/");
-    await page.getByTestId("nav-setup").getByRole("link", { name: "Phone" }).click();
+    await page.goto("/settings#appearance");
+    await expect(page.locator("#appearance")).toBeVisible();
+    await page.goto("/settings#phone");
     await expect(page).toHaveURL(/\/settings#phone$/);
-    const card = page.getByTestId("phone-card");
-    await expect(card).toBeInViewport();
-    await expect(card).toHaveClass(/ring-2/);
-    await expect(page.getByTestId("nav-setup").getByRole("link", { name: "Phone" })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByTestId("nav-setup").getByRole("link", { name: "Settings" })).not.toHaveAttribute("aria-current", "page");
+    const card = page.locator("#phone");
+    await expect(card).toBeVisible();
+    await expect(card.getByRole("heading", { name: "Your phone" })).toBeInViewport();
+    await expect(page.locator("#appearance")).toHaveCount(0);
+    await expect(sections(page).getByRole("link", { name: "Your phone" })).toHaveAttribute("aria-current", "page");
+    await expect(sections(page).getByRole("link", { name: "Appearance" })).not.toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("nav-setup").getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+    // And the section nav gets there too, by hash.
+    await sections(page).getByRole("link", { name: "Appearance" }).click();
+    await expect(page).toHaveURL(/\/settings#appearance$/);
+    await expect(page.locator("#appearance")).toBeVisible();
+    await sections(page).getByRole("link", { name: "Your phone" }).click();
+    await expect(page).toHaveURL(/\/settings#phone$/);
+    await expect(card).toBeVisible();
   });
 });

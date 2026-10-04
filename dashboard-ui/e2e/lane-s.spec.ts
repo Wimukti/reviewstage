@@ -123,7 +123,7 @@ test.describe("insights", () => {
 });
 
 test.describe("settings", () => {
-  test("one Save applies to every editable card and a Poller change goes through it", async ({ page }) => {
+  test("one save bar applies to every editable section and a Poller change goes through it", async ({ page }) => {
     // The PUT is answered from the real GET so the suite's other settings test (which writes
     // the interval through the real server) is not raced for settings.json.
     let sent: Record<string, unknown> | null = null;
@@ -146,32 +146,39 @@ test.describe("settings", () => {
         },
       });
     });
-    await page.goto("/settings");
+    // Webhooks is read-only and says so; it has no fields, so the bar never appears there.
+    await page.goto("/settings#webhooks");
     await settled(page);
-    const save = page.getByRole("button", { name: /save settings/i });
-    await expect(save).toHaveCount(1);
-    await expect(save).toBeDisabled();
-    // The footer sits inside the editable group, after the last field, and names what it saves.
-    const foot = page.getByTestId("settings-save");
-    await expect(foot).toContainText(/poller, notifications and pr filters/i);
-    const form = await page.getByTestId("settings-form").boundingBox();
-    const footBox = await foot.boundingBox();
-    expect(footBox!.y + footBox!.height).toBeLessThanOrEqual(form!.y + form!.height + 1);
-    // Webhooks is read-only and says so, and it is not inside the saved group.
     await expect(page.getByTestId("webhooks-readonly")).toContainText(/nothing to save/i);
-    await expect(page.getByTestId("settings-form").getByTestId("webhooks-card")).toHaveCount(0);
+    const bar = page.getByTestId("settings-save");
+    await expect(bar).toHaveAttribute("data-state", "hidden");
+    await expect(bar).toBeHidden();
 
+    await page.goto("/settings#poller");
+    await settled(page);
+    await expect(bar).toBeHidden();
     const sw = page.getByRole("switch", { name: "Poller enabled" });
     await expect(sw).toBeChecked();
     await sw.click();
-    await expect(page.getByTestId("settings-dirty")).toBeVisible();
-    await expect(save).toBeEnabled();
-    await save.click();
-    await expect(page.locator(".banner.ok")).toBeVisible();
+    // The bar is pinned to the foot of the viewport, Discard (ghost) then Save (primary).
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute("data-state", "dirty");
+    await expect(page.getByTestId("settings-dirty")).toHaveText("Unsaved changes");
+    await expect(page.getByTestId("settings-dirty-count")).toContainText("1 field");
+    const box = (await bar.boundingBox())!;
+    expect(Math.round(box.y + box.height)).toBe(page.viewportSize()!.height);
+    const buttons = bar.getByRole("button");
+    await expect(buttons).toHaveText(["Discard", "Save"]);
+    await expect(buttons.nth(0)).toHaveAttribute("data-variant", "ghost");
+    await expect(buttons.nth(1)).toHaveAttribute("data-variant", "default");
+    await buttons.nth(1).click();
     expect((sent as unknown as { settings: { poller_enabled: boolean } }).settings.poller_enabled).toBe(false);
     await expect(sw).not.toBeChecked();
-    await expect(save).toBeDisabled();
-    await expect(page.getByTestId("settings-dirty")).toHaveCount(0);
+    // Saved: a check in the bar's place for two seconds, then nothing.
+    await expect(bar).toHaveAttribute("data-state", "saved");
+    await expect(page.getByTestId("settings-saved")).toContainText(/saved/i);
+    await expect(bar).toBeHidden({ timeout: 5_000 });
+    await expect(bar).toHaveAttribute("data-state", "hidden");
   });
 
   test.describe("phone", () => {
@@ -188,12 +195,71 @@ test.describe("settings", () => {
     });
 
     test("label rows do not wrap a word per line", async ({ page }) => {
-      await page.goto("/settings");
+      await page.goto("/settings#poller");
       await settled(page);
       const hint = page.getByTestId("setting-hint").first();
       const box = await hint.boundingBox();
       expect(box!.width).toBeGreaterThan(300);
     });
+
+    test("the section pills are one row that scrolls on its own, and the save bar sits above the tab bar with 44px targets", async ({ page }) => {
+      await page.goto("/settings#poller");
+      await settled(page);
+      const pills = page.getByTestId("settings-pills");
+      await expect(pills).toBeVisible();
+      await expect(page.getByTestId("settings-nav")).toBeHidden();
+      const links = pills.getByRole("link");
+      expect(await links.count()).toBeGreaterThanOrEqual(7);
+      // One row: every pill shares the first one's top. The row overflows (that is what it scrolls
+      // for) but the page itself does not.
+      const tops = await links.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+      expect(new Set(tops).size, `pill tops ${tops.join(",")}`).toBe(1);
+      const m = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth: Math.round(window.visualViewport?.width ?? window.innerWidth),
+        rowOverflows: (() => {
+          const el = document.querySelector('[data-testid="settings-pills"]')!;
+          return el.scrollWidth > el.clientWidth;
+        })(),
+      }));
+      expect(m.scrollWidth).toBeLessThanOrEqual(m.innerWidth);
+      expect(m.rowOverflows).toBe(true);
+      await expect(pills.getByRole("link", { name: "Poller" })).toHaveAttribute("aria-current", "page");
+      await expect(pills.getByRole("link", { name: "Poller" })).toBeInViewport();
+
+      await page.getByRole("switch", { name: "Poller enabled" }).click();
+      const bar = page.getByTestId("settings-save");
+      await expect(bar).toBeVisible();
+      const barBox = (await bar.boundingBox())!;
+      const tabBox = (await page.getByTestId("tab-bar").boundingBox())!;
+      expect(barBox.y + barBox.height).toBeLessThanOrEqual(tabBox.y + 1);
+      for (const b of await bar.getByRole("button").all()) {
+        const box = (await b.boundingBox())!;
+        expect(box.height).toBeGreaterThanOrEqual(44);
+        expect(box.width).toBeGreaterThanOrEqual(44);
+      }
+      await bar.getByRole("button", { name: "Discard" }).click();
+      await expect(bar).toBeHidden();
+    });
+  });
+
+  test("the section nav is three quiet groups with the active item on the accent surface", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/settings#filters");
+    await settled(page);
+    const nav = page.getByTestId("settings-nav");
+    await expect(nav).toBeVisible();
+    await expect(page.getByTestId("settings-pills")).toBeHidden();
+    // The browser install: no Your phone; the three groups in order.
+    expect((await nav.innerText()).replace(/\s+/g, " ").trim()).toBe(
+      "This device Appearance Reviewing Repositories Poller PR filters Notifications Notifications Webhooks Devices",
+    );
+    const active = nav.locator('a[aria-current="page"]');
+    await expect(active).toHaveText("PR filters");
+    await expect(active).toHaveClass(/(^|\s)bg-accent(\s|$)/);
+    await expect(nav.getByRole("link", { name: "Poller" })).not.toHaveClass(/(^|\s)bg-accent(\s|$)/);
+    // Ghost buttons, not links in the body ink.
+    for (const l of await nav.getByRole("link").all()) await expect(l).toHaveAttribute("data-variant", "ghost");
   });
 });
 

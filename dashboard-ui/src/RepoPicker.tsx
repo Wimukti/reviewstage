@@ -128,7 +128,7 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
                 <RepoPill repo={r.full_name} avatar={r.owner_avatar} className="max-w-[min(100%,320px)]" />
                 {r.private && <Lock aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" />}
                 {r.already && <StatusBadge tone="green" icon={Check} label="Reviewing" className="shrink-0" data-testid="repo-already" />}
-                <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground">{pushedAgo(r.pushed_at)}</span>
+                <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground max-[599px]:hidden">{pushedAgo(r.pushed_at)}</span>
               </label>
             </li>
           );

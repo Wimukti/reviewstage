@@ -1,32 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   BookOpen,
+  ChevronsUpDown,
   ClipboardCheck,
   Code2,
   Compass,
   Ellipsis,
-  FolderGit2,
-  LogOut,
   ExternalLink,
+  FolderGit2,
   Inbox,
-  Monitor,
-  Moon,
+  LogOut,
   Plug,
   Search,
   Settings,
   Smartphone,
-  Sun,
   UserRoundCog,
 } from "lucide-react";
 import type { Me } from "./api";
 import { openPalette } from "./CommandPalette";
+import { phoneBridge, usePhoneStatus } from "./phone";
 import { Link, useLocation } from "./router";
 import { useRunning } from "./running";
 import { startTour } from "./Tour";
-import { useTheme, type ThemeChoice } from "./theme";
-import { StatusBadge, UserAvatar } from "./ui";
+import { ThemeControl } from "./ThemeControl";
+import { HOW_URL, StatusBadge, UserAvatar } from "./ui";
 import { Logo } from "./Logo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,15 +34,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-
-// "How it works" lives on the site now (design.md: the app's copy duplicated the site's strip).
-export const HOW_URL = "https://wimukti.github.io/reviewstage/#how-it-works";
 
 type NavItem = [key: string, label: string, to: string, icon: LucideIcon];
 
@@ -61,10 +55,14 @@ const SETUP: NavItem[] = [
 ];
 // Personal mode picks its repositories in the app; a team install's live in .env.
 const REPOS: NavItem = ["repos", "Repositories", "/repos", FolderGit2];
-const setupFor = (me: Me) => (me.personal ? [REPOS, ...SETUP] : SETUP);
+// The desktop app only (the preload's phone bridge is present): Settings → Your phone.
+const PHONE: NavItem = ["phone", "Phone", "/settings#phone", Smartphone];
+const inDesktopApp = (me: Me) => !!me.personal && !!phoneBridge();
+const setupFor = (me: Me) => [...(me.personal ? [REPOS] : []), ...SETUP, ...(inDesktopApp(me) ? [PHONE] : [])];
 
-function activeKey(path: string): string {
+function activeKey(path: string, hash = ""): string {
   if (path === "/") return "queue";
+  if (path.startsWith("/settings") && hash === "#phone") return "phone";
   if (path.startsWith("/repos")) return "repos";
   if (path.startsWith("/qa")) return "qa";
   if (path.startsWith("/learnings")) return "learnings";
@@ -105,14 +103,8 @@ export function RunningBar() {
   );
 }
 
-const THEMES: [ThemeChoice, string, LucideIcon][] = [
-  ["system", "System", Monitor],
-  ["light", "Light", Sun],
-  ["dark", "Dark", Moon],
-];
-
 // A nav entry: a ghost button that is really a link; the active one sits on the accent surface.
-function NavLink({ item, active, className }: { item: NavItem; active: boolean; className?: string }) {
+function NavLink({ item, active, className, trailing }: { item: NavItem; active: boolean; className?: string; trailing?: ReactNode }) {
   const [k, label, to, Glyph] = item;
   return (
     <Button
@@ -123,33 +115,20 @@ function NavLink({ item, active, className }: { item: NavItem; active: boolean; 
       <Link to={to} aria-current={active ? "page" : undefined} data-tour={k} data-active={active || undefined}>
         <Glyph aria-hidden="true" className={cn(active && "text-primary")} />
         <span>{label}</span>
+        {trailing}
       </Link>
     </Button>
   );
 }
 
-// Theme as a radio group of three buttons: the phone sheet shows it in the open, the desktop
-// account menu uses the DropdownMenu radio items instead.
-function ThemeRadios() {
-  const [choice, setChoice] = useTheme();
+// The Phone item's dot: green while phone access is on.
+function PhoneDot() {
+  const status = usePhoneStatus();
+  if (!status?.enabled) return null;
   return (
-    <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Theme" data-testid="theme-control">
-      {THEMES.map(([k, label, Glyph]) => (
-        <Button
-          key={k}
-          type="button"
-          role="radio"
-          variant={choice === k ? "secondary" : "ghost"}
-          aria-checked={choice === k}
-          data-theme-choice={k}
-          className={cn("h-[44px]", choice !== k && "text-muted-foreground")}
-          onClick={() => setChoice(k)}
-        >
-          <Glyph aria-hidden="true" />
-          {label}
-        </Button>
-      ))}
-    </div>
+    <span className="ml-auto size-2 rounded-full bg-green" data-testid="phone-dot" title="Phone access is on">
+      <span className="sr-only">on</span>
+    </span>
   );
 }
 
@@ -163,96 +142,73 @@ function LiveBadge({ me }: { me: Me }) {
   );
 }
 
-// One row: avatar · login · Live/Dry run. On the desktop it ends in a ⋯ menu holding the theme
-// switch and the Help items; on the phone the sheet shows those directly.
-const MENU_ITEM = "focus:bg-blue/14";
-
-function AccountRow({ me, more, onSignOut, onSwitchAccount }: { me: Me; more?: boolean; onSignOut?: () => void; onSwitchAccount?: () => void }) {
-  const [choice, setChoice] = useTheme();
-  const moreBtn = useRef<HTMLButtonElement>(null);
-  // Starting the tour from the menu: the menu's focus trap is still up inside onSelect, so the
-  // tour starts as the menu closes, takes focus instead of ⋯, and hands it to ⋯ when it ends.
-  const touring = useRef(false);
+// Avatar · login · Live/Dry run. Name over state, so the badge never squeezes the login to
+// "ac…" in a 216px sidebar.
+function AccountWords({ me }: { me: Me }) {
   return (
-    <div className="flex min-h-10 items-center gap-2.5 pl-1" data-testid="account-card">
+    <>
       <UserAvatar login={me.login || "?"} />
-      {/* Name over state, so a badge and the menu button never squeeze the login to "ac…" in a
-          216px sidebar. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left">
         <span className="truncate text-sm font-medium leading-tight" title={me.login}>{me.login}</span>
         <LiveBadge me={me} />
       </div>
-      {more && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button ref={moreBtn} variant="ghost" size="icon-sm" aria-label="More" data-testid="account-more" className="text-muted-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground">
-              <Ellipsis aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            side="top"
-            className="w-56"
-            data-testid="more-menu"
-            onCloseAutoFocus={(e) => {
-              if (touring.current) {
-                touring.current = false;
-                e.preventDefault();
-                startTour(moreBtn.current);
-              }
-            }}
-          >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Theme</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={choice} onValueChange={(v) => setChoice(v as ThemeChoice)} data-testid="theme-control" aria-label="Theme">
-              {THEMES.map(([k, label, Glyph]) => (
-                <DropdownMenuRadioItem key={k} value={k} data-theme-choice={k} className={MENU_ITEM}>
-                  <Glyph aria-hidden="true" />
-                  {label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Help</DropdownMenuLabel>
-            <DropdownMenuItem asChild className={cn(MENU_ITEM, "text-foreground hover:no-underline")}>
-              <a href={HOW_URL} target="_blank" rel="noopener">
-                <ExternalLink aria-hidden="true" />
-                How it works
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={MENU_ITEM}
-              onSelect={() => {
-                touring.current = true;
-              }}
+    </>
+  );
+}
+
+const MENU_ITEM = "focus:bg-blue/14";
+
+// The desktop account row is the menu's trigger (shadcn NavUser): the whole row is a button
+// ending in a ChevronsUpDown, and the menu opens above it — a header, then the account items.
+function AccountMenu({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: () => void; onSwitchAccount?: () => void }) {
+  const login = me.login || "?";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="h-auto w-full justify-start gap-2.5 px-1 py-0.5 text-foreground data-[state=open]:bg-accent"
+          data-testid="account-card"
+        >
+          <AccountWords me={me} />
+          <ChevronsUpDown aria-hidden="true" className="text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" sideOffset={6} className="w-[216px]" data-testid="account-menu">
+        <DropdownMenuLabel className="flex items-center gap-2.5 px-1.5 py-1.5 font-normal">
+          <UserAvatar login={login} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm font-medium leading-tight">{login}</span>
+            <a
+              href={`https://github.com/${encodeURIComponent(login)}`}
+              target="_blank"
+              rel="noopener"
+              className="truncate text-xs text-muted-foreground hover:text-foreground"
+              data-testid="account-profile"
             >
-              <Compass aria-hidden="true" />
-              Take a tour
-            </DropdownMenuItem>
-            {onSignOut && (
-              <>
-                <DropdownMenuSeparator />
-                {onSwitchAccount && (
-                  <DropdownMenuItem className={MENU_ITEM} onSelect={onSwitchAccount} data-testid="switch-account">
-                    <UserRoundCog aria-hidden="true" />
-                    Switch GitHub account
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem className={MENU_ITEM} onSelect={onSignOut}>
-                  <LogOut aria-hidden="true" />
-                  Sign out
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
+              github.com/{login}
+            </a>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {onSwitchAccount && (
+          <DropdownMenuItem className={MENU_ITEM} onSelect={onSwitchAccount} data-testid="switch-account">
+            <UserRoundCog aria-hidden="true" />
+            Switch GitHub account
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem className={MENU_ITEM} onSelect={onSignOut}>
+          <LogOut aria-hidden="true" />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 export function Sidebar({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: () => void; onSwitchAccount?: () => void }) {
-  const { path } = useLocation();
-  const active = activeKey(path);
+  const { path, hash } = useLocation();
+  const active = activeKey(path, hash);
   const setup = setupFor(me);
   return (
     <aside
@@ -278,21 +234,21 @@ export function Sidebar({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut:
         </div>
         <div className="mt-5 flex flex-col gap-0.5" data-testid="nav-setup">
           {setup.map((it) => (
-            <NavLink key={it[0]} item={it} active={active === it[0]} />
+            <NavLink key={it[0]} item={it} active={active === it[0]} trailing={it[0] === "phone" ? <PhoneDot /> : undefined} />
           ))}
         </div>
       </nav>
 
       <div className="mt-auto pt-3">
-        <AccountRow me={me} more onSignOut={onSignOut} onSwitchAccount={onSwitchAccount} />
+        <AccountMenu me={me} onSignOut={onSignOut} onSwitchAccount={onSwitchAccount} />
       </div>
     </aside>
   );
 }
 
 // Phone (< 900px): a 56px header with the mark and the search, and a labelled four-tab bar.
-// More opens a bottom sheet with the rest of the navigation, the theme switch, the account row
-// and Sign out. Every target is at least 44px.
+// More opens a bottom sheet with the rest of the navigation, the Help items, the theme switch,
+// the account row, Switch GitHub account and Sign out. Every target is at least 44px.
 const TABS: NavItem[] = [
   ["queue", "Queue", "/", Inbox],
   ["qa", "QA", "/qa", ClipboardCheck],
@@ -309,7 +265,7 @@ const MORE: NavItem[] = [
 const TAB_CLASS =
   "flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 rounded-none text-xs font-medium text-muted-foreground hover:no-underline [&_svg]:size-5";
 
-export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
+export function PhoneShell({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: () => void; onSwitchAccount?: () => void }) {
   const { path } = useLocation();
   const active = activeKey(path);
   const [more, setMore] = useState(false);
@@ -385,13 +341,20 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
           </Button>
           <div className="px-2 pb-1 pt-3">
             <div className="mb-1.5 text-xs text-muted-foreground">Theme</div>
-            <ThemeRadios />
+            <ThemeControl tall />
           </div>
-          <div className="mt-2 px-1">
-            <AccountRow me={me} />
+          <div className="mt-2 flex min-h-10 items-center gap-2.5 px-2" data-testid="account-card">
+            <AccountWords me={me} />
           </div>
-          <div className="mt-1 flex justify-end">
+          <div className="mt-1 flex flex-wrap justify-end gap-1">
+            {onSwitchAccount && (
+              <Button variant="ghost" className="h-[44px] text-muted-foreground" type="button" onClick={onSwitchAccount} data-testid="switch-account">
+                <UserRoundCog aria-hidden="true" />
+                Switch GitHub account
+              </Button>
+            )}
             <Button variant="ghost" className="h-[44px] text-muted-foreground" type="button" onClick={onSignOut}>
+              <LogOut aria-hidden="true" />
               Sign out
             </Button>
           </div>

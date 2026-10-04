@@ -42,26 +42,29 @@
 </style>
 </head>
 <body>
+  <script src="phone-strings.cjs"></script>
   <div class="drag" aria-hidden="true"></div>
   <div class="card">
-    <h1>Review from your phone</h1>
-    <div class="wait" id="wait">Opening a tunnel…</div>
+    <h1 id="title"></h1>
+    <div class="wait" id="wait"></div>
     <img class="qr" id="qr" alt="QR code that signs your phone in" hidden>
     <p class="pair" id="pair" hidden></p>
     <div class="url"><code id="url" title="">…</code><button class="small" id="copy" disabled>Copy</button></div>
     <p class="check" id="check" hidden></p>
-    <ol>
-      <li>Scan this with your phone's camera — you're signed in</li>
-      <li>Share → Add to Home Screen</li>
-      <li>Open it from the home screen; Settings → Push → this device</li>
-    </ol>
+    <ol id="steps"></ol>
     <p class="notice" id="notice"></p>
     <p class="warn" id="warn"></p>
-    <p class="fine" id="fine">This address is public while phone access is on; every action still needs your sign-in. It stops when you turn phone access off or quit. <a href="https://wimukti.github.io/reviewstage/security/" target="_blank" rel="noopener">How sign-in and links are protected</a></p>
+    <p class="fine" id="fine"><span></span> <a target="_blank" rel="noopener"></a></p>
     <div class="acts"><button class="ghost" id="disable">Disable phone access</button></div>
   </div>
   <script>
     const $ = (s) => document.querySelector(s);
+    const S = window.RS_PHONE;
+    $("#title").textContent = S.title;
+    $("#wait").textContent = S.opening;
+    for (const step of S.steps) { const li = document.createElement("li"); li.textContent = step; $("#steps").append(li); }
+    $("#fine span").textContent = S.fine;
+    const link = $("#fine a"); link.textContent = S.fineLink; link.href = S.fineUrl;
     let url = "";
     window.reviewstage?.phone.onData((p) => {
       if (p.url) {
@@ -81,18 +84,17 @@
         const el = $("#pair");
         el.hidden = false;
         if (p.pair) {
-          const until = new Date(p.pair.exp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-          el.innerHTML = `Scanning signs you in as <b></b>. Code valid until <b>${until}</b> — reopen this window for a new one.`;
-          el.querySelector("b").textContent = p.pair.login || "you";
+          const [t1, who, t2, when] = S.pairParts(p.pair.login, S.until(p.pair.exp));
+          el.replaceChildren(t1, Object.assign(document.createElement("b"), { textContent: who }), t2, Object.assign(document.createElement("b"), { textContent: when }), " — reopen this window for a new one.");
         } else {
-          el.textContent = "Sign in on the Mac first and the code will sign your phone in too.";
+          el.textContent = S.signedOut;
         }
       }
       if (p.stopped) {
         $("#qr").hidden = true;
         $("#pair").hidden = true;
         $("#wait").hidden = false;
-        $("#wait").textContent = "Phone access is off";
+        $("#wait").textContent = S.off;
         $("#check").hidden = true;
         $("#notice").textContent = "";
         $("#warn").textContent = p.stopped;
@@ -105,9 +107,7 @@
         const c = $("#check");
         c.hidden = false;
         c.dataset.state = p.check;
-        c.textContent = p.check === "ok" ? "Reachable from the internet."
-          : p.check === "checking" ? "Checking that the address is reachable… scan now; phones usually get there first."
-          : "This Mac still can't reach the address itself. Try scanning anyway — if the phone can't open it either, turn phone access off and on for a new address.";
+        c.textContent = S.check[p.check] || S.check.slow;
         if (p.check === "slow" && p.checkDetail) c.title = p.checkDetail;
       }
     });

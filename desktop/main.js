@@ -227,20 +227,26 @@ function openPhoneWindow() {
   return phoneWin;
 }
 
+/** The same payload to every window that shows phone access: the phone window (when the menu
+ *  opened it) and the dashboard, whose Settings → Your phone card listens on the same channel. */
 async function sendPhoneData(data) {
-  if (!phoneWin || phoneWin.isDestroyed()) return;
-  if (phoneWin.webContents.isLoading()) await new Promise((r) => phoneWin.webContents.once("did-finish-load", r));
-  if (phoneWin && !phoneWin.isDestroyed()) phoneWin.webContents.send("phone", data);
+  for (const w of [phoneWin, win]) {
+    if (!w || w.isDestroyed()) continue;
+    if (w.webContents.isLoading()) await new Promise((r) => w.webContents.once("did-finish-load", r));
+    if (!w.isDestroyed()) w.webContents.send("phone", data);
+  }
 }
 
-async function enablePhone() {
+/** Turn phone access on (or re-mint the code when it already is). The menu path opens the
+ *  phone window; the dashboard's Settings card (over IPC) shows the same data in place. */
+async function enablePhone({ window: showWindow = true } = {}) {
   if (!server) return { enabled: false, error: "The server is not running." };
   if (phoneBusy) return { ...tunnelStatus(), busy: true };
   phoneBusy = true;
   refreshMenu();
   try {
     const was = tunnelStatus();
-    openPhoneWindow();
+    if (showWindow) openPhoneWindow();
     let url = was.url;
     let child = null;
     if (!was.enabled) ({ url, child } = await startTunnel(server.port, { root: ROOT }));
@@ -277,18 +283,16 @@ function watchTunnel(child) {
     onRestart: async (url) => {
       const warning = await setPublicUrl(url);
       refreshMenu();
-      if (phoneWin && !phoneWin.isDestroyed()) {
-        await presentPhone(url, { warning, check: "checking", notice: "The tunnel restarted with a new address — scan the new code." });
-        waitTunnelHealthy(url).then(() => sendPhoneData({ check: "ok" }), (e) => sendPhoneData({ check: "slow", checkDetail: e.message }));
-      }
-      notify("Phone address changed — rescan the code", "The tunnel restarted. Open Show phone access code… and scan again.", () => void enablePhone());
+      await presentPhone(url, { warning, check: "checking", notice: "The tunnel restarted with a new address — scan the new code." });
+      waitTunnelHealthy(url).then(() => sendPhoneData({ check: "ok" }), (e) => sendPhoneData({ check: "slow", checkDetail: e.message }));
+      notify("Phone address changed — rescan the code", "The tunnel restarted. Open Settings → Your phone and scan the new code.", () => void enablePhone());
     },
     onGiveUp: async (reason) => {
       supervisor = null;
       if (server) await setPublicUrl(`http://127.0.0.1:${server.port}`);
       refreshMenu();
       await sendPhoneData({ stopped: `Phone access turned itself off: ${reason}. Links point at this computer again.` });
-      notify("Phone access stopped", "The tunnel kept dropping. Turn it on again from the menu when you're ready.");
+      notify("Phone access stopped", "The tunnel kept dropping. Turn it on again from Settings → Your phone when you're ready.");
       console.error(`phone access: ${reason}`);
     },
   });
@@ -365,7 +369,7 @@ async function boot() {
 
 ipcMain.on("retry", () => void boot());
 ipcMain.on("quit", () => app.quit());
-ipcMain.handle("phone:enable", () => enablePhone());
+ipcMain.handle("phone:enable", () => enablePhone({ window: false }));
 ipcMain.handle("phone:disable", () => disablePhone());
 ipcMain.handle("phone:status", () => { const { enabled, url } = tunnelStatus(); return { enabled, url }; });
 

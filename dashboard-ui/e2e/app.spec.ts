@@ -65,13 +65,13 @@ test.describe("first run", () => {
 
 test.describe("the tour on demand", () => {
   test("Take a tour reopens it for someone who has already dismissed it", async ({ page }) => {
-    // The shared fixture user has seen it: nothing opens by itself, and the ⋯ menu is the way back.
+    // The shared fixture user has seen it: nothing opens by itself, and the header's ? is the way back.
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     const tour = page.getByTestId("tour");
     await expect(tour).toHaveCount(0);
-    await page.getByTestId("account-more").click();
-    await page.getByRole("menuitem", { name: /take a tour/i }).click();
+    await page.getByRole("button", { name: "About this page" }).click();
+    await page.getByTestId("help-menu").getByRole("button", { name: /take a tour/i }).click();
     await expect(tour).toBeVisible();
   });
 });
@@ -452,11 +452,11 @@ test.describe("signed in", () => {
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
   });
 
-  test("How it works is under Help and links to the site, not to an app page", async ({ page }) => {
+  test("How it works is under the header's ? and links to the site, not to an app page", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("navigation", { name: "Main" }).getByText(/how it works/i)).toHaveCount(0);
-    await page.getByTestId("account-more").click();
-    const how = page.getByRole("menuitem", { name: /how it works/i });
+    await page.getByRole("button", { name: "About this page" }).click();
+    const how = page.getByTestId("help-menu").getByRole("link", { name: /how it works/i });
     await expect(how).toHaveAttribute("href", "https://wimukti.github.io/reviewstage/#how-it-works");
     await expect(how).toHaveAttribute("target", "_blank");
   });

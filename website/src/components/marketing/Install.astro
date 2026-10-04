@@ -6,6 +6,8 @@ import InstallCommand from "./InstallCommand.astro";
 import GitHubIcon from "./GitHubIcon.astro";
 import { button } from "./variants";
 import { repo, withBase } from "../../content/site-links";
+import demoMp4 from "../../assets/demos/review.mp4?url";
+import demoPoster from "../../assets/demos/review.png?url";
 const steps = [
   { Icon: Terminal, t: "Run it", d: "Node 20+, Git and Claude Code; a window opens" },
   { Icon: LogIn, t: "Sign in as yourself", d: "GitHub, Claude, then pick your repositories" },
@@ -29,6 +31,20 @@ const tiers = [
         </li>
       ))}
     </ol>
+    <video
+      class="demo block w-full rounded-md bg-background"
+      width="1440"
+      height="900"
+      autoplay
+      muted
+      loop
+      playsinline
+      preload="none"
+      poster={demoPoster}
+      aria-label="A review from paste to post: a PR URL is opened from the queue, Run review drafts three findings, two are ticked and posted as the signed-in reviewer."
+    >
+      <source src={demoMp4} type="video/mp4" />
+    </video>
   </div>
   <ul class="m-0 grid list-none gap-3 p-0 md:grid-cols-3">
     {tiers.map((t) => (

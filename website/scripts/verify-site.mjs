@@ -23,7 +23,12 @@ const pages = {
   security: ["/security/", "page"],
   "docs-guide": ["/guides/reviewing/", "page"],
   "docs-sidebar": ["/start/", "sidebar"],
+  "team-workflow": ["/guides/team-workflow/", "page"],
+  faq: ["/operations/faq/", "page"],
 };
+// The command the home page shows is named once in src/content/install.ts; read it from there
+// so this check cannot drift from the page (it did, when the install became `npx reviewstage`).
+const installCommand = readFileSync("src/content/install.ts", "utf8").match(/installCommand = "([^"]+)"/)?.[1] ?? "npx reviewstage";
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); console.log(`${ok ? "ok  " : "FAIL"} ${msg}`); };
 
@@ -121,7 +126,7 @@ try {
           const cta = page.locator("#install [data-install] code");
           const ctaText = (await cta.textContent())?.trim() ?? "";
           const ctaBox = await cta.boundingBox();
-          check(ctaText.startsWith("git clone") && ctaBox && ctaBox.width > 100, `${scheme} ${label}: install command renders (${Math.round(ctaBox?.width ?? 0)}px wide)`);
+          check(ctaText.startsWith(installCommand) && ctaBox && ctaBox.width > 100, `${scheme} ${label}: install command renders "${ctaText}" (${Math.round(ctaBox?.width ?? 0)}px wide)`);
           const mono = await page.evaluate(() => [...document.querySelectorAll("main *")].filter((el) => el.childNodes.length && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && /Mono|monospace/i.test(getComputedStyle(el).fontFamily) && !el.closest("code, pre, kbd")).map((el) => el.tagName + "." + el.className));
           check(mono.length === 0, `${scheme} ${label}: monospace only inside code (${mono.length} stray: ${mono.slice(0, 3).join(", ")})`);
 

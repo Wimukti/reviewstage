@@ -34,6 +34,11 @@
   .drag { position: fixed; inset: 0 0 auto 0; height: 40px; -webkit-app-region: drag; }
   .check { margin: 6px 0 0; font-size: 12px; color: var(--graphite); }
   .check[data-state="ok"] { color: var(--green); }
+  .pair { position: relative; margin: 8px 0 0; text-align: center; font-size: 12px; line-height: 1.4; color: var(--graphite); }
+  .pair b { color: var(--ink); font-weight: 500; }
+  .pair[hidden] { display: none }
+  .notice { position: relative; margin: 6px 0 0; font-size: 12px; color: var(--blue); }
+  .notice:empty { display: none }
 </style>
 </head>
 <body>
@@ -41,14 +46,16 @@
   <div class="card">
     <h1>Review from your phone</h1>
     <div class="wait" id="wait">Opening a tunnel…</div>
-    <img class="qr" id="qr" alt="QR code of the phone address" hidden>
+    <img class="qr" id="qr" alt="QR code that signs your phone in" hidden>
+    <p class="pair" id="pair" hidden></p>
     <div class="url"><code id="url" title="">…</code><button class="small" id="copy" disabled>Copy</button></div>
     <p class="check" id="check" hidden></p>
     <ol>
-      <li>Scan this with your phone's camera</li>
-      <li>Sign in, then Share → Add to Home Screen</li>
-      <li>Open it from the home screen and turn on notifications in Settings</li>
+      <li>Scan this with your phone's camera — you're signed in</li>
+      <li>Share → Add to Home Screen</li>
+      <li>Open it from the home screen; Settings → Push → this device</li>
     </ol>
+    <p class="notice" id="notice"></p>
     <p class="warn" id="warn"></p>
     <p class="fine" id="fine">This address is public while phone access is on; every action still needs your sign-in. It stops when you turn phone access off or quit. <a href="https://wimukti.github.io/reviewstage/security/" target="_blank" rel="noopener">How sign-in and links are protected</a></p>
     <div class="acts"><button class="ghost" id="disable">Disable phone access</button></div>
@@ -69,6 +76,31 @@
         $("#wait").hidden = true;
       }
       if (p.warning) $("#warn").textContent = p.warning;
+      if (p.notice) $("#notice").textContent = p.notice;
+      if ("pair" in p) {
+        const el = $("#pair");
+        el.hidden = false;
+        if (p.pair) {
+          const until = new Date(p.pair.exp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          el.innerHTML = `Scanning signs you in as <b></b>. Code valid until <b>${until}</b> — reopen this window for a new one.`;
+          el.querySelector("b").textContent = p.pair.login || "you";
+        } else {
+          el.textContent = "Sign in on the Mac first and the code will sign your phone in too.";
+        }
+      }
+      if (p.stopped) {
+        $("#qr").hidden = true;
+        $("#pair").hidden = true;
+        $("#wait").hidden = false;
+        $("#wait").textContent = "Phone access is off";
+        $("#check").hidden = true;
+        $("#notice").textContent = "";
+        $("#warn").textContent = p.stopped;
+        const b = $("#disable");
+        b.disabled = false;
+        b.textContent = "Turn phone access on again";
+        b.onclick = () => { b.disabled = true; b.textContent = "Opening a tunnel…"; window.reviewstage?.phone.enable(); };
+      }
       if (p.check) {
         const c = $("#check");
         c.hidden = false;

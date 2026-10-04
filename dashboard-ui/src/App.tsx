@@ -13,8 +13,9 @@ import { PhoneShell, RunningBar, Sidebar } from "./Sidebar";
 import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
 import { Tour } from "./Tour";
+import { Welcome } from "./Welcome";
 import { PageHeader } from "./ui";
-import { useLocation } from "./router";
+import { navigate, useLocation } from "./router";
 import { setRunning } from "./running";
 import { applyTheme, useIsPhone } from "./theme";
 
@@ -41,9 +42,23 @@ function Routed({ me }: { me: Me }) {
   return <NotFound />;
 }
 
+/**
+ * Personal mode (`npx reviewstage`) has a first-run wizard at /welcome. While the install has
+ * no signed-in user or no repository, every route but the wizard itself (and /login) goes
+ * there; afterwards the wizard is still reachable but nothing redirects to it. Team installs
+ * never redirect — the rule only reads `me.personal`.
+ */
+export function welcomeRedirect(me: Me, path: string): string | null {
+  if (!me.personal) return null;
+  if (path.startsWith("/welcome") || path === "/login") return null;
+  const incomplete = !me.authed || !me.login || (me.repos || []).length === 0;
+  return incomplete ? "/welcome" : null;
+}
+
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const phone = useIsPhone();
+  const { path } = useLocation();
   // The shell applied the pinned theme before first paint; re-applying here keeps the meta
   // tags in step if the bundle and the shell ever disagree.
   useEffect(() => applyTheme(), []);
@@ -71,7 +86,15 @@ export function App() {
     }
   }, [load]);
 
+  const redirect = me ? welcomeRedirect(me, path) : null;
+  useEffect(() => {
+    if (redirect) navigate(redirect);
+  }, [redirect]);
+
   if (!me) return <div className="min-h-dvh" />;
+  if (redirect) return <div className="min-h-dvh" />;
+  // The wizard is a focused flow: no sidebar, no tour, signed in or not.
+  if (me.personal && path.startsWith("/welcome")) return <Welcome me={me} reload={load} />;
   if (!me.authed) return <Login me={me} onDone={load} />;
 
   // The shell: sidebar beside the page on the desktop, header above and tab bar below it on

@@ -197,7 +197,8 @@ function WebhookInfo({ notify }: { notify: IntegrationsData["notify"] }) {
   );
 }
 
-function ClaudeCtl({
+// Exported for the first-run wizard (Welcome.tsx), which embeds this exact control.
+export function ClaudeCtl({
   d,
   onDone,
 }: {

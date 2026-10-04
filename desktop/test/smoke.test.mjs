@@ -45,13 +45,15 @@ test("launches, boots the server, loads the window, quits", async (t) => {
 test("a fresh root gets a secret and personal-mode defaults", async (t) => {
   if (!existsSync(join(pkg, "server", "bin", "server.py"))) { t.skip("server/ not assembled"); return; }
   const root = mkdtempSync(join(tmpdir(), "rs-smoke-fresh-"));
-  // No .env at all. Until lane D1 the server will refuse to boot without REPOS — so this test
-  // only asserts what the launcher wrote, and accepts either outcome from the server.
-  const { text } = await launch(root);
+  // No .env at all, so no REPOS either: personal mode boots anyway (the first-run wizard adds
+  // repositories while the server runs) and the window reaches the queue shell.
+  const { code, text } = await launch(root);
   const env = readFileSync(join(root, ".env"), "utf8");
   assert.match(env, /RS_SECRET=[0-9a-f]{48}/);
   assert.match(env, /RS_PERSONAL=1/);
   assert.match(env, /GH_DEVICE_FLOW=1/);
   assert.match(env, /DRY_RUN=1/);
-  assert.ok(/RS_SMOKE_(OK|FAIL)/.test(text), "smoke mode always reports and exits");
+  assert.doesNotMatch(env, /^REPOS=/m, "the launcher writes no repository");
+  assert.match(text, /RS_SMOKE_OK port=\d+ title=ReviewStage/, `expected RS_SMOKE_OK without REPOS, got:\n${text.split("\n").filter((l) => !/ERROR:gpu|ERROR:components|objc\[/.test(l)).slice(-25).join("\n")}`);
+  assert.equal(code, 0);
 });

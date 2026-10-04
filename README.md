@@ -25,6 +25,8 @@
   <img alt="The ReviewStage PR page for acme/widgets #38849: the agent's assessment — “1 thing to fix before merge” with three bullet points — above two finding cards, each with a ticked checkbox, a severity word, the file and line it points at, and a one-line why-it-matters. A sticky bar at the foot reads “2 staged” and carries a single Post selected to GitHub button." src="website/src/assets/screenshots/hero-light.png">
 </picture>
 
+<a href="docs/demos/review.mp4"><img alt="A 20-second recording of a review: a PR URL is pasted into the queue's search field and opened, Run review is clicked, the four phases tick through, three findings appear with their file and line, two are ticked and the sticky bar reads 2 staged, Post selected to GitHub is clicked and the bar switches to Posted as acme-dev." src="docs/demos/review.gif" width="960"></a>
+
 > [!NOTE]
 > ReviewStage is beta software. The gate — nothing reaches GitHub without a signed-in person clicking, under their own name — has been stable since the first version. The install, the UI and the configuration keys are still moving. Pin a tag if you deploy it for a team.
 

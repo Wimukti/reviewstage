@@ -11,6 +11,8 @@ account, pick the repositories you review — then shows your queue. When someon
 review, the dock badge ticks up; click the PR, run a review on your own Claude plan, tick the
 findings worth posting, and post them under your own GitHub name. Nothing posts until you click.
 
+![The three first-run steps: a GitHub token is pasted and verified, Claude is connected with a pasted code, two repositories are ticked and Start reviewing lands on the queue.](https://raw.githubusercontent.com/Wimukti/reviewstage/main/docs/demos/wizard.gif)
+
 This package is the desktop app. It carries the ReviewStage server with it, runs it on a free
 local port, and fetches the two command-line tools the server needs (`gh`, `jq`) once, pinned by
 version and SHA-256, into `~/.reviewstage/bin`. Everything stays on your machine.

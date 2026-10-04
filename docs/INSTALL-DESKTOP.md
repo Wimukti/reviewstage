@@ -74,14 +74,17 @@ the count; a system notification fires when it rises.
 
 ## Your phone
 
-**ReviewStage → Enable phone access…** (also in the Dock menu) starts a
+In the app, **Settings → Your phone → Enable phone access** starts a
 [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
-to the local server and shows a QR code, with the `https://….trycloudflare.com` address under
-it. On the phone:
+to the local server and the card shows a QR code, with the `https://….trycloudflare.com`
+address under it (the **Phone** item in the sidebar takes you there and carries a green dot
+while it is on). The same lives in the menu bar — **ReviewStage → Enable phone access…**, also
+in the Dock menu — which opens it in a window of its own. On the phone:
 
 1. **Scan the code with the camera.** The phone is signed in as the person signed in on the
    Mac — no second GitHub login. The QR carries a single-use code valid for 30 minutes; if it
-   has expired the login page says so and **Show phone access code…** on the Mac mints a new one.
+   has expired the login page says so and **New code** on the card (or **Show phone access
+   code…** in the menu) mints a new one.
 2. Share → **Add to Home Screen**.
 3. Open it from the home screen; **Settings → Push → This device**.
 
@@ -93,16 +96,16 @@ says to sign in on the Mac first.
 
 **How long the tunnel lasts.** As long as the app runs. `cloudflared` reconnects by itself after
 a dropped connection or sleep, and the address stays the same. Quitting the app ends it; the
-next **Enable phone access…** gets a new address, so scan again (a quick tunnel cannot keep a
+next **Enable phone access** gets a new address, so scan again (a quick tunnel cannot keep a
 name; a named tunnel needs a Cloudflare account and is on the roadmap). If `cloudflared` crashes
 while phone access is on, the app restarts it once with a new address, mints a new code and
 shows a notification, "Phone address changed — rescan the code"; a second crash within 5 minutes
-stops it, the menu shows phone access as disabled and the phone window says why.
+stops it, the card and the menu show phone access as off and say why.
 
 What to know: the address is public while the tunnel is up — anyone who has it reaches your
 sign-in page and nothing more (every API call needs the session cookie; pair codes are
-single-use; action links are HMAC-signed and short-lived). **Disable phone access**, or
-quitting the app, closes the tunnel. `cloudflared` is fetched like the other tools, pinned by
+single-use; action links are HMAC-signed and short-lived). **Turn off** on the card (or
+**Disable phone access** in the menu), or quitting the app, closes the tunnel. `cloudflared` is fetched like the other tools, pinned by
 checksum.
 
 ## Where things live

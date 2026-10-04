@@ -33,17 +33,19 @@ No Apple notarisation dialog: the app is Electron installed by npm, the same way
 
 ## Your phone
 
-**ReviewStage menu → Enable phone access…** starts a Cloudflare quick tunnel to your laptop and
-shows a QR code. Scan it with the camera and the phone is signed in as you — no second GitHub
-login (the code is single-use and valid for 30 minutes; **Show phone access code…** mints a new
-one). **Add to Home Screen**, open it from there, and turn on push from Settings: a review
+**Settings → Your phone → Enable phone access** starts a Cloudflare quick tunnel to your laptop
+and shows a QR code on the card (the **ReviewStage** menu and the Dock menu have the same, in a
+window of its own). Scan it with the camera and the phone is signed in as you — no second GitHub
+login (the code is single-use and valid for 30 minutes; **New code** mints a new one). **Add to
+Home Screen**, open it from there, and turn on push from Settings: a review
 request on a watched repository notifies the phone, and the queue, the findings and the Post
 button are the same app at phone width.
 
 The tunnel lasts as long as the app runs: it reconnects by itself after a dropped connection or
 sleep and keeps its address. Quitting the app ends it; the next enable gets a new address, so
 scan again. The address is public while the tunnel is up (anyone with it reaches your sign-in
-page, nothing more); **Disable phone access** or quitting the app ends it.
+page, nothing more); **Turn off** on the card, **Disable phone access** in the menu, or quitting
+the app ends it.
 
 ## Where things live
 

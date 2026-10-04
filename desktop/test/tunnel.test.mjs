@@ -130,8 +130,9 @@ test("live: a quick tunnel serves /health from a local server", { skip: process.
     const started = await startTunnel(port, { root, onLog: (l) => lines.push(l) });
     child = started.child;
     const url = started.url;
-    const upMs = Date.now() - t0;
     assert.match(url, /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/);
+    await waitTunnelHealthy(url);
+    const upMs = Date.now() - t0;
     assert.deepEqual(tunnelStatus(), { enabled: true, url, port });
     const t1 = Date.now();
     const r = await fetch(`${url}/health`);

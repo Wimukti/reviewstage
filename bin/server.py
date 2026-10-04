@@ -5091,7 +5091,10 @@ class Handler(BaseHTTPRequestHandler):
                 "repoCounts": repo_counts,
                 "tabDesc": TAB_DESC.get(tab, ""),
                 "rows": rows, "repos": all_repos(),
-                "slackOk": bool((load_users().get(user) or {}).get("slack_id"))}
+                # Only worth a banner when Slack is where cards go; a personal install with
+                # no notifier (the dashboard is the inbox) has nothing to add.
+                "slackOk": (not (SLACK_WEBHOOK or (SLACK_BOT_TOKEN and SLACK_CHANNEL)))
+                or bool((load_users().get(user) or {}).get("slack_id"))}
 
     def api_post(self, route, body):
         if route == "/api/login":

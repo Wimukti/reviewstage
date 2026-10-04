@@ -32,6 +32,8 @@
   button.small { padding: 5px 10px; font-size: 12px; flex: none; }
   button:disabled { opacity: .6; cursor: default; }
   .drag { position: fixed; inset: 0 0 auto 0; height: 40px; -webkit-app-region: drag; }
+  .check { margin: 6px 0 0; font-size: 12px; color: var(--graphite); }
+  .check[data-state="ok"] { color: var(--green); }
 </style>
 </head>
 <body>
@@ -41,6 +43,7 @@
     <div class="wait" id="wait">Opening a tunnel…</div>
     <img class="qr" id="qr" alt="QR code of the phone address" hidden>
     <div class="url"><code id="url" title="">…</code><button class="small" id="copy" disabled>Copy</button></div>
+    <p class="check" id="check" hidden></p>
     <ol>
       <li>Scan this with your phone's camera</li>
       <li>Sign in, then Share → Add to Home Screen</li>
@@ -66,6 +69,15 @@
         $("#wait").hidden = true;
       }
       if (p.warning) $("#warn").textContent = p.warning;
+      if (p.check) {
+        const c = $("#check");
+        c.hidden = false;
+        c.dataset.state = p.check;
+        c.textContent = p.check === "ok" ? "Reachable from the internet."
+          : p.check === "checking" ? "Checking that the address is reachable… scan now; phones usually get there first."
+          : "This Mac still can't reach the address itself. Try scanning anyway — if the phone can't open it either, turn phone access off and on for a new address.";
+        if (p.check === "slow" && p.checkDetail) c.title = p.checkDetail;
+      }
     });
     $("#copy").onclick = async () => {
       try { await navigator.clipboard.writeText(url); } catch {

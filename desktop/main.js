@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 import { ensureEnv, freePort, spawnServer, stopServer, SERVER_DIR } from "./server.js";
 import { ensureTools } from "./tools.js";
-import { startTunnel, stopTunnel, tunnelStatus } from "./tunnel.js";
+import { startTunnel, stopTunnel, tunnelStatus, waitTunnelHealthy } from "./tunnel.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.ROOT || join(homedir(), ".reviewstage");
@@ -205,7 +205,14 @@ async function enablePhone() {
     const { url } = was.enabled ? was : await startTunnel(server.port, { root: ROOT });
     const warning = was.enabled ? null : await setPublicUrl(url);
     const dataUrl = await QRCode.toDataURL(url, { margin: 1, width: 280, color: { dark: "#ECEEF3", light: "#0B0C10" } });
-    await sendPhoneData({ url, dataUrl, warning });
+    await sendPhoneData({ url, dataUrl, warning, check: was.enabled ? "ok" : "checking" });
+    if (!was.enabled) {
+      // The address is usable before this machine can resolve it; the check is information.
+      waitTunnelHealthy(url).then(
+        () => sendPhoneData({ check: "ok" }),
+        (e) => sendPhoneData({ check: "slow", checkDetail: e.message }),
+      );
+    }
     return { enabled: true, url, warning };
   } catch (e) {
     const detail = (e.log || []).join("\n");

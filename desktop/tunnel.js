@@ -10,7 +10,7 @@ import { ensureTool } from "./tools.js";
 
 export const TUNNEL_URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 const URL_TIMEOUT_MS = 45_000;
-const HEALTH_TIMEOUT_MS = 30_000; // the hostname takes ~5-10 s to exist at the edge
+const HEALTH_TIMEOUT_MS = 120_000; // the hostname usually exists at the edge in 5-10 s, sometimes a minute
 const STOP_GRACE_MS = 3_000;
 
 let current = null; // { child, url, port }
@@ -27,8 +27,10 @@ export function parseTunnelUrl(line) {
  *  not used: ask it for a hostname that does not exist yet and macOS caches the NXDOMAIN for
  *  over a minute, after which the tunnel is fine and the laptop still cannot see it. */
 export function resolveAtEdge(host) {
+  // Cloudflare's resolvers first (they see a new trycloudflare record first and never cache
+  // the miss the way macOS does), Google's as the second opinion.
   const r = new Resolver();
-  r.setServers(["1.1.1.1", "1.0.0.1"]);
+  r.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8"]);
   return r.resolve4(host).then((ips) => ips[0]);
 }
 
@@ -86,9 +88,12 @@ export function stopChild(child, graceMs = STOP_GRACE_MS) {
 }
 
 /**
- * Start a quick tunnel to the local server. Resolves to { url, child } once the URL has shown
- * up in cloudflared's output and `${url}/health` answers `ok` through the edge. Rejects with the
- * last 20 log lines on `.log` when either does not happen in time; nothing is left running.
+ * Start a quick tunnel to the local server. Resolves to { url, child } as soon as the URL has
+ * shown up in cloudflared's output — the QR code can be on screen while the edge record is still
+ * propagating. The caller runs `waitTunnelHealthy(url)` separately and treats its failure as a
+ * status, not a reason to stop the tunnel: a phone usually reaches the address before this
+ * machine's own lookup does. Rejects with the last 20 log lines on `.log` when cloudflared
+ * never reports a URL; nothing is left running then.
  */
 export async function startTunnel(port, { root, onLog = () => {}, bin } = {}) {
   if (current) return { url: current.url, child: current.child };
@@ -133,13 +138,6 @@ export async function startTunnel(port, { root, onLog = () => {}, bin } = {}) {
     child.on("exit", (code) => { clearTimeout(timer); fail(`cloudflared exited (code ${code}) before reporting a URL.`); });
   }).catch(async (e) => { await stopChild(child); throw e; });
 
-  try {
-    await waitTunnelHealthy(url);
-  } catch (e) {
-    e.log = log.slice(-20);
-    await stopChild(child);
-    throw e;
-  }
   current = { child, url, port };
   child.once("exit", () => { if (current?.child === child) current = null; });
   return { url, child };

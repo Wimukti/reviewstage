@@ -2,7 +2,10 @@
 
 Three lanes merged into `main` with `--no-ff`: `npx-d2` (phone access, fd09f99), `npx-d1`
 (personal mode + wizard, e919fc2), then the publish lane as one commit (018b334). Tag:
-`v1.0.0-rc.23`.
+`v1.0.0-rc.24` — rc.23's CI found that an npm-installed Electron aborts on Linux (setuid
+sandbox helper cannot be root-owned 4755 in a user's home; Ubuntu 24.04 blocks the
+namespace fallback); the launcher now falls back to `--no-sandbox` there, and the Desktop CI
+job — the real launch under xvfb on ubuntu-latest — is green.
 
 ## The five properties, re-checked against the new code
 
@@ -63,7 +66,7 @@ sideways at 390.
 
 - Add the repository secret **`NPM_TOKEN`** (npm granular token, publish, package
   `reviewstage`) — the workflow fails on its first step without it, with that sentence — then
-  re-run `release-npm` on the tag (`workflow_dispatch`, input `v1.0.0-rc.23`).
+  re-run `release-npm` on the tag (`workflow_dispatch`, input `v1.0.0-rc.24`).
 - Run `npx reviewstage` for real: GitHub device code, Claude connect, pick repositories, Enable
   phone access…, scan, Add to Home Screen, turn on push, have someone request your review.
 - Windows (bash job scripts) is documented as not supported; a WSL-hosted server is the

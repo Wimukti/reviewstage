@@ -3,7 +3,7 @@
 // PATH that has the tools, then wait until /health answers.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync, createWriteStream } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,9 +87,13 @@ async function waitHealthy(port, ms = 30_000) {
  */
 export async function spawnServer({ root, binDir, port, extraEnv = {}, onLog = () => {} }) {
   const log = [];
+  // The last 400 lines stay in memory for the error screen; the whole run goes to
+  // ROOT/server.log (fresh each launch) so "what happened" survives a restart.
+  const logFile = createWriteStream(join(root, "server.log"), { flags: "w" });
   const keep = (line) => {
     log.push(line);
     if (log.length > 400) log.shift();
+    logFile.write(line + "\n");
     onLog(line);
   };
   const env = {

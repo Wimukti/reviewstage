@@ -1,19 +1,19 @@
 ---
 /* Proposal §"Home" 4: the command, three steps as three lines, three quiet tier cards with one
  * line each, and the two closing links. This is the page's last section. */
-import { Building2, ClipboardPaste, Container, LogIn, User, Users } from "lucide-react";
+import { Building2, ClipboardPaste, LogIn, Terminal, User, Users } from "lucide-react";
 import InstallCommand from "./InstallCommand.astro";
 import GitHubIcon from "./GitHubIcon.astro";
 import { button } from "./variants";
 import { repo, withBase } from "../../content/site-links";
 const steps = [
-  { Icon: Container, t: "Bring it up", d: "docker compose up -d, then open localhost:8899" },
-  { Icon: LogIn, t: "Sign in as yourself", d: "GitHub device flow, then connect Claude" },
-  { Icon: ClipboardPaste, t: "Paste a PR", d: "pick an effort, run, tick, post" },
+  { Icon: Terminal, t: "Run it", d: "Node 20+, Git and Claude Code; a window opens" },
+  { Icon: LogIn, t: "Sign in as yourself", d: "GitHub, Claude, then pick your repositories" },
+  { Icon: ClipboardPaste, t: "Review", d: "requests appear in your queue; run, tick, post — or paste any PR" },
 ];
 const tiers = [
-  { Icon: User, t: "Solo", d: "Your laptop, your PRs, your plan.", href: "/start/install/" },
-  { Icon: Users, t: "Team", d: "One server, every reviewer as themselves.", href: "/start/team-mode/" },
+  { Icon: User, t: "Solo", d: "npx reviewstage on your laptop; your phone over a QR code.", href: "/start/install/" },
+  { Icon: Users, t: "Team", d: "One Docker server, every reviewer as themselves.", href: "/start/team-mode/" },
   { Icon: Building2, t: "Company", d: "Many repositories, one allowlist, shared Insights.", href: "/start/team-mode/#many-repositories" },
 ];
 ---

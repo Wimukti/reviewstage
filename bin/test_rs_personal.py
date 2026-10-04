@@ -457,7 +457,7 @@ class ThePoller(Base):
         env = S.review_env(USER)
         self.assertEqual(env["GITHUB_PAT"], TOKEN)
         self.assertEqual(env["REVIEWER"], USER)
-        self.assertEqual(env["REPOS"], "acme/api")
+        self.assertEqual(env["RS_REPOS_EXTRA"], "acme/api")
         self.assertNotIn("GITHUB_PAT", (Path(self.root) / ".env").read_text())
 
 

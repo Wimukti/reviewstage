@@ -20,6 +20,9 @@ ENV_FILE="$ROOT/.env"
 # cloned lazily on first review).
 REPOS="${REPOS:-}"
 REPO="${REPO:-}"
+# RS_REPOS_EXTRA: repositories the server adds at run time (the ones picked in the first-run
+# wizard live in settings.json, not here). Set in the job's environment only, never in .env.
+RS_REPOS_EXTRA="${RS_REPOS_EXTRA:-}"
 REPO_ALLOW_ORG="${REPO_ALLOW_ORG:-}"
 REVIEWER="${REVIEWER:-}"                 # your GitHub login; the PAT must belong to it
 # Where browsers reach the dashboard, e.g. https://reviews.example.com — the one hostname your
@@ -55,7 +58,7 @@ _repos_list_from() {
   printf '%s %s' "$1" "$2" | tr ',' ' ' | tr -s '[:space:]' '\n' \
     | sed 's#^https://github.com/##; s#^/##; s#/$##' | awk 'NF && !seen[tolower($0)]++'
 }
-RS_REPOS_CONFIGURED="$(_repos_list_from "$REPOS" "$REPO")"
+RS_REPOS_CONFIGURED="$(_repos_list_from "$REPOS $RS_REPOS_EXTRA" "$REPO")"
 repos_list() { [ -n "$RS_REPOS_CONFIGURED" ] && printf '%s\n' "$RS_REPOS_CONFIGURED" || true; }
 repo_count() { repos_list | wc -l | tr -d ' '; }
 # single_repo: the one configured repo, or empty when zero or several are configured.

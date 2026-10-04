@@ -33,6 +33,20 @@ ReviewStage is an open-source, self-hosted PR review assistant built on [Claude 
 ## Quick start
 
 ```bash
+npx reviewstage
+```
+
+A window opens and walks you through three steps — **Continue with GitHub**, **Connect Claude**,
+**Pick repositories** — then shows your queue. You need Node 20+, Git and
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) on the machine; the app carries
+its own server and fetches the rest (`gh`, `jq`) once, pinned by checksum. No Docker, no `.env`,
+no service token, no Apple warning dialog. Reviews run on your own Claude plan. From the app
+menu, **Enable phone access…** shows a QR code: scan it, add the dashboard to your phone's home
+screen, and turn on push. Details: [docs/INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md).
+
+### For a team: Docker Compose
+
+```bash
 git clone https://github.com/Wimukti/reviewstage && cd reviewstage
 cp .env.example .env               # set REPOS and GITHUB_PAT (the service token)
 docker compose up -d
@@ -41,14 +55,15 @@ bin/doctor.sh                      # diagnostics — re-execs inside the contain
                                    # (RS_HOST_PORT=9000 in .env moves the host port)
 ```
 
-You need Docker with Compose v2 and a host with **at least 2 GB of RAM** — a review refuses to
-start below `MIN_FREE_MB` (800 MB *available*), so a 1 GB VPS cannot run one. `GITHUB_PAT` is a
-fine-grained service token on the repositories in `REPOS` with **Pull requests: Read and
-write**, **Contents: Read** and **Metadata: Read**. It reads PR metadata and diffs, clones the
-repositories and runs the poller's searches; nothing in the review or service path ever writes
-to GitHub with it — every comment and approval uses the acting reviewer's own token. You also
-need about **500 MB free** on the data volume (`MIN_FREE_DISK_MB`); a job refuses to start below
-it rather than producing an empty review.
+One server, every reviewer signed in as themselves. You need Docker with Compose v2 and a host
+with **at least 2 GB of RAM** — a review refuses to start below `MIN_FREE_MB` (800 MB
+*available*), so a 1 GB VPS cannot run one. `GITHUB_PAT` is a fine-grained service token on the
+repositories in `REPOS` with **Pull requests: Read and write**, **Contents: Read** and
+**Metadata: Read**. It reads PR metadata and diffs, clones the repositories and runs the
+poller's searches; nothing in the review or service path ever writes to GitHub with it — every
+comment and approval uses the acting reviewer's own token. You also need about **500 MB free**
+on the data volume (`MIN_FREE_DISK_MB`); a job refuses to start below it rather than producing
+an empty review.
 
 Before you point it at anyone else's pull request, read the
 [security model](https://wimukti.github.io/reviewstage/security/): what is stored, what each
@@ -82,10 +97,10 @@ Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the 
 
 | | Solo | Team | Company |
 | --- | --- | --- | --- |
-| Runs on | Docker on your laptop | One server for the team | One install for the organisation |
-| Sign-in | You, with a fine-grained token | Everyone, as themselves | Org allowlist; GitHub App sign-in is on the roadmap |
+| Runs on | `npx reviewstage` on your laptop | One server for the team (Docker) | One install for the organisation |
+| Sign-in | You, with GitHub's device flow | Everyone, as themselves | Org allowlist; GitHub App sign-in is on the roadmap |
 | Repositories | Many | Many | Many, with per-repo skills and risk paths |
-| Notifications | None; paste a PR URL | Review-request alerts to Slack, Discord or any webhook | Same, per repository |
+| Notifications | Dock badge and phone push | Review-request alerts to Slack, Discord or any webhook | Same, per repository |
 | Insights | Your own runs | The team's keep rate, agreement, cycle time | Across repositories |
 | Billing | Your Claude plan | Each reviewer's own plan | Each reviewer's own plan |
 
@@ -102,13 +117,13 @@ Adds the review-request poller and notification cards: within three minutes of s
 ## Documentation
 
 - [What ReviewStage is](https://wimukti.github.io/reviewstage/start/) — the one-minute model
-- [Install](https://wimukti.github.io/reviewstage/start/install/) — Docker Compose, or from source on a Linux server
+- [Install](https://wimukti.github.io/reviewstage/start/install/) — `npx reviewstage` on a laptop; Docker Compose or from source for a team
 - [Reviewing a PR](https://wimukti.github.io/reviewstage/guides/reviewing/) · [Skills and learnings](https://wimukti.github.io/reviewstage/guides/skills-and-learnings/) · [QA guides](https://wimukti.github.io/reviewstage/guides/qa-guide/) · [Notifications](https://wimukti.github.io/reviewstage/guides/notifications/) · [Insights](https://wimukti.github.io/reviewstage/guides/insights/)
 - [Security model](https://wimukti.github.io/reviewstage/security/) — what is stored, token permissions, what is not defended against
 - [Configuration](https://wimukti.github.io/reviewstage/operations/configuration/) · [Troubleshooting](https://wimukti.github.io/reviewstage/operations/troubleshooting/)
 - [Architecture](https://wimukti.github.io/reviewstage/developers/architecture/) · [Contributing](https://wimukti.github.io/reviewstage/developers/contributing/) · [Roadmap](https://wimukti.github.io/reviewstage/developers/roadmap/)
 
-The documents under [`docs/`](docs/) are the canonical prose the site is built from: [SETUP.md](docs/SETUP.md) (from source), [INSTALL-DOCKER.md](docs/INSTALL-DOCKER.md), [OPERATIONS.md](docs/OPERATIONS.md), [SECURITY.md](docs/SECURITY.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [MOBILE.md](docs/MOBILE.md).
+The documents under [`docs/`](docs/) are the canonical prose the site is built from: [INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) (`npx reviewstage`), [INSTALL-DOCKER.md](docs/INSTALL-DOCKER.md), [SETUP.md](docs/SETUP.md) (from source), [OPERATIONS.md](docs/OPERATIONS.md), [SECURITY.md](docs/SECURITY.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [MOBILE.md](docs/MOBILE.md).
 
 ## Develop from source
 
@@ -125,6 +140,9 @@ bash -n bin/*.sh && python3 -m py_compile bin/*.py
 
 # website (Astro + Starlight)
 cd website && pnpm install && pnpm build && pnpm check
+
+# desktop app (Electron via npm; `node scripts/prepack.mjs` assembles server/ from bin/ and skills/)
+cd desktop && pnpm install && node scripts/prepack.mjs && pnpm test
 ```
 
 To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently into `~/.reviewstage/` as the `reviewstage.service` systemd unit; see [Install → From source](https://wimukti.github.io/reviewstage/start/install/#from-source-on-a-linux-server).

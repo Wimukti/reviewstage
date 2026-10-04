@@ -57,6 +57,33 @@ jobs:
           curl -sf http://127.0.0.1:8080/health
           docker rm -f rs-ci
 
+  desktop:
+    name: Desktop (npx reviewstage smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+        working-directory: dashboard-ui
+      - run: pnpm install --frozen-lockfile
+        working-directory: desktop
+      # The app refuses to start without Claude Code on PATH, as on a user's machine.
+      - name: Claude Code and xvfb
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb
+      - name: Assemble the package (dashboard build + server/)
+        run: node scripts/prepack.mjs
+        working-directory: desktop
+      - name: Tools, tunnel and the real Electron launch
+        run: xvfb-run -a node --test --test-reporter=spec test/*.test.mjs
+        working-directory: desktop
+
   scripts:
     name: Scripts (compile + syntax + shellcheck)
     runs-on: ubuntu-latest

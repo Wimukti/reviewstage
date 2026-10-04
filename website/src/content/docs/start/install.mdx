@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Docker Compose quick start, and the from-source path for a Linux server.
+description: npx reviewstage on a laptop, Docker Compose for a team, and the from-source path for a Linux server.
 sidebar:
   order: 2
 ---
@@ -20,6 +20,20 @@ without a repository (you pick them in the wizard, and can revisit `/welcome/rep
 polls GitHub itself with your own signed-in token, and runs reviews on your Claude account.
 Claude Code must already be installed. The team install below is for several reviewers sharing
 one server.
+
+**Your phone.** In the app menu, **Enable phone access…** opens a Cloudflare quick tunnel to
+your laptop and shows a QR code and the HTTPS address. Scan it, sign in once, **Add to Home
+Screen**, and turn on push from Settings: a review request on a watched repository notifies the
+phone. The address is public while the tunnel is up (anyone holding it reaches your sign-in
+page and nothing more); **Disable phone access**, or quitting the app, ends it.
+
+**Where it lives and how to start over.** Everything is under `~/.reviewstage` — `.env`
+(written by the app), `settings.json` (your repositories), `bin/` (the fetched `gh`, `jq` and a
+`flock` shim), `state/`, `repos/`, `server.log`. `npx reviewstage --doctor` prints the same
+PASS / WARN / FAIL checks the team install gets. Delete the directory to start over. Windows is
+not supported yet; Linux and macOS (Apple Silicon and Intel) are. The full text, including what
+the app downloads and how it verifies it, is in
+[INSTALL-DESKTOP.md](https://github.com/Wimukti/reviewstage/blob/main/docs/INSTALL-DESKTOP.md).
 
 ## Docker Compose (recommended for teams)
 

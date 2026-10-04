@@ -350,7 +350,8 @@ export function Queue({ me }: { me: Me }) {
   const repoCount = (r: string) => data.repoCounts?.[r]?.[tab];
   // A brand-new install has nothing in the queue because nothing is set up yet, which is not the
   // same as being caught up.
-  const notSetUp = me.claude_connected === false || me.poller_ran === false;
+  const noRepos = me.personal === true && (me.repos ?? []).length === 0;
+  const notSetUp = me.claude_connected === false || me.poller_ran === false || noRepos;
 
   return (
     <>
@@ -489,6 +490,18 @@ export function Queue({ me }: { me: Me }) {
             >
               Your queue is empty because this install isn't ready yet, not because you're caught up.
               <ul className="mx-auto my-3 flex max-w-[520px] list-none flex-col gap-2 p-0 text-left text-foreground">
+                {me.personal && (
+                  <li className="flex items-start gap-2">
+                    {noRepos ? (
+                      <Circle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-green" />
+                    )}
+                    <span>
+                      Pick the repositories to watch — <Link to="/welcome/repos">Repositories</Link>.
+                    </span>
+                  </li>
+                )}
                 <li className="flex items-start gap-2">
                   {me.claude_connected === false ? (
                     <Circle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />

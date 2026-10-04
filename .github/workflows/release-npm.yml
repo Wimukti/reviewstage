@@ -1,0 +1,83 @@
+name: release-npm
+
+# `npx reviewstage` installs whatever this publishes. A tag `vX.Y.Z[-rc.N]` becomes the package
+# version; the dashboard is built, the server is copied into the package, the real Electron
+# launch is smoked under xvfb, and only then does `npm publish` run — with provenance, so the
+# npm page links the package back to this workflow run and commit.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (vX.Y.Z or vX.Y.Z-rc.N)"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: The npm token is present
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          [ -n "$NODE_AUTH_TOKEN" ] || { echo "::error::NPM_TOKEN is not set. Add an npm granular access token (publish, package reviewstage) as the repository secret NPM_TOKEN, then re-run this workflow on the tag."; exit 1; }
+      - name: Version from the tag
+        working-directory: desktop
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          ver="${tag#v}"
+          echo "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' || { echo "not a version tag: $tag"; exit 1; }
+          npm version "$ver" --no-git-tag-version
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
+      - name: Dashboard dependencies
+        working-directory: dashboard-ui
+        run: pnpm install --frozen-lockfile
+      - name: Package dependencies (Electron)
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+      # The smoke launches the real app, which refuses to start without Claude Code on PATH —
+      # the same rule a user's machine is held to.
+      - name: Claude Code and xvfb for the smoke
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb
+      - name: Pack (builds the dashboard, assembles server/)
+        working-directory: desktop
+        run: |
+          pnpm pack
+          ls -la reviewstage-*.tgz
+          size=$(stat -c %s reviewstage-*.tgz); [ "$size" -lt 10485760 ] || { echo "tarball is $size bytes, over 10 MB"; exit 1; }
+          tar tzf reviewstage-*.tgz | grep -E 'node_modules/|/e2e/|test_[^/]*\.py$|test-[^/]*\.sh$' && { echo "tarball carries files it must not"; exit 1; } || true
+      - name: Electron smoke
+        working-directory: desktop
+        run: xvfb-run -a node --test --test-reporter=spec test/*.test.mjs
+      - name: Publish
+        working-directory: desktop
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish reviewstage-*.tgz --provenance --access public
+      - name: Summary
+        run: |
+          {
+            echo "Published \`reviewstage@$VERSION\`."
+            echo
+            echo '```'
+            echo "npx reviewstage@$VERSION"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -959,12 +959,13 @@ def review_env(login):
         # No service token exists in personal mode: the job scripts read the diff and make the
         # base clone with the clicker's own token, handed over in this process environment
         # only (never written to .env). lib-common sources .env with `set -a`, so a value the
-        # file does set still wins; the launcher writes none of these three.
+        # file does set still wins for GITHUB_PAT/REVIEWER; the wizard's repositories travel
+        # as RS_REPOS_EXTRA, which lib-common unions with REPOS and .env never sets.
         gh_tok = user_pat(login)
         if gh_tok:
             env.setdefault("GITHUB_PAT", gh_tok)
         env.setdefault("REVIEWER", login)
-        env["REPOS"] = ",".join(configured_repos())
+        env["RS_REPOS_EXTRA"] = ",".join(configured_repos())
     return env
 
 

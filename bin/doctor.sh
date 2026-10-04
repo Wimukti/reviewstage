@@ -93,6 +93,10 @@ if [ -r "$ENV_FILE" ]; then
   # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
+  # The desktop app picks a free port at launch and records it only as a loopback PUBLIC_URL;
+  # its fetched tools (gh, jq, flock) live in ROOT/bin rather than on the system PATH.
+  if [ -z "${RS_PORT:-}" ] && [[ "${PUBLIC_URL:-}" =~ ^http://127\.0\.0\.1:([0-9]+)$ ]]; then PORT="${BASH_REMATCH[1]}"; fi
+  [ -d "$ROOT/bin" ] && PATH="$ROOT/bin:$PATH" && note "tools in $ROOT/bin are on PATH for this check (desktop install)"
   mode=$(stat -c %a "$ENV_FILE" 2>/dev/null || stat -f %Lp "$ENV_FILE" 2>/dev/null)
   [ "${mode:-600}" = 600 ] || warn ".env mode is $mode (expected 600)"
 else
@@ -171,8 +175,10 @@ if [ -n "${GITHUB_PAT:-}" ] && command -v gh >/dev/null; then
       warn "the service token cannot see $REPO_ALLOW_ORG — org discovery will find nothing"
     fi
   fi
+elif [ "${RS_PERSONAL:-0}" = 1 ]; then
+  note "no service token — personal mode reads GitHub with each signed-in user's own token"
 else
-  [ -n "${GITHUB_PAT:-}" ] || fail "GITHUB_PAT not set — nothing can read GitHub"
+  fail "GITHUB_PAT not set — nothing can read GitHub"
 fi
 for r in $repos; do
   slug="${r/\//__}"

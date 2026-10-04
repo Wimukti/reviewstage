@@ -46,6 +46,6 @@ Three properties hold at every step:
 
 ## Next
 
-- [Install](/reviewstage/start/install/) — Docker Compose in a few minutes, or from source on a Linux server.
+- [Install](/reviewstage/start/install/) — `npx reviewstage` on a laptop, Docker Compose for a team, or from source on a Linux server.
 - [Your first review](/reviewstage/start/first-review/) — from a PR URL to a posted comment.
 - [Team mode](/reviewstage/start/team-mode/) — one server, every reviewer, their own name.

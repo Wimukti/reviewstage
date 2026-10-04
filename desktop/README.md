@@ -1,0 +1,60 @@
+# ReviewStage
+
+**Stage your PR review. Post it as yourself.**
+
+```bash
+npx reviewstage
+```
+
+A window opens and walks you through three steps — sign in with GitHub, connect your Claude
+account, pick the repositories you review — then shows your queue. When someone requests your
+review, the dock badge ticks up; click the PR, run a review on your own Claude plan, tick the
+findings worth posting, and post them under your own GitHub name. Nothing posts until you click.
+
+This package is the desktop app. It carries the ReviewStage server with it, runs it on a free
+local port, and fetches the two command-line tools the server needs (`gh`, `jq`) once, pinned by
+version and SHA-256, into `~/.reviewstage/bin`. Everything stays on your machine.
+
+## You need
+
+- **Node 20 or newer** (you have it if you installed Claude Code with npm).
+- **Claude Code** on your PATH — `npm install -g @anthropic-ai/claude-code`. Reviews run on
+  *your* Claude account; the app never fetches Claude Code for you.
+- **Git, Python 3, Bash, OpenSSL and curl** — present on every macOS (after
+  `xcode-select --install`) and on any Linux desktop.
+- macOS 12+ (Apple Silicon or Intel) or Linux x64/arm64. Windows is on the roadmap.
+
+No Apple notarisation dialog: the app is Electron installed by npm, the same way
+`npx @nervekit/desktop` and other npm-distributed desktop apps work.
+
+## Your phone
+
+**ReviewStage menu → Enable phone access…** starts a Cloudflare quick tunnel to your laptop,
+shows a QR code and the HTTPS address. Scan it, sign in once, and **Add to Home Screen**. From
+Settings on the phone, turn on push: a review request on a watched repository notifies the
+phone, and the queue, the findings and the Post button are the same app at phone width. The
+address is public while the tunnel is up (anyone with it reaches your sign-in page, nothing
+more); **Disable phone access** or quitting the app ends it.
+
+## Where things live
+
+Everything is under `~/.reviewstage`: `.env` (the app writes it: a random `RS_SECRET`,
+`RS_PERSONAL=1`, `DRY_RUN=1`), `settings.json` (the repositories you picked), `bin/` (the fetched
+tools), `state/` (every run, staged findings, posted-review records), `repos/` (one blobless
+clone per repository). Delete the directory to start over. `DRY_RUN=1` is on by default:
+everything works except the final write to GitHub, so you can compare its output with your own
+reviews first; switch it off from the Settings page.
+
+## Problems
+
+- *"Claude Code is not installed"* — install it with the command above and relaunch.
+- *"This machine is missing …"* — on macOS run `xcode-select --install`; on Linux install the
+  named packages.
+- *A tool's checksum did not match* — the download is discarded and the app stops. Try again
+  later; if it persists, open an issue with the message.
+- `npx reviewstage --doctor` prints one PASS / WARN / FAIL line per check without opening a
+  window; the server's output from the last launch is in `~/.reviewstage/server.log`.
+
+Full documentation, the security model and the team install (one server, every reviewer as
+themselves) are at <https://wimukti.github.io/reviewstage/>. Source and issues:
+<https://github.com/Wimukti/reviewstage>. MIT.

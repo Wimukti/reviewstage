@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Review from your phone</title>
+<style>
+  :root { --paper:#0B0C10; --panel:#12141A; --ink:#ECEEF3; --graphite:#9AA0B4; --hairline:#22262F; --blue:#7A83FF; --red:#F0718A; --green:#3DD98F; --light: rgba(255,225,176,.17); }
+  html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-app-region: drag; }
+  body { display: grid; place-items: center; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+  body::-webkit-scrollbar { display: none }
+  .card { position: relative; width: min(400px, calc(100vw - 32px)); margin: 30px 0 10px; padding: 16px 22px 14px; border-radius: 12px; background: var(--panel); box-shadow: 0 24px 64px -24px rgba(0,0,0,.8); -webkit-app-region: no-drag; overflow: hidden; }
+  .card::before { content: ""; position: absolute; left: 50%; top: -46%; width: 120%; height: 112%; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(60% 55% at 50% 0%, var(--light), transparent 70%); pointer-events: none; animation: breathe 8s ease-in-out infinite alternate; }
+  @keyframes breathe { from { opacity: .7 } to { opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .card::before { animation: none } }
+  h1 { position: relative; margin: 0 0 10px; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; text-align: center; }
+  .qr { position: relative; display: block; width: 224px; height: 224px; margin: 0 auto; border-radius: 10px; background: var(--paper); image-rendering: pixelated; }
+  .qr[hidden] { display: none }
+  .wait { position: relative; height: 224px; display: grid; place-items: center; color: var(--graphite); }
+  .wait[hidden] { display: none }
+  .url { position: relative; display: flex; align-items: center; gap: 8px; margin: 10px 0 8px; padding: 5px 5px 5px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--paper); }
+  .url code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: all; -webkit-user-select: all; font: 12px/1.4 "Geist Mono Variable", ui-monospace, Menlo, monospace; color: var(--ink); }
+  ol { position: relative; margin: 0; padding: 0 0 0 20px; color: var(--graphite); font-size: 12.5px; line-height: 1.4; }
+  ol li { padding: 1px 0; }
+  ol li::marker { color: var(--blue); font-weight: 600; }
+  .fine { position: relative; margin: 6px 0 0; color: var(--graphite); font-size: 11.5px; line-height: 1.4; }
+  .warn { position: relative; margin: 6px 0 0; color: var(--red); font-size: 11.5px; line-height: 1.4; }
+  .warn:empty { display: none }
+  .fine a { color: var(--graphite); text-decoration: underline; text-underline-offset: 2px; }
+  .acts { position: relative; display: flex; justify-content: flex-end; margin-top: 8px; }
+  button { font: inherit; font-weight: 500; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; background: var(--blue); color: var(--paper); }
+  button.ghost { background: transparent; color: var(--graphite); border: 1px solid var(--hairline); }
+  button.small { padding: 5px 10px; font-size: 12px; flex: none; }
+  button:disabled { opacity: .6; cursor: default; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Review from your phone</h1>
+    <div class="wait" id="wait">Opening a tunnel…</div>
+    <img class="qr" id="qr" alt="QR code of the phone address" hidden>
+    <div class="url"><code id="url" title="">…</code><button class="small" id="copy" disabled>Copy</button></div>
+    <ol>
+      <li>Scan this with your phone's camera</li>
+      <li>Sign in, then Share → Add to Home Screen</li>
+      <li>Open it from the home screen and turn on notifications in Settings</li>
+    </ol>
+    <p class="warn" id="warn"></p>
+    <p class="fine" id="fine">This address is public while phone access is on; every action still needs your sign-in. It stops when you turn phone access off or quit. <a href="https://wimukti.github.io/reviewstage/security/" target="_blank" rel="noopener">How sign-in and links are protected</a></p>
+    <div class="acts"><button class="ghost" id="disable">Disable phone access</button></div>
+  </div>
+  <script>
+    const $ = (s) => document.querySelector(s);
+    let url = "";
+    window.reviewstage?.phone.onData((p) => {
+      if (p.url) {
+        url = p.url;
+        $("#url").textContent = url;
+        $("#url").title = url;
+        $("#copy").disabled = false;
+      }
+      if (p.dataUrl) {
+        $("#qr").src = p.dataUrl;
+        $("#qr").hidden = false;
+        $("#wait").hidden = true;
+      }
+      if (p.warning) $("#warn").textContent = p.warning;
+    });
+    $("#copy").onclick = async () => {
+      try { await navigator.clipboard.writeText(url); } catch {
+        const r = document.createRange(); r.selectNodeContents($("#url"));
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand("copy");
+      }
+      $("#copy").textContent = "Copied";
+      setTimeout(() => { $("#copy").textContent = "Copy"; }, 2000);
+    };
+    $("#disable").onclick = () => { $("#disable").disabled = true; $("#disable").textContent = "Turning off…"; window.reviewstage?.phone.disable(); };
+  </script>
+</body>
+</html>

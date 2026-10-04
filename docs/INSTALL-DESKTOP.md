@@ -106,6 +106,17 @@ personal mode a missing `REPOS` is a WARN, not a FAIL, and `GITHUB_PAT` is not e
 forces it. Your data in `~/.reviewstage` is untouched by an update. Pre-releases are published
 too, under the same tag, while the project is in beta.
 
+## Linux note
+
+Chromium's setuid sandbox helper must be root-owned with mode 4755; a binary npm installed into
+your home directory cannot be, and Ubuntu 24.04 also restricts the unprivileged-namespace
+fallback, so an npm-installed Electron app aborts at launch. The launcher checks the helper and,
+where it is unusable, starts the window with `--no-sandbox`. The window only ever shows the
+local server — external links open in your browser — so the renderer sandbox is not guarding
+third-party content here. If you prefer it on, make the helper setuid once:
+`sudo chown root:root …/electron/dist/chrome-sandbox && sudo chmod 4755 …/chrome-sandbox`
+(the path is printed in the error you would otherwise see).
+
 ## Not yet
 
 - **Windows.** The server's job scripts are bash; a WSL-hosted server with the Electron shell on

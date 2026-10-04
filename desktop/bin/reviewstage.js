@@ -3,6 +3,7 @@
 // to this package and hand it main.js. Everything that matters happens in main.js.
 import { spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
+import { statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +30,19 @@ try {
   console.error(String(e?.message || e));
   process.exit(1);
 }
-const child = spawn(electron, [join(here, "..", "main.js"), ...process.argv.slice(2)], {
+// Linux: Chromium's setuid sandbox helper has to be root-owned 4755, which nothing installed by
+// npm into a user's home can be, and Ubuntu 24.04 also restricts the unprivileged-namespace
+// fallback. Every npm-distributed Electron app hits this. The window only ever shows the local
+// server (external links open in the system browser), so running without the Chromium sandbox
+// is the documented trade on Linux; it is left on wherever the helper is usable.
+const flags = [];
+if (process.platform === "linux") {
+  try {
+    const st = statSync(join(dirname(electron), "chrome-sandbox"));
+    if (!(st.uid === 0 && (st.mode & 0o4000))) flags.push("--no-sandbox");
+  } catch { flags.push("--no-sandbox"); }
+}
+const child = spawn(electron, [join(here, "..", "main.js"), ...flags, ...process.argv.slice(2)], {
   stdio: "inherit",
   env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: "1" },
 });

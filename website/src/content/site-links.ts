@@ -12,7 +12,9 @@ const l = {
   getStarted: { label: "Get started", href: "/start/" },
   install: { label: "Install", href: "/start/install/" },
   firstReview: { label: "First review", href: "/start/first-review/" },
-  teamMode: { label: "Team mode", href: "/start/team-mode/" },
+  teamWorkflow: { label: "Team workflow", href: "/guides/team-workflow/" },
+  teamMode: { label: "Team mode", href: "/guides/team-mode/" },
+  faq: { label: "FAQ", href: "/operations/faq/" },
   reviewing: { label: "Reviewing a PR", href: "/guides/reviewing/" },
   skills: { label: "Skills & learnings", href: "/guides/skills-and-learnings/" },
   qa: { label: "QA guides", href: "/guides/qa-guide/" },
@@ -37,15 +39,15 @@ export const navLinks = [
 ];
 
 export const marketingFooterColumns: LinkColumn[] = [
-  { title: "Product", links: [l.getStarted, l.install, l.firstReview, l.teamMode] },
-  { title: "Documentation", links: [l.reviewing, l.skills, l.qa, l.notifications, l.configuration, l.troubleshooting] },
+  { title: "Product", links: [l.getStarted, l.install, l.firstReview, l.teamWorkflow] },
+  { title: "Documentation", links: [l.reviewing, l.skills, l.qa, l.notifications, l.teamMode, l.configuration, l.faq, l.troubleshooting] },
   { title: "Developers", links: [l.architecture, l.contributing, l.roadmap] },
   { title: "Project", links: [l.github, l.issues, l.license, l.security] },
 ];
 
 export const docsFooterColumns: LinkColumn[] = [
-  { title: "Start", links: [l.getStarted, l.install, l.firstReview] },
-  { title: "Operate", links: [l.security, l.configuration, l.troubleshooting] },
+  { title: "Start", links: [l.getStarted, l.install, l.firstReview, l.teamWorkflow] },
+  { title: "Operate", links: [l.security, l.configuration, l.faq, l.troubleshooting] },
   { title: "Build", links: [l.architecture, l.contributing, l.roadmap] },
   { title: "Project", links: [l.home, l.github, l.license] },
 ];

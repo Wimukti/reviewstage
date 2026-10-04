@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld("reviewstage", {
     enable: () => ipcRenderer.invoke("phone:enable"),
     disable: () => ipcRenderer.invoke("phone:disable"),
     status: () => ipcRenderer.invoke("phone:status"),
+    onData: (fn) => ipcRenderer.on("phone", (_e, p) => fn(p)),
   },
 });

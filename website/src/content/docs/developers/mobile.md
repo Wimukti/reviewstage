@@ -61,6 +61,20 @@ app-shaped window.
 **Effort.** Done in this change. Ongoing cost is near zero: the icon step runs inside
 `pnpm build`, the e2e suite checks the served content types and phone-width overflow.
 
+## From the desktop app
+
+`npx reviewstage` gets a phone onto the same install without Tailscale or a reverse proxy.
+**Enable phone access** (in the app menu on macOS, the File menu elsewhere, and the dock menu)
+starts a bundled Cloudflare quick tunnel — `cloudflared`, pinned by version and SHA-256 in
+`desktop/tools.json` like `gh` and `jq` — and shows a QR code of the `https://*.trycloudflare.com`
+address once that address answers `/health` through the edge. Scan it, sign in, Share → Add to
+Home Screen, then turn on notifications in Settings: HTTPS is real, so the service worker, the
+home-screen install and web push all work as on any other origin. The app also tells the server
+the new public address (`POST /api/public-url`) so notification links open on the phone, and
+resets it to loopback when you disable phone access or quit, which is also when the tunnel dies.
+The address is public while it is on; every action still needs your sign-in, as described in
+[Security](/reviewstage/security/).
+
 ## Phase 2: Capacitor wrapper for store presence and native push
 
 **What it is.** [Capacitor](https://capacitorjs.com) puts the *same* `bin/static` build inside

@@ -7,6 +7,7 @@ import { CommandPalette } from "./CommandPalette";
 import { Integrations } from "./Integrations";
 import { Learnings } from "./Learnings";
 import { Queue } from "./Queue";
+import { Repos } from "./Repos";
 import { Rollup } from "./Rollup";
 import { Settings } from "./Settings";
 import { PhoneShell, RunningBar, Sidebar } from "./Sidebar";
@@ -28,9 +29,10 @@ function NotFound() {
   );
 }
 
-function Routed({ me }: { me: Me }) {
+function Routed({ me, reload }: { me: Me; reload: () => Promise<unknown> }) {
   const { path } = useLocation();
   if (path === "/") return <Queue me={me} />;
+  if (path.startsWith("/repos")) return <Repos me={me} reload={reload} />;
   if (path.startsWith("/pr")) return <PrPage me={me} />;
   if (path.startsWith("/qa")) return <Qa me={me} />;
   if (path.startsWith("/skills")) return <Skills />;
@@ -86,6 +88,18 @@ export function App() {
     }
   }, [load]);
 
+  // Sign out, then straight to where a different account signs in: the wizard in personal
+  // mode (it re-runs from GitHub), the login page otherwise.
+  const switchAccount = useCallback(async () => {
+    const personal = !!me?.personal;
+    try {
+      await api.logout();
+    } finally {
+      navigate(personal ? "/welcome" : "/login");
+      load();
+    }
+  }, [load, me?.personal]);
+
   const redirect = me ? welcomeRedirect(me, path) : null;
   useEffect(() => {
     if (redirect) navigate(redirect);
@@ -102,10 +116,10 @@ export function App() {
   return (
     <div className="flex min-h-dvh items-stretch bg-background max-[899px]:flex-col">
       <RunningBar />
-      {phone ? <PhoneShell me={me} onSignOut={signOut} /> : <Sidebar me={me} onSignOut={signOut} />}
+      {phone ? <PhoneShell me={me} onSignOut={signOut} /> : <Sidebar me={me} onSignOut={signOut} onSwitchAccount={switchAccount} />}
       <main className="main min-w-0 flex-1">
         <div className="min-w-0 max-w-[960px] px-6 pb-14 pt-6 max-[899px]:px-4 max-[899px]:pb-[calc(80px+env(safe-area-inset-bottom,0px))] max-[899px]:pt-5">
-          <Routed me={me} />
+          <Routed me={me} reload={load} />
         </div>
       </main>
       <CommandPalette me={me} />

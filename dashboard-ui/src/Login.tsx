@@ -202,6 +202,8 @@ export function LoginForm({
   const devName = q.get("name") || "";
   // Seed from ?err= so an OAuth failure (redirected here by the server) is shown.
   const [err, setErr] = useState(() => q.get("err") || "");
+  // GET /pair/<nonce> sends a stale or used phone code here (never saying which).
+  const pairedExpired = q.get("paired") === "expired";
   const redirectFlow = !!me.oauth;
   const deviceFlow = !redirectFlow && !!me.device_flow;
   const github = redirectFlow || deviceFlow;
@@ -370,6 +372,11 @@ export function LoginForm({
   return (
             <div className="mt-6 w-full text-left">
               {err && <Banner kind="err">{err}</Banner>}
+              {pairedExpired && (
+                <Banner kind="info" data-testid="paired-expired">
+                  That phone code has expired. On your Mac, open <b>Show phone access code…</b> for a new one.
+                </Banner>
+              )}
               {github ? (
                 <>
                   {deviceFailed}

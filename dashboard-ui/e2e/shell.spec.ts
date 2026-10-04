@@ -72,6 +72,8 @@ test.describe("desktop shell at 1440", () => {
     expect(Math.round(side!.width)).toBe(216);
     const items = page.getByTestId("sidebar").getByRole("navigation", { name: "Main" }).getByRole("link");
     expect(await items.count()).toBe(7);
+    // Repositories is a personal-mode entry (welcome.spec.ts); a team install's live in .env.
+    await expect(page.getByTestId("nav-setup").getByRole("link", { name: "Repositories" })).toHaveCount(0);
     for (const it of await items.all()) expect(Math.round((await it.boundingBox())!.height)).toBe(36);
     // The two groups are separated by space, not by a label or a line.
     await expect(page.getByTestId("sidebar").getByRole("navigation", { name: "Main" }).getByText(/^(work|setup|configure)$/i)).toHaveCount(0);

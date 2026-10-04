@@ -312,14 +312,14 @@ export function LoginForm({
             >
               {st.start.user_code}
             </output>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 *:min-w-0">
               <Button type="button" variant="secondary" onClick={() => void flow.copy(st.start.user_code)}>
                 {flow.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                 {flow.copied ? "Copied" : "Copy code"}
               </Button>
               <Button asChild>
                 <a href={st.start.verification_uri} target="_blank" rel="noopener">
-                  Open github.com/login/device <ExternalLink aria-hidden="true" />
+                  Open GitHub <ExternalLink aria-hidden="true" />
                 </a>
               </Button>
             </div>

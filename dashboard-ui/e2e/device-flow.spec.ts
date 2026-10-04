@@ -63,9 +63,16 @@ test.describe("device flow sign-in", () => {
     const code = page.getByTestId("device-user-code");
     await expect(code).toHaveText("ABCD-1234");
     await expect(page.getByRole("button", { name: "Copy code" })).toBeVisible();
-    const open = page.getByRole("link", { name: "Open github.com/login/device" });
+    const open = page.getByRole("link", { name: "Open GitHub" });
     await expect(open).toHaveAttribute("href", "https://github.com/login/device");
     await expect(open).toHaveAttribute("target", "_blank");
+    // The two buttons share a row; a label that does not fit spills outside its own button and
+    // the overflow is unreadable (seen live in the desktop app with the full device URL).
+    const cell = (await open.boundingBox())!;
+    const row = (await open.locator("..").boundingBox())!;
+    expect(cell.x).toBeGreaterThanOrEqual(row.x - 1);
+    expect(cell.x + cell.width).toBeLessThanOrEqual(row.x + row.width + 1);
+    expect(await open.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
     await expect(page.getByRole("status", { name: "Waiting for GitHub…" })).toBeVisible();
     await expect(btn).toHaveCount(0); // the primary button gives way to the code card
 

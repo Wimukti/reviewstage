@@ -99,17 +99,23 @@ else
   fail ".env missing or unreadable at $ENV_FILE"
 fi
 
-# Repositories: REPOS (list) ∪ REPO (single alias); each must be owner/name.
-repos=$(printf '%s %s' "${REPOS:-}" "${REPO:-}" | tr ',' ' ' | tr -s '[:space:]' '\n' | awk 'NF && !s[tolower($0)]++')
+# Repositories: REPOS (list) ∪ REPO (single alias) ∪ settings.json "repos" (added from the
+# dashboard — the first-run wizard in personal mode); each must be owner/name.
+settings_repos=$(jq -r '.repos // [] | .[]' "$ROOT/settings.json" 2>/dev/null)
+repos=$(printf '%s %s %s' "${REPOS:-}" "${REPO:-}" "$settings_repos" | tr ',' ' ' | tr -s '[:space:]' '\n' | awk 'NF && !s[tolower($0)]++')
 if [ -n "$repos" ]; then
   pass "repositories: $(echo "$repos" | tr '\n' ' ')"
+  [ -n "$settings_repos" ] && note "$(printf '%s\n' "$settings_repos" | grep -c .) of them come from $ROOT/settings.json (the dashboard)"
   for r in $repos; do
     printf '%s' "$r" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9_.-]+$' \
-      || fail "'$r' in REPOS/REPO is not owner/name shaped"
+      || fail "'$r' in REPOS/REPO/settings.json is not owner/name shaped"
   done
+elif [ "${RS_PERSONAL:-0}" = 1 ]; then
+  warn "no repository configured yet — personal mode boots without one; the first-run wizard (/welcome) adds them"
 else
   fail "no repository configured (set REPOS=owner/name[,…] or REPO=owner/name)"
 fi
+[ "${RS_PERSONAL:-0}" = 1 ] && note "RS_PERSONAL=1 — the server polls GitHub itself with each signed-in user's token; GITHUB_PAT is not needed"
 # RS_SECRET: sessions, every signed link and the at-rest encryption key all derive from it.
 # Empty means HMAC with a key anyone can reproduce — a forged rs_session cookie is accepted as
 # any user, including an admin. The server refuses to start without one; say so here too.

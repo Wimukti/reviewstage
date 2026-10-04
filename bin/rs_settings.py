@@ -14,6 +14,10 @@ Schema (all keys optional):
   skip_bot_prs           bool        default false (.env: SKIP_BOT_PRS)
   auto_profile           {slug: bool} default {}  re-profile a repo when its file tree changes
                                      materially (pr-watch.sh, at most once a day per repo)
+  repos                  [owner/name] default []  repositories added from the dashboard (the
+                                     first-run wizard in personal mode). The effective list
+                                     is the UNION of .env REPOS and this key — unlike every
+                                     other setting, neither layer hides the other. Max 50.
 """
 import json
 import os
@@ -22,8 +26,11 @@ import threading
 import time
 from pathlib import Path
 
+import rs_paths as P
+
 BACKENDS = ("slack", "discord", "generic", "none")
 INTERVAL_MIN, INTERVAL_MAX = 60, 3600
+MAX_REPOS = 50
 
 _lock = threading.Lock()
 
@@ -68,6 +75,8 @@ def env_defaults(env):
         vals["notify_backends"], src["notify_backends"] = env_backends(env), "default"
     put("max_pr_age_days", "RS_MAX_PR_AGE_DAYS", int, 45)
     put("skip_bot_prs", "SKIP_BOT_PRS", _truthy, False)
+    env_repos = P.parse_repos(env)
+    vals["repos"], src["repos"] = env_repos, "env" if env_repos else "default"
     return vals, src
 
 
@@ -87,9 +96,27 @@ def effective(path, env):
     """Every setting with its winning value and where it came from."""
     vals, src = env_defaults(env)
     for k, v in read_file(path).items():
-        if k in vals:
+        if k == "repos":
+            # The one additive key: the wizard's repos join .env's rather than replacing them.
+            saved = [r for r in (v if isinstance(v, list) else []) if isinstance(r, str)]
+            if saved:
+                vals[k], src[k] = P.union_repos(vals[k], saved), "settings"
+        elif k in vals:
             vals[k], src[k] = v, "settings"
     return vals, src
+
+
+def validate_repos(v):
+    """(clean_list, error). owner/name shaped, deduped case-insensitively, at most MAX_REPOS."""
+    if not isinstance(v, list) or not all(isinstance(r, str) for r in v):
+        return None, "repos must be a list of owner/name strings."
+    clean = P.union_repos([r.strip().strip("/") for r in v])
+    bad = [r for r in clean if not P.valid_repo(r)]
+    if bad:
+        return None, f"Not owner/name shaped: {', '.join(bad[:5])}."
+    if len(clean) > MAX_REPOS:
+        return None, f"Pick at most {MAX_REPOS} repositories ({len(clean)} selected)."
+    return clean, None
 
 
 def validate(body):
@@ -144,6 +171,11 @@ def validate(body):
         if bad:
             return None, f"auto_profile keys must be repo slugs (owner__name): {', '.join(bad)}."
         out["auto_profile"] = dict(v)
+    if "repos" in body:
+        clean, err = validate_repos(body["repos"])
+        if err:
+            return None, err
+        out["repos"] = clean
     return out, None
 
 

@@ -8,6 +8,8 @@ themselves — is [INSTALL-DOCKER.md](INSTALL-DOCKER.md).
 npx reviewstage
 ```
 
+![The three wizard steps in the desktop app: Continue with GitHub, Connect Claude, then a searchable list of repositories with a Start reviewing button.](demos/wizard.gif)
+
 ## What you need
 
 | | Why |
@@ -44,8 +46,16 @@ desktop apps run, and why no Apple Developer account is involved.
 
 From then on the app polls GitHub itself for review requests on the repositories you picked,
 with your own signed-in token (kept encrypted at rest; never in `.env`). The dock badge shows
-the count; a system notification fires when it rises. Pick more or fewer repositories any time
-at `/welcome/repos`.
+the count; a system notification fires when it rises.
+
+## Repositories and accounts
+
+- **Repositories** in the sidebar (also the first card on Settings, and `/repos`) lists the
+  repositories you own, collaborate on or belong to through an organisation. Tick or untick and
+  save; the queue filter and the badge follow at once, no restart.
+- **Switch GitHub account** is in the account ⋯ menu at the foot of the sidebar, above
+  **Sign out**. It signs you out and opens the sign-in step again. Posts stay under the account
+  that made them.
 
 ## Personal mode, precisely
 
@@ -66,23 +76,41 @@ at `/welcome/repos`.
 
 **ReviewStage → Enable phone access…** (also in the Dock menu) starts a
 [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
-to the local server and shows a QR code and the `https://….trycloudflare.com` address. On the
-phone: scan, sign in once (the same GitHub step), **Add to Home Screen**, then **Settings →
-Push → This device**. A review request on a watched repository notifies the phone; the
-dashboard is the same app at phone width.
+to the local server and shows a QR code, with the `https://….trycloudflare.com` address under
+it. On the phone:
+
+1. **Scan the code with the camera.** The phone is signed in as the person signed in on the
+   Mac — no second GitHub login. The QR carries a single-use code valid for 30 minutes; if it
+   has expired the login page says so and **Show phone access code…** on the Mac mints a new one.
+2. Share → **Add to Home Screen**.
+3. Open it from the home screen; **Settings → Push → This device**.
+
+![The desktop app's phone window: a QR code, the tunnel address under it, and the line "Scanning signs you in as octocat. Code valid until 14:32 — reopen this window for a new one."](demos/phone-access.gif)
+
+A review request on a watched repository notifies the phone; the dashboard is the same app at
+phone width. Not signed in on the Mac yet? The QR then carries the plain address and the window
+says to sign in on the Mac first.
+
+**How long the tunnel lasts.** As long as the app runs. `cloudflared` reconnects by itself after
+a dropped connection or sleep, and the address stays the same. Quitting the app ends it; the
+next **Enable phone access…** gets a new address, so scan again (a quick tunnel cannot keep a
+name; a named tunnel needs a Cloudflare account and is on the roadmap). If `cloudflared` crashes
+while phone access is on, the app restarts it once with a new address, mints a new code and
+shows a notification, "Phone address changed — rescan the code"; a second crash within 5 minutes
+stops it, the menu shows phone access as disabled and the phone window says why.
 
 What to know: the address is public while the tunnel is up — anyone who has it reaches your
-sign-in page and nothing more (every API call needs the session cookie; action links are
-HMAC-signed and short-lived). The address changes each time you enable it; the phone's saved app
-follows the new address after a fresh sign-in. **Disable phone access**, or quitting the app,
-closes the tunnel. `cloudflared` is fetched like the other tools, pinned by checksum.
+sign-in page and nothing more (every API call needs the session cookie; pair codes are
+single-use; action links are HMAC-signed and short-lived). **Disable phone access**, or
+quitting the app, closes the tunnel. `cloudflared` is fetched like the other tools, pinned by
+checksum.
 
 ## Where things live
 
 ```
 ~/.reviewstage/
   .env            written by the app; RS_SECRET, RS_PERSONAL=1, DRY_RUN=0, PUBLIC_URL=http://127.0.0.1:<port>
-  settings.json   repositories picked in the wizard, poller interval, notifier settings
+  settings.json   repositories (wizard or the Repositories page), poller interval, notifier settings
   bin/            gh, jq, cloudflared, flock (fetched or shimmed), with .<tool>.version stamps
   state/          every run: staged findings, posted-review records, learnings
   repos/          one blobless clone per repository

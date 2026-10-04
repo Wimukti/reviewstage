@@ -66,7 +66,7 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 
 ## GitHub sign-in
 
-**Sign in with GitHub works out of the box** through GitHub's device flow (`GH_DEVICE_FLOW=1`, the default) with the project's shared public client ID: a short code at github.com/login/device, nothing to register. Teams that want one-click redirect sign-in, or their own app identity on the consent screen, set the three `GH_*` keys below; when they are set the redirect flow is preferred. Either way the token GitHub returns is stored encrypted exactly like a pasted PAT and is the token used for that person's comments and approvals; a GitHub-sign-in user never needs a PAT. Set-up is in [Install → GitHub sign-in](/reviewstage/start/install/#github-sign-in); what the token can do, and why the scope is `repo`, is in [Security → Signing in](/reviewstage/security/#signing-in).
+**Sign in with GitHub works out of the box** through GitHub's device flow (`GH_DEVICE_FLOW=1`, the default) with the project's shared public client ID: a short code at github.com/login/device, nothing to register. Teams that want one-click redirect sign-in, or their own app identity on the consent screen, set the three `GH_*` keys below; when they are set the redirect flow is preferred. Either way the token GitHub returns is stored encrypted exactly like a pasted PAT and is the token used for that person's comments and approvals; a GitHub-sign-in user never needs a PAT. Set-up is [below](#one-click-sign-in-under-your-own-oauth-app); what the token can do, and why the scope is `repo`, is in [Security → Signing in](/reviewstage/security/#signing-in).
 
 Two kinds of app work:
 
@@ -79,6 +79,44 @@ Two kinds of app work:
 | Status | Supported today | Supported today; the roadmap default |
 
 Device tokens for phones and the CLI have no `.env` knob: they are per-user, created and revoked in Settings → Devices, expire 180 days after last use, and are pruned by the poller nightly.
+
+### One-click sign-in under your own OAuth App
+
+The login page's primary button uses GitHub's OAuth **device flow** with a shared public client ID (`Ov23liHjtjxcPNwXC6Y5`; public by design — device flow has no client secret and no callback URL). Click it, enter the short code at [github.com/login/device](https://github.com/login/device), authorise, and the page signs you in on its own. The token GitHub issues goes straight from GitHub to *your* server — the ReviewStage project never sees it — and is stored encrypted and used exactly like a pasted PAT, for the comments and approvals that person clicks, under their own name. Scope is `repo` because OAuth Apps cannot request fine-grained permissions ([Security → Signing in](/reviewstage/security/#signing-in)).
+
+- `GH_DEVICE_FLOW=0` turns the device flow off (token sign-in only, or your own app below).
+- `GH_DEVICE_CLIENT_ID=<client id>` uses your own OAuth App for the device flow instead (tick *Enable Device Flow* on it); still no secret.
+
+*Use a personal access token instead* stays on the login page for air-gapped or policy-restricted organisations: *Create a fine-grained token* opens GitHub's token page — pick the repositories you review and grant **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read** (a classic token with the `repo` scope also works). Pick an expiry; 90 days is a good default.
+
+Teams that prefer GitHub's *Authorize* screen with a redirect back (no code to type), or want the consent screen to carry their own app's name, register an OAuth App and set `GH_CLIENT_ID` / `GH_CLIENT_SECRET`; when they are set the redirect flow takes priority over the device flow.
+
+1. On github.com go to **Settings → Developer settings → OAuth Apps → New OAuth App** (or under your organisation's settings if the app should belong to the org).
+2. Fill in:
+
+   | Field | Value |
+   | --- | --- |
+   | Application name | `ReviewStage` (or your team's name for it) |
+   | Homepage URL | your `PUBLIC_URL`, e.g. `https://reviews.example.com` |
+   | Authorization callback URL | **`<PUBLIC_URL>/oauth/callback`** — exact |
+   | Enable Device Flow | off |
+
+3. Register, then **Generate a new client secret** and copy both the *Client ID* and the secret (the secret is shown once).
+4. Optional but recommended: in the app's *Optional features*, turn on **Expire user access tokens**. Tokens then last eight hours and ReviewStage refreshes them itself.
+5. In `.env`:
+
+   ```bash
+   GH_CLIENT_ID=<client id>
+   GH_CLIENT_SECRET=<client secret>
+   GH_OAUTH_SCOPES=repo
+   ```
+
+   `repo` is the smallest classic scope that can comment on and approve a pull request in a private repository. Public repositories only? `public_repo` is enough.
+6. Restart (`docker compose up -d` again, or `systemctl restart reviewstage`). **Sign in with GitHub** now goes through GitHub's *Authorize* screen instead of a code.
+
+If a sign-in comes back with *"the token cannot see owner/name"*, the organisation restricts third-party OAuth apps. An org owner approves the app once under **Organization settings → Third-party access**, and it works for everyone from then on. The login page demotes the GitHub button and opens the token form while that is pending.
+
+A **GitHub App** works with the same two `.env` keys (leave `GH_OAUTH_SCOPES` empty) and gives narrower, per-repository permissions in exchange for an org owner installing it.
 
 ## Runtime settings
 
@@ -122,6 +160,33 @@ Polling finds a review request up to one interval late; a webhook delivers it wi
 What the receiver does with each event is listed in [Notifications → From GitHub webhooks](/reviewstage/guides/notifications/#from-github-webhooks). It ignores repositories outside `REPOS` / `REPO_ALLOW_ORG`, never starts a review, and responds `202` before doing any work. State lives in `ROOT/webhooks.json` (`last_event_at`, `last_event`, `last_ping`, `count`, `last_error`), which `/api/settings` exposes.
 
 Keep the poller on. When a webhook event arrived within `2 × poll_interval_seconds`, `pr-watch.sh` logs `webhooks active; poll is a safety net` and otherwise runs unchanged — it is the recovery path for a missed delivery. Once the light is green you can lower the interval or pause polling from the Poller card; nothing does that for you. GitHub must be able to reach the one path — `deploy/README.md` covers the Tailscale and Cloudflare Access cases.
+
+## Docker install details
+
+The short version is on [Install → Team](/reviewstage/start/install/#team-docker-compose). The rest of what the Docker install needs and offers:
+
+- **Memory.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*, not total — so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Inside a container the figure is read from the cgroup budget rather than the host's, so a small container on a large machine is measured honestly. Raise `MIN_FREE_MB` only if you know the host can take it.
+- **Disk.** About 3 GB for the image, plus room for one blobless clone per repository. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB` — 500 MB free on the data volume. The doctor reads the same floor, so a passing disk check means the jobs will start.
+- **Network during the build.** The image fetches Debian packages, the GitHub CLI apt repository, Node 24 and the Claude Code CLI from npm. Behind a corporate proxy, export `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` and pass them to the build (`docker compose build --build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTPS_PROXY`), and configure the Docker daemon's own proxy so the base images can be pulled. At run time the container needs to reach `api.github.com`, `github.com` and Anthropic.
+- **Host port.** Set **`RS_HOST_PORT=9000`** in `.env` and `docker compose up -d`. That key is read only to interpolate the publish and is never passed into the container. `RS_PORT` is not the knob here: the container's listen port is pinned to 8899 in `docker-compose.yml`, because `EXPOSE`, the healthcheck and the publish target all name it.
+- **Profiles.** `docker compose --profile team up -d` adds the review-request poller and Slack/Discord cards ([Team mode](/reviewstage/guides/team-mode/)). `docker compose up -d demo` seeds sample runs so you can explore the UI before wiring anything.
+- **`REPO=owner/name`** still works as a single-entry alias for `REPOS`.
+
+### The doctor
+
+`docker compose exec app doctor` prints one PASS / WARN / FAIL line per check: the `.env` it actually reads, the repositories in `REPOS`, whether the service token can see each of them, whether `git`, `gh`, `claude`, `jq`, `flock`, `openssl` and `curl` are on `PATH`, free disk and free RAM, whether `/health` answers, the installed skills, and who has signed in and connected Claude. It writes nothing and is safe to run at any time.
+
+Everything it checks lives in the container, so that is where it has to run. `bin/doctor.sh` from the repository gets there by itself: it spots the Compose project, re-execs inside the running `app` container and says so on its first line. If `app` is not up it warns that it is checking the host instead, which on a Docker install will FAIL no matter how healthy the install is — use `docker compose run --rm app doctor` then. It does not check Docker itself; `docker compose ps` is that check.
+
+### Install the dashboard as an app
+
+The dashboard is a progressive web app. Once it is reachable over HTTPS (or on `localhost`), install it from the browser and it opens standalone, in the app's own colours, from your home screen or dock:
+
+- **iPhone / iPad (Safari):** Share → **Add to Home Screen**.
+- **Android (Chrome):** the **Install app** prompt, or ⋮ → **Add to Home screen**.
+- **Desktop (Chrome / Edge):** the install icon in the address bar.
+
+It is the same app as the tab; the sign-in and Claude connection carry over. Offline, it shows a "needs a connection to your server" page rather than stale data, because everything lives on your server. Push notifications per device are in [Notifications](/reviewstage/guides/notifications/#phone-and-browser-notifications); the desktop app's phone pairing over a QR code is on [Install → Desktop](/reviewstage/start/install/#desktop-app-one-person).
 
 ## Things that are not settings
 

@@ -25,6 +25,10 @@
   <img alt="The ReviewStage PR page for acme/widgets #38849: the agent's assessment — “1 thing to fix before merge” with three bullet points — above two finding cards, each with a ticked checkbox, a severity word, the file and line it points at, and a one-line why-it-matters. A sticky bar at the foot reads “2 staged” and carries a single Post selected to GitHub button." src="website/src/assets/screenshots/hero-light.png">
 </picture>
 
+<p align="center">
+  <a href="docs/demos/review.mp4"><img alt="Paste a PR URL, run the review, tick two findings, post — about twenty seconds in the ReviewStage desktop app." src="docs/demos/review.gif" width="820"></a>
+</p>
+
 > [!NOTE]
 > ReviewStage is beta software. The gate — nothing reaches GitHub without a signed-in person clicking, under their own name — has been stable since the first version. The install, the UI and the configuration keys are still moving. Pin a tag if you deploy it for a team.
 
@@ -39,10 +43,19 @@ npx reviewstage
 A window opens and walks you through three steps — **Continue with GitHub**, **Connect Claude**,
 **Pick repositories** — then shows your queue. You need Node 20+, Git and
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) on the machine; the app carries
-its own server and fetches the rest (`gh`, `jq`) once, pinned by checksum. No Docker, no `.env`,
-no service token, no Apple warning dialog. Reviews run on your own Claude plan. From the app
-menu, **Enable phone access…** shows a QR code: scan it, add the dashboard to your phone's home
-screen, and turn on push. Details: [docs/INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md).
+its own server and fetches the rest (`gh`, `jq`, `cloudflared`) once, pinned by checksum. No
+Docker, no `.env`, no service token, no Apple warning dialog. Reviews run on your own Claude
+plan, and posting is live from the first run — the Post button is the gate.
+
+- **Your phone.** From the app menu, **Enable phone access…** shows a QR code. Scan it and the
+  phone is signed in as you (a single-use code, valid 30 minutes); add the dashboard to the home
+  screen and turn on push. The tunnel lasts as long as the app runs and reconnects by itself
+  after a dropped connection or sleep; quitting the app ends it, and the next enable gets a new
+  address to scan.
+- **Repositories** in the sidebar adds or removes watched repositories any time; **Switch
+  GitHub account** is in the account ⋯ menu.
+
+Details: [docs/INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) · [FAQ](https://wimukti.github.io/reviewstage/operations/faq/).
 
 ### For a team: Docker Compose
 
@@ -112,15 +125,16 @@ Same gate at every size: nothing reaches GitHub without a signed-in person click
 docker compose --profile team up -d
 ```
 
-Adds the review-request poller and notification cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Cards go to Slack (incoming webhook or bot token with threaded replies), Discord, or any JSON webhook; the poller's interval and on/off switch live in the dashboard's Settings page. See [Team mode](https://wimukti.github.io/reviewstage/start/team-mode/).
+Adds the review-request poller and notification cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Cards go to Slack (incoming webhook or bot token with threaded replies), Discord, or any JSON webhook; the poller's interval and on/off switch live in the dashboard's Settings page. How it fits a team's existing review process — CODEOWNERS, branch protection, what to tell the team — is [Team workflow](https://wimukti.github.io/reviewstage/guides/team-workflow/); the reference is [Team mode](https://wimukti.github.io/reviewstage/guides/team-mode/).
 
 ## Documentation
 
-- [What ReviewStage is](https://wimukti.github.io/reviewstage/start/) — the one-minute model
+- [What you get](https://wimukti.github.io/reviewstage/start/) — the one-minute model
 - [Install](https://wimukti.github.io/reviewstage/start/install/) — `npx reviewstage` on a laptop; Docker Compose or from source for a team
+- [Your first review](https://wimukti.github.io/reviewstage/start/first-review/) · [Team workflow](https://wimukti.github.io/reviewstage/guides/team-workflow/) — a numbered walk, and how it fits your team's process
 - [Reviewing a PR](https://wimukti.github.io/reviewstage/guides/reviewing/) · [Skills and learnings](https://wimukti.github.io/reviewstage/guides/skills-and-learnings/) · [QA guides](https://wimukti.github.io/reviewstage/guides/qa-guide/) · [Notifications](https://wimukti.github.io/reviewstage/guides/notifications/) · [Insights](https://wimukti.github.io/reviewstage/guides/insights/)
 - [Security model](https://wimukti.github.io/reviewstage/security/) — what is stored, token permissions, what is not defended against
-- [Configuration](https://wimukti.github.io/reviewstage/operations/configuration/) · [Troubleshooting](https://wimukti.github.io/reviewstage/operations/troubleshooting/)
+- [Configuration](https://wimukti.github.io/reviewstage/operations/configuration/) · [FAQ](https://wimukti.github.io/reviewstage/operations/faq/) · [Troubleshooting](https://wimukti.github.io/reviewstage/operations/troubleshooting/)
 - [Architecture](https://wimukti.github.io/reviewstage/developers/architecture/) · [Contributing](https://wimukti.github.io/reviewstage/developers/contributing/) · [Roadmap](https://wimukti.github.io/reviewstage/developers/roadmap/)
 
 The documents under [`docs/`](docs/) are the canonical prose the site is built from: [INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) (`npx reviewstage`), [INSTALL-DOCKER.md](docs/INSTALL-DOCKER.md), [SETUP.md](docs/SETUP.md) (from source), [OPERATIONS.md](docs/OPERATIONS.md), [SECURITY.md](docs/SECURITY.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [MOBILE.md](docs/MOBILE.md).

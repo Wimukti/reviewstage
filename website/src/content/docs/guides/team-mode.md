@@ -1,9 +1,11 @@
 ---
 title: Team mode
-description: The poller, Slack cards, and per-reviewer identity on one shared server.
+description: Reference for a shared server — the poller, many repositories, per-reviewer identity, independent reviews, webhooks and owner notes.
 sidebar:
-  order: 4
+  order: 7
 ---
+
+This is the reference for a shared server. For how ReviewStage fits the review process your team already has, read [Team workflow](/reviewstage/guides/team-workflow/) first.
 
 One server serves the whole team, and one install reviews many repositories. Each person signs in once; from then on their queue, their runs, their posts and their approvals are theirs.
 
@@ -29,7 +31,7 @@ An existing single-repository install is migrated on the first start: the clone 
 
 ## What each person does
 
-1. Open the server's URL and sign in with their own fine-grained GitHub token (or **Sign in with GitHub** if the owner configured an OAuth app; see [Configuration](/reviewstage/operations/configuration/#github-sign-in)).
+1. Open the server's URL and sign in with their own fine-grained GitHub token (or **Sign in with GitHub**, which works out of the box; see [Configuration](/reviewstage/operations/configuration/#github-sign-in)).
 2. On the welcome checklist, paste their **Slack member ID** (or Discord user ID) so cards mention them, and **Connect Claude** so their reviews bill to their own plan. Both live in *Integrations* and can be done later.
 
 That is it. The next review request pings them within three minutes.

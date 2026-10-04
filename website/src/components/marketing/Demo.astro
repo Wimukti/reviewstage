@@ -1,0 +1,32 @@
+---
+/* A short demo recording in the same card frame as Shot. Sources live in src/assets/demos/
+ * as {name}.mp4 (preferred) and {name}.gif (fallback), with an optional {name}.png or {name}.jpg
+ * poster. The recordings are produced by `pnpm demos` in dashboard-ui/e2e and
+ * land in a separate change, so a missing file renders nothing rather than failing the build;
+ * the page text around the demo has to stand on its own. */
+import { Clapperboard } from "lucide-react";
+interface Props { name: string; alt: string; label?: string; }
+const { name, alt, label = "demo" } = Astro.props;
+const all = import.meta.glob<string>("../../assets/demos/*.{mp4,gif,png,jpg}", { eager: true, query: "?url", import: "default" });
+const pick = (ext: string) => all[`../../assets/demos/${name}.${ext}`];
+const mp4 = pick("mp4"), gif = pick("gif"), poster = pick("png") ?? pick("jpg");
+// Without a still, the first frame stands in for the poster; a multi-megabyte GIF as poster
+// would defeat preload="none".
+const preload = poster ? "none" : "metadata";
+---
+{(mp4 || gif) && (
+  <figure class="demo m-0">
+    <div class="overflow-hidden rounded-lg bg-card text-card-foreground shadow-sm">
+      <div class="flex h-9 items-center gap-2 px-3 text-xs text-muted-foreground"><Clapperboard className="size-3.5" aria-hidden="true" /><span class="truncate">{label}</span></div>
+      {mp4 ? (
+        <video class="block h-auto w-full" src={mp4} poster={poster} controls muted loop playsinline preload={preload} aria-label={alt}>
+          {gif && <img class="block h-auto w-full" src={gif} alt={alt} loading="lazy" decoding="async" />}
+          <p class="m-0 p-3 text-sm">{alt}</p>
+        </video>
+      ) : (
+        <img class="block h-auto w-full" src={gif} alt={alt} loading="lazy" decoding="async" />
+      )}
+    </div>
+    <figcaption class="sr-only">{alt}</figcaption>
+  </figure>
+)}

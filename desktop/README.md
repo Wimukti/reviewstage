@@ -6,8 +6,12 @@
 npx reviewstage
 ```
 
+![Paste a PR URL, run the review, tick two findings, post — in the ReviewStage desktop app.](https://raw.githubusercontent.com/Wimukti/reviewstage/main/docs/demos/review.gif)
+
 A window opens and walks you through three steps — sign in with GitHub, connect your Claude
-account, pick the repositories you review — then shows your queue. When someone requests your
+account, pick the repositories you review — then shows your queue. Add or remove repositories
+any time from **Repositories** in the sidebar; **Switch GitHub account** is in the account ⋯
+menu. When someone requests your
 review, the dock badge ticks up; click the PR, run a review on your own Claude plan, tick the
 findings worth posting, and post them under your own GitHub name. Nothing posts until you click.
 
@@ -29,17 +33,22 @@ No Apple notarisation dialog: the app is Electron installed by npm, the same way
 
 ## Your phone
 
-**ReviewStage menu → Enable phone access…** starts a Cloudflare quick tunnel to your laptop,
-shows a QR code and the HTTPS address. Scan it, sign in once, and **Add to Home Screen**. From
-Settings on the phone, turn on push: a review request on a watched repository notifies the
-phone, and the queue, the findings and the Post button are the same app at phone width. The
-address is public while the tunnel is up (anyone with it reaches your sign-in page, nothing
-more); **Disable phone access** or quitting the app ends it.
+**ReviewStage menu → Enable phone access…** starts a Cloudflare quick tunnel to your laptop and
+shows a QR code. Scan it with the camera and the phone is signed in as you — no second GitHub
+login (the code is single-use and valid for 30 minutes; **Show phone access code…** mints a new
+one). **Add to Home Screen**, open it from there, and turn on push from Settings: a review
+request on a watched repository notifies the phone, and the queue, the findings and the Post
+button are the same app at phone width.
+
+The tunnel lasts as long as the app runs: it reconnects by itself after a dropped connection or
+sleep and keeps its address. Quitting the app ends it; the next enable gets a new address, so
+scan again. The address is public while the tunnel is up (anyone with it reaches your sign-in
+page, nothing more); **Disable phone access** or quitting the app ends it.
 
 ## Where things live
 
 Everything is under `~/.reviewstage`: `.env` (the app writes it: a random `RS_SECRET`,
-`RS_PERSONAL=1`), `settings.json` (the repositories you picked), `bin/` (the fetched tools),
+`RS_PERSONAL=1`), `settings.json` (your repositories), `bin/` (the fetched tools),
 `state/` (every run, staged findings, posted-review records), `repos/` (one blobless clone per
 repository). Delete the directory to start over. Posting is live from the first run: the Post
 button is the gate, and nothing reaches GitHub until you press it. To rehearse without posting,

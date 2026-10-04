@@ -1,56 +1,44 @@
 ---
 title: Install
-description: npx reviewstage on a laptop, Docker Compose for a team, and the from-source path for a Linux server.
+description: npx reviewstage for one person, Docker Compose for a team, and the from-source path for a Linux server.
 sidebar:
   order: 2
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import Demo from '../../../components/marketing/Demo.astro';
 
 ## Desktop app (one person)
+
+You get the queue, the drafted review and the Post button in a window on your Mac or Linux laptop, and the same app on your phone. One command:
 
 ```bash
 npx reviewstage
 ```
 
-A window opens and walks you through three steps — **Continue with GitHub**, **Connect Claude**,
-**Pick repositories** — then shows your queue. No Docker, no `.env` to edit, no service token:
-the app writes `~/.reviewstage/.env` with `RS_PERSONAL=1`, and in that mode the server boots
-without a repository (you pick them in the wizard, and can revisit `/welcome/repos` any time),
-polls GitHub itself with your own signed-in token, and runs reviews on your Claude account.
-Claude Code must already be installed. The team install below is for several reviewers sharing
-one server.
+You need Node 20 or newer, Git and [Claude Code](https://docs.anthropic.com/en/docs/claude-code); the app brings its own server and fetches `gh`, `jq` and `cloudflared` once, pinned by checksum. No Docker, no `.env`, no service token.
 
-**Your phone.** In the app menu, **Enable phone access…** opens a Cloudflare quick tunnel to
-your laptop and shows a QR code and the HTTPS address. Scan it, sign in once, **Add to Home
-Screen**, and turn on push from Settings: a review request on a watched repository notifies the
-phone. The address is public while the tunnel is up (anyone holding it reaches your sign-in
-page and nothing more); **Disable phone access**, or quitting the app, ends it.
+A window opens and walks you through three steps:
 
-**Where it lives and how to start over.** Everything is under `~/.reviewstage` — `.env`
-(written by the app), `settings.json` (your repositories), `bin/` (the fetched `gh`, `jq` and a
-`flock` shim), `state/`, `repos/`, `server.log`. `npx reviewstage --doctor` prints the same
-PASS / WARN / FAIL checks the team install gets. Delete the directory to start over. Windows is
-not supported yet; Linux and macOS (Apple Silicon and Intel) are. The full text, including what
-the app downloads and how it verifies it, is in
-[INSTALL-DESKTOP.md](https://github.com/Wimukti/reviewstage/blob/main/docs/INSTALL-DESKTOP.md).
+1. **Continue with GitHub** — a short code at github.com/login/device.
+2. **Connect Claude** — your own account; reviews bill to your plan.
+3. **Pick repositories** — the ones you review. Change them any time on the **Repositories** page in the sidebar.
 
-## Docker Compose (recommended for teams)
+<Demo name="wizard" alt="The three wizard steps in the desktop app: Continue with GitHub, Connect Claude, then a searchable list of repositories with a Start reviewing button." label="first launch · three steps" />
 
-### Before you start
+Then your queue. The dock badge counts review requests; a notification fires when it rises.
 
-- **Docker with Compose v2** (`docker compose version`). Apple Silicon, Intel and arm64 Linux all build.
-- **A host with at least 2 GB of RAM.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*, not total — so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Inside a container the figure is read from the cgroup budget rather than the host's, so a small container on a large machine is measured honestly. Raise `MIN_FREE_MB` only if you know the host can take it.
-- **About 3 GB of free disk** for the image, plus room for one blobless clone per repository. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB` — 500 MB free on the data volume. The doctor reads the same floor, so a passing disk check means the jobs will start.
-- **Outbound network during the build.** The image fetches Debian packages, the GitHub CLI apt repository, Node 24 and the Claude Code CLI from npm. Behind a corporate proxy, export `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` and pass them to the build (`docker compose build --build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTPS_PROXY`), and configure the Docker daemon's own proxy so the base images can be pulled. At run time the container needs to reach `api.github.com`, `github.com` and Anthropic.
-- **A GitHub account**, and a Claude **Pro, Max, Team or Enterprise** plan for anyone who will run reviews.
+**Your phone.** In the app menu, **Enable phone access…** opens a secure tunnel to your laptop and shows a QR code. Scan it with the camera: the phone is signed in as you, no second GitHub login. Share → **Add to Home Screen**, open it from there, and turn on **Settings → Push → This device**. The code is single-use and valid for 30 minutes; **Show phone access code…** mints a new one.
 
-<Aside type="caution" title="Read the security model first">
-ReviewStage checks out branches and runs an agent over code that, on a public repository, an
-external contributor wrote. Before you point it at a pull request that is not your own, read
-[Security](/reviewstage/security/): what is stored, what each token can do, and what is
-deliberately not defended against.
-</Aside>
+<Demo name="phone-access" alt="The desktop app's phone window: a QR code, the tunnel address under it, and the line 'Scanning signs you in as octocat. Code valid until 14:32 — reopen this window for a new one.'" label="phone access · QR" />
+
+**What if my Wi-Fi drops?** The tunnel reconnects by itself after a dropped connection or sleep, and the address stays the same for as long as the app runs. Quitting the app ends it; the next **Enable phone access…** gets a new address, so scan again.
+
+**Switch GitHub account** is in the account ⋯ menu. Everything lives under `~/.reviewstage`; delete it to start over. Posting is live from the first run: the Post button is the gate. More in the [FAQ](/reviewstage/operations/faq/) and [INSTALL-DESKTOP.md](https://github.com/Wimukti/reviewstage/blob/main/docs/INSTALL-DESKTOP.md).
+
+## Team (Docker Compose)
+
+You get one server for the whole team; everyone signs in as themselves, and one install reviews many repositories. Three commands:
 
 ```bash
 git clone https://github.com/Wimukti/reviewstage && cd reviewstage
@@ -58,112 +46,54 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Open **http://localhost:8899**. The first visit is the login page.
+You need Docker with Compose v2, a host with 2 GB of RAM and 3 GB of free disk, and a Claude Pro, Max, Team or Enterprise plan for everyone who runs reviews.
 
-Before you sign in, run the doctor:
+Set two values in `.env` before `up`:
+
+| Key | What |
+| --- | --- |
+| `REPOS` | The repositories to review, `owner/name`, comma-separated. |
+| `GITHUB_PAT` | The **service token**: a fine-grained PAT covering every repo in `REPOS` with **Pull requests: Read and write**, **Contents: Read**, **Metadata: Read**. It reads and polls, never posts; posting and approving use each reviewer's own token. |
+
+Open **http://localhost:8899**, then run the doctor:
 
 ```bash
 docker compose exec app doctor
 ```
 
-It prints one PASS / WARN / FAIL line per check: the `.env` it actually reads, the repositories in `REPOS`, whether the service token can see each of them, whether `git`, `gh`, `claude`, `jq`, `flock`, `openssl` and `curl` are on `PATH`, free disk and free RAM, whether `/health` answers, the installed skills, and who has signed in and connected Claude. It writes nothing and is safe to run at any time.
+One PASS / WARN / FAIL line per check. Then:
 
-Everything it checks — the `.env` the server reads, the CLIs, the data volume, `/proc/meminfo` — lives in the container, so that is where it has to run. `bin/doctor.sh` from this directory gets there by itself: it spots the Compose project, re-execs inside the running `app` container and says so on its first line. If `app` is not up it warns that it is checking the host instead, which on a Docker install will FAIL no matter how healthy the install is — use `docker compose run --rm app doctor` then. It does not check Docker itself; `docker compose ps` is that check.
+1. **Sign in with GitHub** — a short code at github.com/login/device, nothing to register.
+2. **Connect Claude** on the welcome checklist; reviews bill to your plan.
+3. Paste a PR URL: your [first review](/reviewstage/start/first-review/).
 
-### What to put in `.env`
-
-Only two values are required to start:
-
-| Key | What |
-| --- | --- |
-| `REPOS` | The repositories to review, as `owner/name`, comma-separated — one install reviews many. `REPO=owner/name` still works as a single-entry alias. |
-| `GITHUB_PAT` | The **service token**. A fine-grained PAT whose *Repository access* covers every repo in `REPOS`, with **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read**. Read and write is what GitHub requires to reach review threads through this path; nothing in the service or review path ever writes to GitHub with it. Posting and approving always use the signed-in reviewer's own token. |
-
-To publish on a different host port, set **`RS_HOST_PORT=9000`** in `.env` and `docker compose up -d`. That key is read only to interpolate the publish and is never passed into the container. `RS_PORT` is not the knob here: the container's listen port is pinned to 8899 in `docker-compose.yml`, because `EXPOSE`, the healthcheck and the publish target all name it.
-
-Everything else has a sensible default. `DRY_RUN=1` ships on by default: the dashboard works end to end but refuses to write to GitHub until you flip it. See [Configuration](/reviewstage/operations/configuration/) for every knob.
-
-### Profiles
+`DRY_RUN=1` ships on: every button works, but nothing is written to GitHub until you set `DRY_RUN=0` and restart. Compare a few dry runs with your own reviews first.
 
 ```bash
-docker compose --profile team up -d   # adds the review-request poller + Slack cards
-docker compose up -d demo   # seeds sample runs so you can explore the UI
+docker compose --profile team up -d   # adds the poller and Slack/Discord cards
 ```
 
-`team` is what you want for a shared server; see [Team mode](/reviewstage/start/team-mode/). `demo` is for looking around before wiring anything.
-
-### The first sign-in
-
-1. Open http://localhost:8899 and click **Sign in with GitHub**. It works out of the box through GitHub's device flow (see [GitHub sign-in](#github-sign-in)): the page shows a short code, you enter it at github.com/login/device and authorise, and the page signs you in by itself. If you would rather use a token, open *Use a personal access token instead*: *Create a fine-grained token* opens GitHub's fine-grained token page — pick the repositories you review and grant **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read** (a classic token with the `repo` scope also works). Pick an expiry (90 days is a good default). This token acts as **you**; it is what makes every comment attributable to a person.
-2. Either way the token is verified against GitHub, stored encrypted, and used only for the posts and approvals you click.
-3. On the welcome checklist, **Connect Claude**: a link opens Claude in a new tab, you authorise with your own account and paste the code back. This runs the genuine `claude setup-token` flow inside the container, so your reviews bill to your plan.
-
-You are ready for your [first review](/reviewstage/start/first-review/).
-
-### GitHub sign-in
-
-**Sign in with GitHub works out of the box — nothing to register.** The login page's primary button uses GitHub's OAuth **device flow** with a shared public client ID (`Ov23liHjtjxcPNwXC6Y5`; public by design — device flow has no client secret and no callback URL). Click it, enter the short code at [github.com/login/device](https://github.com/login/device), authorise, and the page signs you in on its own. The token GitHub issues goes straight from GitHub to *your* server — the ReviewStage project never sees it — and is stored encrypted and used exactly like a pasted PAT, for the comments and approvals that person clicks, under their own name. Scope is `repo` because OAuth Apps cannot request fine-grained permissions ([Security → Signing in](/reviewstage/security/#signing-in)).
-
-- `GH_DEVICE_FLOW=0` turns the device flow off (token sign-in only, or your own app below).
-- `GH_DEVICE_CLIENT_ID=<client id>` uses your own OAuth App for the device flow instead (tick *Enable Device Flow* on it); still no secret.
-
-*Use a personal access token instead* stays on the page for air-gapped or policy-restricted organisations.
-
-**Optional: one-click redirect sign-in under your own app.** Teams that prefer GitHub's *Authorize* screen with a redirect back (no code to type), or want the consent screen to carry their own app's name, register an OAuth App and set `GH_CLIENT_ID` / `GH_CLIENT_SECRET`; when they are set the redirect flow takes priority over the device flow.
-
-1. On github.com go to **Settings → Developer settings → OAuth Apps → New OAuth App** (or under your organisation's settings if the app should belong to the org).
-2. Fill in:
-
-   | Field | Value |
-   | --- | --- |
-   | Application name | `ReviewStage` (or your team's name for it) |
-   | Homepage URL | your `PUBLIC_URL`, e.g. `https://reviews.example.com` |
-   | Authorization callback URL | **`<PUBLIC_URL>/oauth/callback`** — exact |
-   | Enable Device Flow | off |
-
-3. Register, then **Generate a new client secret** and copy both the *Client ID* and the secret (the secret is shown once).
-4. Optional but recommended: in the app's *Optional features*, turn on **Expire user access tokens**. Tokens then last eight hours and ReviewStage refreshes them itself.
-5. In `.env`:
-
-   ```bash
-   GH_CLIENT_ID=<client id>
-   GH_CLIENT_SECRET=<client secret>
-   GH_OAUTH_SCOPES=repo
-   ```
-
-   `repo` is the smallest classic scope that can comment on and approve a pull request in a private repository; OAuth Apps cannot request fine-grained permissions (see [Security](/reviewstage/security/#signing-in)). Public repositories only? `public_repo` is enough.
-6. Restart (`docker compose up -d` again, or `systemctl restart reviewstage`). **Sign in with GitHub** now goes through GitHub's *Authorize* screen instead of a code.
-
-<Aside type="note" title="Organisation approval">
-If a sign-in comes back with *"the token cannot see owner/name"*, the organisation restricts third-party OAuth apps. An org owner approves the app once under **Organization settings → Third-party access**, and it works for everyone from then on. The login page demotes the GitHub button and opens the token form while that is pending.
+<Aside type="caution" title="Read the security model first">
+ReviewStage checks out branches and runs an agent over code an external contributor may have written. Before you point it at a pull request that is not your own, read [Security](/reviewstage/security/).
 </Aside>
 
-A **GitHub App** works with the same two `.env` keys (leave `GH_OAUTH_SCOPES` empty) and gives narrower, per-repository permissions in exchange for an org owner installing it. It is the roadmap default; see [Configuration](/reviewstage/operations/configuration/#github-sign-in).
-
-### Install as an app
-
-The dashboard is a progressive web app. Once it is reachable over HTTPS (or on `localhost`), install it from the browser and it opens standalone, in the app's own colours, from your home screen or dock:
-
-- **iPhone / iPad (Safari):** Share → **Add to Home Screen**.
-- **Android (Chrome):** the **Install app** prompt, or ⋮ → **Add to Home screen**.
-- **Desktop (Chrome / Edge):** the install icon in the address bar.
-
-It is the same app as the tab; the sign-in and Claude connection carry over. Offline, it shows a "needs a connection to your server" page rather than stale data, because everything lives on your server. Native store apps and push notifications are the next phase; see [Mobile](/reviewstage/developers/mobile/).
+Next: [Team workflow](/reviewstage/guides/team-workflow/) for how it fits your review process, [Team mode](/reviewstage/guides/team-mode/) for the poller and many repositories, [Configuration](/reviewstage/operations/configuration/#docker-install-details) for every knob, proxies, ports and your own OAuth App.
 
 ## From source on a Linux server
 
-Use this when you cannot run Docker, or want the dashboard behind your own web server. The pieces are a Python 3 server, a few bash scripts, the Claude Code CLI and the GitHub CLI. There is no build step for the backend; the dashboard UI is a prebuilt bundle.
+<details>
+<summary>You get the same server as the Docker install, as a systemd unit behind your own web server. Use this when you cannot run Docker.</summary>
 
-Summary of what `bin/bootstrap.sh` does, so you know what to expect:
+The pieces are a Python 3 server, a few bash scripts, the Claude Code CLI and the GitHub CLI. There is no build step for the backend; the dashboard UI is a prebuilt bundle.
+
+`bin/bootstrap.sh` is idempotent and does six things:
 
 1. Installs `gh` and `claude` if missing.
-2. Copies the scripts to `~/.reviewstage/bin/` and creates `~/.reviewstage/.env` (chmod 600), **adding only missing keys** so re-running never overwrites your values.
-3. Makes one blobless base clone per repository in `REPOS` for worktrees.
+2. Copies the scripts to `~/.reviewstage/bin/` and creates `~/.reviewstage/.env` (chmod 600), adding only missing keys, so re-running never overwrites your values.
+3. Makes one blobless base clone per repository in `REPOS`.
 4. Installs the built-in review skill and seeds the editable team default.
-5. Writes and starts a systemd unit, `reviewstage.service`, that binds the dashboard to `127.0.0.1:8899`.
+5. Writes and starts `reviewstage.service`, bound to `127.0.0.1:8899`.
 6. Installs the cron entry for the poller (every 3 minutes).
-
-Then:
 
 ```bash
 sudo -iu <service-user>          # the user the unit runs as
@@ -174,8 +104,8 @@ claude                           # sign Claude Code in as that user, interactive
 curl -s localhost:8899/health    # -> ok
 ```
 
-Put a TLS-terminating reverse proxy in front (Caddy is two lines) and read [Security](/reviewstage/security/) before turning `DRY_RUN` off. The server reads `.env` **once at startup**: restart it after any edit.
+Put a TLS-terminating reverse proxy in front (Caddy is two lines) and read [Security](/reviewstage/security/) before turning `DRY_RUN` off. The server reads `.env` once at startup: restart it after any edit.
 
-<Aside type="caution" title="Sign Claude in as the service user">
-The most common install failure is signing Claude Code in as a different user than the one the service runs as. The credentials land in the wrong home directory and every review finishes instantly with an empty result.
-</Aside>
+The most common failure is signing Claude Code in as a different user than the one the service runs as. The credentials land in the wrong home directory and every review finishes instantly with an empty result.
+
+</details>

@@ -66,14 +66,25 @@ app-shaped window.
 `npx reviewstage` gets a phone onto the same install without Tailscale or a reverse proxy.
 **Enable phone access** (in the app menu on macOS, the File menu elsewhere, and the dock menu)
 starts a bundled Cloudflare quick tunnel — `cloudflared`, pinned by version and SHA-256 in
-`desktop/tools.json` like `gh` and `jq` — and shows a QR code of the `https://*.trycloudflare.com`
-address once that address answers `/health` through the edge. Scan it, sign in, Share → Add to
-Home Screen, then turn on notifications in Settings: HTTPS is real, so the service worker, the
-home-screen install and web push all work as on any other origin. The app also tells the server
-the new public address (`POST /api/public-url`) so notification links open on the phone, and
-resets it to loopback when you disable phone access or quit, which is also when the tunnel dies.
-The address is public while it is on; every action still needs your sign-in, as described in
-[Security](/reviewstage/security/).
+`desktop/tools.json` like `gh` and `jq` — and shows a QR code as soon as the
+`https://*.trycloudflare.com` address exists; whether the edge answers `/health` yet is shown
+as a status under it. The QR encodes a **pairing URL**: the app mints a single-use code
+(`POST /api/pair`, loopback and session required, valid 30 minutes) for the person signed in on
+the Mac, and `GET /pair/<code>` on the phone sets that person's session cookie and redirects
+to the queue — no second GitHub login. An expired code lands on the login page with a line
+saying to reopen **Show phone access code…** on the Mac. Then Share → Add to Home Screen and
+turn on notifications in Settings: HTTPS is real, so the service worker, the home-screen install
+and web push all work as on any other origin.
+
+The tunnel lives as long as the app does: `cloudflared` reconnects on its own after a dropped
+connection or sleep and the address does not change. If the `cloudflared` child exits while
+phone access is on, the app restarts it once with a new address, mints a new code, updates the
+phone window and shows a system notification ("Phone address changed — rescan the code"); a
+second exit within 5 minutes stops it and the menu shows phone access as disabled. The app
+tells the server the public address (`POST /api/public-url`) so notification links open on the
+phone, and resets it to loopback when you disable phone access or quit, which is also when the
+tunnel ends. The address is public while it is on; every action still needs your sign-in, as
+described in [Security](/reviewstage/security/).
 
 ## Phase 2: Capacitor wrapper for store presence and native push
 

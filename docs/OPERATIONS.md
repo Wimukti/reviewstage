@@ -519,7 +519,7 @@ Step 4 is the one that hurts, and it is why the previous version of this documen
 - **The QA guide has no write tripwire.** Both job scripts run the agent with every GitHub
   credential stripped and the same tool deny list, but only `run-review.sh` takes the
   before/after fingerprint that turns an actual write into a failed run. See
-  [SECURITY.md](SECURITY.md#prompt-injection-from-hostile-diffs).
+  [SECURITY.md](SECURITY.md#the-review-agents-sandbox).
 
 ## Changing the code
 

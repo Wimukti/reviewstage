@@ -1,0 +1,28 @@
+---
+title: Your first review
+description: From a PR URL to a posted comment, in seven numbered steps.
+sidebar:
+  order: 3
+---
+
+import Demo from '../../../components/marketing/Demo.astro';
+
+You get a drafted review of one pull request, staged for you to edit, then posted under your name with one click. Paste a PR URL into **Review a PR** in the sidebar and follow the numbers below.
+
+<Demo name="review" alt="A PR URL is pasted into Review a PR, the review runs, findings appear as cards, two are ticked, Post is clicked and the timeline shows Comments posted." label="paste · run · tick · post" />
+
+1. **Open a PR.** Paste a PR URL or number into **Review a PR**. On the desktop app, and on a team server with the poller, PRs where your review is requested are already in your **To review** tab.
+
+2. **Start the review.** The run form asks three things. **Effort**: *Quick*, *Standard* or *Deep*, pre-selected from the diff size; it sets how far the agent reads (typically 2–5, 3–10 or 8–25 minutes). **Model**: your plan's default, or Opus, Sonnet or Haiku. **Focus** (optional): a sentence like *"pay attention to the cut-off maths"*. Click **Start review**. The page shows `fetching`, then `reviewing`; a 25-file PR takes 10 to 15 minutes. Reviews run one at a time per server; a second one shows `queued`.
+
+3. **Read the result.** The PR page shows a timeline (`Reviewed · Comments posted · Approved`), the **assessment** (the agent's verdict in two to four sentences; it never becomes a review state on GitHub), **What this PR does** and **Analysis** (collapsed), then the **findings**, one card each: checkbox, severity (`blocker`, `should-fix`, `nit`, `question`), `file:line`, a *reply-vs-new* badge when an existing thread already covers it, and an editable body. **Explain simply** rewrites a finding in plain words with how to verify it. Banners flag a **stale** review if the author pushed since, your **focus**, and a **risk** note when the PR touches paths your team marked sensitive.
+
+4. **Stage it.** Tick the findings worth posting. Edit any wording; the original is kept so the [learnings loop](/reviewstage/guides/skills-and-learnings/) can record what changed. A sticky bar counts the selection.
+
+5. **Post.** **Post to GitHub** sends the selected comments as inline review comments in one `COMMENT` review, under your name. On the desktop app this is live from the first run; the Post button is the gate. On a team install with `DRY_RUN=1` it saves the exact payload it *would* have posted. Compare that with a review you did by hand, for several PRs, before you turn the dry run off.
+
+6. **Approve, separately.** **Approve** is its own panel, enabled only when the PR is open, not a draft, not authored by you, and has a review on this server. The body is pre-filled with `LGTM` plus a checklist of the blocker and should-fix findings (nits omitted) and is editable. It posts the comment and then the approval, as you.
+
+7. **Go live on a team install.** When you trust the output, set `DRY_RUN=0` in `.env` and `docker compose up -d` (from source: `sudo systemctl restart reviewstage`). Start with a PR you authored so the stakes are low. Read [Security](/reviewstage/security/) first if the server is reachable from outside your machine.
+
+Next: [Reviewing a PR](/reviewstage/guides/reviewing/) is the full reference for the page; [Team workflow](/reviewstage/guides/team-workflow/) is how this fits the process your team already has.

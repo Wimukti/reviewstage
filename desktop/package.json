@@ -1,0 +1,28 @@
+{
+  "name": "reviewstage",
+  "version": "0.0.0-dev",
+  "description": "Stage your PR review. Post it as yourself. The desktop app — `npx reviewstage`.",
+  "license": "MIT",
+  "homepage": "https://wimukti.github.io/reviewstage/",
+  "repository": { "type": "git", "url": "https://github.com/Wimukti/reviewstage.git", "directory": "desktop" },
+  "bin": { "reviewstage": "./bin/reviewstage.js" },
+  "main": "main.js",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "files": [
+    "bin/", "main.js", "preload.cjs", "tools.json", "tools.js", "flock.py", "server.js", "tunnel.js", "pages/", "server/"
+  ],
+  "scripts": {
+    "prepack": "node scripts/prepack.mjs",
+    "start": "node bin/reviewstage.js",
+    "test": "node --test test/*.test.mjs",
+    "test:smoke": "node --test test/smoke.test.mjs"
+  },
+  "dependencies": {
+    "electron": "44.5.1",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

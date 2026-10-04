@@ -1,0 +1,21 @@
+{
+  "_comment": "Pinned by version and SHA-256 of the release asset, computed from the downloaded files on 10/04/26. A mismatch stops the install; it is never skipped. `inner` is the binary's path inside the archive; absent means the asset is the binary itself.",
+  "gh": {
+    "version": "2.102.0",
+    "platforms": {
+      "darwin-arm64": { "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_arm64.zip", "sha256": "da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e", "ext": ".zip", "inner": "gh_2.102.0_macOS_arm64/bin/gh" },
+      "darwin-x64":   { "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_amd64.zip", "sha256": "b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3", "ext": ".zip", "inner": "gh_2.102.0_macOS_amd64/bin/gh" },
+      "linux-x64":    { "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz", "sha256": "bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386", "ext": ".tar.gz", "inner": "gh_2.102.0_linux_amd64/bin/gh" },
+      "linux-arm64":  { "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_arm64.tar.gz", "sha256": "7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484", "ext": ".tar.gz", "inner": "gh_2.102.0_linux_arm64/bin/gh" }
+    }
+  },
+  "jq": {
+    "version": "1.8.2",
+    "platforms": {
+      "darwin-arm64": { "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-macos-arm64", "sha256": "2d75340ba57a4b4b4c8708a21c2dc8e958a48aaa8bba13b27f77f6e4c0eca07e" },
+      "darwin-x64":   { "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-macos-amd64", "sha256": "e94b266e3c26690550006abe63152b782280f4e14374accdf04cbde844f00bc0" },
+      "linux-x64":    { "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64", "sha256": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f" },
+      "linux-arm64":  { "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-arm64", "sha256": "8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309" }
+    }
+  }
+}

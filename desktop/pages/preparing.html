@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ReviewStage</title>
+<style>
+  :root { --paper:#0B0C10; --panel:#12141A; --ink:#ECEEF3; --graphite:#9AA0B4; --hairline:#22262F; --blue:#7A83FF; --red:#F0718A; --green:#3DD98F; --light: rgba(255,225,176,.17); }
+  html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-app-region: drag; }
+  body { display: grid; place-items: center; }
+  .card { position: relative; width: min(440px, calc(100vw - 32px)); padding: 32px 28px 24px; border-radius: 12px; background: var(--panel); box-shadow: 0 24px 64px -24px rgba(0,0,0,.8); -webkit-app-region: no-drag; }
+  .card::before { content: ""; position: absolute; left: 50%; top: -46%; width: 120%; height: 112%; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(60% 55% at 50% 0%, var(--light), transparent 70%); pointer-events: none; animation: breathe 8s ease-in-out infinite alternate; }
+  @keyframes breathe { from { opacity: .7 } to { opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .card::before { animation: none } }
+  h1 { margin: 12px 0 2px; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; text-align: center; }
+  .sub { margin: 0 0 20px; color: var(--graphite); text-align: center; }
+  .mark { display: block; width: 40px; height: 40px; margin: 0 auto; }
+  .step { display: flex; align-items: center; gap: 10px; padding: 8px 0; color: var(--graphite); }
+  .step[data-state="doing"] { color: var(--ink) }
+  .step[data-state="done"] .dot { background: var(--green) }
+  .step[data-state="doing"] .dot { background: var(--blue); animation: pulse 1.2s ease-in-out infinite }
+  .step[data-state="failed"] .dot { background: var(--red) }
+  .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--hairline); flex: none }
+  @keyframes pulse { 50% { opacity: .35 } }
+  .bar { height: 3px; margin-top: 6px; background: var(--hairline); border-radius: 999px; overflow: hidden }
+  .bar i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .2s }
+  .err { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: rgba(240,113,138,.12); color: var(--ink); font-size: 13px; white-space: pre-wrap; display: none }
+  .err code { font: 12px/1.5 "Geist Mono Variable", ui-monospace, Menlo, monospace }
+  .acts { display: none; margin-top: 14px; gap: 8px; justify-content: flex-end }
+  button { font: inherit; font-weight: 500; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; background: var(--blue); color: var(--paper) }
+  button.ghost { background: transparent; color: var(--graphite) }
+  .fine { margin-top: 18px; text-align: center; color: var(--graphite); font-size: 12px }
+</style>
+</head>
+<body>
+  <div class="card">
+    <svg class="mark" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 10h12v28H8z" fill="#ECEEF3"/><path d="M22 14h6v24h-6z" fill="#3947FF"/><path d="M30 10h10v28H30z" fill="#ECEEF3" opacity=".85"/></svg>
+    <h1>ReviewStage</h1>
+    <p class="sub">Getting ready on this machine.</p>
+    <div id="steps">
+      <div class="step" data-id="tools"><i class="dot"></i><span>Review tools</span></div>
+      <div class="bar" id="bar" hidden><i id="fill"></i></div>
+      <div class="step" data-id="claude"><i class="dot"></i><span>Claude Code</span></div>
+      <div class="step" data-id="server"><i class="dot"></i><span>Starting the server</span></div>
+    </div>
+    <div class="err" id="err"></div>
+    <div class="acts" id="acts">
+      <button class="ghost" id="quit">Quit</button>
+      <button id="retry">Try again</button>
+    </div>
+    <p class="fine">Nothing posts to GitHub until you click.</p>
+  </div>
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const set = (id, state, label) => { const el = $(`.step[data-id="${id}"]`); el.dataset.state = state; if (label) el.querySelector("span").textContent = label; };
+    window.reviewstage?.onProgress((p) => {
+      if (p.step) set(p.step, p.state, p.label);
+      if (typeof p.fraction === "number") { $("#bar").hidden = false; $("#fill").style.width = Math.round(p.fraction * 100) + "%"; }
+      if (p.fraction === 1) $("#bar").hidden = true;
+      if (p.error) { $("#err").style.display = "block"; $("#err").innerHTML = p.error; $("#acts").style.display = "flex"; }
+      if (p.clearError) { $("#err").style.display = "none"; $("#acts").style.display = "none"; }
+    });
+    $("#retry").onclick = () => window.reviewstage?.retry();
+    $("#quit").onclick = () => window.reviewstage?.quit();
+  </script>
+</body>
+</html>

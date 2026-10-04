@@ -1,0 +1,3 @@
+# Electron fetches its binary in a postinstall script; pnpm 10+ refuses unapproved builds.
+allowBuilds:
+  electron: true

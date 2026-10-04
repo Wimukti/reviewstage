@@ -62,11 +62,19 @@ sideways at 390.
 5. Pre-releases publish under npm's `latest` tag while the project is in beta — there is no
    stable version for `npx reviewstage` to fall back to.
 
+## Published (10/04/26)
+
+`reviewstage@1.0.0-rc.24` is on npm under dist-tag `latest`, with a provenance attestation
+linking it to the `release-npm` run on this repository (unpacked 1,977,795 bytes). First
+dispatch failed at `npm publish`: npm requires an explicit `--tag` for a prerelease; the
+workflow now publishes with `--tag latest`. From the public registry, empty npm cache, empty
+ROOT: `npx -y reviewstage@latest` with `RS_SMOKE=1` → `RS_SMOKE_OK`, `.env` written with
+`RS_PERSONAL=1` and the chosen port.
+
 ## Left for the maintainer
 
-- Add the repository secret **`NPM_TOKEN`** (npm granular token, publish, package
-  `reviewstage`) — the workflow fails on its first step without it, with that sentence — then
-  re-run `release-npm` on the tag (`workflow_dispatch`, input `v1.0.0-rc.24`).
+- `NPM_TOKEN` is a 90-day granular token (added 10/04/26); when it expires the release fails
+  at its first step with a message saying so.
 - Run `npx reviewstage` for real: GitHub device code, Claude connect, pick repositories, Enable
   phone access…, scan, Add to Home Screen, turn on push, have someone request your review.
 - Windows (bash job scripts) is documented as not supported; a WSL-hosted server is the

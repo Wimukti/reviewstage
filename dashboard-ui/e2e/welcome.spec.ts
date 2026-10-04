@@ -210,15 +210,117 @@ test("a second visit to / does not redirect", async ({ browser }) => {
   await ctx.close();
 });
 
+// --- after the wizard: /repos, the sidebar entry, Switch account, QR pairing (phone-pairing-and-ease, A1/A3)
+
+test("/repos is in the sidebar's setup group and saves to /api/me.repos", async ({ browser }) => {
+  const ctx = await signedIn(browser);
+  const page = await ctx.newPage();
+  await page.goto("/");
+  const setup = page.getByTestId("nav-setup");
+  await expect(setup.getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repos");
+  await setup.getByRole("link", { name: "Repositories" }).click();
+  await expect(page).toHaveURL(/\/repos$/);
+  await expect(page.getByTestId("page-header")).toContainText("Repositories");
+  await expect(page.getByTestId("repos-count")).toHaveText("2 watched");
+  await expect(page.getByTestId("repo-already")).toHaveCount(2);
+  await page.getByRole("checkbox", { name: "acme/billing" }).click();
+  await expect(page.getByTestId("repo-count")).toHaveText("3 selected");
+  const saved = page.waitForResponse((r) => r.url().endsWith("/api/repos") && r.request().method() === "POST");
+  await page.getByTestId("start-reviewing").click();
+  expect((await (await saved).json()).repos).toEqual(["acme-solo/widgets", "acme/api", "acme/billing"]);
+  await expect(page).toHaveURL(new RegExp(`^${PERSONAL_ORIGIN}/(\\?.*)?$`));
+  await page.getByLabel("Filter by repository").click();
+  await expect(page.getByRole("option", { name: "acme/billing" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const me = await page.evaluate(() => fetch("/api/me").then((r) => r.json()));
+  expect(me.repos).toEqual(["acme-solo/widgets", "acme/api", "acme/billing"]);
+  // Settings' first card says the same and links back.
+  await page.goto("/settings");
+  await expect(page.getByTestId("repos-card")).toContainText("3 watched");
+  await expect(page.getByTestId("repos-card").getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/repos");
+  // The queue's setup state points at /repos too, and the wizard route still answers.
+  await page.goto("/welcome/repos");
+  await expect(page.getByTestId("welcome-repos")).toBeVisible();
+  await ctx.close();
+});
+
+test("Switch GitHub account signs out and lands on the wizard", async ({ browser }) => {
+  const ctx = await signedIn(browser);
+  const page = await ctx.newPage();
+  await page.goto("/");
+  await page.getByTestId("account-more").click();
+  const menu = page.getByTestId("more-menu");
+  const items = menu.getByRole("menuitem");
+  const names = await items.allInnerTexts();
+  expect(names.indexOf("Switch GitHub account")).toBeLessThan(names.indexOf("Sign out"));
+  await menu.getByTestId("switch-account").click();
+  await expect(page).toHaveURL(/\/welcome$/);
+  await expect(page.getByTestId("welcome-github")).toBeVisible();
+  const me = await page.evaluate(() => fetch("/api/me").then((r) => r.json()));
+  expect(me.authed).toBe(false);
+  await ctx.close();
+});
+
+test("QR pairing: the link the desktop mints signs a cookie-less phone in exactly once", async ({ browser }) => {
+  // The desktop app's call: loopback peer, the Mac user's cookie.
+  const cookie = sessionCookie(PERSONAL_USER);
+  const mint = await fetch(`${PERSONAL_ORIGIN}/api/pair`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: `${cookie.name}=${cookie.value}` },
+    body: "{}",
+  });
+  expect(mint.status).toBe(200);
+  const { url, exp } = await mint.json();
+  expect(url).toMatch(new RegExp(`^${PERSONAL_ORIGIN}/pair/[A-Za-z0-9_-]{43,}$`));
+  expect(exp - Math.floor(Date.now() / 1000)).toBeGreaterThan(29 * 60);
+  // The phone: no cookie, opens the link, lands on the queue signed in.
+  const phone = await browser.newContext({
+    baseURL: PERSONAL_ORIGIN, storageState: { cookies: [], origins: [] },
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+  });
+  const page = await phone.newPage();
+  const landed = page.waitForResponse((r) => r.url() === url);
+  await page.goto(url);
+  expect((await landed).status()).toBe(302);
+  await expect(page).toHaveURL(new RegExp(`^${PERSONAL_ORIGIN}/$`));
+  await expect(page.getByTestId("page-header")).toContainText("Your review queue");
+  const me = await page.evaluate(() => fetch("/api/me").then((r) => r.json()));
+  expect(me.login).toBe(PERSONAL_USER);
+  const jar = await phone.cookies();
+  const session = jar.find((c) => c.name === "rs_session")!;
+  expect(session.httpOnly).toBe(true);
+  expect(session.secure).toBe(false); // plain http here; Secure through the https tunnel
+  expect(log.join("")).toMatch(new RegExp(`pair: ${PERSONAL_USER} signed in from 127\\.0\\.0\\.1 via QR`));
+  await phone.close();
+  // Used once: a second scan is the login page with the one neutral line.
+  const again = await browser.newContext({ baseURL: PERSONAL_ORIGIN, storageState: { cookies: [], origins: [] } });
+  const page2 = await again.newPage();
+  await page2.goto(url);
+  await expect(page2).toHaveURL(/\/login\?paired=expired$/);
+  await expect(page2.getByTestId("paired-expired")).toContainText("That phone code has expired");
+  await expect(page2.getByTestId("paired-expired")).toContainText("Show phone access code…");
+  await again.close();
+  // A remote peer cannot mint (the fixture has no proxy, so a forged header changes nothing),
+  // and no body reveals whether a nonce existed.
+  const bogus = await fetch(`${PERSONAL_ORIGIN}/pair/not-a-real-code`, { redirect: "manual" });
+  expect(bogus.status).toBe(302);
+  expect(bogus.headers.get("location")).toBe("/login?paired=expired");
+  expect(bogus.headers.get("set-cookie")).toBeNull();
+});
+
 test.describe("phone", () => {
   test("no step scrolls sideways at 390", async ({ browser }) => {
     const ctx = await signedIn(browser, {
       viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
     });
     const page = await ctx.newPage();
-    for (const path of ["/welcome/claude", "/welcome/repos"]) {
+    await page.goto("/");
+    await page.getByTestId("more-tab").click();
+    await expect(page.getByTestId("more-sheet").getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repos");
+    await page.keyboard.press("Escape");
+    for (const path of ["/welcome/claude", "/welcome/repos", "/repos"]) {
       await page.goto(path);
-      await expect(page.getByTestId("welcome-steps")).toBeVisible();
+      if (path.startsWith("/welcome")) await expect(page.getByTestId("welcome-steps")).toBeVisible();
       if (path.endsWith("repos")) await expect(page.getByTestId("repo-row")).toHaveCount(3);
       const { scrollWidth, innerWidth } = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,

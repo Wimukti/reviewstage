@@ -498,7 +498,7 @@ export function Queue({ me }: { me: Me }) {
                       <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-green" />
                     )}
                     <span>
-                      Pick the repositories to watch — <Link to="/welcome/repos">Repositories</Link>.
+                      Pick the repositories to watch — <Link to="/repos">Repositories</Link>.
                     </span>
                   </li>
                 )}

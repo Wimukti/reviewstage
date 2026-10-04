@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Copy, KeyRound, LogOut, MonitorSmartphone, Plus, Save } from "lucide-react";
+import { Check, ChevronDown, Copy, FolderGit2, KeyRound, LogOut, MonitorSmartphone, Plus, Save } from "lucide-react";
 import {
   api,
   errMessage,
@@ -13,6 +13,7 @@ import {
   type WebhooksStatus,
 } from "./api";
 import { PushDevices } from "./PushDevices";
+import { Link } from "./router";
 import { Banner, PageHeader, RawBanner, StatusBadge } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -540,6 +541,22 @@ export function Settings({ me }: { me: Me }) {
       <RawBanner html={banner} />
 
       <div className="flex flex-col gap-3" data-testid="settings-form">
+        {me.personal && (
+          <Card className="gap-0 py-0" data-testid="repos-card">
+            <CardContent className="flex flex-wrap items-center gap-3 px-5 py-4">
+              <FolderGit2 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <h2 className="m-0 text-sm font-medium leading-none">Repositories</h2>
+                <p className={cn(NOTE, "mt-1")} data-testid="repos-count">
+                  {(me.repos || []).length.toLocaleString("en-US")} watched
+                </p>
+              </div>
+              <Button asChild variant="secondary" size="sm">
+                <Link to="/repos">Manage</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
         <Group title="Poller">
           <Row
             label="Poll GitHub for review requests"

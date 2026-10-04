@@ -7,6 +7,7 @@ import {
   Code2,
   Compass,
   Ellipsis,
+  FolderGit2,
   LogOut,
   ExternalLink,
   Inbox,
@@ -17,6 +18,7 @@ import {
   Settings,
   Smartphone,
   Sun,
+  UserRoundCog,
 } from "lucide-react";
 import type { Me } from "./api";
 import { openPalette } from "./CommandPalette";
@@ -57,9 +59,13 @@ const SETUP: NavItem[] = [
   ["integrations", "Integrations", "/integrations", Plug],
   ["settings", "Settings", "/settings", Settings],
 ];
+// Personal mode picks its repositories in the app; a team install's live in .env.
+const REPOS: NavItem = ["repos", "Repositories", "/repos", FolderGit2];
+const setupFor = (me: Me) => (me.personal ? [REPOS, ...SETUP] : SETUP);
 
 function activeKey(path: string): string {
   if (path === "/") return "queue";
+  if (path.startsWith("/repos")) return "repos";
   if (path.startsWith("/qa")) return "qa";
   if (path.startsWith("/learnings")) return "learnings";
   if (path.startsWith("/dashboard")) return "dashboard";
@@ -161,7 +167,7 @@ function LiveBadge({ me }: { me: Me }) {
 // switch and the Help items; on the phone the sheet shows those directly.
 const MENU_ITEM = "focus:bg-blue/14";
 
-function AccountRow({ me, more, onSignOut }: { me: Me; more?: boolean; onSignOut?: () => void }) {
+function AccountRow({ me, more, onSignOut, onSwitchAccount }: { me: Me; more?: boolean; onSignOut?: () => void; onSwitchAccount?: () => void }) {
   const [choice, setChoice] = useTheme();
   const moreBtn = useRef<HTMLButtonElement>(null);
   // Starting the tour from the menu: the menu's focus trap is still up inside onSelect, so the
@@ -225,6 +231,12 @@ function AccountRow({ me, more, onSignOut }: { me: Me; more?: boolean; onSignOut
             {onSignOut && (
               <>
                 <DropdownMenuSeparator />
+                {onSwitchAccount && (
+                  <DropdownMenuItem className={MENU_ITEM} onSelect={onSwitchAccount} data-testid="switch-account">
+                    <UserRoundCog aria-hidden="true" />
+                    Switch GitHub account
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className={MENU_ITEM} onSelect={onSignOut}>
                   <LogOut aria-hidden="true" />
                   Sign out
@@ -238,9 +250,10 @@ function AccountRow({ me, more, onSignOut }: { me: Me; more?: boolean; onSignOut
   );
 }
 
-export function Sidebar({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
+export function Sidebar({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: () => void; onSwitchAccount?: () => void }) {
   const { path } = useLocation();
   const active = activeKey(path);
+  const setup = setupFor(me);
   return (
     <aside
       data-testid="sidebar"
@@ -264,14 +277,14 @@ export function Sidebar({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
           ))}
         </div>
         <div className="mt-5 flex flex-col gap-0.5" data-testid="nav-setup">
-          {SETUP.map((it) => (
+          {setup.map((it) => (
             <NavLink key={it[0]} item={it} active={active === it[0]} />
           ))}
         </div>
       </nav>
 
       <div className="mt-auto pt-3">
-        <AccountRow me={me} more onSignOut={onSignOut} />
+        <AccountRow me={me} more onSignOut={onSignOut} onSwitchAccount={onSwitchAccount} />
       </div>
     </aside>
   );
@@ -300,7 +313,8 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
   const { path } = useLocation();
   const active = activeKey(path);
   const [more, setMore] = useState(false);
-  const inMore = MORE.some(([k]) => k === active);
+  const moreItems = me.personal ? [REPOS, ...MORE] : MORE;
+  const inMore = moreItems.some(([k]) => k === active);
 
   // The sheet closes on navigation (Escape and the trigger's focus return are Radix's).
   useEffect(() => setMore(false), [path]);
@@ -348,7 +362,7 @@ export function PhoneShell({ me, onSignOut }: { me: Me; onSignOut: () => void })
             <SheetTitle className="text-sm">More</SheetTitle>
             <SheetDescription className="sr-only">The rest of the navigation, the theme and your account.</SheetDescription>
           </SheetHeader>
-          {MORE.map((it) => (
+          {moreItems.map((it) => (
             <NavLink key={it[0]} item={it} active={active === it[0]} className="h-[44px]" />
           ))}
           <Button asChild variant="ghost" className="h-[44px] w-full justify-start gap-2.5 px-2 text-muted-foreground hover:no-underline">

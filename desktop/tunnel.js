@@ -150,6 +150,47 @@ export async function stopTunnel(child = current?.child) {
   await stopChild(child);
 }
 
+const RESTART_WINDOW_MS = 5 * 60_000;
+
+/**
+ * Keep a tunnel up across one cloudflared crash. cloudflared reconnects by itself when the
+ * network drops or the laptop wakes, so the child only exits when it was killed or fell over;
+ * then `start()` is run again (a new address — the caller re-shows the QR code) and
+ * `onRestart(url)` fires. A second exit within five minutes of that restart is not something a
+ * restart fixes: `onGiveUp(reason)` fires and nothing is started. `stop()` detaches; a stop the
+ * caller asked for is never mistaken for a crash. `now` is injectable for tests.
+ */
+export function superviseTunnel(child, { start, onRestart = () => {}, onGiveUp = () => {}, windowMs = RESTART_WINDOW_MS, now = Date.now } = {}) {
+  let stopped = false;
+  let restartedAt = 0;
+  const watch = (c) => {
+    c.once("exit", (code, signal) => {
+      if (stopped) return;
+      const why = `cloudflared exited (${signal || `code ${code}`})`;
+      if (restartedAt && now() - restartedAt < windowMs) {
+        stopped = true;
+        onGiveUp(`${why} again within ${Math.round(windowMs / 60_000)} minutes of being restarted`);
+        return;
+      }
+      Promise.resolve()
+        .then(() => start())
+        .then(({ url, child: next }) => {
+          if (stopped) return;
+          restartedAt = now();
+          watch(next);
+          onRestart(url);
+        })
+        .catch((e) => {
+          if (stopped) return;
+          stopped = true;
+          onGiveUp(`${why}; restarting it failed: ${e.message}`);
+        });
+    });
+  };
+  watch(child);
+  return { stop: () => { stopped = true; } };
+}
+
 export function tunnelStatus() {
   return current ? { enabled: true, url: current.url, port: current.port } : { enabled: false, url: null, port: null };
 }

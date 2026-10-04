@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
 import { TOOLS } from "../tools.js";
-import { parseTunnelUrl, TUNNEL_URL_RE, stopChild, stopTunnel, startTunnel, tunnelStatus, waitTunnelHealthy } from "../tunnel.js";
+import { parseTunnelUrl, TUNNEL_URL_RE, stopChild, stopTunnel, startTunnel, superviseTunnel, tunnelStatus, waitTunnelHealthy } from "../tunnel.js";
 
 // Captured from cloudflared 2026.9.3 on 10/04/26 (the first block), plus the autoupdate warning
 // older builds print and the error shape a failed request takes. The tunnel URL must be found
@@ -88,6 +88,68 @@ test("waitTunnelHealthy waits for the edge record, then for ok, and gives up wit
   await assert.rejects(waitTunnelHealthy("https://x.trycloudflare.com", 1_000, { resolve: async () => "1.2.3.4", probe: never }), /did not answer within 1 s \(HTTP 530\)/);
   const noDns = async () => { const e = new Error("x"); e.code = "ENOTFOUND"; throw e; };
   await assert.rejects(waitTunnelHealthy("https://x.trycloudflare.com", 1_000, { resolve: noDns, probe: never }), /\(DNS: ENOTFOUND\)/);
+});
+
+// A2: the child dying while phone access is on. One automatic restart with a new address;
+// a second death inside five minutes is a reason to stop, not to loop. No network: the
+// "children" are emitters and `start` hands out the next one.
+test("superviseTunnel restarts a dead tunnel once, then gives up on a second exit within the window", async () => {
+  const children = [fakeChild(), fakeChild(), fakeChild()];
+  let starts = 0;
+  const restarts = [];
+  const gaveUp = [];
+  let clock = 1_000_000;
+  const start = async () => { starts++; return { url: `https://t${starts}.trycloudflare.com`, child: children[starts] }; };
+  superviseTunnel(children[0], { start, onRestart: (u) => restarts.push(u), onGiveUp: (r) => gaveUp.push(r), windowMs: 300_000, now: () => clock });
+  children[0].emit("exit", 1, null);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(starts, 1, "one restart");
+  assert.deepEqual(restarts, ["https://t1.trycloudflare.com"]);
+  assert.deepEqual(gaveUp, []);
+  clock += 60_000; // a minute later it dies again
+  children[1].emit("exit", null, "SIGKILL");
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(starts, 1, "no second restart");
+  assert.equal(gaveUp.length, 1);
+  assert.match(gaveUp[0], /SIGKILL.*within 5 minutes/);
+  // Whatever happens to the dead child afterwards changes nothing.
+  children[1].emit("exit", 0, null);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(starts, 1);
+  assert.equal(gaveUp.length, 1);
+});
+
+test("superviseTunnel restarts again once the window has passed, and a requested stop is not a crash", async () => {
+  const children = [fakeChild(), fakeChild(), fakeChild()];
+  let starts = 0;
+  const restarts = [];
+  const gaveUp = [];
+  let clock = 0;
+  const start = async () => { starts++; return { url: `https://t${starts}.trycloudflare.com`, child: children[starts] }; };
+  const sup = superviseTunnel(children[0], { start, onRestart: (u) => restarts.push(u), onGiveUp: (r) => gaveUp.push(r), windowMs: 300_000, now: () => clock });
+  children[0].emit("exit", 1, null);
+  await new Promise((r) => setTimeout(r, 10));
+  clock = 300_001; // the window has passed: a fresh exit earns a fresh restart
+  children[1].emit("exit", 1, null);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(starts, 2);
+  assert.deepEqual(restarts, ["https://t1.trycloudflare.com", "https://t2.trycloudflare.com"]);
+  assert.deepEqual(gaveUp, []);
+  sup.stop(); // the person turned phone access off
+  children[2].emit("exit", null, "SIGTERM");
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(starts, 2, "a stop the caller asked for restarts nothing");
+  assert.deepEqual(gaveUp, []);
+});
+
+test("superviseTunnel gives up when the restart itself fails", async () => {
+  const c = fakeChild();
+  const gaveUp = [];
+  superviseTunnel(c, { start: async () => { throw new Error("cloudflared did not report a tunnel URL within 45 s."); }, onGiveUp: (r) => gaveUp.push(r) });
+  c.emit("exit", 2, null);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(gaveUp.length, 1);
+  assert.match(gaveUp[0], /code 2.*restarting it failed: cloudflared did not report/);
 });
 
 test("cloudflared is pinned for four platforms with valid hashes and GitHub release URLs", () => {

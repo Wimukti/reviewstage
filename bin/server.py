@@ -14,6 +14,7 @@ Routes
   GET  /health
   GET  /login  POST /login  sign in with a GitHub PAT (+ optional Slack member ID)
   GET  /logout
+  POST /api/pair · GET /pair/<nonce>    phone pairing: QR nonce -> this person's session
   GET  /settings  POST /settings
   GET  /?tab&sort                      index — PRs awaiting YOUR review, with your state
   GET  /pr?pr=N                        detail — shared review, your editable findings, actions
@@ -2657,12 +2658,51 @@ _COOKIE_SECURE_OFF = (os.environ.get("RS_COOKIE_SECURE", "1") == "0"
 COOKIE_SECURE = "" if _COOKIE_SECURE_OFF else " Secure;"
 
 
-def session_cookie(login, host="", epoch=None):
+def session_cookie(login, host="", epoch=None, secure=None):
+    """`secure` forces the Secure flag on (True) or off (False); None keeps the install-wide
+    choice. Pairing uses it: the same server answers plain http on loopback and https through
+    the tunnel, and the cookie has to fit the wire it travels on."""
     exp = int(time.time()) + SESSION_TTL
     ep = login_epoch(login) if epoch is None else epoch
+    flag = COOKIE_SECURE if secure is None else (" Secure;" if secure else "")
     return (f"rs_session={login}:{exp}:{session_sig(login, exp, ep)}; "
             f"{_cookie_domain(host)}Path=/; "
-            f"Max-Age={SESSION_TTL}; HttpOnly;{COOKIE_SECURE} SameSite=Lax")
+            f"Max-Age={SESSION_TTL}; HttpOnly;{flag} SameSite=Lax")
+
+
+# --- phone pairing (openspec/changes/phone-pairing-and-ease, A1) ------------------------------
+# The desktop app mints a single-use nonce for the person signed in on the Mac and puts it in
+# the QR code; the phone that scans it gets that person's session. In memory only: a restart
+# drops every pending code, and nothing here outlives the app that showed it.
+PAIR_TTL = 30 * 60
+PAIR_PENDING = {}            # nonce -> {"login", "epoch", "exp"}
+_PAIR_LOCK = threading.Lock()
+
+
+def mint_pair(login, now=None):
+    """A fresh nonce for `login`; their earlier one (if any) stops working. One live code per
+    person, so a stale QR on a forgotten window never signs anyone in."""
+    now = int(time.time()) if now is None else now
+    with _PAIR_LOCK:
+        for n in [n for n, r in PAIR_PENDING.items() if r["login"] == login or r["exp"] <= now]:
+            PAIR_PENDING.pop(n, None)
+        nonce = secrets.token_urlsafe(32)
+        exp = now + PAIR_TTL
+        PAIR_PENDING[nonce] = {"login": login, "epoch": login_epoch(login), "exp": exp}
+    return nonce, exp
+
+
+def take_pair(nonce, now=None):
+    """Pop a nonce. The login it belongs to, or None when it is unknown, expired, or the person
+    signed out everywhere since it was minted (their epoch moved)."""
+    now = int(time.time()) if now is None else now
+    with _PAIR_LOCK:
+        rec = PAIR_PENDING.pop(nonce or "", None)
+    if not rec or rec["exp"] <= now:
+        return None
+    if rec["login"] not in load_users() or login_epoch(rec["login"]) != rec["epoch"]:
+        return None
+    return rec["login"]
 
 
 def clear_session_cookie(host=""):
@@ -4086,8 +4126,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def redirect(self, to, cookie=None):
-        self.send_response(303)
+    def redirect(self, to, cookie=None, status=303):
+        self.send_response(status)
         self.send_header("Location", to)
         self.send_header("Content-Length", "0")
         self.set_cookies(cookie)
@@ -4141,6 +4181,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.redirect(f"/login?device=1{nq}")
             # Signed out on /login?device=1: fall through to the SPA, whose login page keeps
             # the device flag and lands on /device after sign-in.
+        if route.startswith("/pair/"):
+            return self.pair_get(route[len("/pair/"):])
         if route == "/oauth/start":
             if not OAUTH_ENABLED:
                 return self.redirect("/login?err=" + quote(
@@ -4735,6 +4777,32 @@ class Handler(BaseHTTPRequestHandler):
         print(f"public URL set to {url} by {user}", flush=True)
         return {"url": PUBLIC_URL, "runtime": PUBLIC_URL != PUBLIC_URL_ENV}, 200
 
+    def api_pair_post(self, user):
+        """POST /api/pair — a single-use sign-in link for the phone, minted by the desktop app
+        for the person signed in on it. Personal mode and a loopback caller only, like
+        /api/public-url: the tunnel is public, and anything arriving through it is a browser,
+        not the launcher."""
+        if not PERSONAL:
+            return {"error": "Phone pairing is a personal-mode feature."}, 403
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            return {"error": "Only the local launcher may mint a pairing code."}, 403
+        nonce, exp = mint_pair(user)
+        return {"url": f"{PUBLIC_URL}/pair/{nonce}", "exp": exp}, 200
+
+    def pair_get(self, nonce):
+        """GET /pair/<nonce> — the phone arrives here from the QR code. A live nonce becomes
+        that person's session; anything else lands on the login page with one neutral line.
+        The body never says whether the code ever existed."""
+        login = take_pair(nonce)
+        if not login:
+            return self.redirect("/login?paired=expired", status=302)
+        https = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower() \
+            == "https"
+        print(f"pair: {login} signed in from {self.client_addr()} via QR", flush=True)
+        return self.redirect("/", status=302,
+                             cookie=session_cookie(login, self.headers.get("Host", ""),
+                                                   secure=True if https else None))
+
     def api_settings(self, user):
         """Runtime settings for the Settings page: effective values + where each came from,
         which notification URLs .env provides, the poller's last stamp, and a signed token the
@@ -5176,6 +5244,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(*self.api_repos_post(user, body))
         if route == "/api/public-url":
             return self.api_json(*self.api_public_url_post(user, body))
+        if route == "/api/pair":
+            return self.api_json(*self.api_pair_post(user))
         if route == "/api/device-token":
             if not cookie_user:
                 return self.api_json({"error": "Sign in on the web to create a device token."},

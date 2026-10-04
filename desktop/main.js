@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 import { ensureEnv, freePort, spawnServer, stopServer, SERVER_DIR } from "./server.js";
 import { ensureTools } from "./tools.js";
-import { startTunnel, stopTunnel, tunnelStatus, waitTunnelHealthy } from "./tunnel.js";
+import { startTunnel, stopTunnel, superviseTunnel, tunnelStatus, waitTunnelHealthy } from "./tunnel.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.ROOT || join(homedir(), ".reviewstage");
@@ -25,6 +25,7 @@ let badgeTimer = null;
 let lastTodo = -1;
 let phoneWin = null;
 let phoneBusy = false; // an enable or disable in flight; the menu items wait for it
+let supervisor = null; // restarts cloudflared once if it dies while phone access is on
 
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const progress = (p) => {
@@ -162,11 +163,49 @@ async function setPublicUrl(url) {
   }
 }
 
+/** A single-use sign-in link for the phone (POST /api/pair, loopback + the Mac user's cookie)
+ *  with who it signs in as, or null when nobody is signed in here — then the QR carries the
+ *  plain address and the phone signs in by itself. */
+async function mintPair() {
+  if (!server) return null;
+  try {
+    const header = await sessionCookieHeader();
+    if (!header) return null;
+    const base = `http://127.0.0.1:${server.port}`;
+    const opts = { headers: { "Content-Type": "application/json", Cookie: header } };
+    const [pair, me] = await Promise.all([
+      fetch(`${base}/api/pair`, { ...opts, method: "POST", body: "{}" }),
+      fetch(`${base}/api/me`, opts),
+    ]);
+    if (!pair.ok || !me.ok) return null;
+    const p = await pair.json();
+    const m = await me.json();
+    return p.url ? { url: p.url, exp: p.exp, login: m.login || "" } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Show the window a (fresh) pair code for `url`: the QR encodes the pairing link when the Mac
+ *  is signed in, else the plain address; the text field always shows the plain address. */
+async function presentPhone(url, extra = {}) {
+  const pair = await mintPair();
+  const dataUrl = await QRCode.toDataURL(pair ? pair.url : url, { margin: 1, width: 280, color: { dark: "#ECEEF3", light: "#0B0C10" } });
+  await sendPhoneData({ url, dataUrl, pair: pair ? { login: pair.login, exp: pair.exp } : null, ...extra });
+}
+
+function notify(title, body, onClick) {
+  if (SMOKE || !Notification.isSupported()) return;
+  const n = new Notification({ title, body, silent: false });
+  if (onClick) n.on("click", onClick);
+  n.show();
+}
+
 function openPhoneWindow() {
   if (phoneWin && !phoneWin.isDestroyed()) { phoneWin.show(); phoneWin.focus(); return phoneWin; }
   phoneWin = new BrowserWindow({
     width: 440,
-    height: 620,
+    height: 664,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -202,11 +241,14 @@ async function enablePhone() {
   try {
     const was = tunnelStatus();
     openPhoneWindow();
-    const { url } = was.enabled ? was : await startTunnel(server.port, { root: ROOT });
+    let url = was.url;
+    let child = null;
+    if (!was.enabled) ({ url, child } = await startTunnel(server.port, { root: ROOT }));
     const warning = was.enabled ? null : await setPublicUrl(url);
-    const dataUrl = await QRCode.toDataURL(url, { margin: 1, width: 280, color: { dark: "#ECEEF3", light: "#0B0C10" } });
-    await sendPhoneData({ url, dataUrl, warning, check: was.enabled ? "ok" : "checking" });
+    // Every opening of the window is a new code: the earlier one stops working.
+    await presentPhone(url, { warning, check: was.enabled ? "ok" : "checking" });
     if (!was.enabled) {
+      watchTunnel(child);
       // The address is usable before this machine can resolve it; the check is information.
       waitTunnelHealthy(url).then(
         () => sendPhoneData({ check: "ok" }),
@@ -225,11 +267,40 @@ async function enablePhone() {
   }
 }
 
+/** cloudflared died under us: one restart with a new address (the QR must change, so the
+ *  window and a notification say so); a second death within five minutes turns phone access
+ *  off and the window says why. See tunnel.js superviseTunnel. */
+function watchTunnel(child) {
+  supervisor?.stop();
+  supervisor = superviseTunnel(child, {
+    start: () => startTunnel(server.port, { root: ROOT }),
+    onRestart: async (url) => {
+      const warning = await setPublicUrl(url);
+      refreshMenu();
+      if (phoneWin && !phoneWin.isDestroyed()) {
+        await presentPhone(url, { warning, check: "checking", notice: "The tunnel restarted with a new address — scan the new code." });
+        waitTunnelHealthy(url).then(() => sendPhoneData({ check: "ok" }), (e) => sendPhoneData({ check: "slow", checkDetail: e.message }));
+      }
+      notify("Phone address changed — rescan the code", "The tunnel restarted. Open Show phone access code… and scan again.", () => void enablePhone());
+    },
+    onGiveUp: async (reason) => {
+      supervisor = null;
+      if (server) await setPublicUrl(`http://127.0.0.1:${server.port}`);
+      refreshMenu();
+      await sendPhoneData({ stopped: `Phone access turned itself off: ${reason}. Links point at this computer again.` });
+      notify("Phone access stopped", "The tunnel kept dropping. Turn it on again from the menu when you're ready.");
+      console.error(`phone access: ${reason}`);
+    },
+  });
+}
+
 async function disablePhone() {
   if (phoneBusy) return { ...tunnelStatus(), busy: true };
   phoneBusy = true;
   refreshMenu();
   try {
+    supervisor?.stop();
+    supervisor = null;
     await stopTunnel();
     if (server) await setPublicUrl(`http://127.0.0.1:${server.port}`);
     if (phoneWin && !phoneWin.isDestroyed()) phoneWin.close();
@@ -309,6 +380,8 @@ app.on("before-quit", async (e) => {
   const child = server.child;
   server = null;
   // The tunnel first: once it is gone the public address answers nothing, then the server.
+  supervisor?.stop();
+  supervisor = null;
   await stopTunnel();
   await stopServer(child);
   app.exit(0);

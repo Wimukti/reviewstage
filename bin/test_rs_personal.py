@@ -19,6 +19,7 @@ import stat
 import sys
 import tempfile
 import textwrap
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -186,6 +187,11 @@ class TeamModeIsUntouched(Base):
     def test_me_says_not_personal(self):
         self.assertFalse(self.get("/api/me")["body"]["personal"])
 
+    def test_pairing_is_personal_only(self):
+        out = self.post("/api/pair", {})
+        self.assertEqual(out["status"], 403)
+        self.assertEqual(self.S.PAIR_PENDING, {})
+
 
 class TheRepoUnion(Base):
     env_repos = "acme/widgets"
@@ -337,6 +343,96 @@ class PublicUrlRoute(Base):
     def test_it_needs_a_session(self):
         out = self.post("/api/public-url", {"url": "https://a.b"}, user=None)
         self.assertEqual(out["status"], 401)
+
+
+class PairRoute(Base):
+    """QR pairing (openspec/changes/phone-pairing-and-ease, A1): the desktop mints a nonce for
+    the person signed in on the Mac; the phone that opens it gets that person's session."""
+
+    def mint(self, **kw):
+        return self.post("/api/pair", {}, **kw)
+
+    def pair_get(self, nonce, headers=None):
+        S, out = self.S, {}
+        h = object.__new__(S.Handler)
+        h.headers = headers or {}
+        h.client_address = ("10.1.1.5", 1)
+        h.redirect = lambda to, cookie=None, status=303: out.update(
+            to=to, cookie=cookie, status=status)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            h.pair_get(nonce)
+        out["log"] = buf.getvalue()
+        return out
+
+    def cookie_login(self, cookie):
+        return self.S.session_user({"Cookie": cookie.split(";")[0]})
+
+    def test_mint_needs_loopback_a_session_and_personal_mode(self):
+        self.assertEqual(self.mint(peer="10.0.0.9")["status"], 403)
+        self.assertEqual(self.mint(user=None)["status"], 401)
+        self.assertEqual(self.S.PAIR_PENDING, {})
+        out = self.mint()
+        self.assertEqual(out["status"], 200)
+        self.assertEqual(sorted(out["body"]), ["exp", "url"])
+        self.assertTrue(out["body"]["url"].startswith("http://127.0.0.1:8899/pair/"))
+        nonce = out["body"]["url"].rsplit("/", 1)[1]
+        self.assertGreaterEqual(len(nonce), 43)          # 32 urlsafe bytes
+        self.assertAlmostEqual(out["body"]["exp"], int(time.time()) + 30 * 60, delta=5)
+        self.assertEqual(self.S.PAIR_PENDING[nonce]["login"], USER)
+
+    def test_the_nonce_signs_the_phone_in_once(self):
+        S = self.S
+        url = self.mint()["body"]["url"]
+        nonce = url.rsplit("/", 1)[1]
+        out = self.pair_get(nonce, {"Host": "quiet-fox.trycloudflare.com",
+                                    "X-Forwarded-Proto": "https"})
+        self.assertEqual((out["status"], out["to"]), (302, "/"))
+        self.assertIn("rs_session=", out["cookie"])
+        self.assertIn(" Secure;", out["cookie"], "the tunnel is https")
+        self.assertIn("HttpOnly", out["cookie"])
+        self.assertIn(f"pair: {USER} signed in from 10.1.1.5 via QR", out["log"])
+        # The cookie it set is a real session: /api/me knows who this is.
+        self.assertEqual(self.cookie_login(out["cookie"]), USER)
+        self.assertTrue(S.Handler.api_me(None, USER)["authed"])
+        # Single use: the same link again is just the expired page.
+        again = self.pair_get(nonce)
+        self.assertEqual((again["status"], again["to"]), (302, "/login?paired=expired"))
+        self.assertIsNone(again["cookie"])
+        self.assertEqual(again["log"], "")
+
+    def test_over_plain_http_the_cookie_keeps_the_install_wide_flag(self):
+        nonce = self.mint()["body"]["url"].rsplit("/", 1)[1]
+        out = self.pair_get(nonce, {"Host": "127.0.0.1:8899"})
+        self.assertEqual(out["to"], "/")
+        self.assertNotIn("Secure", out["cookie"])     # RS_COOKIE_SECURE=0 on loopback http
+
+    def test_unknown_and_expired_nonces_redirect_alike(self):
+        S = self.S
+        bogus = self.pair_get("no-such-code")
+        self.assertEqual((bogus["status"], bogus["to"]), (302, "/login?paired=expired"))
+        nonce = self.mint()["body"]["url"].rsplit("/", 1)[1]
+        S.PAIR_PENDING[nonce]["exp"] = int(time.time()) - 1
+        expired = self.pair_get(nonce)
+        self.assertEqual(expired["to"], "/login?paired=expired")
+        self.assertNotIn(nonce, S.PAIR_PENDING, "popped even when stale")
+        self.assertEqual(self.pair_get("")["to"], "/login?paired=expired")
+
+    def test_a_second_mint_invalidates_the_first(self):
+        first = self.mint()["body"]["url"].rsplit("/", 1)[1]
+        second = self.mint()["body"]["url"].rsplit("/", 1)[1]
+        self.assertNotEqual(first, second)
+        self.assertEqual(list(self.S.PAIR_PENDING), [second])
+        self.assertEqual(self.pair_get(first)["to"], "/login?paired=expired")
+        self.assertEqual(self.pair_get(second)["to"], "/")
+
+    def test_sign_out_everywhere_after_minting_kills_the_code(self):
+        S = self.S
+        nonce = self.mint()["body"]["url"].rsplit("/", 1)[1]
+        users = S.load_users()
+        users[USER]["epoch"] = S.login_epoch(USER) + 1
+        S.save_users(users)
+        self.assertEqual(self.pair_get(nonce)["to"], "/login?paired=expired")
 
 
 class ThePoller(Base):

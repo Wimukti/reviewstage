@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Archive,
@@ -11,6 +11,8 @@ import {
   CircleHelp,
   CircleX,
   Clock,
+  Compass,
+  ExternalLink,
   EyeOff,
   FlaskConical,
   GitMerge,
@@ -26,6 +28,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Icon } from "./icons";
+import { startTour } from "./Tour";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -187,12 +190,17 @@ export function RepoPill({
   );
 }
 
+// "How it works" lives on the site (the app's copy duplicated the site's strip).
+export const HOW_URL = "https://wimukti.github.io/reviewstage/#how-it-works";
+
 // Page header: the title in display type; the one orientation disclosure (design §6) behind a
 // `?` Popover when a page genuinely needs it; an actions slot that wraps under the title on
-// narrow screens.
+// narrow screens. With `tour`, the popover ends in the Help items — How it works and Take a
+// tour — and the tour hands focus back to the `?` when it ends.
 export function PageHeader({
   title,
   help,
+  tour,
   actions,
   children,
   className,
@@ -200,23 +208,63 @@ export function PageHeader({
 }: {
   title: ReactNode;
   help?: ReactNode;
+  tour?: boolean;
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
 } & Omit<React.HTMLAttributes<HTMLElement>, "title">) {
+  const [open, setOpen] = useState(false);
+  const helpBtn = useRef<HTMLButtonElement>(null);
+  // The popover's focus return would land on `?` as the tour opens; start the tour instead
+  // and let it hand focus back to `?` itself when it ends.
+  const touring = useRef(false);
   return (
     <header data-testid="page-header" className={cn("mb-4 flex flex-wrap items-start justify-between gap-x-8 gap-y-3", className)} {...rest}>
       <div className="flex min-w-0 flex-1 basis-[280px] items-center gap-2">
         <h1 className="m-0 font-display text-2xl font-semibold tracking-tight max-[899px]:text-xl">{title}</h1>
         {help && (
-          <Popover>
+          <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="About this page" className="text-muted-foreground">
+              <Button ref={helpBtn} variant="ghost" size="icon-sm" aria-label="About this page" className="text-muted-foreground">
                 <CircleHelp aria-hidden="true" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="w-80 max-w-[calc(100vw-32px)] text-sm leading-relaxed" data-testid="about-box">
+            <PopoverContent
+              align="start"
+              className="w-80 max-w-[calc(100vw-32px)] text-sm leading-relaxed"
+              data-testid="about-box"
+              onCloseAutoFocus={(e) => {
+                if (touring.current) {
+                  touring.current = false;
+                  e.preventDefault();
+                  startTour(helpBtn.current);
+                }
+              }}
+            >
               {help}
+              {tour && (
+                <div className="-mx-2 -mb-2 mt-3 flex flex-col border-t pt-2" data-testid="help-menu">
+                  <Button asChild variant="ghost" size="sm" className="justify-start text-foreground hover:no-underline">
+                    <a href={HOW_URL} target="_blank" rel="noopener">
+                      <ExternalLink aria-hidden="true" />
+                      How it works
+                    </a>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start"
+                    type="button"
+                    onClick={() => {
+                      touring.current = true;
+                      setOpen(false);
+                    }}
+                  >
+                    <Compass aria-hidden="true" />
+                    Take a tour
+                  </Button>
+                </div>
+              )}
             </PopoverContent>
           </Popover>
         )}

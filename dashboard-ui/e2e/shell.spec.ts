@@ -85,20 +85,26 @@ test.describe("desktop shell at 1440", () => {
     expect(gap).toBeGreaterThanOrEqual(12);
   });
 
-  test("the account card is compact and the theme switch lives in More", async ({ page }) => {
+  test("the account row is compact and is itself the account menu; the theme switch lives in Settings", async ({ page }) => {
     await page.goto("/");
     await settled(page);
     const acct = page.getByTestId("account-card");
     // Name over state: two tight lines, never more. A one-line row truncated the login to two
-    // characters beside the badge and the menu button in a 216px sidebar.
+    // characters beside the badge in a 216px sidebar.
     expect(Math.round((await acct.boundingBox())!.height)).toBeLessThanOrEqual(48);
     await expect(acct.getByTitle(/./).first()).toHaveText(/\S{3,}/); // the login is legible
     await expect(acct.getByTestId("status-badge")).toHaveText(/^(Live|Dry run)$/);
     await expect(page.getByTestId("theme-control")).toHaveCount(0);
-    await page.getByTestId("account-more").click();
-    await expect(page.getByTestId("more-menu").getByTestId("theme-control")).toBeVisible();
+    // The row is the trigger (shadcn NavUser); the menu holds the account items and nothing else.
+    await acct.click();
+    const menu = page.getByTestId("account-menu");
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem")).toHaveText(["Switch GitHub account", "Sign out"]);
+    await expect(menu.getByTestId("theme-control")).toHaveCount(0);
     await page.keyboard.press("Escape");
-    await expect(page.getByTestId("more-menu")).toHaveCount(0);
+    await expect(menu).toHaveCount(0);
+    await page.goto("/settings");
+    await expect(page.getByTestId("theme-control")).toBeVisible();
   });
 
   test("the running bar is a 2px sweep at the top of the viewport while the fixture's review runs", async ({ page }) => {
@@ -138,6 +144,7 @@ test.describe("phone shell at 390", () => {
     const sheet = page.getByTestId("more-sheet");
     await expect(sheet.getByTestId("theme-control")).toBeVisible();
     await expect(sheet.getByRole("link", { name: "How it works" })).toHaveAttribute("href", /#how-it-works$/);
+    await expect(sheet.getByRole("button", { name: /switch github account/i })).toBeVisible();
     await expect(sheet.getByRole("button", { name: /sign out/i })).toBeVisible();
   });
 

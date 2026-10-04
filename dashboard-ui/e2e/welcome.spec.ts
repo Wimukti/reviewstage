@@ -248,8 +248,8 @@ test("Switch GitHub account signs out and lands on the wizard", async ({ browser
   const ctx = await signedIn(browser);
   const page = await ctx.newPage();
   await page.goto("/");
-  await page.getByTestId("account-more").click();
-  const menu = page.getByTestId("more-menu");
+  await page.getByTestId("account-card").click();
+  const menu = page.getByTestId("account-menu");
   const items = menu.getByRole("menuitem");
   const names = await items.allInnerTexts();
   expect(names.indexOf("Switch GitHub account")).toBeLessThan(names.indexOf("Sign out"));

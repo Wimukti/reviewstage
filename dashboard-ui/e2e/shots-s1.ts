@@ -75,8 +75,8 @@ for (const theme of ["dark", "light"] as const) {
         await p.getByTestId("more-tab").click();
         await p.getByTestId("more-sheet").waitFor();
       } else {
-        await p.getByTestId("account-more").click();
-        await p.getByTestId("more-menu").waitFor();
+        await p.getByTestId("account-card").click();
+        await p.getByTestId("account-menu").waitFor();
       }
     });
     await c.close();

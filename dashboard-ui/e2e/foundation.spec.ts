@@ -126,10 +126,10 @@ test.describe("keyboard", () => {
   test("the guided tour traps focus, closes on Escape, and ends where it started", async ({ page }) => {
     await page.goto("/?tab=reviewed");
     await settled(page);
-    // Help lives in the account row's ⋯ menu beside the theme switch.
-    const help = page.getByTestId("account-more");
+    // Help lives behind the page header's "?".
+    const help = page.getByRole("button", { name: "About this page" });
     await help.click();
-    await page.getByRole("menuitem", { name: /take a tour/i }).click();
+    await page.getByTestId("help-menu").getByRole("button", { name: /take a tour/i }).click();
     const tour = page.getByTestId("tour");
     await expect(tour).toBeVisible();
     await expect(tour.getByRole("button", { name: "Next" })).toBeFocused();
@@ -145,18 +145,20 @@ test.describe("keyboard", () => {
     await tour.getByRole("button", { name: "Done" }).click();
     await expect(tour).toHaveCount(0);
     await expect(page).toHaveURL(/tab=reviewed/);
-    // Escape closes it too, and focus goes back to the trigger.
+    await expect(help).toBeFocused();
+    // Escape closes it too, and focus goes back to the "?".
     await help.click();
-    await page.getByRole("menuitem", { name: /take a tour/i }).click();
+    await page.getByTestId("help-menu").getByRole("button", { name: /take a tour/i }).click();
     await expect(tour).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(tour).toHaveCount(0);
+    await expect(help).toBeFocused();
   });
 });
 
-// The theme switch lives in the account row's More menu on the desktop (stage-light A1).
+// The theme switch is Settings → Appearance (shell-polish D2).
 async function openTheme(page: Page) {
-  await page.getByTestId("account-more").click();
+  await page.goto("/settings");
   await expect(page.getByTestId("theme-control")).toBeVisible();
 }
 

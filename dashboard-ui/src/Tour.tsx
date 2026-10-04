@@ -129,7 +129,6 @@ export function Tour({ me }: { me: Me }) {
     setOpen(false);
     // Best effort: a server that cannot record it costs the person one repeat, not an error.
     void api.tourSeen().catch(() => {});
-    trigger.current?.focus();
   }, []);
 
   // Open on demand, and auto-start once on the queue for first-timers. `tour_seen` absent means
@@ -331,7 +330,12 @@ export function Tour({ me }: { me: Me }) {
             e.preventDefault();
             nextRef.current?.focus();
           }}
-          onCloseAutoFocus={(e) => e.preventDefault()}
+          // Focus goes back to whatever opened the tour once the focus trap is down; moving it
+          // from end() would be undone by the trap, which is still up while the dialog closes.
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            trigger.current?.focus();
+          }}
           onEscapeKeyDown={(e) => {
             e.preventDefault();
             end();
@@ -367,7 +371,12 @@ export function Tour({ me }: { me: Me }) {
                     e.preventDefault();
                     nextRef.current?.focus();
                   }}
-                  onCloseAutoFocus={(e) => e.preventDefault()}
+                  // Focus goes back to whatever opened the tour once the focus trap is down; moving it
+          // from end() would be undone by the trap, which is still up while the dialog closes.
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            trigger.current?.focus();
+          }}
                   onInteractOutside={(e) => e.preventDefault()}
                   onEscapeKeyDown={(e) => e.preventDefault()}
                   className="z-50 outline-hidden"

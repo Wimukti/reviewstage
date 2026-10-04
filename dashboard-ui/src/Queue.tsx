@@ -282,6 +282,7 @@ export function Queue({ me }: { me: Me }) {
   const header = (
     <PageHeader
       title="Your review queue"
+      tour
       help={
         <>
           Reviews requested from you across{" "}

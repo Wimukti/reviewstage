@@ -4,7 +4,7 @@
 // menu, avatars and a repository pill on every row, no monospace outside code, a Radix dialog
 // around a cmdk list, 44px tab bar targets and no sideways scroll on a phone.
 import { expect, test, type Page } from "@playwright/test";
-import { PR, REPO } from "./fixture";
+import { PR, REPO, USER } from "./fixture";
 
 // The browser fetches avatars from github.com; the suite is offline, so answer every one with a
 // 1×1 PNG. Radix renders the <img> only once it has loaded.
@@ -32,18 +32,29 @@ test.describe("desktop shell at 1440", () => {
     expect(await side.evaluate((el) => getComputedStyle(el).borderLeftWidth)).toBe("0px");
   });
 
-  test("the account menu opens from ⋯ and holds the theme radio group and Help", async ({ page }) => {
+  test("the account row opens the account menu: a header, Switch GitHub account, Sign out — nothing else", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("account-more").click();
+    const row = page.getByTestId("account-card");
+    await expect(row).toHaveRole("button");
+    await expect(row.locator("svg.lucide-chevrons-up-down")).toHaveCount(1);
+    await row.click();
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
-    const radios = menu.getByRole("menuitemradio");
-    await expect(radios).toHaveCount(3);
-    await expect(menu.getByRole("menuitemradio", { name: "Dark" })).toHaveAttribute("aria-checked", "true");
-    await expect(menu.getByRole("menuitem", { name: /how it works/i })).toHaveAttribute("href", /#how-it-works$/);
-    await expect(menu.getByRole("menuitem", { name: /take a tour/i })).toBeVisible();
+    await expect(menu.getByTestId("account-profile")).toHaveAttribute("href", `https://github.com/${USER}`);
+    await expect(menu.getByRole("menuitem")).toHaveText(["Switch GitHub account", "Sign out"]);
+    await expect(menu.getByRole("menuitemradio")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
+  });
+
+  test("the Queue header's ? holds the Help items: How it works (the site) and Take a tour", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("page-header").getByRole("button", { name: "About this page" }).click();
+    const help = page.getByTestId("help-menu");
+    await expect(help.getByRole("link", { name: /how it works/i })).toHaveAttribute("href", /#how-it-works$/);
+    await expect(help.getByRole("button", { name: /take a tour/i })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(help).toHaveCount(0);
   });
 
   test("rows carry the author's avatar and a repository pill, both in sans", async ({ page }) => {
@@ -128,6 +139,7 @@ test.describe("phone shell at 390", () => {
     expect(Math.round(box.y + box.height)).toBeGreaterThanOrEqual(844 - 1); // sits on the bottom edge
     await expect(sheet.getByRole("radiogroup", { name: "Theme" }).getByRole("radio")).toHaveCount(3);
     await expect(sheet.getByTestId("account-card")).toBeVisible();
+    await expect(sheet.getByRole("button", { name: /switch github account/i })).toBeVisible();
     await expect(sheet.getByRole("button", { name: /sign out/i })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);

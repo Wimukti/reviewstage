@@ -89,8 +89,8 @@ for (const [vp, tag] of [[{ width: 1440, height: 900 }, "1440"], [{ width: 390, 
   await page.screenshot({ path: file });
   console.log("wrote", file);
   if (tag === "1440") {
-    await page.getByTestId("account-more").click();
-    await page.getByTestId("more-menu").waitFor();
+    await page.getByTestId("account-card").click();
+    await page.getByTestId("account-menu").waitFor();
     await page.waitForTimeout(200);
     await page.screenshot({ path: join(OUT, "account-menu-switch-dark-1440.png") });
     console.log("wrote", join(OUT, "account-menu-switch-dark-1440.png"));

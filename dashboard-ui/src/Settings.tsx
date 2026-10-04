@@ -12,8 +12,10 @@ import {
   type SettingSource,
   type WebhooksStatus,
 } from "./api";
+import { PhoneCard } from "./PhoneAccess";
 import { PushDevices } from "./PushDevices";
-import { Link } from "./router";
+import { ThemeControl } from "./ThemeControl";
+import { Link, useHashTarget } from "./router";
 import { Banner, PageHeader, RawBanner, StatusBadge } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -247,21 +249,7 @@ function dateText(ts: number): string {
 // exactly once, on creation; the server keeps only its hash.
 export function Devices({ me }: { me: Me }) {
   const [rows, setRows] = useState<Device[] | null>(null);
-  const [devOnly, setDevOnly] = useState(false);
-  useEffect(() => {
-    const on = () => {
-      const here = window.location.hash === "#devices";
-      setDevOnly(here);
-      if (here) document.getElementById("devices")?.scrollIntoView({ block: "start" });
-    };
-    on();
-    window.addEventListener("hashchange", on);
-    window.addEventListener("reviewstage:navigate", on);
-    return () => {
-      window.removeEventListener("hashchange", on);
-      window.removeEventListener("reviewstage:navigate", on);
-    };
-  }, []);
+  const devOnly = useHashTarget("devices");
   const [meta, setMeta] = useState({ max: 10, ttl_days: 180 });
   const [name, setName] = useState("");
   const [minted, setMinted] = useState<MintedDevice | null>(null);
@@ -541,6 +529,12 @@ export function Settings({ me }: { me: Me }) {
       <RawBanner html={banner} />
 
       <div className="flex flex-col gap-3" data-testid="settings-form">
+        {me.personal && <PhoneCard />}
+        <Group title="Appearance">
+          <Row label="Theme" hint="A choice for this device, kept in this browser. Dark unless you pick otherwise.">
+            <ThemeControl />
+          </Row>
+        </Group>
         {me.personal && (
           <Card className="gap-0 py-0" data-testid="repos-card">
             <CardContent className="flex flex-wrap items-center gap-3 px-5 py-4">

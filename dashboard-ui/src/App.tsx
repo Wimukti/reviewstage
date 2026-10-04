@@ -116,7 +116,7 @@ export function App() {
   return (
     <div className="flex min-h-dvh items-stretch bg-background max-[899px]:flex-col">
       <RunningBar />
-      {phone ? <PhoneShell me={me} onSignOut={signOut} /> : <Sidebar me={me} onSignOut={signOut} onSwitchAccount={switchAccount} />}
+      {phone ? <PhoneShell me={me} onSignOut={signOut} onSwitchAccount={switchAccount} /> : <Sidebar me={me} onSignOut={signOut} onSwitchAccount={switchAccount} />}
       <main className="main min-w-0 flex-1">
         <div className="min-w-0 max-w-[960px] px-6 pb-14 pt-6 max-[899px]:px-4 max-[899px]:pb-[calc(80px+env(safe-area-inset-bottom,0px))] max-[899px]:pt-5">
           <Routed me={me} reload={load} />

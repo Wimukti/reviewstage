@@ -15,22 +15,35 @@ export function navigate(to: string): void {
   window.dispatchEvent(new Event("reviewstage:navigate"));
 }
 
-export function useLocation(): { path: string; search: URLSearchParams } {
+export function useLocation(): { path: string; search: URLSearchParams; hash: string } {
   const read = () => ({
     path: toPath(window.location.pathname),
     search: new URLSearchParams(window.location.search),
+    hash: window.location.hash,
   });
   const [loc, setLoc] = useState(read);
   useEffect(() => {
     const on = () => setLoc(read());
     window.addEventListener("popstate", on);
+    window.addEventListener("hashchange", on);
     window.addEventListener("reviewstage:navigate", on);
     return () => {
       window.removeEventListener("popstate", on);
+      window.removeEventListener("hashchange", on);
       window.removeEventListener("reviewstage:navigate", on);
     };
   }, []);
   return loc;
+}
+
+/** True while `#id` is the URL's hash; the element is scrolled into view when it becomes so. */
+export function useHashTarget(id: string): boolean {
+  const { hash } = useLocation();
+  const here = hash === `#${id}`;
+  useEffect(() => {
+    if (here) document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, [here, id]);
+  return here;
 }
 
 export function Link(

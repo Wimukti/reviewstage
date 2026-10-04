@@ -1,5 +1,6 @@
-// The only bridge between the pages this app owns (preparing, phone) and the main process.
-// The dashboard itself is a plain web page from the local server and gets no preload.
+// The bridge between every page this app shows and the main process: the preparing and phone
+// pages, and the dashboard SPA itself (the preload is set on its BrowserWindow). The SPA treats
+// `window.reviewstage.phone` as "running in the desktop app" and builds Settings → Your phone on it.
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("reviewstage", {

@@ -56,6 +56,15 @@ function createWindow() {
     shell.openExternal(url);
     return { action: "deny" };
   });
+  // Right-click → Inspect element, so "this button does nothing" can be looked at in place.
+  win.webContents.on("context-menu", (_e, params) => {
+    Menu.buildFromTemplate([
+      { role: "copy", enabled: params.editFlags.canCopy },
+      { role: "paste", enabled: params.editFlags.canPaste },
+      { type: "separator" },
+      { label: "Inspect element", click: () => win.webContents.inspectElement(params.x, params.y) },
+    ]).popup({ window: win });
+  });
   win.on("closed", () => { win = null; });
 }
 

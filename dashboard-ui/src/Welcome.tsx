@@ -7,7 +7,8 @@
 // App.tsx sends a personal install here while it has no signed-in user or no repository, and
 // renders this without the sidebar: it is a focused flow, not a page in the shell.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Circle, CircleCheck, CircleDot, FolderGit2, Lock, Search } from "lucide-react";
+import { Check, FolderGit2, Lock, Search } from "lucide-react";
+import { BrandIcon } from "./icons";
 import { api, errMessage, type GithubRepo, type IntegrationsData, type Me } from "./api";
 import { ClaudeCtl } from "./Integrations";
 import { LoginForm } from "./Login";
@@ -43,6 +44,10 @@ export function pushedAgo(iso: string, now = Date.now()): string {
   return `pushed ${Math.floor(s / (86400 * 365))}y ago`;
 }
 
+// Each chip carries the mark of what it connects to — GitHub's, Claude's, a repository —
+// coloured by state; a small check joins the label once the step is done.
+const STEP_ICONS = [BrandIcon.gh, BrandIcon.claude, <FolderGit2 key="repo" strokeWidth={2} />];
+
 // Three chips joined by a line — the PR page's stepper, with `current` pinned to the route
 // rather than to the first undone step, because Claude can be skipped and come back to later.
 function Stepper({ current, done }: { current: StepIndex; done: boolean[] }) {
@@ -60,14 +65,17 @@ function Stepper({ current, done }: { current: StepIndex; done: boolean[] }) {
                 state === "current" && "bg-blue/12 text-foreground",
               )}
             >
-              {state === "done" ? (
-                <CircleCheck aria-hidden="true" className="size-3.5 text-green" />
-              ) : state === "current" ? (
-                <CircleDot aria-hidden="true" className="size-3.5 text-blue" />
-              ) : (
-                <Circle aria-hidden="true" className="size-3.5 text-muted-foreground" />
-              )}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "inline-flex [&_svg]:size-3.5",
+                  state === "done" ? "text-green" : state === "current" ? "text-blue" : "text-muted-foreground",
+                )}
+              >
+                {STEP_ICONS[i]}
+              </span>
               <span>{label}</span>
+              {state === "done" && <Check aria-hidden="true" className="size-3 text-green" />}
             </span>
           </li>
         );

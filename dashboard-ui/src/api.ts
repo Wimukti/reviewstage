@@ -134,6 +134,18 @@ export interface Me {
   running?: RunningJob[]; // reviews / QA guides in flight for this user
   auth?: "cookie" | "bearer"; // how this request was authenticated
   login_via?: "oauth" | "pat"; // how the stored GitHub token was obtained
+  // Personal mode (`npx reviewstage`): one person, their own token, repositories chosen in the
+  // first-run wizard. Absent on older servers, which are never personal.
+  personal?: boolean;
+}
+
+// One of the signed-in user's repositories, from GET /api/github/repos (their own token).
+export interface GithubRepo {
+  full_name: string;
+  private: boolean;
+  pushed_at: string;
+  owner_avatar: string;
+  already: boolean; // already configured on this install
 }
 
 // GitHub device flow (Login). The server keeps GitHub's device_code; the browser gets only
@@ -925,4 +937,9 @@ export const api = {
     put<ProfileData>("/profile", { repo, ...t, restore_version: String(ts) }),
   setAutoProfile: (repo: string, t: Token, on: boolean) =>
     put<ProfileData>("/profile", { repo, ...t, auto_profile: on }),
+  // Personal mode's first-run wizard.
+  githubRepos: (q = "") =>
+    get<{ repos: GithubRepo[] }>(`/github/repos${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  saveRepos: (repos: string[]) => post<{ repos: string[] }>("/repos", { repos }),
+  publicUrl: () => get<{ url: string; runtime: boolean }>("/public-url"),
 };

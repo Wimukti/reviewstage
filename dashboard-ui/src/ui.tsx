@@ -161,9 +161,10 @@ export function UserAvatar({
 // A repository as a small pill: the owner's avatar and `owner/name` in sans. Never monospace.
 export function RepoPill({
   repo,
+  avatar,
   className,
   ...rest
-}: { repo: string; className?: string } & React.HTMLAttributes<HTMLSpanElement>) {
+}: { repo: string; avatar?: string; className?: string } & React.HTMLAttributes<HTMLSpanElement>) {
   const owner = repo.split("/")[0] || repo;
   return (
     <span
@@ -176,7 +177,7 @@ export function RepoPill({
       {...rest}
     >
       <Avatar className="size-4">
-        <AvatarImage src={avatarUrl(owner)} alt="" />
+        <AvatarImage src={avatar || avatarUrl(owner)} alt="" />
         <AvatarFallback aria-hidden="true" className="text-[9px] font-semibold">
           {initials(owner)}
         </AvatarFallback>

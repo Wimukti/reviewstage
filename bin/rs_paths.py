@@ -53,6 +53,20 @@ def parse_repos(env):
     return out
 
 
+def union_repos(*lists):
+    """Several repo lists as one: order kept, duplicates dropped case-insensitively (GitHub
+    names are). Personal mode reads its repositories from .env AND settings.json."""
+    out, seen = [], set()
+    for lst in lists:
+        for r in lst or []:
+            r = (r or "").strip().strip("/")
+            if not r or r.lower() in seen:
+                continue
+            seen.add(r.lower())
+            out.append(r)
+    return out
+
+
 def allow_org(env):
     """REPO_ALLOW_ORG: an org whose repos are accepted dynamically (see repo_allowed)."""
     return (env.get("REPO_ALLOW_ORG", "") or "").strip().strip("/")

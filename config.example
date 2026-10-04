@@ -84,6 +84,13 @@ NOTIFY_BACKENDS=
 REPOS=
 REPO=
 
+# Personal mode — what `npx reviewstage` (the desktop app) writes. One person, their own GitHub
+# token, no service PAT and no cron: the server boots with REPOS empty (the first-run wizard
+# saves repositories to settings.json, unioned with REPOS above), polls GitHub itself with each
+# signed-in user's token, and lets the launcher set PUBLIC_URL at runtime for phone access.
+# Leave unset for a team install.
+RS_PERSONAL=
+
 # Optional: an org (or user) whose repositories are accepted on demand, in addition to the
 # explicit list above. The poller discovers them by searching for open review requests to each
 # signed-in user under that owner (`gh search prs --owner <org> --review-requested=<login>`) and

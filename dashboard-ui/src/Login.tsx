@@ -163,6 +163,38 @@ function useDeviceFlow(onOk: (login: string, welcome: boolean) => void) {
 // is the mobile / CLI pairing flow: after sign-in the server's /device interstitial hands a
 // device token to the app.
 export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
+  return (
+    <div className="auth flex min-h-dvh items-center justify-center px-4 py-10">
+      <div className="stage-login w-full max-w-[400px]">
+        <Card className="authcard shadow-[0_24px_64px_-24px_rgba(0,0,0,.8)]">
+          <CardContent className="flex flex-col items-center px-7 pb-7 pt-8 text-center">
+            <Logo me={me} className="authlogo mb-4 size-10" />
+            <h1 className="font-display text-2xl font-semibold tracking-tight">{me.brand}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Stage your review. Post it as yourself.</p>
+            <LoginForm me={me} onDone={onDone} />
+            <p className="authguarantee mt-6 w-full border-t border-border pt-4 text-xs text-muted-foreground">
+              Nothing posts to GitHub until you click.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// The sign-in controls without the page around them, so the first-run wizard (Welcome.tsx)
+// can embed the very same flow inside its own card. `onLanded`, when given, replaces the
+// page's post-sign-in navigation (the wizard advances its own step instead); without it the
+// behaviour is exactly the login page's.
+export function LoginForm({
+  me,
+  onDone,
+  onLanded,
+}: {
+  me: Me;
+  onDone: () => void;
+  onLanded?: (firstSignIn: boolean) => void;
+}) {
   const [pat, setPat] = useState("");
   const [busy, setBusy] = useState(false);
   const q = query();
@@ -191,6 +223,10 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   const rawNext = q.get("next") || "";
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
   function landed(firstSignIn: boolean) {
+    if (onLanded) {
+      onLanded(firstSignIn);
+      return;
+    }
     if (device) {
       window.location.assign(deviceNext);
       return;
@@ -332,13 +368,6 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
   );
 
   return (
-    <div className="auth flex min-h-dvh items-center justify-center px-4 py-10">
-      <div className="stage-login w-full max-w-[400px]">
-        <Card className="authcard shadow-[0_24px_64px_-24px_rgba(0,0,0,.8)]">
-          <CardContent className="flex flex-col items-center px-7 pb-7 pt-8 text-center">
-            <Logo me={me} className="authlogo mb-4 size-10" />
-            <h1 className="font-display text-2xl font-semibold tracking-tight">{me.brand}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Stage your review. Post it as yourself.</p>
             <div className="mt-6 w-full text-left">
               {err && <Banner kind="err">{err}</Banner>}
               {github ? (
@@ -391,12 +420,5 @@ export function Login({ me, onDone }: { me: Me; onDone: () => void }) {
                 </>
               )}
             </div>
-            <p className="authguarantee mt-6 w-full border-t border-border pt-4 text-xs text-muted-foreground">
-              Nothing posts to GitHub until you click.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
   );
 }

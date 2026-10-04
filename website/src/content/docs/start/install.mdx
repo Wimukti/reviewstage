@@ -7,7 +7,21 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-## Docker Compose (recommended)
+## Desktop app (one person)
+
+```bash
+npx reviewstage
+```
+
+A window opens and walks you through three steps — **Continue with GitHub**, **Connect Claude**,
+**Pick repositories** — then shows your queue. No Docker, no `.env` to edit, no service token:
+the app writes `~/.reviewstage/.env` with `RS_PERSONAL=1`, and in that mode the server boots
+without a repository (you pick them in the wizard, and can revisit `/welcome/repos` any time),
+polls GitHub itself with your own signed-in token, and runs reviews on your Claude account.
+Claude Code must already be installed. The team install below is for several reviewers sharing
+one server.
+
+## Docker Compose (recommended for teams)
 
 ### Before you start
 

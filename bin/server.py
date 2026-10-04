@@ -52,6 +52,7 @@ import rs_diff
 import rs_learn
 import rs_md
 import rs_paths as P
+import rs_personal
 import rs_push
 import rs_profile
 import rs_review_body as RB
@@ -135,7 +136,24 @@ PAT = ENV.get("GITHUB_PAT", "")
 # REPO_ALLOW_ORG additionally accepts any repo under that org on demand (see repo_ok).
 REPOS = P.parse_repos(ENV)
 ALLOW_ORG = P.allow_org(ENV)
-SINGLE_REPO = REPOS[0] if len(REPOS) == 1 else ""
+# Personal mode (`npx reviewstage`, see openspec/changes/npx-desktop): one person, their own
+# token, no service PAT. The server may boot with no repository — the first-run wizard adds
+# them to settings.json while it runs — and polls GitHub itself (rs_personal) instead of cron.
+PERSONAL = (ENV.get("RS_PERSONAL") or os.environ.get("RS_PERSONAL", "")) == "1"
+SETTINGS = ROOT / "settings.json"
+
+
+def configured_repos():
+    """Every repository this install reviews: .env REPOS ∪ settings.json["repos"]. Recomputed
+    on each read — a module constant went stale the moment the wizard saved a repository."""
+    saved = rs_settings.read_file(SETTINGS).get("repos") or []
+    return P.union_repos(REPOS, [r for r in saved if isinstance(r, str)])
+
+
+def single_repo():
+    """The one configured repo, or "" when zero or several are."""
+    repos = configured_repos()
+    return repos[0] if len(repos) == 1 else ""
 # Signed links minted before the repo dimension existed (action:pr:exp) stay valid this long
 # after the upgrade, so Slack links already sent keep working through the transition.
 SIG_GRACE_DAYS = int(ENV.get("RS_SIGNATURE_GRACE_DAYS", "7") or 0)
@@ -144,12 +162,12 @@ SIG_V2_SINCE = ROOT / "sig-v2-since"
 
 def repo_ok(repo):
     """May this install act on `repo`? Configured, or under REPO_ALLOW_ORG."""
-    return P.repo_allowed(repo, REPOS, ALLOW_ORG)
+    return P.repo_allowed(repo, configured_repos(), ALLOW_ORG)
 
 
 def all_repos():
     """Configured repos plus org-discovered ones that already have state or a clone."""
-    return P.known_repos(REPOS)
+    return P.known_repos(configured_repos())
 
 
 def resolve_repo(q_repo, pr=""):
@@ -161,8 +179,8 @@ def resolve_repo(q_repo, pr=""):
         if not repo_ok(q_repo):
             return None, f"{q_repo} is not a repository this ReviewStage reviews"
         return P.canonical_repo(q_repo, all_repos()), None
-    if SINGLE_REPO:
-        return SINGLE_REPO, None
+    if one := single_repo():
+        return one, None
     if pr:
         hits = P.repos_with_pr(pr)
         if len(hits) == 1:
@@ -187,7 +205,7 @@ SESSION_TTL = 30 * 24 * 3600
 # --- runtime settings + notifier bridge (rs_settings.py) ---------------------------------
 # $ROOT/settings.json is written from the Settings page and read live by the poller and the
 # scripts; settings.json > .env > default. Admin-only to change; everyone may read.
-SETTINGS = ROOT / "settings.json"
+# (SETTINGS itself is defined beside configured_repos above, which reads it.)
 
 
 def runtime_settings():
@@ -275,7 +293,7 @@ def webhook_ctx():
     vals, _ = runtime_settings()
     return rs_webhook.Context(
         ROOT, BIN, repo_ok, load_users(), PUBLIC_URL, SECRET, settings=vals, env=ENV,
-        single_repo=SINGLE_REPO, reviewer=REVIEWER, team_members=webhook_team_members,
+        single_repo=single_repo(), reviewer=REVIEWER, team_members=webhook_team_members,
         log=lambda m, **kw: print(m, flush=True))
 
 
@@ -495,6 +513,77 @@ def public_url(env):
 
 
 PUBLIC_URL = public_url(ENV)
+PUBLIC_URL_ENV = PUBLIC_URL
+
+
+def set_public_url(url):
+    """Runtime override of PUBLIC_URL (POST /api/public-url): the desktop app's tunnel comes
+    and goes without a restart. Every reader uses the module global at call time."""
+    global PUBLIC_URL
+    PUBLIC_URL = (url or "").rstrip("/") or PUBLIC_URL_ENV
+
+
+# --- the signed-in user's own repositories (personal mode's repo picker) ----------------------
+GITHUB_REPOS_CAP = 200
+GITHUB_REPOS_TTL = 300
+_GITHUB_REPOS_CACHE = {}          # login -> (fetched_at, [repo rows])
+_GITHUB_REPOS_LOCK = threading.Lock()
+
+
+def user_github_repos(login, now=None):
+    """([{full_name, private, pushed_at, owner_avatar}], error) for `login`, via their own
+    token, newest push first, capped at GITHUB_REPOS_CAP and cached for GITHUB_REPOS_TTL
+    seconds. The token lives in the subprocess environment only."""
+    now = now or time.time()
+    with _GITHUB_REPOS_LOCK:
+        hit = _GITHUB_REPOS_CACHE.get(login)
+        if hit and now - hit[0] < GITHUB_REPOS_TTL:
+            return hit[1], None
+    tok = user_pat(login)
+    if not tok:
+        return None, "Sign in with GitHub first — there is no token to list your repositories with."
+    try:
+        r = subprocess.run(
+            ["gh", "api", "--paginate",
+             "user/repos?affiliation=owner,collaborator,organization_member&sort=pushed"
+             "&per_page=100"],
+            capture_output=True, text=True, timeout=60, env={**os.environ, "GH_TOKEN": tok})
+    except FileNotFoundError:
+        return None, "The GitHub CLI (gh) is not installed on this machine."
+    except subprocess.TimeoutExpired:
+        return None, "GitHub did not answer within a minute — try again."
+    if r.returncode != 0:
+        tail = ((r.stderr or "").strip().splitlines() or ["gh failed"])[-1][:200]
+        return None, f"GitHub would not list your repositories: {tail}"
+    rows = []
+    dec = json.JSONDecoder()
+    text, pos = r.stdout or "", 0
+    # `--paginate` concatenates one JSON array per page; walk them all.
+    while pos < len(text):
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        if pos >= len(text):
+            break
+        try:
+            page, pos = dec.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            return None, "Could not parse GitHub's repository list."
+        if isinstance(page, list):
+            rows.extend(x for x in page if isinstance(x, dict))
+    out, seen = [], set()
+    for x in rows:
+        name = x.get("full_name") or ""
+        if not name or name.lower() in seen or not P.valid_repo(name):
+            continue
+        seen.add(name.lower())
+        out.append({"full_name": name, "private": bool(x.get("private")),
+                    "pushed_at": x.get("pushed_at") or "",
+                    "owner_avatar": (x.get("owner") or {}).get("avatar_url") or ""})
+        if len(out) >= GITHUB_REPOS_CAP:
+            break
+    with _GITHUB_REPOS_LOCK:
+        _GITHUB_REPOS_CACHE[login] = (now, out)
+    return out, None
 OAUTH_ENABLED = bool(GH_CLIENT_ID and GH_CLIENT_SECRET)
 
 # Device flow (rs_device_flow.py): sign in with GitHub on any install, no app registration. The
@@ -866,6 +955,16 @@ def review_env(login):
     if tok:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = tok
         env["RS_RUN_AS"] = login
+    if PERSONAL and login:
+        # No service token exists in personal mode: the job scripts read the diff and make the
+        # base clone with the clicker's own token, handed over in this process environment
+        # only (never written to .env). lib-common sources .env with `set -a`, so a value the
+        # file does set still wins; the launcher writes none of these three.
+        gh_tok = user_pat(login)
+        if gh_tok:
+            env.setdefault("GITHUB_PAT", gh_tok)
+        env.setdefault("REVIEWER", login)
+        env["REPOS"] = ",".join(configured_repos())
     return env
 
 
@@ -915,7 +1014,7 @@ def skill_edit_target(user, raw_target):
         repo = raw[len(REPO_SKILL_PREFIX):].strip().strip("/")
         if not repo_ok(repo):
             return "", "", f"Unknown repository: {html.escape(repo[:80])}."
-        repo = P.canonical_repo(repo, REPOS)
+        repo = P.canonical_repo(repo, configured_repos())
         return REPO_SKILL_PREFIX + repo, f"the team default for {repo}", ""
     return user, "your skill", ""
 
@@ -2480,8 +2579,9 @@ def verify_pat(pat):
         login = me.get("login")
         if not login:
             return None, None, "GitHub returned no login for that token."
-        if REPOS:
-            probe = gh(["api", f"repos/{REPOS[0]}"], token=pat, timeout=20)
+        repos = configured_repos()
+        if repos:
+            probe = gh(["api", f"repos/{repos[0]}"], token=pat, timeout=20)
             if probe.returncode != 0:
                 blocked = "org-approval" if _looks_org_blocked(probe.stderr) else "no-access"
                 return None, None, (repo_invisible_message(blocked), blocked)
@@ -2498,7 +2598,8 @@ def _looks_org_blocked(stderr):
 
 
 def repo_invisible_message(kind):
-    where = REPOS[0] if REPOS else "the repository"
+    repos = configured_repos()
+    where = repos[0] if repos else "the repository"
     if kind == "org-approval":
         return (f"GitHub signed you in, but an org owner has not allowed this app on "
                 f"{where} yet (OAuth App: approve it under Third-party access; GitHub App: "
@@ -2780,7 +2881,7 @@ def legacy_sig_ok(action, pr, exp, sig):
     repo dimension was added to prevent. And see the SIG_V2_SINCE block in __main__: a fresh
     install has no pre-upgrade links to honour, so it gets no window at all.
     """
-    if not pr or SIG_GRACE_DAYS <= 0 or not SINGLE_REPO:
+    if not pr or SIG_GRACE_DAYS <= 0 or not single_repo():
         return False
     try:
         since = int(SIG_V2_SINCE.read_text().strip())
@@ -3447,9 +3548,10 @@ def queue():
         if not isinstance(r, dict):
             continue
         if not r.get("repo"):
-            if not SINGLE_REPO:
+            one = single_repo()
+            if not one:
                 continue
-            r = {**r, "repo": SINGLE_REPO}
+            r = {**r, "repo": one}
         out.append(r)
     _QUEUE_CACHE = (sig, out)
     return out
@@ -4178,6 +4280,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json(self.api_integrations(user))
         if route == "/api/settings":
             return self.api_json(self.api_settings(user))
+        if route == "/api/github/repos":
+            return self.api_json(*self.api_github_repos(user, (q.get("q") or [""])[0]))
+        if route == "/api/public-url":
+            return self.api_json({"url": PUBLIC_URL, "runtime": PUBLIC_URL != PUBLIC_URL_ENV})
         if route == "/api/learnings":
             return self.api_json(self.api_learnings(user))
         if route == "/api/rollup":
@@ -4586,6 +4692,48 @@ class Handler(BaseHTTPRequestHandler):
                               f"{cluster['prs']} PRs: <b>{html.escape(tidy_rule(rule))}</b>"
                               f"</div></div>"}, 200
 
+    # -- personal mode: the first-run wizard's routes (openspec/changes/npx-desktop §3) --------
+    def api_github_repos(self, user, q=""):
+        """GET /api/github/repos?q= — the signed-in user's repositories, through THEIR token."""
+        repos, err = user_github_repos(user)
+        if err:
+            return {"error": err}, 400
+        needle = (q or "").strip().lower()
+        have = {r.lower() for r in configured_repos()}
+        out = []
+        for r in repos:
+            if needle and needle not in r["full_name"].lower():
+                continue
+            out.append({**r, "already": r["full_name"].lower() in have})
+        return {"repos": out[:GITHUB_REPOS_CAP]}, 200
+
+    def api_repos_post(self, user, body):
+        """POST /api/repos {repos:[owner/name]} — replaces settings.repos; answers the union.
+        Personal mode: any signed-in user (there is one). Team mode: the admin, like every
+        other settings write."""
+        if not PERSONAL and not is_admin(user):
+            return {"error": "Only the admin can change the repositories."}, 403
+        clean, err = rs_settings.validate_repos(body.get("repos"))
+        if err:
+            return {"error": err}, 400
+        rs_settings.save(SETTINGS, {"repos": clean})
+        print(f"repos saved by {user}: {len(clean)} from the dashboard", flush=True)
+        _GITHUB_REPOS_CACHE.pop(user, None)      # `already` flags changed
+        return {"repos": configured_repos()}, 200
+
+    def api_public_url_post(self, user, body):
+        """POST /api/public-url {url} — the desktop app's tunnel sets where links and
+        notifications point until restart. Loopback callers only: the tunnel is a public URL,
+        and anything reaching this through it is not the launcher."""
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            return {"error": "Only the local launcher may change the public URL."}, 403
+        url = str(body.get("url") or "").strip().rstrip("/")
+        if not re.match(r"^https?://[^\s/]+(?::\d+)?$", url):
+            return {"error": "Send an http(s):// URL with a host and no path."}, 400
+        set_public_url(url)
+        print(f"public URL set to {url} by {user}", flush=True)
+        return {"url": PUBLIC_URL, "runtime": PUBLIC_URL != PUBLIC_URL_ENV}, 200
+
     def api_settings(self, user):
         """Runtime settings for the Settings page: effective values + where each came from,
         which notification URLs .env provides, the poller's last stamp, and a signed token the
@@ -4703,7 +4851,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_me(self, user, auth="cookie"):
         if not user:
-            return {"authed": False, "brand": BRAND, "repo": SINGLE_REPO, "repos": REPOS,
+            return {"authed": False, "brand": BRAND, "repo": single_repo(),
+                    "repos": configured_repos(), "personal": PERSONAL,
                     "allowOrg": ALLOW_ORG, "dry_run": DRY_RUN,
                     "oauth": OAUTH_ENABLED, "oauth_blocked": oauth_blocked(),
                     "device_flow": DEVICE_FLOW_ENABLED,
@@ -4718,7 +4867,8 @@ class Handler(BaseHTTPRequestHandler):
                 "auth": auth or "cookie",
                 "login_via": "oauth" if u.get("gh_token_enc") else "pat",
                 "tour_seen": bool(u.get("tour_seen")),
-                "repo": SINGLE_REPO, "repos": all_repos(), "allowOrg": ALLOW_ORG,
+                "repo": single_repo(), "repos": all_repos(), "allowOrg": ALLOW_ORG,
+                "personal": PERSONAL,
                 "brand": BRAND, "oauth": OAUTH_ENABLED, "device_flow": DEVICE_FLOW_ENABLED,
                 "public_url": PUBLIC_URL, "logo": rs_assets.LOGO,
                 # What this user has in flight, so the sidebar can say so from any page. The
@@ -5018,6 +5168,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"error": "unauthorized"}, 401)
         if route == "/api/logout":
             return self.api_json({"ok": True}, cookie=clear_session_cookie(self.headers.get("Host", "")))
+        if route == "/api/repos":
+            return self.api_json(*self.api_repos_post(user, body))
+        if route == "/api/public-url":
+            return self.api_json(*self.api_public_url_post(user, body))
         if route == "/api/device-token":
             if not cookie_user:
                 return self.api_json({"error": "Sign in on the web to create a device token."},
@@ -6046,29 +6200,54 @@ class Handler(BaseHTTPRequestHandler):
                        f"<code>{html.escape(user)}</code>.{note}")
 
 
+def startup_problems():
+    """(fatal, warnings): the FATAL that stops the server (or None) and the WARN lines to print.
+    Factored out of __main__ so the boot rules are testable: team mode without a repository is
+    fatal; personal mode boots and waits for the wizard to add one."""
+    if problem := secret_problem(SECRET):
+        # Same treatment REPOS gets, for the same reason: without it the server is not merely
+        # less secure, it is open. An empty secret makes every session cookie forgeable.
+        return problem, []
+    warns = []
+    repos = configured_repos()
+    if not repos:
+        msg = ("no repository configured in .env — set REPOS=owner/name[,owner/name…] "
+               "(or the single-entry alias REPO=owner/name)")
+        if not PERSONAL:
+            return msg, []
+        warns.append(f"{msg}; personal mode boots anyway and the first-run wizard adds them")
+    bad = [r for r in repos if not P.valid_repo(r)]
+    if bad:
+        return f"not owner/name shaped in REPOS/REPO: {', '.join(bad)}", warns
+    if ALLOW_ORG and not re.match(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$", ALLOW_ORG):
+        return f"REPO_ALLOW_ORG={ALLOW_ORG!r} is not a GitHub org/user name", warns
+    return None, warns
+
+
+def personal_poller_context():
+    """What rs_personal needs from this process, read fresh every cycle so a repository added
+    by the wizard or a token refreshed by a sign-in is seen without a restart."""
+    vals, _ = runtime_settings()
+    return rs_personal.Context(
+        root=ROOT, bin_dir=BIN, repos=configured_repos, users=load_users,
+        token_for=user_pat, settings=vals, public_url=PUBLIC_URL, secret=SECRET,
+        env=ENV, single_repo=single_repo(), reviewer=REVIEWER,
+        log=lambda m: print(m, flush=True))
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("RS_PORT", "8899"))
     if USERS.exists():
         os.chmod(USERS, 0o600)
-    if problem := secret_problem(SECRET):
-        # Same treatment REPOS gets, for the same reason: without it the server is not merely
-        # less secure, it is open. An empty secret makes every session cookie forgeable.
-        print(f"FATAL: {problem}", flush=True)
-        raise SystemExit(1)
-    if not REPOS:
-        print("FATAL: no repository configured in .env — set REPOS=owner/name[,owner/name…] "
-              "(or the single-entry alias REPO=owner/name)", flush=True)
-        raise SystemExit(1)
-    bad = [r for r in REPOS if not P.valid_repo(r)]
-    if bad:
-        print(f"FATAL: not owner/name shaped in REPOS/REPO: {', '.join(bad)}", flush=True)
-        raise SystemExit(1)
-    if ALLOW_ORG and not re.match(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$", ALLOW_ORG):
-        print(f"FATAL: REPO_ALLOW_ORG={ALLOW_ORG!r} is not a GitHub org/user name", flush=True)
+    fatal, warns = startup_problems()
+    for w in warns:
+        print(f"WARN: {w}", flush=True)
+    if fatal:
+        print(f"FATAL: {fatal}", flush=True)
         raise SystemExit(1)
     # Legacy single-repo layout ($ROOT/repo, $ROOT/state/<pr>) → per-repo layout, once. Exits
     # with an operator-facing message when the state cannot be attributed to one repo.
-    P.migrate_legacy(REPOS, log=lambda m: print(m, flush=True))
+    P.migrate_legacy(configured_repos(), log=lambda m: print(m, flush=True))
     if not SIG_V2_SINCE.exists():
         # The grace window exists for links that were already in someone's Slack when this box
         # was upgraded. A FRESH install has none — it was stamping the file on first boot, so a
@@ -6082,7 +6261,10 @@ if __name__ == "__main__":
     # Loopback by default (a reverse proxy sits in front). RS_BIND=0.0.0.0 for a container,
     # where the published port is the only way in.
     bind = os.environ.get("RS_BIND", "127.0.0.1")
-    print(f"reviewstage listening on {bind}:{port} (repos={','.join(REPOS)}"
+    print(f"reviewstage listening on {bind}:{port} (repos={','.join(configured_repos())}"
           f"{' +org:' + ALLOW_ORG if ALLOW_ORG else ''}, dry_run={DRY_RUN}, "
-          f"users={len(load_users())})", flush=True)
+          f"personal={PERSONAL}, users={len(load_users())})", flush=True)
+    if PERSONAL:
+        # No cron, no pr-watch.sh: the server polls with each signed-in user's own token.
+        rs_personal.start(personal_poller_context)
     ThreadingHTTPServer((bind, port), Handler).serve_forever()

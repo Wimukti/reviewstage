@@ -2675,20 +2675,26 @@ def session_cookie(login, host="", epoch=None, secure=None):
 # the QR code; the phone that scans it gets that person's session. In memory only: a restart
 # drops every pending code, and nothing here outlives the app that showed it.
 PAIR_TTL = 30 * 60
-PAIR_PENDING = {}            # nonce -> {"login", "epoch", "exp"}
+# A new-address link (desktop-always-on F3) waits in a notification, maybe overnight.
+PUSH_PAIR_TTL = 12 * 3600
+PAIR_PENDING = {}            # nonce -> {"login", "epoch", "exp", "slot"}
 _PAIR_LOCK = threading.Lock()
 
 
-def mint_pair(login, now=None):
-    """A fresh nonce for `login`; their earlier one (if any) stops working. One live code per
-    person, so a stale QR on a forgotten window never signs anyone in."""
+def mint_pair(login, now=None, slot="qr", ttl=PAIR_TTL):
+    """A fresh nonce for `login`; their earlier one in the same slot (if any) stops working.
+    One live QR code per person, so a stale QR on a forgotten window never signs anyone in.
+    A new-address push gets one slot per subscribed device ("push:<endpoint id>"), so showing
+    a QR on the Mac does not kill the link a phone was just sent, nor one phone's another's."""
     now = int(time.time()) if now is None else now
     with _PAIR_LOCK:
-        for n in [n for n, r in PAIR_PENDING.items() if r["login"] == login or r["exp"] <= now]:
+        for n in [n for n, r in PAIR_PENDING.items()
+                  if (r["login"] == login and r.get("slot", "qr") == slot) or r["exp"] <= now]:
             PAIR_PENDING.pop(n, None)
         nonce = secrets.token_urlsafe(32)
-        exp = now + PAIR_TTL
-        PAIR_PENDING[nonce] = {"login": login, "epoch": login_epoch(login), "exp": exp}
+        exp = now + ttl
+        PAIR_PENDING[nonce] = {"login": login, "epoch": login_epoch(login), "exp": exp,
+                               "slot": slot}
     return nonce, exp
 
 
@@ -2703,6 +2709,68 @@ def take_pair(nonce, now=None):
     if rec["login"] not in load_users() or login_epoch(rec["login"]) != rec["epoch"]:
         return None
     return rec["login"]
+
+
+# --- a new public address (openspec/changes/desktop-always-on, F3) ---------------------------
+# A quick tunnel gets a new hostname every time the desktop app starts it, so the phone's
+# home-screen app points at an address that no longer answers. The launcher announces each
+# address once it is up; when it differs from the last one announced, every subscribed device
+# is pushed a single-use sign-in link for its OWN login on the new address. No new identity:
+# it is the same pairing nonce the QR carries, minted per device, for the person it belongs to.
+PUBLIC_URL_LAST = "public-url.last"
+
+
+def remember_public_url(url):
+    """Record `url` as the last announced public address. Returns the previous one when it
+    differs (the address changed), else None — the first ever and a repeat both announce
+    nothing."""
+    p = ROOT / PUBLIC_URL_LAST
+    try:
+        prev = p.read_text().strip()
+    except OSError:
+        prev = ""
+    if prev == url:
+        return None
+    try:
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(url + "\n")
+        tmp.replace(p)
+    except OSError as e:
+        print(f"WARN: could not record the public address: {e}", flush=True)
+    return prev or None
+
+
+def announce_new_address(url, opener=None, now=None):
+    """Push "Your Mac has a new address" to every subscribed device of every signed-in person,
+    each carrying a fresh /pair/<nonce> minted for that device's own login. Never raises;
+    returns {"sent", "gone", "failed", "devices"}."""
+    out = {"sent": 0, "gone": 0, "failed": 0, "devices": 0}
+    if not (PERSONAL and PUSH_ENABLED and rs_push.HAVE_CRYPTO):
+        return out
+    try:
+        users = load_users()
+        subs = [s for s in rs_push.load_subs(ROOT) if s.get("login") in users]
+        if not subs:
+            return out
+        pair = rs_push.vapid_pair(ROOT)
+        for sub in subs:
+            nonce, _ = mint_pair(sub["login"], now=now,
+                                 slot=f"push:{rs_push.endpoint_id(sub['endpoint'])}",
+                                 ttl=PUSH_PAIR_TTL)
+            payload = rs_push.notify_payload(
+                "Your Mac has a new address", "Tap to sign in on the new address.",
+                f"{url}/pair/{nonce}", "new-address")
+            out["devices"] += 1
+            out[rs_push.send_one(sub, payload, pair, opener, ROOT)] += 1
+    except Exception as e:                  # noqa: BLE001 — a push must never take a route down
+        print(f"WARN: new-address push: {type(e).__name__}: {e}", flush=True)
+    print(f"new address {url}: pushed {out['sent']}/{out['devices']} device(s)", flush=True)
+    return out
+
+
+def start_announce(url):
+    """The route answers at once; the pushes go out on a thread."""
+    threading.Thread(target=announce_new_address, args=(url,), daemon=True).start()
 
 
 def clear_session_cookie(host=""):
@@ -4775,7 +4843,15 @@ class Handler(BaseHTTPRequestHandler):
             return {"error": "Send an http(s):// URL with a host and no path."}, 400
         set_public_url(url)
         print(f"public URL set to {url} by {user}", flush=True)
-        return {"url": PUBLIC_URL, "runtime": PUBLIC_URL != PUBLIC_URL_ENV}, 200
+        announced = False
+        # {announce: true}: the launcher says this address answers now. Only a public https
+        # address is remembered; loopback (phone access off) never counts as "the last one".
+        if body.get("announce") is True and url.startswith("https://") \
+                and not is_local_url(url) and remember_public_url(url):
+            start_announce(url)
+            announced = True
+        return {"url": PUBLIC_URL, "runtime": PUBLIC_URL != PUBLIC_URL_ENV,
+                "announced": announced}, 200
 
     def api_pair_post(self, user):
         """POST /api/pair — a single-use sign-in link for the phone, minted by the desktop app
@@ -4793,12 +4869,15 @@ class Handler(BaseHTTPRequestHandler):
         """GET /pair/<nonce> — the phone arrives here from the QR code. A live nonce becomes
         that person's session; anything else lands on the login page with one neutral line.
         The body never says whether the code ever existed."""
+        with _PAIR_LOCK:
+            via = (PAIR_PENDING.get(nonce or "") or {}).get("slot", "qr")
         login = take_pair(nonce)
         if not login:
             return self.redirect("/login?paired=expired", status=302)
         https = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower() \
             == "https"
-        print(f"pair: {login} signed in from {self.client_addr()} via QR", flush=True)
+        how = "QR" if via == "qr" else "new-address link"
+        print(f"pair: {login} signed in from {self.client_addr()} via {how}", flush=True)
         return self.redirect("/", status=302,
                              cookie=session_cookie(login, self.headers.get("Host", ""),
                                                    secure=True if https else None))

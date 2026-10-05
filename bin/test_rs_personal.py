@@ -323,7 +323,7 @@ class PublicUrlRoute(Base):
         out = self.post("/api/public-url", {"url": "https://quiet-fox.trycloudflare.com/"})
         self.assertEqual(out["status"], 200)
         self.assertEqual(out["body"], {"url": "https://quiet-fox.trycloudflare.com",
-                                       "runtime": True})
+                                       "runtime": True, "announced": False})
         self.assertEqual(S.PUBLIC_URL, "https://quiet-fox.trycloudflare.com")
         # Link signing and cards read the module global, so they follow it.
         self.assertTrue(Q.dashboard_link(S.PUBLIC_URL, S.SECRET)
@@ -433,6 +433,135 @@ class PairRoute(Base):
         users[USER]["epoch"] = S.login_epoch(USER) + 1
         S.save_users(users)
         self.assertEqual(self.pair_get(nonce)["to"], "/login?paired=expired")
+
+
+class NewAddressPush(Base):
+    """openspec/changes/desktop-always-on F3: the quick tunnel's address changes when the app
+    restarts. Once the launcher announces the new address, every subscribed device is pushed a
+    single-use sign-in link for its own login on it — the same pairing nonce the QR carries."""
+
+    OLD = "https://quiet-fox-old.trycloudflare.com"
+    NEW = "https://brave-owl-new.trycloudflare.com"
+
+    def setUp(self):
+        super().setUp()
+        from test_rs_push import Browser, opener_returning
+        self.phone = Browser("https://web.push.apple.com/ann-phone")
+        self.tablet = Browser("https://fcm.googleapis.com/fcm/send/ann-tablet")
+        rp = self.S.rs_push
+        rp.add_sub(USER, self.phone.subscription(), "iPhone", "", self.S.ROOT)
+        rp.add_sub(USER, self.tablet.subscription(), "Tablet", "", self.S.ROOT)
+        # A subscription whose login is no longer a user here gets nothing.
+        rp.add_sub("gone-user", Browser("https://p.example/gone").subscription(), "Old", "",
+                   self.S.ROOT)
+        self.seen = []
+        self.opener = opener_returning({}, self.seen)
+        # The route's thread, run inline so the test can read what was sent.
+        self.announced = []
+        patcher = mock.patch.object(
+            self.S, "start_announce",
+            lambda url: self.announced.append(self.S.announce_new_address(url, self.opener)))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def announce(self, url, flag=True):
+        body = {"url": url, "announce": True} if flag else {"url": url}
+        with contextlib.redirect_stdout(io.StringIO()):
+            return self.post("/api/public-url", body)
+
+    def payloads(self):
+        out = {}
+        for req in self.seen:
+            who = self.phone if req.full_url == self.phone.endpoint else self.tablet
+            out[req.full_url] = json.loads(who.decrypt(req.data))
+        return out
+
+    def test_the_first_address_is_remembered_and_nothing_is_pushed(self):
+        out = self.announce(self.OLD)
+        self.assertEqual(out["status"], 200)
+        self.assertFalse(out["body"]["announced"])
+        self.assertEqual((Path(self.root) / "public-url.last").read_text().strip(), self.OLD)
+        self.assertEqual(self.seen, [])
+
+    def test_a_new_address_pushes_each_device_its_own_sign_in_link(self):
+        S = self.S
+        self.announce(self.OLD)
+        out = self.announce(self.NEW)
+        self.assertTrue(out["body"]["announced"])
+        self.assertEqual(S.PUBLIC_URL, self.NEW)
+        self.assertEqual(self.announced, [{"sent": 2, "gone": 0, "failed": 0, "devices": 2}])
+        got = self.payloads()
+        self.assertEqual(sorted(got), sorted([self.phone.endpoint, self.tablet.endpoint]))
+        nonces = set()
+        for endpoint, p in got.items():
+            self.assertEqual(p["title"], "Your Mac has a new address")
+            self.assertEqual(p["body"], "Tap to sign in on the new address.")
+            self.assertEqual(p["tag"], "new-address")
+            self.assertTrue(p["url"].startswith(f"{self.NEW}/pair/"), p["url"])
+            nonce = p["url"].rsplit("/", 1)[1]
+            rec = S.PAIR_PENDING[nonce]
+            self.assertEqual(rec["login"], USER, "the device's own login, nobody else's")
+            self.assertEqual(rec["slot"], f"push:{S.rs_push.endpoint_id(endpoint)}")
+            self.assertAlmostEqual(rec["exp"], int(time.time()) + 12 * 3600, delta=5)
+            nonces.add(nonce)
+        self.assertEqual(len(nonces), 2, "one single-use link per device")
+        self.assertEqual(len(S.PAIR_PENDING), 2, "nothing minted for the removed user")
+        self.assertEqual((Path(self.root) / "public-url.last").read_text().strip(), self.NEW)
+
+    def test_the_same_address_again_or_without_announce_or_loopback_pushes_nothing(self):
+        self.announce(self.OLD)
+        self.assertFalse(self.announce(self.OLD)["body"]["announced"])
+        # Without the flag the address is set (links use it) but not announced or remembered.
+        self.assertFalse(self.announce(self.NEW, flag=False)["body"]["announced"])
+        self.assertEqual(self.S.PUBLIC_URL, self.NEW)
+        self.assertEqual((Path(self.root) / "public-url.last").read_text().strip(), self.OLD)
+        # Phone access off: loopback never becomes "the last address".
+        self.assertFalse(self.announce("http://127.0.0.1:8899")["body"]["announced"])
+        self.assertEqual((Path(self.root) / "public-url.last").read_text().strip(), self.OLD)
+        self.assertEqual(self.seen, [])
+        self.assertEqual(self.announced, [])
+
+    def test_the_link_signs_the_phone_in_once_and_a_qr_on_the_mac_does_not_kill_it(self):
+        self.announce(self.OLD)
+        self.announce(self.NEW)
+        link = self.payloads()[self.phone.endpoint]["url"]
+        nonce = link.rsplit("/", 1)[1]
+        # The Mac shows a QR (the restart re-mints one): the pushed link still works.
+        PairRoute.mint(self)
+        PairRoute.mint(self)
+        self.assertIn(nonce, self.S.PAIR_PENDING)
+        out = PairRoute.pair_get(self, nonce, {"Host": "brave-owl-new.trycloudflare.com",
+                                               "X-Forwarded-Proto": "https"})
+        self.assertEqual((out["status"], out["to"]), (302, "/"))
+        self.assertEqual(self.S.session_user({"Cookie": out["cookie"].split(";")[0]}), USER)
+        self.assertIn(f"pair: {USER} signed in from 10.1.1.5 via new-address link", out["log"])
+        self.assertEqual(PairRoute.pair_get(self, nonce)["to"], "/login?paired=expired")
+
+    def test_sign_out_everywhere_kills_a_pushed_link(self):
+        S = self.S
+        self.announce(self.OLD)
+        self.announce(self.NEW)
+        nonce = self.payloads()[self.tablet.endpoint]["url"].rsplit("/", 1)[1]
+        users = S.load_users()
+        users[USER]["epoch"] = S.login_epoch(USER) + 1
+        S.save_users(users)
+        self.assertEqual(PairRoute.pair_get(self, nonce)["to"], "/login?paired=expired")
+
+    def test_a_gone_subscription_is_dropped_and_the_rest_still_go(self):
+        from test_rs_push import opener_returning
+        self.opener = opener_returning({self.tablet.endpoint: 410}, self.seen)
+        self.announce(self.OLD)
+        self.announce(self.NEW)
+        self.assertEqual(self.announced, [{"sent": 1, "gone": 1, "failed": 0, "devices": 2}])
+        self.assertEqual([s["endpoint"] for s in self.S.rs_push.user_subs(USER, self.S.ROOT)],
+                         [self.phone.endpoint])
+
+    def test_push_off_sends_nothing(self):
+        self.S.PUSH_ENABLED = False
+        self.announce(self.OLD)
+        self.assertTrue(self.announce(self.NEW)["body"]["announced"])
+        self.assertEqual(self.announced, [{"sent": 0, "gone": 0, "failed": 0, "devices": 0}])
+        self.assertEqual(self.seen, [])
 
 
 class ThePoller(Base):

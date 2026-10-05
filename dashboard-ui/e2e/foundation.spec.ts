@@ -43,7 +43,8 @@ test.describe("phone", () => {
     await settled(page);
     const controls = page.locator(".phone-head a, .phone-head button, .tabbar a, .tabbar button");
     const n = await controls.count();
-    expect(n).toBeGreaterThanOrEqual(5);
+    // The bar's search and the three tabs on the queue; a pushed page adds ‹ Back (shell.spec).
+    expect(n).toBeGreaterThanOrEqual(4);
     for (let i = 0; i < n; i++) {
       const c = controls.nth(i);
       const box = await c.boundingBox();
@@ -56,20 +57,20 @@ test.describe("phone", () => {
     // The header's Review a PR is findable by name — the old glyph-only button was not.
     await expect(page.getByRole("button", { name: "Review a PR" })).toBeVisible();
 
-    // More opens a sheet with the rest of the navigation, the theme control and Sign out.
-    await page.getByTestId("more-tab").click();
-    const sheet = page.getByTestId("more-sheet");
-    await expect(sheet).toBeVisible();
-    for (const label of ["Learnings", "Insights", "Integrations", "Settings", "How it works"]) {
-      await expect(sheet.getByRole("link", { name: label })).toBeVisible();
+    // There is no More sheet: the You tab holds the rest of the navigation, the theme (one push
+    // away, under Appearance) and Sign out — every row a 44px-plus target.
+    await expect(page.getByTestId("more-tab")).toHaveCount(0);
+    await page.getByTestId("tab-bar").getByRole("link", { name: "You" }).click();
+    const you = page.getByTestId("you-list");
+    for (const label of ["Learnings", "Insights", "Integrations", "All settings", "How it works"]) {
+      const row = you.getByRole("link", { name: new RegExp(`^${label}`) });
+      await expect(row).toBeVisible();
+      expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
-    await expect(sheet.getByTestId("theme-control")).toBeVisible();
-    const out = sheet.getByRole("button", { name: /sign out/i });
+    const out = you.getByRole("button", { name: /sign out/i });
     expect((await out.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    // Escape closes it and focus returns to the More tab.
-    await page.keyboard.press("Escape");
-    await expect(sheet).toHaveCount(0);
-    await expect(page.getByTestId("more-tab")).toBeFocused();
+    await you.getByRole("link", { name: /^Appearance/ }).click();
+    await expect(page.getByTestId("theme-control")).toBeVisible();
   });
 
   test("a running job is a 2px bar at the very top of the viewport, not a strip of text", async ({ page }) => {

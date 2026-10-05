@@ -120,7 +120,8 @@ test.describe("phone shell at 390", () => {
     await page.goto("/");
     const bar = page.getByTestId("tab-bar");
     const items = bar.locator("a, button");
-    expect(await items.count()).toBe(4);
+    expect(await items.count()).toBe(3);
+    await expect(items).toHaveText([/Queue/, /^Activity/, /^You/]);
     for (const it of await items.all()) {
       const box = (await it.boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(44);
@@ -130,20 +131,26 @@ test.describe("phone shell at 390", () => {
     }
   });
 
-  test("the More sheet is a bottom dialog with the nav, the theme radios, the account and Sign out", async ({ page }) => {
-    await page.goto("/");
-    await page.getByTestId("more-tab").click();
-    const sheet = page.getByRole("dialog", { name: "More" });
-    await expect(sheet).toBeVisible();
-    const box = (await sheet.boundingBox())!;
-    expect(Math.round(box.y + box.height)).toBeGreaterThanOrEqual(844 - 1); // sits on the bottom edge
-    await expect(sheet.getByRole("radiogroup", { name: "Theme" }).getByRole("radio")).toHaveCount(3);
-    await expect(sheet.getByTestId("account-card")).toBeVisible();
-    await expect(sheet.getByRole("button", { name: /switch github account/i })).toBeVisible();
-    await expect(sheet.getByRole("button", { name: /sign out/i })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(sheet).toHaveCount(0);
-    await expect(page.getByTestId("more-tab")).toBeFocused();
+  test("You is an inset grouped list: the account, the four groups, then Switch account and Sign out", async ({ page }) => {
+    await page.goto("/you");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const you = page.getByTestId("you-list");
+    await expect(you.getByTestId("account-card")).toContainText("acme-dev");
+    await expect(you.getByTestId("account-card").getByTestId("status-badge")).toHaveText(/^(Live|Dry run)$/);
+    const groups = you.locator("section h2");
+    await expect(groups).toHaveText([/this device/i, /reviewing/i, /tools/i, /more/i]);
+    // A browser install: no Your phone, no Desktop app; a team install: no Repositories.
+    await expect(you.getByTestId("you-device").getByTestId("you-row")).toHaveText([/^Notifications/, /^Appearance/]);
+    await expect(you.getByTestId("you-reviewing").getByTestId("you-row")).toHaveText([/^Poller/, /^PR filters/]);
+    await expect(you.getByTestId("you-tools").getByTestId("you-row")).toHaveText([/^Learnings/, /^Insights/, /^Skills/, /^QA guides/]);
+    for (const row of await you.getByTestId("you-row").all()) {
+      expect(Math.round((await row.boundingBox())!.height)).toBeGreaterThanOrEqual(52);
+    }
+    // The account actions are full-width rows at the end; Sign out in the destructive ink.
+    const out = you.getByRole("button", { name: /sign out/i });
+    await expect(you.getByRole("button", { name: /switch github account/i })).toBeVisible();
+    expect(Math.round((await out.boundingBox())!.width)).toBeGreaterThan(300);
+    await expect(out).toHaveClass(/text-red/);
   });
 
   test("the queue does not scroll sideways and the archive control is always shown", async ({ page }) => {

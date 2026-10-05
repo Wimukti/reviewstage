@@ -220,7 +220,9 @@ test.describe("Your Mac isn't reachable (F5)", () => {
     await page.unroute("**/api/me");
     await page.getByTestId("unreachable-retry").click();
     await expect(page.getByTestId("unreachable")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
+    // On a phone the queue's large title is the product name (PhoneShell).
+    await expect(page.getByRole("heading", { level: 1, name: "ReviewStage" })).toBeVisible();
+    await expect(page.getByTestId("tab-bar")).toBeVisible();
   });
 
   test("the queue failing with 530 after the shell loaded switches to the state too", async ({ page }) => {
@@ -248,6 +250,8 @@ test.describe("Your Mac isn't reachable (F5)", () => {
     await expect(page.getByTestId("unreachable")).toBeVisible();
     await page.clock.runFor(15_000);
     await expect(page.getByTestId("unreachable")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
+    // On a phone the queue's large title is the product name (PhoneShell).
+    await expect(page.getByRole("heading", { level: 1, name: "ReviewStage" })).toBeVisible();
+    await expect(page.getByTestId("tab-bar")).toBeVisible();
   });
 });

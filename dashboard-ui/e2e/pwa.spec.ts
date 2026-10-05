@@ -43,27 +43,53 @@ test.describe("pwa", () => {
     await expect(page.locator("meta[name=theme-color]")).toHaveAttribute("content", "#0B0C10");
   });
 
+  test("launch: a startup image for every linked iPhone size, a translucent status bar, the safe area", async ({ page, request }) => {
+    await page.goto("/");
+    await expect(page.locator("meta[name=viewport]")).toHaveAttribute("content", /viewport-fit=cover/);
+    await expect(page.locator("meta[name=apple-mobile-web-app-status-bar-style]")).toHaveAttribute("content", "black-translucent");
+    const links = page.locator("link[rel=apple-touch-startup-image]");
+    expect(await links.count()).toBeGreaterThanOrEqual(8);
+    for (const l of await links.all()) {
+      const href = (await l.getAttribute("href"))!;
+      const m = /startup-(\d+)x(\d+)\.png$/.exec(href)!;
+      expect(m, href).not.toBeNull();
+      const r = await request.get(href);
+      expect(r.status(), href).toBe(200);
+      expect(r.headers()["content-type"], href).toBe("image/png");
+      const body = await r.body();
+      // The PNG header's width and height are the size the media query promises.
+      expect([body.readUInt32BE(16), body.readUInt32BE(20)], href).toEqual([Number(m[1]), Number(m[2])]);
+    }
+  });
+
+  test("a light theme asks for the opaque status bar (white clock on light paper is unreadable)", async ({ page }) => {
+    await page.addInitScript("try{localStorage.setItem('rs-theme','light')}catch(e){}");
+    await page.goto("/");
+    await expect(page.locator("meta[name=apple-mobile-web-app-status-bar-style]")).toHaveAttribute("content", "default");
+  });
+
   test.describe("phone width", () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
     for (const [name, path, heading] of [
-      ["queue", "/?tab=reviewed", /review queue/i],
+      ["queue", "/?tab=reviewed", "ReviewStage"],
       ["pr page", `/pr?pr=${PR}`, null],
       ["integrations", "/integrations", /integrations/i],
     ] as const) {
       test(`${name} does not scroll horizontally at 390px`, async ({ page }) => {
         await page.goto(path);
-        if (heading) await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+        if (heading) await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
         else await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-        // Sign out must be reachable: it lives in the More sheet on the phone.
-        await page.getByTestId("more-tab").click();
-        await expect(page.getByRole("button", { name: /sign out/i })).toBeInViewport();
-        await page.getByRole("button", { name: /^close$/i }).click();
         const { scrollWidth, innerWidth } = await page.evaluate(() => ({
           scrollWidth: document.documentElement.scrollWidth,
           innerWidth: Math.round(window.visualViewport?.width ?? window.innerWidth),
         }));
         expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+        // Sign out must be reachable: it is the last row of the You tab on the phone.
+        await page.getByTestId("tab-bar").getByRole("link", { name: "You" }).click();
+        const out = page.getByRole("button", { name: /sign out/i });
+        await out.scrollIntoViewIfNeeded();
+        await expect(out).toBeInViewport();
       });
     }
   });
@@ -110,7 +136,7 @@ test.describe("pwa", () => {
         }
       });
       await page.reload();
-      await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "ReviewStage" })).toBeVisible();
       expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
     }
 
@@ -126,7 +152,7 @@ test.describe("pwa", () => {
         // The Mac wakes: the state's Try again brings the app back without a reload.
         deadStatus = 0;
         await page.getByTestId("unreachable-retry").click();
-        await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
+        await expect(page.getByRole("heading", { level: 1, name: "ReviewStage" })).toBeVisible();
       });
     }
 

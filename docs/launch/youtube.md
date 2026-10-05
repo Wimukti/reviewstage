@@ -32,6 +32,5 @@ Code (MIT): https://github.com/Wimukti/reviewstage
 
 **Tags:** code review, pull request, Claude, Claude Code, AI code review, GitHub, developer tools, open source
 
-**After upload:** copy the link into `<DEMO_LINK>` in `show-hn.md`, and the video ID into
-`DEMO_YOUTUBE_ID` in `website/src/content/site-links.ts` (the homepage's "Watch the demo"
-button switches to the YouTube player).
+**Uploaded 10/06/26:** https://youtu.be/yYMtQK-sVyg — wired into `show-hn.md`,
+`reddit-selfhosted.md`, the README and `DEMO_YOUTUBE_ID` in `website/src/content/site-links.ts`.

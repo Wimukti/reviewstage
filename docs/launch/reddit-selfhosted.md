@@ -27,4 +27,4 @@ on the front. MIT.
 Docs: https://reviewstage.dev/ · Security model, worth reading before pointing it
 at anyone else's PR: https://reviewstage.dev/security/
 
-Demo (90 s): <DEMO_LINK>
+Demo (70 s): https://youtu.be/yYMtQK-sVyg

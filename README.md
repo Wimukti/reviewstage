@@ -29,6 +29,8 @@
   <a href="docs/demos/review.mp4"><img alt="A 20-second recording of a review: a PR URL is pasted into the queue's search field and opened, Run review is clicked, the four phases tick through, three findings appear with their file and line, two are ticked and the sticky bar reads 2 staged, Post selected to GitHub is clicked and the bar switches to Posted as acme-dev." src="docs/demos/review.gif" width="960"></a>
 </p>
 
+<p align="center"><a href="https://youtu.be/yYMtQK-sVyg"><strong>Watch the 70-second demo, with voice</strong></a></p>
+
 > [!NOTE]
 > ReviewStage 1.0. The gate — nothing reaches GitHub without a signed-in person clicking, under their own name — has held since the first version. From 1.0 the configuration keys and the install follow semantic versioning: anything that would break an existing install waits for a major version.
 

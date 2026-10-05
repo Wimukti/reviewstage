@@ -160,7 +160,7 @@ test.describe("the PR page on the system", () => {
 test.describe("the PR page on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test("no horizontal scroll, the commit bar stays reachable above the tab bar", async ({ page }) => {
+  test("no horizontal scroll, the Post pill stays reachable above the tab bar", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await expect(page.locator(".finding").first()).toBeVisible();
     const { scrollWidth, innerWidth } = await page.evaluate(() => ({
@@ -168,17 +168,19 @@ test.describe("the PR page on a phone", () => {
       innerWidth: window.innerWidth,
     }));
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
-    const bar = page.getByTestId("commit-bar");
+    // The phone posts through a floating pill, not the desk's commit bar.
+    const bar = page.getByTestId("post-pill");
     await expect(bar).toBeInViewport();
     const barBox = (await bar.boundingBox())!;
     const tab = (await page.getByTestId("tab-bar").boundingBox())!;
     expect(Math.round(barBox.y + barBox.height)).toBeLessThanOrEqual(Math.round(tab.y) + 1);
-    // Scrolled to the end, the last section tab still sits above the bar, and the bar is still there.
+    // Scrolled to the end, the last finding still sits above the pill, and the pill is still there.
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect(bar).toBeInViewport();
-    const row = (await page.getByTestId("section-row").boundingBox())!;
+    const row = (await page.locator(".finding").last().boundingBox())!;
     expect(row.y + row.height).toBeLessThanOrEqual(barBox.y + 1);
-    // The card's actions are always visible on a phone and at least 40px tall.
+    // A tapped card shows its actions, always at full ink and at least 40px tall.
+    await page.locator(".finding").first().getByTestId("finding-expand").click();
     const act = page.locator(".finding").first().getByTestId("finding-actions").getByRole("button").first();
     expect(await act.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
     expect((await act.boundingBox())!.height).toBeGreaterThanOrEqual(40);

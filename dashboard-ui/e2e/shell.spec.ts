@@ -137,7 +137,8 @@ test.describe("phone shell at 390", () => {
     // At the top the compact title is hidden (the large title is showing) and is not a heading.
     await expect(head.getByTestId("nav-title")).toHaveCSS("opacity", "0");
     await expect(head.getByRole("heading")).toHaveCount(0);
-    await expect(head.getByRole("button", { name: "Review a PR" })).toBeVisible();
+    await expect(head.getByRole("button", { name: "Search or open a PR" })).toBeVisible();
+    await expect(head.getByRole("button", { name: /^Filter and sort/ })).toBeVisible();
     const large = page.getByTestId("large-title");
     await expect(large.getByRole("heading", { level: 1 })).toHaveText("ReviewStage");
     await expect(large.locator("img:visible")).toHaveCount(1); // the mark, once, beside the word

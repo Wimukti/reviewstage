@@ -153,7 +153,7 @@ test.describe("phone shell at 390", () => {
     await expect(out).toHaveClass(/text-red/);
   });
 
-  test("the queue does not scroll sideways and the archive control is always shown", async ({ page }) => {
+  test("the queue does not scroll sideways and every row's actions are one 44px tap away", async ({ page }) => {
     await page.goto("/?tab=reviewed");
     await expect(page.getByTestId("queue-row").first()).toBeVisible();
     const { scrollWidth, innerWidth } = await page.evaluate(() => ({
@@ -161,10 +161,13 @@ test.describe("phone shell at 390", () => {
       innerWidth: Math.round(window.visualViewport?.width ?? window.innerWidth),
     }));
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
-    const archive = page.getByRole("button", { name: `Archive #${PR}` });
-    await expect(archive).toHaveCSS("opacity", "1");
-    const box = (await archive.boundingBox())!;
+    // Archive is a swipe on a phone; the row's ⋯ menu is the always-visible way to it.
+    const more = page.getByRole("button", { name: `Actions for #${PR}` });
+    await expect(more).toHaveCSS("opacity", "1");
+    const box = (await more.boundingBox())!;
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
+    await more.click();
+    await expect(page.getByRole("menuitem", { name: `Archive #${PR}` })).toBeVisible();
   });
 });

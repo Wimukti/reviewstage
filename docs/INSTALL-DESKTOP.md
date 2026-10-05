@@ -48,6 +48,27 @@ From then on the app polls GitHub itself for review requests on the repositories
 with your own signed-in token (kept encrypted at rest; never in `.env`). The dock badge shows
 the count; a system notification fires when it rises.
 
+## It keeps running
+
+`npx reviewstage` prints `ReviewStage is running. You can close this terminal.` and gives the
+terminal back: the app runs on its own, and closing the terminal does not touch it (its output
+goes to `~/.reviewstage/desktop.log`). `npx reviewstage --foreground` keeps the old behaviour —
+attached to the terminal, output on screen.
+
+- **One at a time.** Running `npx reviewstage` again while the app is open brings its window
+  forward instead of starting a second one.
+- **Closing the window** leaves the app in the menu bar (the system tray on Linux), so phone
+  access and review notifications keep working; the Dock icon comes back when a window opens.
+  The menu-bar icon has **Open ReviewStage**, **Phone access: On/Off**, **Check for updates**
+  (and **Update to <version>** when one is out) and **Quit ReviewStage**. Quitting — from that
+  menu, ⌘Q, or a `kill` — stops the tunnel and the server with it.
+- **Open at login** (Settings → Desktop app, off by default) starts it in the menu bar when you
+  log in. On macOS it writes `~/Library/LaunchAgents/dev.reviewstage.desktop.plist`, which runs
+  the same `node` and its sibling `npx` you launched with (`npx -y reviewstage@latest`) with the
+  `PATH` your shell had when you turned it on — launchd's own `PATH` has neither nvm's node nor
+  Homebrew's Python. On Linux it writes `~/.config/autostart/reviewstage.desktop`. Turning it off
+  deletes the file. If you later move node (an nvm upgrade), turn it off and on again.
+
 ## Repositories and accounts
 
 - **Repositories** in the sidebar (also Settings → Repositories, and `/repos`) lists the
@@ -95,12 +116,27 @@ phone width. Not signed in on the Mac yet? The QR then carries the plain address
 says to sign in on the Mac first.
 
 **How long the tunnel lasts.** As long as the app runs. `cloudflared` reconnects by itself after
-a dropped connection or sleep, and the address stays the same. Quitting the app ends it; the
-next **Enable phone access** gets a new address, so scan again (a quick tunnel cannot keep a
-name; a named tunnel needs a Cloudflare account and is on the roadmap). If `cloudflared` crashes
+a dropped connection or sleep, and the address stays the same. Phone access is remembered
+(`~/.reviewstage/desktop.json`): if it was on when the app quit, it comes back on at the next
+launch — but with a **new address**, because a quick tunnel cannot keep a name. Once the new
+address answers, every phone that turned on notifications gets one: **"Your Mac has a new
+address"**. Tapping it opens a single-use sign-in link on the new address (minted for that
+phone's own account, valid 12 hours) in the browser, signed in; add it to the Home Screen again
+from there. A phone that did not turn on notifications needs a new scan. If `cloudflared` crashes
 while phone access is on, the app restarts it once with a new address, mints a new code and
 shows a notification, "Phone address changed — rescan the code"; a second crash within 5 minutes
 stops it, the card and the menu show phone access as off and say why.
+
+**When the Mac is asleep or the app is closed**, the phone shows "Your Mac isn't reachable"
+with **Try again** — never an error code. The home-screen app retries every 15 seconds while it
+is open, and comes back by itself when the Mac does.
+
+**A stable address with Tailscale (optional).** If [Tailscale](https://tailscale.com/download)
+is installed and signed in on the Mac (and on your phone), Settings → Your phone shows **Use
+Tailscale**. It serves the app with `tailscale serve --bg --https=443 http://127.0.0.1:<port>`
+at `https://<machine>.<tailnet>.ts.net`, which only your own devices can reach and which never
+changes — the home-screen app keeps working across restarts. Turning it off runs
+`tailscale serve --https=443 off`. Without Tailscale the row is one line and a link.
 
 What to know: the address is public while the tunnel is up — anyone who has it reaches your
 sign-in page and nothing more (every API call needs the session cookie; pair codes are
@@ -119,6 +155,11 @@ checksum.
   repos/          one blobless clone per repository
   users.json      who signed in; tokens encrypted with RS_SECRET
   server.log      the server's output from the last launch
+  desktop.log     the app's own output from the last launch (it runs detached)
+  desktop.json    what the app remembers: phone access on/off, tunnel or Tailscale
+  public-url.last the last phone address announced, so a new one can be pushed to your phone
+  update.log      the output of the last in-app update
+  login.log       the output of the last open-at-login start
 ```
 
 Delete the directory to start over. Posting is live from the first run: in the desktop app the
@@ -138,9 +179,17 @@ personal mode a missing `REPOS` is a WARN, not a FAIL, and `GITHUB_PAT` is not e
 
 ## Updating
 
-`npx reviewstage` resolves `latest` each time it is run from a cold cache; `npx reviewstage@latest`
-forces it. Your data in `~/.reviewstage` is untouched by an update. Pre-releases are published
-too, under the same tag, while the project is in beta.
+The app asks the npm registry for the `latest` version at launch and every 6 hours. When a
+newer one is out, a slim banner at the top of the window says `ReviewStage <version> is
+available · Restart to update` (dismissible for that version), the menu-bar icon gains **Update
+to <version>**, and Settings → Desktop app shows it next to the running version, with **Check
+now** and the time of the last check. **Restart to update** starts `npx -y
+reviewstage@<version>`, which waits for this instance to quit and opens on the same
+`~/.reviewstage` — phone access comes back on by itself. If the new version cannot be started,
+the banner says why and nothing quits.
+
+By hand, `npx reviewstage@latest` does the same. Your data in `~/.reviewstage` is untouched by
+an update. Pre-releases are published too, under the same tag, while the project is in beta.
 
 ## Linux note
 
@@ -157,5 +206,4 @@ third-party content here. If you prefer it on, make the helper setuid once:
 
 - **Windows.** The server's job scripts are bash; a WSL-hosted server with the Electron shell on
   Windows is the planned shape. Until then, use the Docker install under WSL2.
-- **Auto-update inside the running app.** Relaunch with `npx reviewstage@latest`.
 - **A signed `.dmg`.** Not planned while the npm path works without one.

@@ -83,6 +83,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const DEFAULT_KEY = "__plan_default__";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -201,8 +203,12 @@ function LevelSelect({
   label: string;
 }) {
   const cur = levels.find((l) => l.key === value);
+  // Radix Select treats "" as "no selection", so the plan-default model (key "") rendered
+  // blank and could not be picked back. It travels under a stand-in key inside the control.
+  const enc = (k: string) => (k === "" ? DEFAULT_KEY : k);
+  const dec = (k: string) => (k === DEFAULT_KEY ? "" : k);
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={enc(value)} onValueChange={(v) => onChange(dec(v))}>
       <SelectTrigger id={id} aria-label={label} className="w-full max-w-[420px]" title={titles?.[value]}>
         <SelectValue>
           <span className="truncate">{cur?.name ?? value}</span>
@@ -211,7 +217,7 @@ function LevelSelect({
       </SelectTrigger>
       <SelectContent>
         {levels.map((l) => (
-          <SelectItem key={l.key} value={l.key} className={ITEM} title={titles?.[l.key]}>
+          <SelectItem key={l.key} value={enc(l.key)} className={ITEM} title={titles?.[l.key]}>
             <span className="flex flex-col gap-0.5">
               <span className="flex items-center gap-2">
                 {l.name}

@@ -1659,6 +1659,12 @@ EFFORT_ORDER = ["quick", "standard", "deep"]
 # Model the reviewer can pick at trigger time. "" = the account's default (no --model passed).
 # Keys are the aliases Claude Code's --model accepts; validated server-side so nothing arbitrary
 # ever reaches the CLI.
+def files_label(n):
+    """"1 file", "12 files", "1,204 files"."""
+    n = int(n)
+    return f"{n:,} file" if n == 1 else f"{n:,} files"
+
+
 MODELS = [("", "Default", "your Claude plan's default"),
           ("opus", "Opus", "most capable \u00b7 deepest review"),
           ("sonnet", "Sonnet", "balanced \u00b7 faster"),
@@ -4493,7 +4499,7 @@ class Handler(BaseHTTPRequestHandler):
             "ghUrl": meta.get("url", f"https://github.com/{repo}/pull/{pr}"),
             "author": meta.get("author", ""),
             "size": (f"+{meta.get('additions', 0):,} −{meta.get('deletions', 0):,} · "
-                     f"{meta['changedFiles']} files") if meta.get("changedFiles") else "",
+                     f"{files_label(meta['changedFiles'])}") if meta.get("changedFiles") else "",
             "dryRun": DRY_RUN,
             # The PR's own state on GitHub, from the metadata already fetched above. Without it
             # the detail page offered a live Approve button on a merged or closed PR and only
@@ -5249,7 +5255,7 @@ class Handler(BaseHTTPRequestHandler):
             if not e["active"]:
                 when.append("no longer requested")
             size = (f"+{item.get('additions', 0):,} −{item.get('deletions', 0):,} · "
-                    f"{item['changedFiles']} files") if item.get("changedFiles") else ""
+                    f"{files_label(item['changedFiles'])}") if item.get("changedFiles") else ""
             sev = [{"kind": k, "n": n, "label": SEV_LABEL.get(k, k)}
                    for k, n in sorted(e["cs"].items(), key=lambda kv: SEV_ORDER.get(kv[0], 9))]
             archived = e["st"] == "archived"

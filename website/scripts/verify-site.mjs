@@ -1,10 +1,11 @@
-// Proof harness for the site: serves dist/ through `astro preview`, screenshots the home, the
-// strip's Requested and Posted stops, the install and security pages, a guide and the docs
-// sidebar in both themes at 1440 and 390, and asserts the contract — four sections under 400
-// words, the hero island hydrated with the app's own staged finding, the strip's five stops on
-// Radix tabs with arrow keys, the Requested stop rendering the queue's real row (a repo pill
-// and an avatar, none of the legacy row classes), no sideways scroll at 390, the favicon and
-// social assets, and a Lighthouse performance score of 90 or better on the home page.
+// Proof harness for the site: serves dist/ through `astro preview`, screenshots the home and a
+// handful of docs pages in both themes at 1440 and 390, and asserts the contract of
+// openspec/changes/landing-v2/design.md — the nine home sections with their headings, at most 900
+// words, two equal contrast columns, four steps, six feature tiles, three gate snippets, a
+// six-row comparison, six script-free FAQ disclosures, the hero command pill, the videos'
+// preload rules and the hero above a 390x844 fold, the demo lightbox loading only on open, 44px
+// tap targets and no sideways scroll at 390 (measured against visualViewport), the favicon and
+// social assets, and a Lighthouse performance score of 95 or better on the home page.
 // Usage: node scripts/verify-site.mjs [outDir]
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -12,10 +13,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "@playwright/test";
 
-const outDir = resolve(process.argv[2] ?? "../openspec/changes/rebuild-on-a-system/after/s4");
+const outDir = resolve(process.argv[2] ?? "../openspec/changes/landing-v2/after/verify");
 mkdirSync(outDir, { recursive: true });
 const PORT = Number(process.env.RS_SITE_PORT || 4877), BASE = `http://127.0.0.1:${PORT}`;
-const PERF_MIN = Number(process.env.RS_SITE_PERF_MIN || 90);
+const PERF_MIN = Number(process.env.RS_SITE_PERF_MIN || 95);
 // name → [path, kind]; "docs-sidebar" is the docs shell itself — on a phone that is the drawer.
 const pages = {
   home: ["/", "home"],
@@ -78,25 +79,31 @@ try {
     const ct = r.headers.get("content-type") ?? "";
     check(r.status === 200 && (ct.includes(type) || (path.endsWith(".ico") && /icon/.test(ct))), `${path} → ${r.status} ${ct}`);
   }
+  // The social preview is the launch kit's 1280x640 image (landing-v2), not the old generated card.
+  const og = Buffer.from(await (await fetch(BASE + "/og.png")).arrayBuffer());
+  const [ogW, ogH] = [og.readUInt32BE(16), og.readUInt32BE(20)];
+  check(ogW === 1280 && ogH === 640, `/og.png is ${ogW}x${ogH} (1280x640)`);
   const html = await (await fetch(BASE + "/")).text();
   const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>") + 7);
-  for (const needle of ["<title>ReviewStage</title>", 'rel="icon" href="/favicon.ico"', 'rel="apple-touch-icon"', 'sizes="192x192"', 'sizes="512x512"', 'property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:url"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"', 'name="twitter:image"', 'name="theme-color" media="(prefers-color-scheme: light)"', 'name="theme-color" media="(prefers-color-scheme: dark)"', 'name="description"']) {
+  const desc = head.match(/name="description" content="([^"]*)"/)?.[1] ?? "";
+  check(desc.length > 0 && desc.length <= 155, `meta description is ${desc.length} chars (<= 155)`);
+  for (const needle of ["<title>ReviewStage — AI drafts your PR review, you post it as yourself</title>", 'property="og:image:width" content="1280"', 'property="og:image:height" content="640"', 'rel="icon" href="/favicon.ico"', 'rel="apple-touch-icon"', 'sizes="192x192"', 'sizes="512x512"', 'property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:url"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"', 'name="twitter:image"', 'name="theme-color" media="(prefers-color-scheme: light)"', 'name="theme-color" media="(prefers-color-scheme: dark)"', 'name="description"']) {
     check(head.includes(needle), `head has ${needle}`);
   }
   // The legacy register is gone from the served markup: no hand-rolled button class, no legacy
   // queue-row classes (the islands are checked in the DOM below, shadow roots included).
-  const legacy = html.match(/class="[^"]*\b(btn|row|rowlink|rowsub|repochip)\b[^"]*"/g) ?? [];
+  const legacy = html.match(/class="(?:[^"]*\s)?(btn|row|rowlink|rowsub|repochip)(?:\s[^"]*)?"/g) ?? [];
   check(legacy.length === 0, `served home HTML carries no legacy .btn/.row/.repochip class (${legacy.length})`);
-  // The stage light's token stays where design §4 puts it: the hero's wrapper, in base.css only.
+  // The stage light's token stays in its two places (landing-v2 design rules): the hero and the gate band.
   const cssFiles = (await import("node:fs")).readdirSync("dist/_astro").filter((f) => f.endsWith(".css"));
   const lightUses = cssFiles.flatMap((f) => (readFileSync(join("dist/_astro", f), "utf8").match(/[^{}]*\{[^}]*var\(--light\)[^}]*\}/g) ?? []).map((m) => m.trim().slice(0, 60)));
-  const offSite = lightUses.filter((m) => !/stage-hero|stage-login|finding\.is-staged|has-staged/.test(m));
+  const offSite = lightUses.filter((m) => !/stage-hero|stage-login|finding\.is-staged|has-staged|\.gate/.test(m));
   check(offSite.length === 0, `--light appears only in the stage-light selectors (${lightUses.length} rules, ${offSite.length} elsewhere)`);
 
   const browser = await chromium.launch();
   for (const scheme of ["light", "dark"]) {
     for (const [w, label] of [[1440, "desktop"], [390, "phone"]]) {
-      const ctx = await browser.newContext({ colorScheme: scheme, viewport: { width: w, height: 900 }, deviceScaleFactor: 1, reducedMotion: "reduce" });
+      const ctx = await browser.newContext({ colorScheme: scheme, viewport: { width: w, height: w === 390 ? 844 : 900 }, deviceScaleFactor: 1, reducedMotion: "reduce" });
       await ctx.route(/https:\/\/github\.com\/([^/]+)\.png/, (route) => {
         const login = route.request().url().match(/github\.com\/([^/.]+)\.png/)?.[1] || "";
         return route.fulfill({ contentType: "image/svg+xml", body: AVATAR_SVG(login) });
@@ -115,76 +122,66 @@ try {
         } else {
           await page.screenshot({ path: join(outDir, `${name}-${scheme}-${label}.png`), fullPage: kind !== "sidebar" });
         }
-        const { sw, iw, theme, resolved } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, theme: document.documentElement.dataset.theme, resolved: document.documentElement.dataset.resolved }));
+        const { sw, iw, theme, resolved } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: Math.round(visualViewport?.width ?? innerWidth), theme: document.documentElement.dataset.theme, resolved: document.documentElement.dataset.resolved }));
         check(theme === scheme && resolved === scheme, `${name} ${label} rendered in ${scheme} (got ${theme}/${resolved})`);
-        if (w === 390) check(sw <= iw, `${name} ${scheme} phone: scrollWidth ${sw} <= ${iw}`);
+        if (w === 390) check(sw <= iw, `${name} ${scheme} phone: no sideways scroll (scrollWidth ${sw} <= visualViewport ${iw})`);
         if (kind === "home") {
-          const small = await page.evaluate(() => [...document.querySelectorAll("a, button")].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (r.height < 44 || r.width < 44) && getComputedStyle(el).visibility !== "hidden"; }).map((el) => `${el.tagName}.${el.className} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`));
-          if (w === 390) console.log(`     targets under 44px on home phone: ${small.length ? small.join(" | ") : "none"}`);
-          // The install command is the page's one conversion moment; it rendered as an empty
-          // box once already (a containment collapse), so its width is asserted, not assumed.
-          const cta = page.locator("#install [data-install] code");
+          const small = await page.evaluate(() => [...document.querySelectorAll("main a, main button, main summary")].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (Math.round(r.height) < 44 || Math.round(r.width) < 44) && getComputedStyle(el).visibility !== "hidden"; }).map((el) => `${el.tagName}.${el.className.slice?.(0, 30) ?? ""} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`));
+          if (w === 390) check(small.length === 0, `${scheme} phone: every tap target in main is at least 44px (${small.length ? small.join(" | ") : "none under"})`);
+          // The install command is the page's conversion moment and the hero's primary button; it
+          // rendered as an empty box once already (a containment collapse), so its width is asserted.
+          const cta = page.locator(".hero [data-install] code");
           const ctaText = (await cta.textContent())?.trim() ?? "";
           const ctaBox = await cta.boundingBox();
-          check(ctaText.startsWith(installCommand) && ctaBox && ctaBox.width > 100, `${scheme} ${label}: install command renders "${ctaText}" (${Math.round(ctaBox?.width ?? 0)}px wide)`);
+          check(ctaText.startsWith(installCommand) && ctaBox && ctaBox.width > 100, `${scheme} ${label}: hero command pill renders "${ctaText}" (${Math.round(ctaBox?.width ?? 0)}px wide)`);
           const mono = await page.evaluate(() => [...document.querySelectorAll("main *")].filter((el) => el.childNodes.length && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && /Mono|monospace/i.test(getComputedStyle(el).fontFamily) && !el.closest("code, pre, kbd")).map((el) => el.tagName + "." + el.className));
           check(mono.length === 0, `${scheme} ${label}: monospace only inside code (${mono.length} stray: ${mono.slice(0, 3).join(", ")})`);
 
-          // Four sections, and the page stays short enough to be read (design §9).
+          // landing-v2: the nine sections, in order, each opening with its statement.
           const words = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").trim().split(/\s+/).filter(Boolean).length);
-          check(words < 400, `${scheme} ${label}: home reads ${words} words (< 400)`);
-
-          // The hero is the app itself, not a picture of it (design §7).
-          const hero = page.locator(".stage-hero [data-stage-frame]").first();
-          await hero.waitFor({ state: "attached" });
-          const heroState = await hero.evaluate(async (el) => {
-            for (let i = 0; i < 100 && !el.shadowRoot?.querySelector(".finding"); i++) await new Promise((r) => setTimeout(r, 100));
-            const root = el.shadowRoot;
-            return { shadow: !!root, staged: root?.querySelectorAll(".finding.is-staged").length ?? 0 };
+          check(words <= 900, `${scheme} ${label}: home reads ${words} words (<= 900)`);
+          const heads = await page.evaluate(() => ["hero-title", "why-title", "how-title", "features-title", "gate-title", "compare-title", "install-title", "faq-title", "final-title"].map((id) => { const el = document.getElementById(id); return el ? `${id}:${el.textContent.trim()}` : `${id}:MISSING`; }));
+          check(!heads.some((h) => h.endsWith(":MISSING")), `${scheme} ${label}: section headings ${heads.map((h) => h.split(":")[0]).join(", ")} ${heads.some((h) => h.endsWith(":MISSING")) ? "(missing: " + heads.filter((h) => h.endsWith(":MISSING")).join(", ") + ")" : "present"}`);
+          if (scheme === "dark" && w === 1440) console.log("     " + heads.join("\n     "));
+          const shape = await page.evaluate(() => {
+            const cols = [...document.querySelectorAll("#why article")].map((a) => Math.round(a.getBoundingClientRect().height));
+            return {
+              cols,
+              steps: document.querySelectorAll("#how-it-works ol > li").length,
+              tiles: document.querySelectorAll("#features .tile").length,
+              gate: document.querySelectorAll("#gate pre").length,
+              rows: document.querySelectorAll("#compare tbody tr").length,
+              faq: document.querySelectorAll("#faq details > summary").length,
+              finalCta: document.querySelectorAll(".final [data-install]").length,
+            };
           });
-          check(heroState.shadow && heroState.staged >= 1, `${scheme} ${label}: hero island hydrated, ${heroState.staged} staged finding(s) in its shadow root`);
-
-          // The strip is keyboard-operable, five stops on Radix tabs (design §"How it works").
-          const tabs = page.locator('.strip [role="tab"]');
-          const nTabs = await tabs.count();
-          check(nTabs === 5, `${scheme} ${label}: how-it-works strip has ${nTabs} stops (5)`);
-          if (nTabs === 5) {
-            await tabs.first().focus();
-            await page.keyboard.press("ArrowRight");
-            await page.waitForTimeout(150);
-            const firstId = await tabs.first().getAttribute("id");
-            const selId = await page.locator('.strip [role="tab"][aria-selected="true"]').first().getAttribute("id");
-            check(selId !== null && selId !== firstId, `${scheme} ${label}: arrow key moves the strip selection (${firstId} -> ${selId})`);
-            // The Requested stop is the queue's real row: the app's RepoPill and UserAvatar, and
-            // none of the legacy row classes, in the island's shadow root.
-            await tabs.first().click();
-            await page.waitForTimeout(400);
-            const req = page.locator('.stage-panel[data-stop="requested"] [data-stage-frame]').first();
-            const reqState = await req.evaluate(async (el) => {
-              for (let i = 0; i < 100 && !el.shadowRoot?.querySelector('[data-testid="queue-row"]'); i++) await new Promise((r) => setTimeout(r, 100));
-              const root = el.shadowRoot;
-              return {
-                pill: root?.querySelectorAll('[data-testid="repo-pill"]').length ?? 0,
-                avatar: root?.querySelectorAll('[data-testid="user-avatar"]').length ?? 0,
-                badge: root?.querySelectorAll('[data-testid="status-badge"][data-kind="new"]').length ?? 0,
-              };
-            });
-            check(reqState.pill >= 1 && reqState.avatar >= 1 && reqState.badge >= 1, `${scheme} ${label}: Requested stop renders the queue row (${reqState.pill} repo-pill, ${reqState.avatar} user-avatar, ${reqState.badge} New badge)`);
-            const strayRows = await page.evaluate(() => {
-              const sel = ".row, .rowlink, .rowsub, .repochip, .btn";
-              let n = document.querySelectorAll(sel).length;
-              for (const host of document.querySelectorAll("[data-stage-frame]")) n += host.shadowRoot?.querySelectorAll(sel).length ?? 0;
-              return n;
-            });
-            check(strayRows === 0, `${scheme} ${label}: no .row/.repochip/.btn in the home DOM or any island (${strayRows})`);
-            const strip = page.locator("[data-how-it-works]");
-            await strip.screenshot({ path: join(outDir, `home-strip-requested-${scheme}-${label}.png`) });
-            await tabs.nth(3).click();
-            await page.waitForTimeout(400);
-            const posted = await page.locator('.stage-panel[data-stop="posted"] [data-stage-frame]').first().evaluate((el) => el.shadowRoot?.querySelectorAll('[data-testid="status-badge"][data-kind="posted"]').length ?? 0);
-            check(posted >= 1, `${scheme} ${label}: Posted stop shows the posted badge (${posted})`);
-            await strip.screenshot({ path: join(outDir, `home-strip-posted-${scheme}-${label}.png`) });
+          check(shape.cols.length === 2 && (w === 390 || shape.cols[0] === shape.cols[1]), `${scheme} ${label}: the contrast is two columns${w === 390 ? "" : " of equal height"} (${shape.cols.join(" / ")}px)`);
+          check(shape.steps === 4 && shape.tiles === 6 && shape.gate === 3 && shape.rows === 6 && shape.faq === 6 && shape.finalCta === 1, `${scheme} ${label}: 4 steps (${shape.steps}), 6 feature tiles (${shape.tiles}), 3 gate snippets (${shape.gate}), 6 compare rows (${shape.rows}), 6 FAQ disclosures (${shape.faq}), closing command (${shape.finalCta})`);
+          // A disclosure opens with no script.
+          const first = page.locator("#faq details").first();
+          await first.locator("summary").click();
+          check(await first.evaluate((d) => d.open), `${scheme} ${label}: an FAQ answer opens on click`);
+          // Videos: only the hero preloads (metadata, with a poster); under reduced motion it stays
+          // on its poster; every other recording waits for a click.
+          const vids = await page.evaluate(() => [...document.querySelectorAll("main video")].map((v) => ({ hero: v.hasAttribute("data-hero-video"), preload: v.getAttribute("preload"), poster: !!v.getAttribute("poster"), paused: v.paused, auto: v.autoplay })));
+          const hero = vids.find((v) => v.hero), rest = vids.filter((v) => !v.hero);
+          check(!!hero && hero.preload === "metadata" && hero.poster && hero.paused, `${scheme} ${label}: hero video preload=metadata with a poster, paused under reduced motion (${JSON.stringify(hero)})`);
+          check(rest.length >= 2 && rest.every((v) => v.preload === "none" && v.poster && !v.auto), `${scheme} ${label}: ${rest.length} other videos are preload=none with posters, no autoplay`);
+          // The fold on a 390x844 phone: the actions, then the product, all above the fold.
+          if (w === 390) {
+            const fold = await page.evaluate(() => { const r = document.querySelector("[data-hero-video]").getBoundingClientRect(); return { top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY) }; });
+            check(fold.bottom <= 844, `${scheme} phone: hero video sits above the fold of a 390x844 screen (${fold.top}-${fold.bottom}px)`);
           }
+          // The demo lightbox opens a native dialog and loads the recording only then.
+          const before = await page.evaluate(() => document.querySelectorAll("[data-demo-slot] video, [data-demo-slot] iframe").length);
+          await page.locator("[data-demo-open]").click();
+          const dlg = await page.evaluate(() => ({ open: document.querySelector("[data-demo-dialog]").open, src: document.querySelector("[data-demo-slot] video")?.getAttribute("src") ?? document.querySelector("[data-demo-slot] iframe")?.getAttribute("src") ?? "" }));
+          check(before === 0 && dlg.open && /reviewstage-demo\.mp4|youtube/.test(dlg.src), `${scheme} ${label}: the demo lightbox opens and only then loads ${dlg.src}`);
+          await page.keyboard.press("Escape");
+          await page.waitForTimeout(150);
+          check(await page.evaluate(() => !document.querySelector("[data-demo-dialog]").open && !document.querySelector("[data-demo-slot] video")), `${scheme} ${label}: Escape closes the lightbox and unloads the player`);
+          const strayRows = await page.evaluate(() => document.querySelectorAll(".row, .rowlink, .rowsub, .repochip, .btn").length);
+          check(strayRows === 0, `${scheme} ${label}: no .row/.repochip/.btn in the home DOM (${strayRows})`);
         }
         await page.close();
       }

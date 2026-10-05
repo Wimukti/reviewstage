@@ -1,0 +1,50 @@
+1
+00:00:04,567 --> 00:00:08,935
+One command. A real desktop app.
+
+2
+00:00:09,202 --> 00:00:11,013
+Sign in with GitHub.
+
+3
+00:00:11,063 --> 00:00:14,399
+Connect your Claude.
+
+4
+00:00:14,449 --> 00:00:18,179
+Pick your repos.
+
+5
+00:00:18,779 --> 00:00:23,661
+Review requests land in your queue.
+
+6
+00:00:24,261 --> 00:00:41,599
+Claude drafts the review
+from the real diff.
+
+7
+00:00:41,866 --> 00:00:50,522
+You pick what's worth saying.
+
+8
+00:00:50,572 --> 00:00:54,061
+Posted under your name.
+Nothing posts until you click.
+
+9
+00:00:54,561 --> 00:01:00,584
+Scan once.
+Your phone is signed in.
+
+10
+00:01:01,084 --> 00:01:07,276
+Review from anywhere.
+
+11
+00:01:07,326 --> 00:01:17,140
+Swipe to keep.
+
+12
+00:01:17,640 --> 00:01:23,190
+It learns what your team drops.

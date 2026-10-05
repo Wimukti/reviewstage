@@ -27,20 +27,20 @@ import { buildFixture, FIXTURE, PORT, PR, PR4, REPO, SECRET, USER, patchJson, se
 import { buildPersonalFixture, PERSONAL_FIXTURE, PERSONAL_ORIGIN, PERSONAL_PORT, PERSONAL_USER } from "./personal-fixture";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, "..", "..");
+export const ROOT = join(HERE, "..", "..");
 const SITE_OUT = join(ROOT, "website", "src", "assets", "demos");
 const DOCS_OUT = join(ROOT, "docs", "demos");
 const TMP = join(HERE, ".demos");
 const ORIGIN = `http://127.0.0.1:${PORT}`;
-const FFMPEG = process.env.FFMPEG || (existsSync("/opt/homebrew/bin/ffmpeg") ? "/opt/homebrew/bin/ffmpeg" : "ffmpeg");
+export const FFMPEG = process.env.FFMPEG || (existsSync("/opt/homebrew/bin/ffmpeg") ? "/opt/homebrew/bin/ffmpeg" : "ffmpeg");
 const MP4_BUDGET = 2.5 * 1024 * 1024;
 const GIF_BUDGET = 4 * 1024 * 1024;
-const slug = (repo: string) => repo.replace("/", "__");
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const slug = (repo: string) => repo.replace("/", "__");
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Pacing a viewer can follow.
-const BEAT = 600; // between actions
-const HOLD = 1500; // on a result
+export const BEAT = 600; // between actions
+export const HOLD = 1500; // on a result
 
 type Size = { width: number; height: number };
 const DESKTOP: Size = { width: 1440, height: 900 };
@@ -54,7 +54,7 @@ const PHONE_WINDOW: Size = { width: 440, height: 680 };
 /** The e2e fixture, adjusted the way a demo needs: the reviewer's Claude account connected (so
  * the run form renders, not the connect gate), dry run off (no "Dry run" chip in the status
  * line) and PR4 not yet reviewed (it is permanently in flight in the e2e fixture). */
-function demoFixture() {
+export function demoFixture() {
   buildFixture();
   const env = join(FIXTURE, ".env");
   writeFileSync(env, readFileSync(env, "utf8").replace("DRY_RUN=1", "DRY_RUN=0"));
@@ -76,7 +76,7 @@ function demoFixture() {
   ));
 }
 
-async function healthy(origin: string, ms = 30_000) {
+export async function healthy(origin: string, ms = 30_000) {
   const until = Date.now() + ms;
   while (Date.now() < until) {
     try {
@@ -88,7 +88,7 @@ async function healthy(origin: string, ms = 30_000) {
   return false;
 }
 
-async function startServer(root: string, port: number, extra: Record<string, string> = {}) {
+export async function startServer(root: string, port: number, extra: Record<string, string> = {}) {
   const child = spawn("python3", [join(ROOT, "bin", "server.py")], {
     env: {
       ...process.env,
@@ -111,7 +111,7 @@ async function startServer(root: string, port: number, extra: Record<string, str
 
 // ---- the review this script "runs" for PR4 ----------------------------------------------------
 
-const PR4_REVIEW = {
+export const PR4_REVIEW = {
   event: "COMMENT",
   summary: "Retries the vendor sync on a 502 with exponential back-off. Two things to fix before merge.",
   keyPoints: [
@@ -155,7 +155,7 @@ const PR4_REVIEW = {
   ],
 };
 
-function writeRun(status: string, review?: object) {
+export function writeRun(status: string, review?: object) {
   const d = join(FIXTURE, "state", slug(REPO), PR4, "users", USER);
   mkdirSync(d, { recursive: true });
   if (review) writeFileSync(join(d, "review.json"), JSON.stringify(review));
@@ -167,7 +167,7 @@ function writeRun(status: string, review?: object) {
 // A visible pointer: headless Chromium records no cursor, so a viewer could not see what is
 // about to be clicked. Desktop gets an arrow; the phone a translucent fingertip that shows only
 // while pressed.
-const POINTER = (mobile: boolean) => `(() => {
+export const POINTER = (mobile: boolean) => `(() => {
   const mobile = ${mobile};
   let el = null;
   const mk = () => {
@@ -198,7 +198,7 @@ const POINTER = (mobile: boolean) => `(() => {
 })();`;
 
 // GitHub avatars are fetched from github.com; the demos must not depend on the network.
-const AVATAR_SVG = (seed: string) => {
+export const AVATAR_SVG = (seed: string) => {
   let h = 0;
   for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="hsl(${h} 45% 55%)"/><circle cx="32" cy="26" r="11" fill="rgba(255,255,255,.85)"/><ellipse cx="32" cy="52" rx="18" ry="11" fill="rgba(255,255,255,.85)"/></svg>`;
@@ -208,7 +208,7 @@ const PIXEL = Buffer.from(
   "base64",
 );
 
-async function offline(ctx: BrowserContext) {
+export async function offline(ctx: BrowserContext) {
   await ctx.route(/https:\/\/github\.com\/([^/]+)\.png/, (route) => {
     const login = route.request().url().match(/github\.com\/([^/.]+)\.png/)?.[1] || "";
     return route.fulfill({ contentType: "image/svg+xml", body: AVATAR_SVG(login) });
@@ -217,7 +217,7 @@ async function offline(ctx: BrowserContext) {
 }
 
 /** Moves the pointer to the element over ~300 ms, then presses it. */
-async function click(page: Page, loc: Locator, settle = BEAT) {
+export async function click(page: Page, loc: Locator, settle = BEAT) {
   await loc.scrollIntoViewIfNeeded();
   await loc.waitFor({ state: "visible" });
   const b = (await loc.boundingBox())!;
@@ -241,7 +241,7 @@ async function click(page: Page, loc: Locator, settle = BEAT) {
 }
 
 /** A one-finger swipe across an element, slow enough to follow (touch, via the DevTools protocol). */
-async function swipe(page: Page, loc: Locator, dx: number) {
+export async function swipe(page: Page, loc: Locator, dx: number) {
   await loc.scrollIntoViewIfNeeded();
   const b = (await loc.boundingBox())!;
   const y = b.y + Math.min(40, b.height / 2);
@@ -261,7 +261,7 @@ async function swipe(page: Page, loc: Locator, dx: number) {
 }
 
 /** Scrolls by `dy` in small wheel steps so the viewer sees the page move. */
-async function scroll(page: Page, dy: number) {
+export async function scroll(page: Page, dy: number) {
   const n = 10;
   for (let i = 0; i < n; i++) {
     await page.mouse.wheel(0, dy / n);
@@ -354,13 +354,13 @@ function encode(name: string, r: { webm: string; ss: number; to: number; poster:
 
 // ---- the demos --------------------------------------------------------------------------------
 
-async function settled(page: Page) {
+export async function settled(page: Page) {
   await page.getByTestId("pr-loading").waitFor({ state: "detached", timeout: 15_000 });
   await page.locator('[data-slot="skeleton"]').first().waitFor({ state: "detached", timeout: 15_000 }).catch(() => {});
 }
 
 /** Findings arrive unticked, so the demo can show the tick. */
-async function unticked(page: Page) {
+export async function unticked(page: Page) {
   await patchJson(page, "**/api/pr?*", (body) =>
     body.review
       ? { review: { ...body.review, findings: (body.review.findings || []).map((f: object) => ({ ...f, preselect: false })) } }
@@ -368,11 +368,11 @@ async function unticked(page: Page) {
   );
 }
 
-const POSTED_BANNER = (inline: number, summary: number) =>
+export const POSTED_BANNER = (inline: number, summary: number) =>
   "<div class='banner ok'><span>✓</span><div>Posted your review as <code>" + USER + "</code> — " +
   (inline && summary ? `${inline} inline, ${summary} in the summary.` : `${inline} inline comments.`) + "</div></div>";
 
-async function stubPost(page: Page, inline: number, summary: number) {
+export async function stubPost(page: Page, inline: number, summary: number) {
   await page.route("**/api/post", (route) => route.fulfill({ json: { bannerHtml: POSTED_BANNER(inline, summary) } }));
 }
 
@@ -531,7 +531,7 @@ const wizard: Demo = {
 };
 
 // A QR code the way desktop/main.js draws it (`qrcode`, a dev dependency here at the desktop's version).
-async function qrDataUrl(url: string) {
+export async function qrDataUrl(url: string) {
   const mod = await import("qrcode");
   const QRCode = (mod.default ?? mod) as { toDataURL: (s: string, o: object) => Promise<string> };
   return QRCode.toDataURL(url, { margin: 1, width: 280, color: { dark: "#ECEEF3", light: "#0B0C10" } });
@@ -596,7 +596,10 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Run only when invoked as the script, so launch-video.ts can reuse the helpers above.
+if (process.argv[1]?.endsWith("demos.ts")) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

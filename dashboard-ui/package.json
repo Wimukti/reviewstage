@@ -12,7 +12,8 @@
     "icons": "node scripts/icons.mjs",
     "brand": "node scripts/brand.mjs",
     "stage:fixture": "node --import tsx scripts/stage-fixture.mjs",
-    "demos": "node --import tsx e2e/demos.ts"
+    "demos": "node --import tsx e2e/demos.ts",
+    "launch-video": "node --import tsx e2e/launch-video.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

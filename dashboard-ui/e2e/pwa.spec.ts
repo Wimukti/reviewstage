@@ -1,5 +1,7 @@
-import { expect, test } from "@playwright/test";
-import { PR } from "./fixture";
+import { createServer, request, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { expect, test, type Page } from "@playwright/test";
+import { PORT, PR } from "./fixture";
 
 // The PWA surface: root-scoped files with the right content types, and no horizontal overflow
 // at phone width on the three pages people actually open from a notification.
@@ -28,7 +30,9 @@ test.describe("pwa", () => {
 
     const offline = await request.get("/offline.html");
     expect(offline.headers()["content-type"]).toContain("text/html");
-    expect(await offline.text()).toContain("needs a connection to your server");
+    const html = await offline.text();
+    expect(html).toContain("Your Mac isn't reachable");
+    expect(html).toContain("Try again");
   });
 
   test("the SPA shell links the manifest and the apple touch icon", async ({ page }) => {
@@ -62,5 +66,95 @@ test.describe("pwa", () => {
         expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
       });
     }
+  });
+
+  // desktop-always-on F5: a quick tunnel whose Mac is asleep (or whose app quit) answers 530 —
+  // Cloudflare's error 1033 page. The worker treats that, and 502/503/504, on a navigation like
+  // no answer at all: the cached shell (whose /api/me then shows "Your Mac isn't reachable"),
+  // else offline.html. Playwright's request routing makes Chromium bypass service workers, so
+  // the dead tunnel here is a real one: a small proxy in front of the fixture server that can be
+  // switched to answer every request with a gateway status. Its port is its own origin, so the
+  // worker under test is the one registered through it.
+  test.describe("service worker, dead tunnel", () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+    let proxy: Server;
+    let base = "";
+    let deadStatus = 0;
+    test.beforeAll(async () => {
+      proxy = createServer((req, res) => {
+        if (deadStatus) {
+          res.writeHead(deadStatus, { "Content-Type": "text/html" });
+          res.end(`<title>error code: 1033</title><h1>Error ${deadStatus}</h1>`);
+          return;
+        }
+        const up = request({ host: "127.0.0.1", port: PORT, path: req.url, method: req.method, headers: req.headers }, (r) => {
+          res.writeHead(r.statusCode || 502, r.headers);
+          r.pipe(res);
+        });
+        up.on("error", () => { res.writeHead(502); res.end(); });
+        req.pipe(up);
+      });
+      await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
+      base = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`;
+    });
+    test.afterAll(() => new Promise<void>((r) => proxy.close(() => r())));
+    test.beforeEach(() => { deadStatus = 0; });
+
+    async function controlled(page: Page) {
+      await page.goto(`${base}/?tab=reviewed`);
+      await page.evaluate(async () => {
+        await navigator.serviceWorker.ready;
+        if (!navigator.serviceWorker.controller) {
+          await new Promise<void>((r) => navigator.serviceWorker.addEventListener("controllerchange", () => r(), { once: true }));
+        }
+      });
+      await page.reload();
+      await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
+      expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+    }
+
+    for (const status of [530, 502, 503, 504]) {
+      test(`a ${status} navigation gets the cached shell, which says the Mac isn't reachable`, async ({ page }) => {
+        await controlled(page);
+        deadStatus = status;
+        const res = await page.goto(`${base}/?tab=reviewed`);
+        expect(res?.status(), "the worker answered, not the dead tunnel").toBe(200);
+        await expect(page.getByTestId("unreachable")).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Your Mac isn't reachable" })).toBeVisible();
+        await expect(page.getByText(/1033/)).toHaveCount(0);
+        // The Mac wakes: the state's Try again brings the app back without a reload.
+        deadStatus = 0;
+        await page.getByTestId("unreachable-retry").click();
+        await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
+      });
+    }
+
+    test("with no cached shell, a 530 navigation gets offline.html, and Try again reloads", async ({ page }) => {
+      await controlled(page);
+      await page.evaluate(async () => {
+        for (const k of await caches.keys()) await (await caches.open(k)).delete("/");
+      });
+      deadStatus = 530;
+      await page.goto(`${base}/settings`);
+      await expect(page.getByTestId("offline")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Your Mac isn't reachable" })).toBeVisible();
+      await expect(page.getByText("The phone reaches ReviewStage on your Mac. Open it there — or wake the Mac — and try again.")).toBeVisible();
+      await expect(page.getByText(/open the newest link from your notifications/)).toBeVisible();
+      await expect(page.getByText(/1033/)).toHaveCount(0);
+      const { scrollWidth, innerWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
+      expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+      deadStatus = 0;
+      await page.getByRole("button", { name: "Try again" }).click();
+      await expect(page.getByTestId("settings-form")).toBeVisible();
+    });
+
+    test("a 404 navigation is passed through — only gateway answers mean the Mac is gone", async ({ page }) => {
+      await controlled(page);
+      deadStatus = 404;
+      const res = await page.goto(`${base}/settings`);
+      expect(res?.status()).toBe(404);
+      await expect(page.getByText("Error 404")).toBeVisible();
+    });
   });
 });

@@ -12,6 +12,8 @@ import {
   type SettingSource,
   type WebhooksStatus,
 } from "./api";
+import { openAtLoginBridge, updateBridge } from "./desktop";
+import { DesktopApp } from "./DesktopApp";
 import { phoneBridge } from "./phone";
 import { PhoneAccess } from "./PhoneAccess";
 import { PushDevices } from "./PushDevices";
@@ -52,11 +54,12 @@ function Source({ s }: { s: SettingSource }) {
 
 // ---- sections -----------------------------------------------------------------------------
 
-type SectionId = "phone" | "appearance" | "repositories" | "poller" | "filters" | "notifications" | "webhooks" | "devices";
+type SectionId = "phone" | "desktop" | "appearance" | "repositories" | "poller" | "filters" | "notifications" | "webhooks" | "devices";
 type Group = "This device" | "Reviewing" | "Notifications";
 const GROUPS: Group[] = ["This device", "Reviewing", "Notifications"];
 const SECTIONS: { id: SectionId; label: string; group: Group }[] = [
   { id: "phone", label: "Your phone", group: "This device" },
+  { id: "desktop", label: "Desktop app", group: "This device" },
   { id: "appearance", label: "Appearance", group: "This device" },
   { id: "repositories", label: "Repositories", group: "Reviewing" },
   { id: "poller", label: "Poller", group: "Reviewing" },
@@ -66,11 +69,13 @@ const SECTIONS: { id: SectionId; label: string; group: Group }[] = [
   { id: "devices", label: "Devices", group: "Notifications" },
 ];
 
-// Your phone is the desktop app's (personal mode with the preload's bridge). Everything else
-// exists on every install; the first section that exists is the one an unhashed URL opens.
+// Your phone is the desktop app's (personal mode with the preload's bridge), and so is Desktop
+// app (the update and open-at-login bridge, desktop-always-on). Everything else exists on every
+// install; the first section that exists is the one an unhashed URL opens.
 function sectionsFor(me: Me) {
   const desktopApp = !!me.personal && !!phoneBridge();
-  return SECTIONS.filter((s) => s.id !== "phone" || desktopApp);
+  const desktopControls = !!me.personal && (!!updateBridge() || !!openAtLoginBridge());
+  return SECTIONS.filter((s) => (s.id !== "phone" || desktopApp) && (s.id !== "desktop" || desktopControls));
 }
 
 // The section header: the title and one sentence. The card under it carries no title of its own.
@@ -743,6 +748,15 @@ export function Settings({ me }: { me: Me }) {
               The same app at phone width, signed in as you, over a secure tunnel to this computer.
             </SectionHeader>
             <PhoneAccess />
+          </>
+        );
+      case "desktop":
+        return (
+          <>
+            <SectionHeader title="Desktop app">
+              The app on this computer: which version runs, updates, and whether it starts when you log in.
+            </SectionHeader>
+            <DesktopApp />
           </>
         );
       case "appearance":

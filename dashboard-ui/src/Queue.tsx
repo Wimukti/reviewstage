@@ -3,6 +3,7 @@ import { Archive, ArchiveRestore, Check, CircleCheck, Circle, Compass, Inbox, Me
 import type { LucideIcon } from "lucide-react";
 import { api, errMessage, type Me, type QueueData, type QueueRow } from "./api";
 import { parsePrRef, prUrl } from "./pr";
+import { noteFailure } from "./reach";
 import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
 import { Link, navigate, useLocation } from "./router";
 import { runningFor, useRunning } from "./running";
@@ -226,7 +227,11 @@ export function Queue({ me }: { me: Me }) {
         setErr("");
         setData(d);
       })
-      .catch((e: unknown) => live && setErr(errMessage(e, "Couldn't load your queue.")));
+      .catch((e: unknown) => {
+        // The server is gone (a sleeping Mac behind the tunnel): the whole screen says so.
+        if (!live || noteFailure(e)) return;
+        setErr(errMessage(e, "Couldn't load your queue."));
+      });
     return () => {
       live = false;
     };

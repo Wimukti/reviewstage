@@ -18,19 +18,25 @@ export type PhoneData = {
   stopped?: string;
 };
 
-export type PhoneStatus = { enabled: boolean; url: string | null };
+export type PhoneStatus = { enabled: boolean; url: string | null; via?: "tunnel" | "tailscale" };
 type EnableResult = PhoneStatus & { warning?: string | null; error?: string; busy?: boolean };
+
+/** Tailscale as the phone's path (desktop-always-on F6): present and signed in, and whether
+ *  phone access runs over it now. */
+export type TailscaleStatus = { installed: boolean; loggedIn: boolean; url: string | null; active?: boolean; preferred?: boolean; error?: string };
 
 export type PhoneBridge = {
   enable(): Promise<EnableResult>;
   disable(): Promise<PhoneStatus & { busy?: boolean }>;
   status(): Promise<PhoneStatus>;
   onData(fn: (p: PhoneData) => void): void;
+  // Absent on a desktop app older than desktop-always-on.
+  tailscale?: { status(): Promise<TailscaleStatus>; set(on: boolean): Promise<TailscaleStatus> };
 };
 
 declare global {
   interface Window {
-    reviewstage?: { phone?: PhoneBridge };
+    reviewstage?: { phone?: PhoneBridge; update?: import("./desktop").UpdateBridge; openAtLogin?: import("./desktop").OpenAtLoginBridge };
   }
 }
 

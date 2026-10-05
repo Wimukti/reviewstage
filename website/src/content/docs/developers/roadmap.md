@@ -36,14 +36,14 @@ Priorities, not promises. Open an issue to argue for reordering.
 - **Settings page, continued.** Repositories and devices in the dashboard instead of `.env` edits (notifiers and the poller already live there).
 - **Confidence per finding.** The agent states how sure it is; the card shows it; learnings record whether confidence predicted keep rate.
 - **Reviewer handoff UI.** Explicitly pass a PR you have opened to a teammate, with your ticks and edits, instead of them starting cold.
-- **Installable PWA.** Manifest, root-scoped service worker, offline page, phone-width layout. Shipped; see [Mobile](/reviewstage/developers/mobile/).
+- **Installable PWA.** Manifest, root-scoped service worker, offline page, phone-width layout. Shipped; see [Mobile](/developers/mobile/).
 - **Public keep rate.** An opt-in badge for a repository: "N% of assistant findings were posted unchanged over the last 90 days."
 
 ## P2 — later
 
 - **GitHub App as the default auth.** OAuth Apps can only ask for classic scopes, so today's sign-in token carries `repo`. A GitHub App is the path to **org-level install and narrower permissions**: user-to-server tokens with *Pull requests: write* and *Contents: read* on exactly the repositories an org owner installed it on, revocable by that owner. The server already accepts one (`GH_OAUTH_SCOPES` empty); what remains is the install flow, the per-installation repo list replacing `REPOS`, and docs that make it the first option rather than the second.
 - **Email and push notifications** for teams that do not live in chat. Push is a `notify` backend that sends to registered devices (web push with VAPID, then FCM/APNs through the Capacitor wrapper).
-- **Capacitor apps for the App Store and Play Store.** The same React build in a native shell: native push, biometric unlock for the stored device token, `reviewstage://` deep links. See [Mobile](/reviewstage/developers/mobile/).
+- **Capacitor apps for the App Store and Play Store.** The same React build in a native shell: native push, biometric unlock for the stored device token, `reviewstage://` deep links. See [Mobile](/developers/mobile/).
 - **Other agent adapters.** The run step is a script that must produce `review.json`; adapters for other coding agents are possible if they can honour the output contract and the no-write rule.
 
 ## Not planned soon

@@ -5,8 +5,10 @@ import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import tailwindcss from "@tailwindcss/vite";
 
-const site = "https://wimukti.github.io";
-const base = "/reviewstage";
+// The site lives at its own domain (registered 10/05/26); GitHub Pages serves it at the root
+// and redirects the old reviewstage.dev path here.
+const site = "https://reviewstage.dev";
+const base = "";
 // The site renders the app's own components (design.md §7): `@app/…` is dashboard-ui/src,
 // reached by path rather than a workspace so the Docker and CI install paths stay untouched.
 const appSrc = fileURLToPath(new URL("../dashboard-ui/src", import.meta.url));

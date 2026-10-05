@@ -3,7 +3,7 @@
   "version": "0.0.0-dev",
   "description": "Stage your PR review. Post it as yourself. The desktop app — `npx reviewstage`.",
   "license": "MIT",
-  "homepage": "https://wimukti.github.io/reviewstage/",
+  "homepage": "https://reviewstage.dev/",
   "repository": { "type": "git", "url": "https://github.com/Wimukti/reviewstage.git", "directory": "desktop" },
   "bin": { "reviewstage": "./bin/reviewstage.js" },
   "main": "main.js",

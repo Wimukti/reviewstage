@@ -58,7 +58,7 @@ test.describe("login page", () => {
     await expect(page.locator(".authcard").getByText(/GH_[A-Z_]+/)).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Setting up sign-in for a team" })).toHaveAttribute(
       "href",
-      "https://wimukti.github.io/reviewstage/start/team-mode/",
+      "https://reviewstage.dev/start/team-mode/",
     );
   });
 });

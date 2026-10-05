@@ -34,7 +34,7 @@ Then your queue. The dock badge counts review requests; a notification fires whe
 
 **What if my Wi-Fi drops?** The tunnel reconnects by itself after a dropped connection or sleep, and the address stays the same for as long as the app runs. Quitting the app ends it; the next **Enable phone access** gets a new address, so scan again.
 
-**Switch GitHub account** is in the account ⋯ menu. Everything lives under `~/.reviewstage`; delete it to start over. Posting is live from the first run: the Post button is the gate. More in the [FAQ](/reviewstage/operations/faq/) and [INSTALL-DESKTOP.md](https://github.com/Wimukti/reviewstage/blob/main/docs/INSTALL-DESKTOP.md).
+**Switch GitHub account** is in the account ⋯ menu. Everything lives under `~/.reviewstage`; delete it to start over. Posting is live from the first run: the Post button is the gate. More in the [FAQ](/operations/faq/) and [INSTALL-DESKTOP.md](https://github.com/Wimukti/reviewstage/blob/main/docs/INSTALL-DESKTOP.md).
 
 ## Team (Docker Compose)
 
@@ -65,7 +65,7 @@ One PASS / WARN / FAIL line per check. Then:
 
 1. **Sign in with GitHub** — a short code at github.com/login/device, nothing to register.
 2. **Connect Claude** on the welcome checklist; reviews bill to your plan.
-3. Paste a PR URL: your [first review](/reviewstage/start/first-review/).
+3. Paste a PR URL: your [first review](/start/first-review/).
 
 `DRY_RUN=1` ships on: every button works, but nothing is written to GitHub until you set `DRY_RUN=0` and restart. Compare a few dry runs with your own reviews first.
 
@@ -74,10 +74,10 @@ docker compose --profile team up -d   # adds the poller and Slack/Discord cards
 ```
 
 <Aside type="caution" title="Read the security model first">
-ReviewStage checks out branches and runs an agent over code an external contributor may have written. Before you point it at a pull request that is not your own, read [Security](/reviewstage/security/).
+ReviewStage checks out branches and runs an agent over code an external contributor may have written. Before you point it at a pull request that is not your own, read [Security](/security/).
 </Aside>
 
-Next: [Team workflow](/reviewstage/guides/team-workflow/) for how it fits your review process, [Team mode](/reviewstage/guides/team-mode/) for the poller and many repositories, [Configuration](/reviewstage/operations/configuration/#docker-install-details) for every knob, proxies, ports and your own OAuth App.
+Next: [Team workflow](/guides/team-workflow/) for how it fits your review process, [Team mode](/guides/team-mode/) for the poller and many repositories, [Configuration](/operations/configuration/#docker-install-details) for every knob, proxies, ports and your own OAuth App.
 
 ## From source on a Linux server
 
@@ -104,7 +104,7 @@ claude                           # sign Claude Code in as that user, interactive
 curl -s localhost:8899/health    # -> ok
 ```
 
-Put a TLS-terminating reverse proxy in front (Caddy is two lines) and read [Security](/reviewstage/security/) before turning `DRY_RUN` off. The server reads `.env` once at startup: restart it after any edit.
+Put a TLS-terminating reverse proxy in front (Caddy is two lines) and read [Security](/security/) before turning `DRY_RUN` off. The server reads `.env` once at startup: restart it after any edit.
 
 The most common failure is signing Claude Code in as a different user than the one the service runs as. The credentials land in the wrong home directory and every review finishes instantly with an empty result.
 

@@ -192,7 +192,7 @@ export function RepoPill({
 }
 
 // "How it works" lives on the site (the app's copy duplicated the site's strip).
-export const HOW_URL = "https://wimukti.github.io/reviewstage/#how-it-works";
+export const HOW_URL = "https://reviewstage.dev/#how-it-works";
 
 // Page header: the title in display type; the one orientation disclosure (design §6) behind a
 // `?` Popover when a page genuinely needs it; an actions slot that wraps under the title on

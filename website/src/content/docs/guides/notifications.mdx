@@ -15,7 +15,7 @@ One notifier serves every backend: the scripts call `notify_card <kind> <payload
 
 ## Which backends fire
 
-`NOTIFY_BACKENDS` in `.env` is a comma list of `slack`, `discord`, `generic`, `none`. Leave it empty and the set is **derived from whichever URLs are configured** — an existing Slack-only install changes nothing. The admin can also switch backends live on the dashboard's **Settings** page (stored in `settings.json`, which wins over `.env`; see [Configuration → Runtime settings](/reviewstage/operations/configuration/#runtime-settings)).
+`NOTIFY_BACKENDS` in `.env` is a comma list of `slack`, `discord`, `generic`, `none`. Leave it empty and the set is **derived from whichever URLs are configured** — an existing Slack-only install changes nothing. The admin can also switch backends live on the dashboard's **Settings** page (stored in `settings.json`, which wins over `.env`; see [Configuration → Runtime settings](/operations/configuration/#runtime-settings)).
 
 A backend that fails — a dead URL, a 4xx from the provider — logs a `WARN` line in the poller or review log and nothing else. It never aborts the review that triggered it.
 
@@ -43,7 +43,7 @@ The colour bar and the header of a `review_ready` card come from the **verdict**
 
 ### From GitHub webhooks
 
-With `GITHUB_WEBHOOK_SECRET` set and a hook on the repository ([Configuration → GitHub webhooks](/reviewstage/operations/configuration/#github-webhooks)), GitHub events map onto the queue like this. Only `review_requested` produces a card; everything else changes the dashboard silently.
+With `GITHUB_WEBHOOK_SECRET` set and a hook on the repository ([Configuration → GitHub webhooks](/operations/configuration/#github-webhooks)), GitHub events map onto the queue like this. Only `review_requested` produces a card; everything else changes the dashboard silently.
 
 | GitHub event | Effect | Card |
 | --- | --- | --- |
@@ -185,7 +185,7 @@ Each reviewer is notified **once per PR** and never again for that PR: pushing n
 
 **A blackholed endpoint cannot wedge discovery.** Every card is sent under a 20-second watchdog and every `curl` in `notify.sh` carries `--connect-timeout 5 --max-time 10`. Without them a Slack endpoint that accepted a connection and never answered held the poller's own lock indefinitely, with nothing in the log to say why.
 
-The dashboard always reflects the live queue regardless of what was announced; a card is a nudge, not the source of truth. To re-announce, see [Troubleshooting](/reviewstage/operations/troubleshooting/#re-notifying-stale-cards).
+The dashboard always reflects the live queue regardless of what was announced; a card is a nudge, not the source of truth. To re-announce, see [Troubleshooting](/operations/troubleshooting/#re-notifying-stale-cards).
 
 ## Limits the platforms impose
 
@@ -199,7 +199,7 @@ Cards carry PR titles, authors and diff sizes; the review-ready card carries the
 
 ## Phone and browser notifications
 
-ReviewStage is an installable app (see [Mobile](/reviewstage/developers/mobile/)), and it can tell you a review is waiting without Slack or Discord: **web push**, delivered to each browser or phone you turn it on from. A notification carries the title (`Review requested: owner/name#123`), the PR title and the review page to open. It never runs a review and never posts anything — tapping it opens the page, and everything from there is still your click.
+ReviewStage is an installable app (see [Mobile](/developers/mobile/)), and it can tell you a review is waiting without Slack or Discord: **web push**, delivered to each browser or phone you turn it on from. A notification carries the title (`Review requested: owner/name#123`), the PR title and the review page to open. It never runs a review and never posts anything — tapping it opens the page, and everything from there is still your click.
 
 ### Turning it on, per device
 

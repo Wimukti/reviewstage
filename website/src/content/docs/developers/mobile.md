@@ -84,7 +84,7 @@ second exit within 5 minutes stops it and the menu shows phone access as disable
 tells the server the public address (`POST /api/public-url`) so notification links open on the
 phone, and resets it to loopback when you disable phone access or quit, which is also when the
 tunnel ends. The address is public while it is on; every action still needs your sign-in, as
-described in [Security](/reviewstage/security/).
+described in [Security](/security/).
 
 ## Phase 2: Capacitor wrapper for store presence and native push
 

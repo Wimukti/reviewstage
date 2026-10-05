@@ -462,7 +462,7 @@ test.describe("signed in", () => {
     await expect(page.getByRole("navigation", { name: "Main" }).getByText(/how it works/i)).toHaveCount(0);
     await page.getByRole("button", { name: "About this page" }).click();
     const how = page.getByTestId("help-menu").getByRole("link", { name: /how it works/i });
-    await expect(how).toHaveAttribute("href", "https://wimukti.github.io/reviewstage/#how-it-works");
+    await expect(how).toHaveAttribute("href", "https://reviewstage.dev/#how-it-works");
     await expect(how).toHaveAttribute("target", "_blank");
   });
 });

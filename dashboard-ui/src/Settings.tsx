@@ -673,7 +673,7 @@ export function Settings({ me }: { me: Me }) {
           default, and the badge on each row says where the value in effect comes from.
           Notification URLs stay in <code>.env</code>. Behind a GitHub webhook, polling is only a
           safety net: lower the interval or switch it off. See{" "}
-          <a href="https://wimukti.github.io/reviewstage/operations/configuration/#runtime-settings" target="_blank" rel="noopener">
+          <a href="https://reviewstage.dev/operations/configuration/#runtime-settings" target="_blank" rel="noopener">
             Runtime settings
           </a>{" "}
           in the docs.

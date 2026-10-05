@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-You get the answer to the questions the first week raises, in a paragraph each. For a problem that is not here, see [Troubleshooting](/reviewstage/operations/troubleshooting/).
+You get the answer to the questions the first week raises, in a paragraph each. For a problem that is not here, see [Troubleshooting](/operations/troubleshooting/).
 
 ## How long does the phone tunnel last?
 
@@ -25,7 +25,7 @@ Open the account ⋯ menu at the foot of the sidebar and choose **Switch GitHub 
 
 ## How do I add or remove repositories?
 
-On the desktop app, **Repositories** in the sidebar (also Settings → Repositories) lists the repositories you own, collaborate on or belong to through an organisation. Tick or untick and save; the queue filter and the badge follow at once. On a team install, repositories are `REPOS` in `.env` (restart after editing) or `REPO_ALLOW_ORG` for a whole org; see [Team mode → Many repositories](/reviewstage/guides/team-mode/#many-repositories).
+On the desktop app, **Repositories** in the sidebar (also Settings → Repositories) lists the repositories you own, collaborate on or belong to through an organisation. Tick or untick and save; the queue filter and the badge follow at once. On a team install, repositories are `REPOS` in `.env` (restart after editing) or `REPO_ALLOW_ORG` for a whole org; see [Team mode → Many repositories](/guides/team-mode/#many-repositories).
 
 ## Is the dry run on?
 

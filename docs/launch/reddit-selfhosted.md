@@ -24,7 +24,7 @@ Install:
 Stack: Python standard library + bash + `gh` on the server, no database (state is files), React
 on the front. MIT.
 
-Docs: https://wimukti.github.io/reviewstage/ · Security model, worth reading before pointing it
-at anyone else's PR: https://wimukti.github.io/reviewstage/security/
+Docs: https://reviewstage.dev/ · Security model, worth reading before pointing it
+at anyone else's PR: https://reviewstage.dev/security/
 
 Demo (90 s): <DEMO_LINK>

@@ -7,7 +7,7 @@ sidebar:
 
 import Shot from "../../../components/marketing/Shot.astro";
 
-This is the reference for the PR page. For the guided walk-through, see [Your first review](/reviewstage/start/first-review/).
+This is the reference for the PR page. For the guided walk-through, see [Your first review](/start/first-review/).
 
 <Shot name="hero" alt="The PR page for acme/widgets #38849: the agent’s assessment — “1 thing to fix before merge” with three bullets — above two staged finding cards, each with a ticked checkbox, a severity word, its file and line, and a one-line why-it-matters; the commit bar at the foot reads “2 staged” with a single Post selected to GitHub button." label="pr · 2 staged · COMMENT review" loading="eager" />
 
@@ -64,11 +64,11 @@ Each finding is a card:
 - **Body** — editable, with a markdown preview. GitHub-flavoured: backticked symbols, fenced code, and optionally a **suggestion** (an exact one-line replacement that becomes a ```` ```suggestion ```` block the author can apply in one click).
 - **Explain simply** — rewrites the finding in plain words with how to verify it. One short call on your own account, cached per finding content.
 
-Editing a finding keeps the original alongside it. On post, each original is scored *kept*, *edited* or *dropped* for the [learnings loop](/reviewstage/guides/skills-and-learnings/).
+Editing a finding keeps the original alongside it. On post, each original is scored *kept*, *edited* or *dropped* for the [learnings loop](/guides/skills-and-learnings/).
 
 ## Findings outside the diff
 
-A review is not confined to the diff. The [repository profile](/reviewstage/guides/skills-and-learnings/) tells it to trace the callers, the consumers and the tests of whatever changed, so the most valuable finding on a two-line PR is frequently a test that now asserts the wrong thing, or a screen that still passes the old shape. Those lines are not in the diff, and **GitHub only accepts an inline review comment on a line the PR changed** — there is nowhere to hang it.
+A review is not confined to the diff. The [repository profile](/guides/skills-and-learnings/) tells it to trace the callers, the consumers and the tests of whatever changed, so the most valuable finding on a two-line PR is frequently a test that now asserts the wrong thing, or a screen that still passes the old shape. Those lines are not in the diff, and **GitHub only accepts an inline review comment on a line the PR changed** — there is nowhere to hang it.
 
 So they go into the review body, in a `## Findings outside the diff` section: expanded, blocker first, each heading a link to the exact line on the commit the review ran against. Nothing is lost and nothing is hidden — a long tail of more than three nits or questions is the only thing that collapses.
 

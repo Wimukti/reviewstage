@@ -40,7 +40,7 @@ The team default is a file, edited in the browser. Guard rails:
 
 - It **cannot be blanked**. Saving an empty skill is refused.
 - **Restore built-in** writes the shipped skill back, and requires a typed confirmation. It used to *delete* `_global.md` instead, so runs silently fell back to a different document, the editor showed nothing, and the next container start re-seeded the file anyway.
-- Every save commits to a small git repository on the server (`ROOT/skills`), with the editor's login as the commit author and a summary as the message; the **Revision history** panel reads that log. The save never fails on git — but the commit's exit code is checked, and a failure is **reported in the save banner and the server log** rather than swallowed. It used to be a silent no-op: a global `commit.gpgsign=true` on the host was enough to leave every edit uncommitted while the UI just hid the panel. Signing is now disabled inside this repository, and each commit names only the paths that edit touched, so two people saving at the same moment are two commits by two authors. `ROOT/skills` is one of the directories that must be in your backup ([Operations](/reviewstage/operations/troubleshooting/#backup-and-restore)).
+- Every save commits to a small git repository on the server (`ROOT/skills`), with the editor's login as the commit author and a summary as the message; the **Revision history** panel reads that log. The save never fails on git — but the commit's exit code is checked, and a failure is **reported in the save banner and the server log** rather than swallowed. It used to be a silent no-op: a global `commit.gpgsign=true` on the host was enough to leave every edit uncommitted while the UI just hid the panel. Signing is now disabled inside this repository, and each commit names only the paths that edit touched, so two people saving at the same moment are two commits by two authors. `ROOT/skills` is one of the directories that must be in your backup ([Operations](/operations/troubleshooting/#backup-and-restore)).
 
 ### Quick-add a rule
 
@@ -53,7 +53,7 @@ Each review records which skill ran it. On post, each finding is scored kept / e
 Decisions made while `DRY_RUN=1` are excluded from this rate, as they are from every rate —
 nothing reached GitHub — while still feeding the prompt block and the rule suggestions below.
 
-This is **the same keep rate the Insights page shows**, on a per-skill population: `(kept + edited) ÷ (kept + edited + dropped)`. A finding worth rewording was worth raising. The stricter measure — kept unchanged — is a separate number under a separate name, `verbatimRate`, so the two can no longer be quoted as if they were one. See [Insights](/reviewstage/guides/insights/#keep-rate) for the full definition.
+This is **the same keep rate the Insights page shows**, on a per-skill population: `(kept + edited) ÷ (kept + edited + dropped)`. A finding worth rewording was worth raising. The stricter measure — kept unchanged — is a separate number under a separate name, `verbatimRate`, so the two can no longer be quoted as if they were one. See [Insights](/guides/insights/#keep-rate) for the full definition.
 
 Both surfaces read the never-truncated tally in `learnings_totals.json`, not the capped detail log, so a skill's history does not evaporate as old rows fall off.
 
@@ -61,7 +61,7 @@ Below **20** scored decisions no rate is shown at all, on either page — one ke
 
 ### Repository profile
 
-Alongside the per-repository skill, the Skills page holds a **repository profile**: the paths where a mistake hurts most, the checks a reviewer must perform when a PR touches one, the repository's risk paths and its rules. It is built once from deterministic signals plus one Sonnet call, validated against the tree, and editable in the same markdown editor. Standard and Deep reviews that touch a profiled path are told to walk it explicitly. See [Repository profile](/reviewstage/guides/repo-profile/).
+Alongside the per-repository skill, the Skills page holds a **repository profile**: the paths where a mistake hurts most, the checks a reviewer must perform when a PR touches one, the repository's risk paths and its rules. It is built once from deterministic signals plus one Sonnet call, validated against the tree, and editable in the same markdown editor. Standard and Deep reviews that touch a profiled path are told to walk it explicitly. See [Repository profile](/guides/repo-profile/).
 
 ## Learnings
 
@@ -75,7 +75,7 @@ On every post, each original finding is recorded as one of:
 
 **It is recorded once, after the post actually reached GitHub.** The outcomes used to be written before the POST, so a click with nothing ticked logged a full set of drops and three retries through an outage logged every finding four times. The call now happens on the path that succeeded, keyed by the run, and a repeat of the same run **replaces** its rows instead of appending another set. Four identical retries leave one set of decisions; a genuinely new review of a new commit leaves two.
 
-**A dry run is recorded, and flagged.** With the shipped `DRY_RUN=1` the post never reaches GitHub, but unticking a finding is still the reviewer's real judgement about whether it was worth saying. Those rows are written with a `dry` flag: they feed the prompt block and the rule suggestions exactly like any other row, and they are kept out of **every published rate and total** — the keep rate, the verbatim rate, the per-skill scores, the outcome counts and the per-day series. They are counted on their own instead, as `dryDecisions`, and both pages say so: the Learnings page adds a **Made in dry run** tile, a note naming `DRY_RUN=1`, and a **dry run** pill on each affected row, and [Insights](/reviewstage/guides/insights/) carries the same explanation above its tiles so a pilot does not read as an install where nobody decided anything. A pilot run entirely on the default therefore shows no keep rate at all, rather than one computed from reviews that were never posted.
+**A dry run is recorded, and flagged.** With the shipped `DRY_RUN=1` the post never reaches GitHub, but unticking a finding is still the reviewer's real judgement about whether it was worth saying. Those rows are written with a `dry` flag: they feed the prompt block and the rule suggestions exactly like any other row, and they are kept out of **every published rate and total** — the keep rate, the verbatim rate, the per-skill scores, the outcome counts and the per-day series. They are counted on their own instead, as `dryDecisions`, and both pages say so: the Learnings page adds a **Made in dry run** tile, a note naming `DRY_RUN=1`, and a **dry run** pill on each affected row, and [Insights](/guides/insights/) carries the same explanation above its tiles so a pilot does not read as an install where nobody decided anything. A pilot run entirely on the default therefore shows no keep rate at all, rather than one computed from reviews that were never posted.
 
 A short gist of each is appended to **one learnings log for the whole install** — `ROOT/learnings.jsonl`, not a file per repository. Each row records the repository it came from, and that log is capped at the **most recent 300 rows** across every repository.
 
@@ -94,7 +94,7 @@ Repetition is slow, and it only ever learns from rejection. A reviewer reading a
 3. **Reading it.** The drafted sentence lands in a box you can edit, above the name of the exact skill it will be written to. Nothing has been written yet. **Redraft** asks again.
 4. **Adding it.** **Add this rule** goes through the same quick-add path as a typed rule and an accepted suggestion: a bullet in `## Team rules`, committed to the skills repository with you as the author. The same targeting applies — the repository's own team default when it has one, otherwise the shared team default, and never a new per-repository override created from a single rule.
 
-The promotion is recorded against the same vocabulary-keyed signature the clustering engine uses, which is the point of reusing it: a complaint you have taught is not offered back to you later as a fresh suggestion, and the card says **Already a rule** instead of offering the button again. It counts among the promoted rules on [Insights](/reviewstage/guides/insights/) like any other.
+The promotion is recorded against the same vocabulary-keyed signature the clustering engine uses, which is the point of reusing it: a complaint you have taught is not offered back to you later as a fresh suggestion, and the card says **Already a rule** instead of offering the button again. It counts among the promoted rules on [Insights](/guides/insights/) like any other.
 
 ### From a repeated rejection to a proposed rule
 
@@ -111,7 +111,7 @@ Drafting no longer happens on page load. Opening the Skills page used to spend u
 
 **Nothing is ever written to a skill without a click.** The model drafts; a person decides.
 
-Once a cluster is promoted, its rows leave the rolling prompt block — the rule carries them now, and the window is spent on newer signal. A promotion records the **row ids** it was made over, so the answer does not depend on re-clustering the log again later; the outcome is part of a cluster's identity, so a dropped-row cluster and a reworded-row cluster can no longer be merged into a third that matches neither. The block says so in its preamble. The **Learnings** page lists each cluster as a *rolling preference* or *promoted to a rule*, and [Insights](/reviewstage/guides/insights/) counts the rules promoted from evidence, so you can watch the memory harden instead of guessing.
+Once a cluster is promoted, its rows leave the rolling prompt block — the rule carries them now, and the window is spent on newer signal. A promotion records the **row ids** it was made over, so the answer does not depend on re-clustering the log again later; the outcome is part of a cluster's identity, so a dropped-row cluster and a reworded-row cluster can no longer be merged into a third that matches neither. The block says so in its preamble. The **Learnings** page lists each cluster as a *rolling preference* or *promoted to a rule*, and [Insights](/guides/insights/) counts the rules promoted from evidence, so you can watch the memory harden instead of guessing.
 
 ## Agreement across reviewers
 

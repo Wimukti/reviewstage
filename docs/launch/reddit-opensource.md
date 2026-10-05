@@ -18,4 +18,4 @@ Where I would love help: Windows support (the job scripts are bash), a GitHub Ap
 and reviewers telling me which findings they keep dropping. Good first issues are tagged:
 <ISSUE_LINK>
 
-Repo: https://github.com/Wimukti/reviewstage · Docs: https://wimukti.github.io/reviewstage/
+Repo: https://github.com/Wimukti/reviewstage · Docs: https://reviewstage.dev/

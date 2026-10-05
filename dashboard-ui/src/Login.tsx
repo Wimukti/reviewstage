@@ -17,7 +17,7 @@ const NEW_CLASSIC_TOKEN =
   "https://github.com/settings/tokens/new?" +
   new URLSearchParams({ scopes: "repo", description: "ReviewStage — PR reviews" }).toString();
 
-const TEAM_DOCS = "https://wimukti.github.io/reviewstage/start/team-mode/";
+const TEAM_DOCS = "https://reviewstage.dev/start/team-mode/";
 
 function query() {
   try {

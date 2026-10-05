@@ -67,5 +67,5 @@ add `DRY_RUN=1` to `.env` and relaunch.
   window; the server's output from the last launch is in `~/.reviewstage/server.log`.
 
 Full documentation, the security model and the team install (one server, every reviewer as
-themselves) are at <https://wimukti.github.io/reviewstage/>. Source and issues:
+themselves) are at <https://reviewstage.dev/>. Source and issues:
 <https://github.com/Wimukti/reviewstage>. MIT.

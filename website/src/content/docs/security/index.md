@@ -47,7 +47,7 @@ Rotating `RS_SECRET` invalidates every session, every signed link and every stor
 | **Sign in with GitHub — redirect** (an OAuth App you register: `GH_CLIENT_ID`, `GH_CLIENT_SECRET`) | Teams that want one click with no code, or their own app identity on the consent screen. Preferred over the device flow when configured. | GitHub's user token for the app, encrypted like a PAT, refreshed server-side before it expires when *Expire user access tokens* is on. |
 | **Personal access token** — behind *Use a personal access token instead*, or the only form when both GitHub flows are off | Air-gapped or policy-restricted organisations; an org that has not yet approved the app | The PAT, encrypted. |
 
-The stored token is the working token in every case: posting, approving and reading review state all use it, and a GitHub-sign-in user never needs a PAT. Set-up steps are in [Install → GitHub sign-in](/reviewstage/operations/configuration/#github-sign-in).
+The stored token is the working token in every case: posting, approving and reading review state all use it, and a GitHub-sign-in user never needs a PAT. Set-up steps are in [Install → GitHub sign-in](/operations/configuration/#github-sign-in).
 
 **What the device flow trusts, plainly.** The client ID (`Ov23liHjtjxcPNwXC6Y5`) is **public by design**: GitHub's device flow has no client secret and no callback URL, so there is nothing to leak. The token is issued by GitHub **directly to your server** — the browser only ever sees the short code, and the ReviewStage project (or whoever owns the shared app) **never sees the token** and has no server in the path. What the shared identity does mean is that GitHub's consent screen names "ReviewStage" rather than your organisation, and that the OAuth App's owner could delete the app (which would revoke tokens issued under it — everyone would sign in again, through the PAT form or your own app via `GH_DEVICE_CLIENT_ID`). Polling is server-side and rate-limited per session, and pending sign-ins are capped and purged.
 
@@ -55,7 +55,7 @@ The stored token is the working token in every case: posting, approving and read
 
 ## Device tokens
 
-A device token is what a phone, the CLI or a second browser holds instead of the session cookie ([Mobile](/reviewstage/developers/mobile/) has the flow). It is minted from a signed-in **web** session only — a bearer cannot mint another bearer — shown once, and stored as a SHA-256 hash.
+A device token is what a phone, the CLI or a second browser holds instead of the session cookie ([Mobile](/developers/mobile/) has the flow). It is minted from a signed-in **web** session only — a bearer cannot mint another bearer — shown once, and stored as a SHA-256 hash.
 
 - **Threat.** A stolen device token is exactly as powerful as a stolen session cookie: it can read the queue and reviews, and post and approve **as that user**. No more: it can never read the person's GitHub token or Claude token (no endpoint returns them), cannot create another device token, and `DRY_RUN` applies to it.
 - **Revocation.** Per device from Settings → Devices, or every device at once with *Sign out everywhere*. Revoking deletes the hash and the next call gets `401`. Removing a user from the users file revokes all of theirs. Signing out on the web clears only the cookie.

@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://github.com/Wimukti/reviewstage/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Wimukti/reviewstage/ci.yml?branch=main&label=CI"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <a href="https://wimukti.github.io/reviewstage/"><img alt="GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f"></a>
+  <a href="https://reviewstage.dev/"><img alt="GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f"></a>
 </p>
 
 <p align="center">
@@ -13,11 +13,11 @@
 <p align="center"><strong>Stage your PR review. Post it as yourself.</strong></p>
 
 <p align="center">
-  <a href="https://wimukti.github.io/reviewstage/">Website</a> ·
-  <a href="https://wimukti.github.io/reviewstage/start/">Docs</a> ·
-  <a href="https://wimukti.github.io/reviewstage/start/install/">Install</a> ·
-  <a href="https://wimukti.github.io/reviewstage/developers/contributing/">Contributing</a> ·
-  <a href="https://wimukti.github.io/reviewstage/security/">Security</a>
+  <a href="https://reviewstage.dev/">Website</a> ·
+  <a href="https://reviewstage.dev/start/">Docs</a> ·
+  <a href="https://reviewstage.dev/start/install/">Install</a> ·
+  <a href="https://reviewstage.dev/developers/contributing/">Contributing</a> ·
+  <a href="https://reviewstage.dev/security/">Security</a>
 </p>
 
 <picture>
@@ -55,7 +55,7 @@ plan, and posting is live from the first run — the Post button is the gate.
 - **Repositories** in the sidebar adds or removes watched repositories any time; **Switch
   GitHub account** is in the account ⋯ menu.
 
-Details: [docs/INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) · [FAQ](https://wimukti.github.io/reviewstage/operations/faq/).
+Details: [docs/INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) · [FAQ](https://reviewstage.dev/operations/faq/).
 
 ### For a team: Docker Compose
 
@@ -79,10 +79,10 @@ on the data volume (`MIN_FREE_DISK_MB`); a job refuses to start below it rather 
 an empty review.
 
 Before you point it at anyone else's pull request, read the
-[security model](https://wimukti.github.io/reviewstage/security/): what is stored, what each
+[security model](https://reviewstage.dev/security/): what is stored, what each
 token can do, and what is deliberately not defended against.
 
-Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the box: GitHub's device flow with a shared public client ID — enter a short code at github.com/login/device, nothing to register; a fine-grained token also works), connect your Claude account, and paste a PR URL. Teams that want one-click redirect sign-in under their own app identity can still register an OAuth App (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`). `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://wimukti.github.io/reviewstage/start/first-review/).
+Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the box: GitHub's device flow with a shared public client ID — enter a short code at github.com/login/device, nothing to register; a fine-grained token also works), connect your Claude account, and paste a PR URL. Teams that want one-click redirect sign-in under their own app identity can still register an OAuth App (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`). `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://reviewstage.dev/start/first-review/).
 
 ## Why not an auto-review bot?
 
@@ -95,7 +95,7 @@ Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the 
 ## Highlights
 
 - **A staging area, not a comment stream.** Tick and untick findings, edit inline with a preview, attach GitHub suggestion blocks, ask for a plain-words explanation with how to verify. Re-run at another effort or focus; every earlier run is kept.
-- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from — and the review agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before/after count of the PR's reviews, comments and threads that fails the run if anything landed. A prompt-injected write attempt is a failed run, not a comment under your name. [What that does not cover](https://wimukti.github.io/reviewstage/security/#prompt-injection-from-hostile-diffs).
+- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from — and the review agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before/after count of the PR's reviews, comments and threads that fails the run if anything landed. A prompt-injected write attempt is a failed run, not a comment under your name. [What that does not cover](https://reviewstage.dev/security/#prompt-injection-from-hostile-diffs).
 - **Effort, focus and model per run.** Quick, Standard or Deep (auto-suggested from the diff), a free-text focus note, and your plan's default model or Opus, Sonnet or Haiku. Tokens and model are shown per run.
 - **Profiles your repo once and makes every review walk its critical paths.** Deterministic signals (tree, churn, in-degree, CODEOWNERS, CI) plus one Sonnet call name the paths where a mistake hurts most, and every generated path is checked against the tree before it is kept. Standard and Deep reviews that touch one are told to verify callers, contracts, migrations and tests, and findings on it carry a badge. Editable in the dashboard; optional automatic re-profile when the tree changes.
 - **It learns what your team drops — and hardens it into rules.** Kept, reworded and dropped findings feed the next review of the repository, recorded once after the post actually reaches GitHub and keyed so a retry replaces rather than doubles. Drop the same complaint three times across different PRs and ReviewStage drafts it as a proposed team rule, with the evidence attached, for you to accept or dismiss with one click — nothing reaches a skill on its own. Skills are scored by how often their findings survive a human; the team default is versioned in a git repository on your server, with a revision history; add a rule in plain words.
@@ -125,17 +125,17 @@ Same gate at every size: nothing reaches GitHub without a signed-in person click
 docker compose --profile team up -d
 ```
 
-Adds the review-request poller and notification cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Cards go to Slack (incoming webhook or bot token with threaded replies), Discord, or any JSON webhook; the poller's interval and on/off switch live in the dashboard's Settings page. How it fits a team's existing review process — CODEOWNERS, branch protection, what to tell the team — is [Team workflow](https://wimukti.github.io/reviewstage/guides/team-workflow/); the reference is [Team mode](https://wimukti.github.io/reviewstage/guides/team-mode/).
+Adds the review-request poller and notification cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Cards go to Slack (incoming webhook or bot token with threaded replies), Discord, or any JSON webhook; the poller's interval and on/off switch live in the dashboard's Settings page. How it fits a team's existing review process — CODEOWNERS, branch protection, what to tell the team — is [Team workflow](https://reviewstage.dev/guides/team-workflow/); the reference is [Team mode](https://reviewstage.dev/guides/team-mode/).
 
 ## Documentation
 
-- [What you get](https://wimukti.github.io/reviewstage/start/) — the one-minute model
-- [Install](https://wimukti.github.io/reviewstage/start/install/) — `npx reviewstage` on a laptop; Docker Compose or from source for a team
-- [Your first review](https://wimukti.github.io/reviewstage/start/first-review/) · [Team workflow](https://wimukti.github.io/reviewstage/guides/team-workflow/) — a numbered walk, and how it fits your team's process
-- [Reviewing a PR](https://wimukti.github.io/reviewstage/guides/reviewing/) · [Skills and learnings](https://wimukti.github.io/reviewstage/guides/skills-and-learnings/) · [QA guides](https://wimukti.github.io/reviewstage/guides/qa-guide/) · [Notifications](https://wimukti.github.io/reviewstage/guides/notifications/) · [Insights](https://wimukti.github.io/reviewstage/guides/insights/)
-- [Security model](https://wimukti.github.io/reviewstage/security/) — what is stored, token permissions, what is not defended against
-- [Configuration](https://wimukti.github.io/reviewstage/operations/configuration/) · [FAQ](https://wimukti.github.io/reviewstage/operations/faq/) · [Troubleshooting](https://wimukti.github.io/reviewstage/operations/troubleshooting/)
-- [Architecture](https://wimukti.github.io/reviewstage/developers/architecture/) · [Contributing](https://wimukti.github.io/reviewstage/developers/contributing/) · [Roadmap](https://wimukti.github.io/reviewstage/developers/roadmap/)
+- [What you get](https://reviewstage.dev/start/) — the one-minute model
+- [Install](https://reviewstage.dev/start/install/) — `npx reviewstage` on a laptop; Docker Compose or from source for a team
+- [Your first review](https://reviewstage.dev/start/first-review/) · [Team workflow](https://reviewstage.dev/guides/team-workflow/) — a numbered walk, and how it fits your team's process
+- [Reviewing a PR](https://reviewstage.dev/guides/reviewing/) · [Skills and learnings](https://reviewstage.dev/guides/skills-and-learnings/) · [QA guides](https://reviewstage.dev/guides/qa-guide/) · [Notifications](https://reviewstage.dev/guides/notifications/) · [Insights](https://reviewstage.dev/guides/insights/)
+- [Security model](https://reviewstage.dev/security/) — what is stored, token permissions, what is not defended against
+- [Configuration](https://reviewstage.dev/operations/configuration/) · [FAQ](https://reviewstage.dev/operations/faq/) · [Troubleshooting](https://reviewstage.dev/operations/troubleshooting/)
+- [Architecture](https://reviewstage.dev/developers/architecture/) · [Contributing](https://reviewstage.dev/developers/contributing/) · [Roadmap](https://reviewstage.dev/developers/roadmap/)
 
 The documents under [`docs/`](docs/) are the canonical prose the site is built from: [INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) (`npx reviewstage`), [INSTALL-DOCKER.md](docs/INSTALL-DOCKER.md), [SETUP.md](docs/SETUP.md) (from source), [OPERATIONS.md](docs/OPERATIONS.md), [SECURITY.md](docs/SECURITY.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [MOBILE.md](docs/MOBILE.md).
 
@@ -159,13 +159,13 @@ cd website && pnpm install && pnpm build && pnpm check
 cd desktop && pnpm install && node scripts/prepack.mjs && pnpm test
 ```
 
-To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently into `~/.reviewstage/` as the `reviewstage.service` systemd unit; see [Install → From source](https://wimukti.github.io/reviewstage/start/install/#from-source-on-a-linux-server).
+To run the server outside Docker on a Linux box, `bin/bootstrap.sh` installs the pieces idempotently into `~/.reviewstage/` as the `reviewstage.service` systemd unit; see [Install → From source](https://reviewstage.dev/start/install/#from-source-on-a-linux-server).
 
 ## Contributing, security, and license
 
-Contributions are welcome; read [Contributing](https://wimukti.github.io/reviewstage/developers/contributing/) first. The one rule that is not negotiable: nothing may add a GitHub write path to the review step or post under an identity other than the signed-in user's.
+Contributions are welcome; read [Contributing](https://reviewstage.dev/developers/contributing/) first. The one rule that is not negotiable: nothing may add a GitHub write path to the review step or post under an identity other than the signed-in user's.
 
-For a security problem, use GitHub's private vulnerability reporting on this repository rather than a public issue. The threat model, including what is deliberately not defended against, is in [Security](https://wimukti.github.io/reviewstage/security/).
+For a security problem, use GitHub's private vulnerability reporting on this repository rather than a public issue. The threat model, including what is deliberately not defended against, is in [Security](https://reviewstage.dev/security/).
 
 MIT licensed. See [LICENSE](LICENSE).
 

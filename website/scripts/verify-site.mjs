@@ -14,7 +14,7 @@ import { chromium } from "@playwright/test";
 
 const outDir = resolve(process.argv[2] ?? "../openspec/changes/rebuild-on-a-system/after/s4");
 mkdirSync(outDir, { recursive: true });
-const PORT = Number(process.env.RS_SITE_PORT || 4877), BASE = `http://127.0.0.1:${PORT}/reviewstage`;
+const PORT = Number(process.env.RS_SITE_PORT || 4877), BASE = `http://127.0.0.1:${PORT}`;
 const PERF_MIN = Number(process.env.RS_SITE_PERF_MIN || 90);
 // name → [path, kind]; "docs-sidebar" is the docs shell itself — on a phone that is the drawer.
 const pages = {
@@ -80,7 +80,7 @@ try {
   }
   const html = await (await fetch(BASE + "/")).text();
   const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>") + 7);
-  for (const needle of ["<title>ReviewStage</title>", 'rel="icon" href="/reviewstage/favicon.ico"', 'rel="apple-touch-icon"', 'sizes="192x192"', 'sizes="512x512"', 'property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:url"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"', 'name="twitter:image"', 'name="theme-color" media="(prefers-color-scheme: light)"', 'name="theme-color" media="(prefers-color-scheme: dark)"', 'name="description"']) {
+  for (const needle of ["<title>ReviewStage</title>", 'rel="icon" href="/favicon.ico"', 'rel="apple-touch-icon"', 'sizes="192x192"', 'sizes="512x512"', 'property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:url"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"', 'name="twitter:image"', 'name="theme-color" media="(prefers-color-scheme: light)"', 'name="theme-color" media="(prefers-color-scheme: dark)"', 'name="description"']) {
     check(head.includes(needle), `head has ${needle}`);
   }
   // The legacy register is gone from the served markup: no hand-rolled button class, no legacy

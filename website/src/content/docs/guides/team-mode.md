@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-This is the reference for a shared server. For how ReviewStage fits the review process your team already has, read [Team workflow](/reviewstage/guides/team-workflow/) first.
+This is the reference for a shared server. For how ReviewStage fits the review process your team already has, read [Team workflow](/guides/team-workflow/) first.
 
 One server serves the whole team, and one install reviews many repositories. Each person signs in once; from then on their queue, their runs, their posts and their approvals are theirs.
 
@@ -31,7 +31,7 @@ An existing single-repository install is migrated on the first start: the clone 
 
 ## What each person does
 
-1. Open the server's URL and sign in with their own fine-grained GitHub token (or **Sign in with GitHub**, which works out of the box; see [Configuration](/reviewstage/operations/configuration/#github-sign-in)).
+1. Open the server's URL and sign in with their own fine-grained GitHub token (or **Sign in with GitHub**, which works out of the box; see [Configuration](/operations/configuration/#github-sign-in)).
 2. On the welcome checklist, paste their **Slack member ID** (or Discord user ID) so cards mention them, and **Connect Claude** so their reviews bill to their own plan. Both live in *Integrations* and can be done later.
 
 That is it. The next review request pings them within three minutes.
@@ -49,11 +49,11 @@ Nothing can post or approve under a name other than the signed-in user's.
 
 ## Independent reviews
 
-Two reviewers on one PR get **independent runs**, each in its own git worktree, so they never collide. The run form tells you who already reviewed the current commit and with what configuration. Once both exist, findings raised by more than one reviewer are marked **confirmed**, weighted by independence: two runs with different skill, model or effort count; the same configuration twice does not. See [Insights](/reviewstage/guides/insights/).
+Two reviewers on one PR get **independent runs**, each in its own git worktree, so they never collide. The run form tells you who already reviewed the current commit and with what configuration. Once both exist, findings raised by more than one reviewer are marked **confirmed**, weighted by independence: two runs with different skill, model or effort count; the same configuration twice does not. See [Insights](/guides/insights/).
 
 ## Notifications
 
-Slack via an incoming webhook (simplest) or a bot token (threads the "review ready" reply under the request card), Discord via a channel webhook, or any JSON endpoint via a signed generic webhook. Details in [Notifications](/reviewstage/guides/notifications/).
+Slack via an incoming webhook (simplest) or a bot token (threads the "review ready" reply under the request card), Discord via a channel webhook, or any JSON endpoint via a signed generic webhook. Details in [Notifications](/guides/notifications/).
 
 Cards carry PR titles, authors and diff sizes, and the review-ready card carries the agent's summary, which can quote code. Point them at a **private channel** containing only people who can already read the repository.
 
@@ -61,7 +61,7 @@ Cards carry PR titles, authors and diff sizes, and the review-ready card carries
 
 Two ways the queue learns about a review request:
 
-- **GitHub webhooks** (recommended for teams): set `GITHUB_WEBHOOK_SECRET` and add a webhook on the repository or the organization pointing at `<PUBLIC_URL>/webhooks/github`. The card goes out within a second of the request; a push flags the review stale at once; a closed PR leaves the queue at once. GitHub must be able to reach that one path — see [Configuration](/reviewstage/operations/configuration/#github-webhooks) and the proxy notes in `deploy/README.md`.
+- **GitHub webhooks** (recommended for teams): set `GITHUB_WEBHOOK_SECRET` and add a webhook on the repository or the organization pointing at `<PUBLIC_URL>/webhooks/github`. The card goes out within a second of the request; a push flags the review stale at once; a closed PR leaves the queue at once. GitHub must be able to reach that one path — see [Configuration](/operations/configuration/#github-webhooks) and the proxy notes in `deploy/README.md`.
 - **Polling** (the default, and the right choice for firewalled installs): `pr-watch.sh` searches GitHub every few minutes with the service token. Nothing inbound is needed, so it works on a laptop, behind a corporate proxy or inside a tailnet with no public hostname.
 
 With webhooks on, keep the poller running: it is the safety net for a missed delivery and it says so in its log (`webhooks active; poll is a safety net`). Settings → Webhooks shows which mode is in effect, and once webhooks are active you can lower the poll interval from the Poller card.
@@ -76,7 +76,7 @@ With webhooks on, keep the poller running: it is the safety net for a missed del
 | Approved | Approved by **you** |
 | PR page | The shared PR; your own tick/edit state and actions |
 
-Any signed-in user can open any PR page on the server. That is by design (everyone signed in already has repo read access) and is listed under [what is not defended against](/reviewstage/security/#what-is-not-defended-against).
+Any signed-in user can open any PR page on the server. That is by design (everyone signed in already has repo read access) and is listed under [what is not defended against](/security/#what-is-not-defended-against).
 
 ## Owner notes
 

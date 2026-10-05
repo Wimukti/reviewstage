@@ -65,7 +65,7 @@ const text = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"
   <text x="208" y="234" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="44" font-weight="600" fill="${INK}">ReviewStage</text>
   ${descriptor.map((line, i) => `<text x="96" y="${380 + i * 62}" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="46" font-weight="600" letter-spacing="-1" fill="${i ? BLUE : INK}">${line}</text>`).join("")}
   <rect x="96" y="${H - 97}" width="${W - 192}" height="1" fill="${HAIRLINE}"/>
-  <text x="96" y="${H - 56}" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="20" fill="${GRAPHITE}">wimukti.github.io/reviewstage · open source · self-hosted</text>
+  <text x="96" y="${H - 56}" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="20" fill="${GRAPHITE}">reviewstage.dev · open source · self-hosted</text>
 </svg>`;
 const og = await sharp(Buffer.from(text)).composite([{ input: ogMark, left: 96, top: 176 }]).png().toBuffer();
 writeFileSync(join(out, "og.png"), og);

@@ -33,4 +33,4 @@ clicks) is enough for you to let it near your team's PRs, and what you drop that
 raising.
 
 Demo (90 s): <DEMO_LINK>
-Security model: https://wimukti.github.io/reviewstage/security/
+Security model: https://reviewstage.dev/security/

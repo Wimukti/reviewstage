@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Copy, KeyRound, LogOut, Plus } from "lucide-react";
 import {
   api,
@@ -18,6 +18,7 @@ import { phoneBridge } from "./phone";
 import { PhoneAccess } from "./PhoneAccess";
 import { PushDevices } from "./PushDevices";
 import { ThemeControl } from "./ThemeControl";
+import { useIsPhone } from "./theme";
 import { Link, useLocation } from "./router";
 import { Banner, PageHeader, RepoPill, SettingRow as Row, StatusBadge } from "./ui";
 import { cn } from "@/lib/utils";
@@ -72,18 +73,23 @@ const SECTIONS: { id: SectionId; label: string; group: Group }[] = [
 // Your phone is the desktop app's (personal mode with the preload's bridge), and so is Desktop
 // app (the update and open-at-login bridge, desktop-always-on). Everything else exists on every
 // install; the first section that exists is the one an unhashed URL opens.
-function sectionsFor(me: Me) {
+export function sectionsFor(me: Me) {
   const desktopApp = !!me.personal && !!phoneBridge();
   const desktopControls = !!me.personal && (!!updateBridge() || !!openAtLoginBridge());
   return SECTIONS.filter((s) => (s.id !== "phone" || desktopApp) && (s.id !== "desktop" || desktopControls));
 }
 
+// A section opened from the phone's You tab is a page of its own: the navigation bar names it,
+// so its header keeps only the sentence.
+const Standalone = createContext(false);
+
 // The section header: the title and one sentence. The card under it carries no title of its own.
 function SectionHeader({ title, children }: { title: string; children: ReactNode }) {
+  const standalone = useContext(Standalone);
   return (
-    <div className="mb-5">
-      <h2 className="m-0 text-lg font-semibold tracking-tight">{title}</h2>
-      <p className="m-0 mt-1 text-sm text-muted-foreground">{children}</p>
+    <div className={standalone ? "mb-4" : "mb-5"}>
+      {!standalone && <h2 className="m-0 text-lg font-semibold tracking-tight">{title}</h2>}
+      <p className={cn("m-0 text-sm text-muted-foreground", !standalone && "mt-1")}>{children}</p>
     </div>
   );
 }
@@ -184,7 +190,7 @@ function SaveBar({
       data-state={state}
       inert={hidden}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur transition-[transform,opacity,visibility] duration-(--dur-slow) ease-(--ease) max-[899px]:bottom-[calc(56px+env(safe-area-inset-bottom,0px))] min-[900px]:left-[216px]",
+        "fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur transition-[transform,opacity,visibility] duration-(--dur-slow) ease-(--ease) max-[899px]:bottom-[calc(49px+env(safe-area-inset-bottom,0px))] min-[900px]:left-[216px]",
         hidden ? "invisible translate-y-full opacity-0" : "visible translate-y-0 opacity-100",
       )}
     >
@@ -630,7 +636,14 @@ function SettingsSkeleton() {
 
 // ---- the page --------------------------------------------------------------------------------
 
-export function Settings({ me }: { me: Me }) {
+/**
+ * `section` + `standalone`: the phone's You tab pushes one section as a page of its own
+ * (/you/<id>) — no section pills, no repeated title. On the desktop it is the ordinary page,
+ * opened at that section.
+ */
+export function Settings({ me, section: only, standalone }: { me: Me; section?: string; standalone?: boolean }) {
+  const phone = useIsPhone();
+  const alone = !!standalone && phone;
   const [d, setD] = useState<SettingsData | null>(null);
   const [form, setForm] = useState<RuntimeSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -657,7 +670,7 @@ export function Settings({ me }: { me: Me }) {
   useEffect(() => () => window.clearTimeout(savedTimer.current), []);
 
   const sections = sectionsFor(me);
-  const wanted = hash.replace(/^#/, "");
+  const wanted = only ?? hash.replace(/^#/, "");
   const current = sections.find((s) => s.id === wanted)?.id ?? sections[0].id;
   // A section is a screen of its own: it opens at the top, nav included. The browser's own
   // scroll to `#id` lands once the section has rendered, so this runs on the frame after.
@@ -765,7 +778,7 @@ export function Settings({ me }: { me: Me }) {
             <SectionHeader title="Appearance">How the app looks on this device.</SectionHeader>
             <Rows>
               <Row label="Theme" hint="A choice for this device, kept in this browser. Dark unless you pick otherwise.">
-                <ThemeControl />
+                <ThemeControl tall={alone} />
               </Row>
             </Rows>
           </>
@@ -948,10 +961,10 @@ export function Settings({ me }: { me: Me }) {
       )}
 
       <div className={cn("min-[1100px]:grid min-[1100px]:grid-cols-[200px_minmax(0,720px)] min-[1100px]:gap-10", barShown && "pb-20")}>
-        <SectionNav sections={sections} current={current} />
+        {!alone && <SectionNav sections={sections} current={current} />}
         <div className="min-w-0" data-testid="settings-form">
           <section id={current} data-testid="settings-section" data-section={current}>
-            {section}
+            <Standalone.Provider value={alone}>{section}</Standalone.Provider>
           </section>
         </div>
       </div>

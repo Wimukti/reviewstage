@@ -51,6 +51,10 @@ import { MdEditor } from "./MdEditor";
 import { prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
+import { useIsPhone } from "./theme";
+import { haptic } from "./gestures";
+import { PhoneFindingCard, PhonePrHeader, PhonePrSkeleton, PostPill, PostSheet, PostSuccess, PrActionSheet } from "./PhoneReview";
+import { defaultModelFor } from "./quickRun";
 import { pokeRunning } from "./running";
 import { BrandIcon } from "./icons";
 import {
@@ -242,7 +246,7 @@ function RunForm({
   onStarted: () => void;
 }) {
   const [effort, setEffort] = useState(form.suggested);
-  const [model, setModel] = useState(form.suggested === "deep" ? "opus" : "");
+  const [model, setModel] = useState(defaultModelFor(form.suggested));
   const [focus, setFocus] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -758,6 +762,12 @@ function ReviewBody({
   const [postedNow, setPostedNow] = useState(false);
   const posted = postedNow || rev.posted;
   const [maybeOpen, setMaybeOpen] = useState(false);
+  // The phone: dropped findings (local only, never sent), the confirm sheet, and how many the
+  // post carried for the success state.
+  const phone = useIsPhone();
+  const [dropped, setDropped] = useState<Set<number>>(() => new Set());
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [postedCount, setPostedCount] = useState(0);
 
   // approve
   const [approveBody, setApproveBody] = useState(rev.approve?.defaultMsg || "");
@@ -769,6 +779,23 @@ function ReviewBody({
       n.has(i) ? n.delete(i) : n.add(i);
       return n;
     });
+  // A swipe stages exactly what the checkbox does: keep adds to `selected`, drop takes it out.
+  const without = (s: Set<number>, i: number) => {
+    const n = new Set(s);
+    n.delete(i);
+    return n;
+  };
+  const keep = (i: number) => {
+    setSelected((s) => new Set(s).add(i));
+    setDropped((d) => without(d, i));
+    haptic();
+  };
+  const drop = (i: number) => {
+    setSelected((s) => without(s, i));
+    setDropped((d) => new Set(d).add(i));
+    haptic();
+  };
+  const restore = (i: number) => setDropped((d) => without(d, i));
 
   // Where the selected findings will land — GitHub only takes an inline comment on a changed
   // line, and sometimes it will not say which lines those are.
@@ -808,8 +835,8 @@ function ReviewBody({
     }
   }
 
-  async function submitPost() {
-    if (busy) return;
+  async function submitPost(): Promise<boolean> {
+    if (busy) return false;
     setErr("");
     setBusy(true);
     try {
@@ -825,11 +852,14 @@ function ReviewBody({
           }),
       );
       setBanner(res.bannerHtml);
-      if (postedFromBanner(res.bannerHtml, data.dryRun)) {
+      const ok = postedFromBanner(res.bannerHtml, data.dryRun);
+      if (ok) {
+        setPostedCount(selected.size);
         setPostedNow(true);
         onPosted();
       }
       onDone();
+      return ok;
     } catch (e) {
       // 409: the stored review is not the one on screen. Say so in those words and offer the
       // only thing that helps — a reload — rather than a button that looks retryable.
@@ -837,9 +867,10 @@ function ReviewBody({
       if (e instanceof ApiError && e.status === 409) {
         setStale(true);
         setErr("");
-        return;
+        return false;
       }
       setErr(errMessage(e, "Couldn't post to GitHub."));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -866,37 +897,51 @@ function ReviewBody({
 
   const teachOn = data.teach && data.tokens.teach ? data.teach : null;
   const teachToken = data.tokens.teach;
-  const renderFinding = (f: Finding) => (
-    <FindingCard
-      key={f.i}
-      f={f}
-      checked={selected.has(f.i)}
-      onToggle={() => toggle(f.i)}
-      explain={async () => {
-        const r = await api.explain(refOf(data), data.tokens.explain, f.i);
-        return <Md className="dbody p-0">{r.md}</Md>;
-      }}
-      editor={
-        <>
-          {f.structured && <p className="m-0 text-xs text-muted-foreground">This is the comment posted to GitHub — edit if needed.</p>}
-          <FindingBody
-            body={bodies[f.i] ?? ""}
-            onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
-            suggestion={f.suggestion}
-          />
-        </>
-      }
-      teach={
-        teachOn && teachToken
-          ? {
-              panel: (onTaught) => (
-                <TeachPanel f={f} pr={refOf(data)} token={teachToken} teach={teachOn} onTaught={onTaught} />
-              ),
-            }
-          : undefined
-      }
-    />
-  );
+  // What a card needs beyond its finding — the same for the desk card and the phone card.
+  const extras = (f: Finding) => ({
+    explain: async () => {
+      const r = await api.explain(refOf(data), data.tokens.explain, f.i);
+      return <Md className="dbody p-0">{r.md}</Md>;
+    },
+    editor: (
+      <>
+        {f.structured && <p className="m-0 text-xs text-muted-foreground">This is the comment posted to GitHub — edit if needed.</p>}
+        <FindingBody
+          body={bodies[f.i] ?? ""}
+          onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
+          suggestion={f.suggestion}
+        />
+      </>
+    ),
+    teach:
+      teachOn && teachToken
+        ? {
+            panel: (onTaught: () => void) => (
+              <TeachPanel f={f} pr={refOf(data)} token={teachToken} teach={teachOn} onTaught={onTaught} />
+            ),
+          }
+        : undefined,
+  });
+  const renderFinding = (f: Finding) =>
+    phone ? (
+      <PhoneFindingCard
+        key={f.i}
+        f={f}
+        kept={selected.has(f.i)}
+        dropped={dropped.has(f.i)}
+        disabled={posted}
+        onToggle={() => {
+          toggle(f.i);
+          haptic();
+        }}
+        onKeep={() => keep(f.i)}
+        onDrop={() => drop(f.i)}
+        onRestore={() => restore(f.i)}
+        {...extras(f)}
+      />
+    ) : (
+      <FindingCard key={f.i} f={f} checked={selected.has(f.i)} onToggle={() => toggle(f.i)} {...extras(f)} />
+    );
 
   // At most one full-width banner, and only for something that went wrong. The server's answer
   // to a write is the exception: it is the receipt for the click.
@@ -1035,6 +1080,76 @@ function ReviewBody({
   });
 
   const v = verdict(rev);
+  if (phone) {
+    const receipt = banner ? <RawBanner html={banner} /> : null;
+    if (postedNow)
+      return (
+        <>
+          <PrActionSheet data={data} sections={sections} notice={errorBanner} />
+          <PostSuccess data={data} count={postedCount} login={me.login || "you"} dryRun={data.dryRun} />
+        </>
+      );
+    return (
+      <>
+        <PrActionSheet data={data} sections={sections} notice={<>{receipt}{errorBanner}</>} />
+        {receipt}
+        {!sheetOpen && errorBanner}
+        <Verdict tone={v.tone} text={v.text} chips={rev.chips} testid="verdict" />
+        {rev.keyPoints && rev.keyPoints.length > 0 ? (
+          <KeyPoints points={rev.keyPoints} />
+        ) : rev.summary ? (
+          <ClampSummary text={rev.summary} />
+        ) : null}
+        <div data-testid="post-panel">
+          {rev.count === 0 ? (
+            <p className="text-base text-muted-foreground">No findings — nothing to post.</p>
+          ) : (
+            <>
+              {shown.map(renderFinding)}
+              {maybe.length > 0 && (
+                <Collapsible open={maybeOpen} onOpenChange={setMaybeOpen} className="mt-3" data-testid="maybe">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="-ml-2 min-h-[44px] text-[15px] text-muted-foreground hover:text-foreground">
+                      <ListFilter aria-hidden="true" />
+                      {maybe.length} lower-confidence finding{maybe.length !== 1 ? "s" : ""}
+                      <ChevronDown aria-hidden="true" className={cn("transition-transform", maybeOpen && "rotate-180")} />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>{maybe.map(renderFinding)}</CollapsibleContent>
+                </Collapsible>
+              )}
+            </>
+          )}
+        </div>
+        {rev.count > 0 && (
+          <>
+            <PostPill kept={selected.size} posted={posted} postedAs={me.login || ""} stale={stale} onOpen={() => setSheetOpen(true)} />
+            <PostSheet
+              open={sheetOpen}
+              onOpenChange={setSheetOpen}
+              kept={selected.size}
+              inline={selInline}
+              summary={selOff}
+              unknown={selUnknown}
+              maxPerPost={maxPerPost}
+              requestChanges={requestChanges}
+              onRequestChanges={setRequestChanges}
+              login={me.login || "you"}
+              dryRun={data.dryRun}
+              busy={busy}
+              error={errorBanner}
+              onPost={async () => {
+                if (await submitPost()) {
+                  haptic();
+                  setSheetOpen(false);
+                }
+              }}
+            />
+          </>
+        )}
+      </>
+    );
+  }
   return (
     <>
       {banner && <RawBanner html={banner} />}
@@ -1504,6 +1619,7 @@ export function PrPage({ me }: { me: Me }) {
   const [err, setErr] = useState("");
   const [postedNow, setPostedNow] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  const phone = useIsPhone();
 
   const load = useCallback(() => {
     if (!num) return;
@@ -1604,7 +1720,7 @@ export function PrPage({ me }: { me: Me }) {
         </Card>
       </div>
     );
-  if (!data) return <PrSkeleton />;
+  if (!data) return phone ? <PhonePrSkeleton /> : <PrSkeleton />;
 
   if (data.historyView) {
     return (
@@ -1663,9 +1779,19 @@ export function PrPage({ me }: { me: Me }) {
   );
 
   return (
-    <div className="prpage max-[899px]:pb-[200px]">
-      <HeaderTop data={data} />
-      <StatusLine data={data} postedNow={postedNow} />
+    <div className="prpage max-[899px]:pb-[88px]">
+      {phone ? (
+        <>
+          <PhonePrHeader data={data} postedNow={postedNow} />
+          {/* Without a review the ⋯ sheet has only the links; ReviewBody adds Approve and Re-run. */}
+          {!data.review && <PrActionSheet data={data} sections={[]} />}
+        </>
+      ) : (
+        <>
+          <HeaderTop data={data} />
+          <StatusLine data={data} postedNow={postedNow} />
+        </>
+      )}
       {runError}
       {data.reviewing && <ProgressPanel pr={pr} data={data} onStop={load} />}
       {data.stopped && (

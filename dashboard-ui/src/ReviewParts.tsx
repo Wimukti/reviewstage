@@ -143,15 +143,12 @@ export interface FindingCardProps {
   teach?: { panel: (onTaught: () => void) => ReactNode };
 }
 
-export function FindingCard({ f, checked, onToggle, disabled, explain, editor, teach }: FindingCardProps) {
+// "Explain simply": fetched once, on the first open. The desk card and the phone card share it.
+export function useExplain(explain?: () => Promise<ReactNode>) {
   const [exp, setExp] = useState<ReactNode>(null);
   const [expOpen, setExpOpen] = useState(false);
   const [expLoading, setExpLoading] = useState(false);
   const [expErr, setExpErr] = useState("");
-  // Unstructured findings (older reviews) show the comment inline; structured ones tuck it away.
-  const [showDetail, setShowDetail] = useState(!f.structured);
-  const [showTeach, setShowTeach] = useState(false);
-  const [taught, setTaught] = useState(!!f.taught);
   const runExplain = async () => {
     if (!explain || expLoading || exp) return;
     setExpErr("");
@@ -164,6 +161,51 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
       setExpLoading(false);
     }
   };
+  return { exp, expOpen, setExpOpen, expLoading, expErr, runExplain };
+}
+
+// The explanation's disclosure body: a skeleton while it loads, the error with a retry, the box.
+export function ExplainBody({ x }: { x: ReturnType<typeof useExplain> }) {
+  const { exp, expOpen, setExpOpen, expLoading, expErr, runExplain } = x;
+  return (
+    <Collapsible open={expOpen} onOpenChange={setExpOpen}>
+      <CollapsibleContent>
+        {expLoading && (
+          <div className="flex flex-col gap-2 py-1" aria-busy="true" data-testid="explain-loading">
+            <Skeleton className="h-3.5 w-11/12" />
+            <Skeleton className="h-3.5 w-3/4" />
+            <Skeleton className="h-3.5 w-1/2" />
+          </div>
+        )}
+        {expErr && (
+          <p className="m-0 text-sm text-red">
+            {expErr}{" "}
+            <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={runExplain}>
+              Try again
+            </Button>
+          </p>
+        )}
+        {exp && (
+          <div className="rounded-md bg-accent p-3 text-sm leading-relaxed" data-testid="explain-box">
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Sparkles aria-hidden="true" className="size-3.5 text-blue" />
+              In plain words · how to verify
+            </div>
+            {exp}
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+export function FindingCard({ f, checked, onToggle, disabled, explain, editor, teach }: FindingCardProps) {
+  const x = useExplain(explain);
+  const { expOpen, setExpOpen, runExplain } = x;
+  // Unstructured findings (older reviews) show the comment inline; structured ones tuck it away.
+  const [showDetail, setShowDetail] = useState(!f.structured);
+  const [showTeach, setShowTeach] = useState(false);
+  const [taught, setTaught] = useState(!!f.taught);
   const loc = `${f.path}:${f.line}`;
   const place = placementOf(f);
   const tone = toneOf(f.severity);
@@ -286,34 +328,7 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
             </Button>
           )}
         </div>
-        <Collapsible open={expOpen} onOpenChange={setExpOpen}>
-          <CollapsibleContent>
-            {expLoading && (
-              <div className="flex flex-col gap-2 py-1" aria-busy="true" data-testid="explain-loading">
-                <Skeleton className="h-3.5 w-11/12" />
-                <Skeleton className="h-3.5 w-3/4" />
-                <Skeleton className="h-3.5 w-1/2" />
-              </div>
-            )}
-            {expErr && (
-              <p className="m-0 text-sm text-red">
-                {expErr}{" "}
-                <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={runExplain}>
-                  Try again
-                </Button>
-              </p>
-            )}
-            {exp && (
-              <div className="rounded-md bg-accent p-3 text-sm leading-relaxed" data-testid="explain-box">
-                <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <Sparkles aria-hidden="true" className="size-3.5 text-blue" />
-                  In plain words · how to verify
-                </div>
-                {exp}
-              </div>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
+        <ExplainBody x={x} />
         {/* Deliberately not gated on `taught`: adding the rule sets it, and gating here would
             unmount the panel at the exact moment it has something to confirm. The button above
             is what stops a second visit. */}

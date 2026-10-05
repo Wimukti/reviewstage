@@ -710,25 +710,41 @@ def oauth_authorize_url(nxt):
     return "https://github.com/login/oauth/authorize?" + urlencode(q)
 
 
-def oauth_token_request(params):
+# The client that issued a token is the only one GitHub will refresh it for. Device-flow
+# tokens come from the public device client (no secret); refreshing them with the OAuth App's
+# id — empty on a desktop install — failed silently, and every device sign-in lost GitHub
+# access eight hours later.
+REFRESH_DEVICE_CLIENT_ID = ENV.get("GH_DEVICE_CLIENT_ID") or rs_device_flow.DEFAULT_CLIENT_ID
+
+
+def oauth_token_request(params, client="oauth"):
     """POST to GitHub's token endpoint. Returns the JSON dict, or {} on any failure."""
-    body = urlencode({"client_id": GH_CLIENT_ID, "client_secret": GH_CLIENT_SECRET,
-                      **params}).encode()
+    ident = ({"client_id": REFRESH_DEVICE_CLIENT_ID} if client == "device"
+             else {"client_id": GH_CLIENT_ID, "client_secret": GH_CLIENT_SECRET})
+    body = urlencode({**ident, **params}).encode()
     req = Request("https://github.com/login/oauth/access_token", data=body,
                   headers={"Accept": "application/json",
                            "Content-Type": "application/x-www-form-urlencoded"})
     try:
         with urlopen(req, timeout=20) as r:
             d = json.loads(r.read().decode() or "{}")
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
+        print(f"WARN: github token request ({params.get('grant_type', 'code')}): {e}", flush=True)
         return {}
-    return d if isinstance(d, dict) and d.get("access_token") else {}
+    if isinstance(d, dict) and d.get("access_token"):
+        return d
+    err = d.get("error", "no token in the answer") if isinstance(d, dict) else "bad answer"
+    print(f"WARN: github token request ({params.get('grant_type', 'code')}): {err}", flush=True)
+    return {}
 
 
-def oauth_store(login, d, name, prev):
-    """Persist a token response. Expiry is absolute; 0 means the token never expires."""
+def oauth_store(login, d, name, prev, client=None):
+    """Persist a token response. Expiry is absolute; 0 means the token never expires.
+    `client` records which GitHub client issued it ("oauth" or "device"); a refresh keeps it."""
     now = int(time.time())
     u = dict(prev)
+    if client:
+        u["gh_client"] = client
     u.update({
         "gh_token_enc": enc(d["access_token"]),
         "gh_exp": now + int(d["expires_in"]) if d.get("expires_in") else 0,
@@ -749,8 +765,11 @@ def oauth_fresh_token(login, u):
             return dec(u["gh_token_enc"])
         if not u.get("gh_refresh_enc"):
             return ""
+        # Stored before the issuer was recorded: with no OAuth App configured, only the
+        # device flow can have issued it.
+        client = u.get("gh_client") or ("oauth" if GH_CLIENT_ID else "device")
         d = oauth_token_request({"grant_type": "refresh_token",
-                                 "refresh_token": dec(u["gh_refresh_enc"])})
+                                 "refresh_token": dec(u["gh_refresh_enc"])}, client=client)
         if not d:
             return ""
         oauth_store(login, d, u.get("name", ""), u)
@@ -5629,7 +5648,7 @@ class Handler(BaseHTTPRequestHandler):
             return to_login_err(msg)
         first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
-        oauth_store(login, d, name, prev)
+        oauth_store(login, d, name, prev, client="oauth")
         clear_oauth_block(login)
         print(f"login (github): {login}", flush=True)
         return self.redirect(landing(nxt, first_sign_in),
@@ -5664,7 +5683,7 @@ class Handler(BaseHTTPRequestHandler):
         first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
         try:
-            oauth_store(login, d, name, prev)
+            oauth_store(login, d, name, prev, client="device")
         except Exception as e:  # noqa: BLE001 — anything here must reach the screen
             # GitHub has already issued the token, so the device code is spent. If this
             # crashed instead of answering, the client's next poll found no session and the

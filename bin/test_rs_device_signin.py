@@ -270,6 +270,78 @@ class DeviceSignIn(unittest.TestCase):
         u = self.srv.load_users()["ann"]
         self.assertEqual(self.srv.dec(u["gh_token_enc"]), "gho_fake_from_device_flow")
 
+    def test_a_device_token_is_refreshed_through_the_device_client(self):
+        """Device-flow tokens last eight hours. The refresh used the OAuth App's id and secret —
+        both empty on a desktop install — so GitHub refused it, the server returned no token,
+        and eight hours after sign-in the repository list and the poller both stopped
+        (seen live, 10/05/26). The issuer is recorded at sign-in and the refresh goes through
+        that client: the public device id, and never a secret."""
+        import time
+        from unittest import mock
+        sent = []
+
+        class Resp:
+            def __init__(self, body): self.body = body
+            def read(self): return self.body
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def fake_urlopen(req, timeout=20):
+            sent.append(dict(__import__("urllib.parse", fromlist=["parse_qsl"]).parse_qsl(
+                req.data.decode())))
+            return Resp(json.dumps({"access_token": "ghu_new", "expires_in": 28800,
+                                    "refresh_token": "ghr_new",
+                                    "refresh_token_expires_in": 15724800}).encode())
+
+        prev = {"name": "Ann"}
+        self.srv.oauth_store("ann2", {"access_token": "ghu_old", "expires_in": 28800,
+                                      "refresh_token": "ghr_old",
+                                      "refresh_token_expires_in": 15724800}, "Ann", prev,
+                             client="device")
+        u = self.srv.load_users()["ann2"]
+        self.assertEqual(u["gh_client"], "device")
+        # Expire it, as eight hours would.
+        u["gh_exp"] = int(time.time()) - 3600
+        self.srv.modify_users(lambda users: users.__setitem__("ann2", u))
+        with mock.patch.object(self.srv, "urlopen", fake_urlopen), \
+             mock.patch.object(self.srv, "GH_CLIENT_ID", ""), \
+             mock.patch.object(self.srv, "GH_CLIENT_SECRET", ""):
+            tok = self.srv.user_pat("ann2")
+        self.assertEqual(tok, "ghu_new")
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0]["client_id"], self.srv.REFRESH_DEVICE_CLIENT_ID)
+        self.assertNotIn("client_secret", sent[0])
+        self.assertEqual(sent[0]["grant_type"], "refresh_token")
+        self.assertEqual(sent[0]["refresh_token"], "ghr_old")
+        u = self.srv.load_users()["ann2"]
+        self.assertEqual(self.srv.dec(u["gh_token_enc"]), "ghu_new")
+        self.assertEqual(u["gh_client"], "device", "a refresh keeps the issuer")
+
+    def test_a_token_stored_before_the_issuer_was_recorded_refreshes_via_device(self):
+        """Installs signed in before rc.39 have no gh_client. With no OAuth App configured only
+        the device flow can have issued the token, so that is the client the refresh uses."""
+        import time
+        from unittest import mock
+        sent = []
+
+        class Resp:
+            def read(self): return json.dumps({"access_token": "ghu_x", "expires_in": 28800}).encode()
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def fake_urlopen(req, timeout=20):
+            sent.append(req.data.decode())
+            return Resp()
+
+        u = {"name": "Old", "gh_token_enc": self.srv.enc("ghu_old"),
+             "gh_refresh_enc": self.srv.enc("ghr_old"), "gh_exp": int(time.time()) - 60}
+        self.srv.modify_users(lambda users: users.__setitem__("old", u))
+        with mock.patch.object(self.srv, "urlopen", fake_urlopen), \
+             mock.patch.object(self.srv, "GH_CLIENT_ID", ""):
+            self.assertEqual(self.srv.user_pat("old"), "ghu_x")
+        self.assertIn(f"client_id={self.srv.REFRESH_DEVICE_CLIENT_ID}", sent[0])
+        self.assertNotIn("client_secret", sent[0])
+
     def test_a_storage_failure_is_reported_not_disguised_as_expired(self):
         """If storing the token fails after GitHub has issued it, the code is spent. The old
         handler crashed, the browser re-polled and was told the code had expired — a GitHub

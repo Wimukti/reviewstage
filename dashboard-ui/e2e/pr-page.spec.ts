@@ -247,20 +247,19 @@ test.describe("the stack page", () => {
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test("the commit bar is a fixed sheet above the tab bar", async ({ page }) => {
+  // The phone has no commit bar: a floating Post pill above the tab bar (mobile-screens.spec).
+  test("the Post pill floats above the tab bar and the last finding is reachable above it", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await settled(page);
-    const bar = page.getByTestId("commit-bar");
-    await expect(bar).toBeVisible();
-    await expect(bar).not.toHaveClass(/is-entering/);
-    const pos = await bar.evaluate((el) => getComputedStyle(el).position);
-    expect(pos).toBe("fixed");
-    const barBox = (await bar.boundingBox())!;
+    await expect(page.getByTestId("commit-bar")).toHaveCount(0);
+    const pill = page.getByTestId("post-pill");
+    await expect(pill).toBeVisible();
+    expect(await pill.evaluate((el) => getComputedStyle(el.parentElement!).position)).toBe("fixed");
+    const pillBox = (await pill.boundingBox())!;
     const tab = (await page.locator(".tabbar").boundingBox())!;
-    expect(Math.round(barBox.y + barBox.height)).toBeLessThanOrEqual(Math.round(tab.y) + 1);
-    // The last content on the page is still reachable above the sheet.
+    expect(Math.round(pillBox.y + pillBox.height)).toBeLessThanOrEqual(Math.round(tab.y) + 1);
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    const row = (await page.getByTestId("section-row").boundingBox())!;
-    expect(row.y + row.height).toBeLessThanOrEqual(barBox.y + 1);
+    const last = (await page.getByTestId("finding").last().boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(pillBox.y + 1);
   });
 });

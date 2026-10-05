@@ -43,8 +43,8 @@ test.describe("phone", () => {
     await settled(page);
     const controls = page.locator(".phone-head a, .phone-head button, .tabbar a, .tabbar button");
     const n = await controls.count();
-    // The bar's search and the three tabs on the queue; a pushed page adds ‹ Back (shell.spec).
-    expect(n).toBeGreaterThanOrEqual(4);
+    // The bar's filter and search and the three tabs on the queue; a pushed page adds ‹ Back.
+    expect(n).toBeGreaterThanOrEqual(5);
     for (let i = 0; i < n; i++) {
       const c = controls.nth(i);
       const box = await c.boundingBox();
@@ -54,8 +54,8 @@ test.describe("phone", () => {
       const name = await c.evaluate((el) => (el.getAttribute("aria-label") || el.textContent || "").trim());
       expect(name, `control ${i} has a name`).not.toBe("");
     }
-    // The header's Review a PR is findable by name — the old glyph-only button was not.
-    await expect(page.getByRole("button", { name: "Review a PR" })).toBeVisible();
+    // The bar's search is findable by name — the old glyph-only button was not.
+    await expect(page.getByRole("button", { name: "Search or open a PR" })).toBeVisible();
 
     // There is no More sheet: the You tab holds the rest of the navigation, the theme (one push
     // away, under Appearance) and Sign out — every row a 44px-plus target.

@@ -195,6 +195,8 @@ test.describe("phone shell", () => {
 
   test("inputs are at least 16px so iOS never zooms, and taps draw no highlight", async ({ page }) => {
     await page.goto("/");
+    await page.getByRole("button", { name: "Search or open a PR" }).click();
+    await expect(page.locator("#qsearch")).toBeFocused();
     const fs = await page.locator("#qsearch").evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(fs).toBeGreaterThanOrEqual(16);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("-webkit-tap-highlight-color"))).toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
@@ -212,8 +214,8 @@ test.describe("phone shell", () => {
     await tab(page, "You").click();
     await expect(page.getByTestId("you-list")).toBeVisible();
     await tab(page, "Queue").click();
-    await page.getByRole("tab", { name: /^Posted/ }).click();
-    await expect(page).toHaveURL(/tab=posted/);
+    await page.getByRole("tablist", { name: "Queue views" }).getByRole("tab", { name: /^In flight/ }).click();
+    await expect(page).toHaveURL(/running=1/);
     const seen = await page.evaluate(() => (window as unknown as { __nav: string[] }).__nav);
     expect(seen).toEqual(["push", "pop", "fade", "fade"]);
   });

@@ -5,6 +5,8 @@
 //   a large title under it that collapses into the bar as it scrolls away (an
 //   IntersectionObserver on the title — no scroll listener); a pushed page shows ‹ <parent>
 //   and a compact title. The hairline under the bar appears only once the page has scrolled.
+// - A page's own controls go in the bar through <NavBarAction> (the queue's filter and search,
+//   a PR's ⋯); transient messages through showToast() (Toast.tsx), drawn above the tab bar.
 // - The tab bar: Queue (with the To review count), Activity, You. The active tab follows the
 //   route, including the tab a PR was opened from.
 // - Route changes slide (push/pop) or cross-fade (tab switch) with the View Transitions API,
@@ -12,9 +14,8 @@
 // - A pan from the left edge on a pushed page goes back.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { ChevronLeft, CircleUserRound, History, Inbox, Search, type LucideIcon } from "lucide-react";
+import { ChevronLeft, CircleUserRound, History, Inbox, type LucideIcon } from "lucide-react";
 import type { Me } from "./api";
-import { openPalette } from "./CommandPalette";
 import { Logo } from "./Logo";
 import {
   navOverrides,
@@ -30,6 +31,7 @@ import {
 } from "./nav";
 import { useTodoCount } from "./queueCount";
 import { goBack, Link, setNavigationWrapper, useLocation } from "./router";
+import { Toaster } from "./Toast";
 import { UpdateBanner } from "./UpdateBanner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -277,18 +279,6 @@ export function PhoneShell({ me, children }: { me: Me; children: ReactNode }) {
           <div className="relative z-10 flex min-w-0 flex-1 items-center justify-end gap-0.5">
             {!root && <span ref={auxRef} className="contents" data-slot="nav-aux" />}
             <span ref={actionRef} className="contents" data-slot="nav-action" />
-            {queueTitle && (
-              <Button
-                variant="ghost"
-                type="button"
-                className="size-[44px] text-primary hover:bg-transparent hover:text-primary [&_svg]:size-[22px]!"
-                aria-label="Review a PR"
-                title="Review a PR"
-                onClick={openPalette}
-              >
-                <Search aria-hidden="true" />
-              </Button>
-            )}
           </div>
         </div>
       </header>
@@ -306,6 +296,7 @@ export function PhoneShell({ me, children }: { me: Me; children: ReactNode }) {
         <div className="min-w-0 px-4 pb-[calc(49px+env(safe-area-inset-bottom,0px)+32px)] pt-3">{children}</div>
       </main>
 
+      <Toaster />
       <TabBar active={meta.tab} count={count} />
     </>
   );

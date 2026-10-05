@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { Archive, ArchiveRestore, Check, CircleCheck, Circle, Compass, Inbox, MessageSquare, Search } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { api, errMessage, type Me, type QueueData, type QueueRow } from "./api";
+import { useState } from "react";
+import { Archive, ArchiveRestore, Check, Circle, Compass, Inbox, Search } from "lucide-react";
+import { api, errMessage, type Me, type QueueRow } from "./api";
 import { ACTIVITY_VIEWS } from "./nav";
-import { parsePrRef, prUrl } from "./pr";
-import { noteFailure } from "./reach";
-import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
-import { Link, navigate, useLocation } from "./router";
-import { setTodoCount } from "./queueCount";
-import { runningFor, useRunning } from "./running";
+import { PhoneQueue } from "./PhoneQueue";
+import { prUrl } from "./pr";
+import { EMPTY, SORTS, useQueueModel } from "./queueModel";
+import { setRepoFilter } from "./repoFilter";
+import { Link, navigate } from "./router";
+import { useIsPhone } from "./theme";
 import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge, UserAvatar } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -18,21 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-const SORTS: [string, string][] = [
-  ["newest", "Newest"],
-  ["oldest", "Oldest"],
-  ["activity", "Recent activity"],
-  ["findings", "Most findings"],
-];
-
-const EMPTY: Record<string, [LucideIcon, string, string]> = {
-  todo: [CircleCheck, "You're all caught up", "No PRs are waiting on your review."],
-  reviewed: [Inbox, "Nothing to post", "Reviews you've run and not yet posted show here."],
-  posted: [MessageSquare, "Nothing pending approval", "PRs you've commented on but not approved."],
-  approved: [CircleCheck, "Nothing approved yet", "PRs you approve will be listed here."],
-  archived: [Archive, "No archived PRs", "Archived PRs are hidden from your working set."],
-};
 
 // Radix Select cannot carry an empty-string item, so "all repositories" travels under a key.
 const ALL = "__all__";
@@ -192,106 +176,16 @@ function QueueSkeleton() {
  * The queue. `views` + `base` make it a narrower page at another address: the phone's Activity
  * tab is the queue's Reviewed, Posted and Approved views under a segmented control.
  */
-export function Queue({ me, views, base = "/", title = "Your review queue" }: { me: Me; views?: readonly string[]; base?: string; title?: string }) {
-  const { search } = useLocation();
-  const asked = search.get("tab") || "";
-  const tab = views ? (views.includes(asked) ? asked : views[0]) : asked || "todo";
-  const sort = search.get("sort") || "newest";
-  // ?running=1 — where the sidebar pill points when several jobs are in flight.
-  const onlyRunning = search.get("running") === "1";
-  const jobs = useRunning();
-  const [data, setData] = useState<QueueData | null>(null);
-  const [q, setQ] = useState("");
-  const [rvRepo, setRvRepo] = useState("");
-  const [nonce, setNonce] = useState(0);
-  const [err, setErr] = useState("");
-  // Repository filter — remembered per browser (localStorage), "" = all.
-  const [repoFilter, setRepoFilterState] = useState(getRepoFilter);
-  useEffect(() => {
-    const on = () => setRepoFilterState(getRepoFilter());
-    window.addEventListener(REPO_FILTER_EVENT, on);
-    return () => window.removeEventListener(REPO_FILTER_EVENT, on);
-  }, []);
+export function Queue(props: { me: Me; views?: readonly string[]; base?: string; title?: string }) {
+  const phone = useIsPhone();
+  return phone ? <PhoneQueue {...props} /> : <DeskQueue {...props} />;
+}
 
-  // A remembered filter for a repo that no longer exists falls back to "all"; `repos` is only
-  // known after the first response, so the first request sends whatever is remembered and the
-  // effect re-runs if it turns out to be unknown.
-  const [query, setQuery] = useState(q); // `q` debounced — one request per pause, not per key
-  useEffect(() => {
-    const t = window.setTimeout(() => setQuery(q), 250);
-    return () => window.clearTimeout(t);
-  }, [q]);
-
-  const runKey = jobs.map((j) => `${j.kind}:${j.repo}#${j.num}`).join(",");
-  useEffect(() => {
-    let live = true;
-    // The filters go to the server, which applies them to EVERY tab — not just to the rows it
-    // sends back — so a tab number and the list under it describe one set of PRs.
-    api
-      .queue(tab, sort, repoFilter, query)
-      .then((d) => {
-        if (!live) return;
-        setErr("");
-        setData(d);
-        // The tab bar's badge, for free, whenever these counts are the whole install's.
-        if (!repoFilter && !query.trim()) setTodoCount(d.tabs.find((t) => t.key === "todo")?.count);
-      })
-      .catch((e: unknown) => {
-        // The server is gone (a sleeping Mac behind the tunnel): the whole screen says so.
-        if (!live || noteFailure(e)) return;
-        setErr(errMessage(e, "Couldn't load your queue."));
-      });
-    return () => {
-      live = false;
-    };
-    // runKey: a job appearing or finishing changes what these rows should say.
-  }, [tab, sort, nonce, runKey, repoFilter, query]);
-
-  // Every repo we know of: configured + whatever the server reports. Deliberately NOT the
-  // repos of the visible rows — under a repo filter that list is one entry, and the picker
-  // offering exactly the filter you already applied is a dead end.
-  const repos = useMemo(
-    () => [...new Set<string>([...(me.repos || []), ...(data?.repos || [])])],
-    [me.repos, data],
-  );
-  const multi = repos.length > 1;
-  const activeFilter = repoFilter && repos.includes(repoFilter) ? repoFilter : "";
-  // A remembered filter for a repository that no longer exists would otherwise be sent to the
-  // server for ever and match nothing, while the picker said "All repositories". Forget it.
-  useEffect(() => {
-    if (data && repoFilter && !repos.includes(repoFilter)) setRepoFilter("");
-  }, [data, repoFilter, repos]);
-
-  const statusOf = (r: QueueRow) =>
-    runningFor(jobs, "review", r.repo, r.num)?.status || (r.running ? r.status || "reviewing" : "");
-
-  // Only the in-flight jobs still need filtering here: they come from the running store, not
-  // from /api/queue, so the server never saw them.
-  const matches = (repo: string, num: string, title: string) => {
-    if (activeFilter && repo !== activeFilter) return false;
-    const needle = query.trim().toLowerCase();
-    if (!needle) return true;
-    return `${repo} ${repo}#${num} #${num} ${title}`.toLowerCase().includes(needle);
-  };
-
-  // ?running=1 is a view of the running-jobs store, not of a tab. Intersecting it with one tab's
-  // rows hid every job on an archived or not-requested PR — and only matched kind "review", so a
-  // QA guide in flight read as "Nothing running" while the sidebar pill counted it.
-  const runningRows = useMemo(
-    () => jobs.filter((j) => matches(j.repo, j.num, j.title)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runKey, query, activeFilter],
-  );
-
-  // The one field does both: what is typed filters the queue as it goes, and if it reads as a
-  // PR reference — a URL, owner/name#123 or a bare number — Enter opens that PR.
-  const parsed = parsePrRef(q, repos);
-  const needsPick = !!parsed && !parsed.repo && multi;
-  const goReview = () => {
-    if (!parsed) return;
-    const repo = parsed.repo || (multi ? rvRepo || repos[0] : repos[0] || "");
-    navigate(prUrl({ repo, num: parsed.number }));
-  };
+function DeskQueue({ me, views, base = "/", title = "Your review queue" }: { me: Me; views?: readonly string[]; base?: string; title?: string }) {
+  const {
+    tab, sort, onlyRunning, data, err, setErr, q, setQ, query, rvRepo, setRvRepo, reload, repos, multi,
+    activeFilter, statusOf, runningRows, parsed, needsPick, goReview, filtering, noRepos, notSetUp,
+  } = useQueueModel(me, views);
 
   const header = (
     <PageHeader
@@ -359,14 +253,9 @@ export function Queue({ me, views, base = "/", title = "Your review queue" }: { 
       </>
     );
   const empty = EMPTY[tab] || [Inbox, "Nothing here yet", "This view is empty."];
-  const filtering = !!(query.trim() || activeFilter);
   const rows = data.rows;
   // Per-repo counts for the open tab, so the picker says how much is behind each option.
   const repoCount = (r: string) => data.repoCounts?.[r]?.[tab];
-  // A brand-new install has nothing in the queue because nothing is set up yet, which is not the
-  // same as being caught up.
-  const noRepos = me.personal === true && (me.repos ?? []).length === 0;
-  const notSetUp = me.claude_connected === false || me.poller_ran === false || noRepos;
 
   return (
     <>
@@ -501,7 +390,7 @@ export function Queue({ me, views, base = "/", title = "Your review queue" }: { 
                 row={r}
                 showRepo={multi}
                 status={statusOf(r)}
-                onChange={() => setNonce((n) => n + 1)}
+                onChange={reload}
                 onError={setErr}
               />
             ))}

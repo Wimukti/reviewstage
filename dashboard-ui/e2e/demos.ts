@@ -3,7 +3,7 @@
 //
 //   review        paste a PR URL → Start review → findings arrive → tick two → Post → posted
 //   wizard        the three first-run steps on the personal fixture (token form, Claude, repos)
-//   phone         390-wide: queue → PR → tick two → Post → posted
+//   phone         390-wide: queue → PR → swipe two findings to keep → Post pill → confirm → posted
 //   phone-access  the desktop "Review from your phone" window with a QR code (static, 6 s)
 //
 // Each is recorded with Playwright's recordVideo at 2x in the dark theme with motion on, then
@@ -191,6 +191,10 @@ const POINTER = (mobile: boolean) => `(() => {
   document.addEventListener("mousemove", (ev) => { x = ev.clientX; y = ev.clientY; place(); }, true);
   document.addEventListener("mousedown", (ev) => { x = ev.clientX; y = ev.clientY; const e = mk(); e.dataset.down = "1"; if (mobile) e.style.opacity = "1"; place(); }, true);
   document.addEventListener("mouseup", () => { const e = mk(); delete e.dataset.down; if (mobile) setTimeout(() => { e.style.opacity = "0"; }, 180); place(); }, true);
+  // A swipe is touch, not mouse: the fingertip follows it too.
+  document.addEventListener("touchstart", (ev) => { const t = ev.touches[0]; x = t.clientX; y = t.clientY; const e = mk(); e.dataset.down = "1"; if (mobile) e.style.opacity = "1"; place(); }, true);
+  document.addEventListener("touchmove", (ev) => { const t = ev.touches[0]; x = t.clientX; y = t.clientY; place(); }, true);
+  document.addEventListener("touchend", () => { const e = mk(); delete e.dataset.down; if (mobile) setTimeout(() => { e.style.opacity = "0"; }, 180); place(); }, true);
 })();`;
 
 // GitHub avatars are fetched from github.com; the demos must not depend on the network.
@@ -234,6 +238,26 @@ async function click(page: Page, loc: Locator, settle = BEAT) {
   await sleep(90);
   await page.mouse.up();
   await sleep(settle);
+}
+
+/** A one-finger swipe across an element, slow enough to follow (touch, via the DevTools protocol). */
+async function swipe(page: Page, loc: Locator, dx: number) {
+  await loc.scrollIntoViewIfNeeded();
+  const b = (await loc.boundingBox())!;
+  const y = b.y + Math.min(40, b.height / 2);
+  const x0 = dx > 0 ? b.x + 60 : b.x + b.width - 90;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x0, y }] });
+  const steps = 18;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps, e = 1 - (1 - t) * (1 - t);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + dx * e, y: y + 2 * e }] });
+    await sleep(24);
+  }
+  await sleep(120);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await cdp.detach();
+  await sleep(BEAT);
 }
 
 /** Scrolls by `dy` in small wheel steps so the viewer sees the page move. */
@@ -414,33 +438,36 @@ const phone: Demo = {
   run: async (page, _ctx, cue) => {
     await unticked(page);
     await stubPost(page, 1, 1);
+    // Everything you have open, the reviewed PR among it, in the phone's list rows.
     await page.goto(`${ORIGIN}/?tab=all`);
     const row = page.getByTestId("queue-row").filter({ hasText: `#${PR}` });
     await row.waitFor();
     await page.locator('[data-slot="skeleton"]').first().waitFor({ state: "detached", timeout: 15_000 }).catch(() => {});
     await sleep(400);
     cue.mark();
-    await sleep(1000);
-    // The row sits under the fold at phone height: scroll to it the way a thumb would.
-    await scroll(page, 320);
+    await sleep(1200);
     await click(page, row.getByTestId("row-link"), 200);
     await settled(page);
     await page.locator(".finding").first().waitFor();
     await sleep(HOLD);
-    cue.poster();
-    const first = page.locator(".finding").first();
+    const first = page.getByTestId("finding").first();
     const b = (await first.boundingBox())!;
-    await scroll(page, Math.max(0, b.y - 140));
-    const ticks = page.locator(".finding").getByTestId("finding-select");
-    await click(page, ticks.nth(0));
-    const second = (await page.locator(".finding").nth(1).boundingBox())!;
-    if (second.y > PHONE.height * 0.6) await scroll(page, second.y - 200);
-    await click(page, ticks.nth(1));
-    await page.getByTestId("commit-bar").getByText("2 staged").waitFor();
+    await scroll(page, Math.max(0, b.y - 300));
+    // Swipe right to keep: two findings, the pill counting each one.
+    await swipe(page, page.getByTestId("finding").nth(0), 220);
+    await page.getByTestId("post-pill").getByText("1 kept").waitFor();
+    await swipe(page, page.getByTestId("finding").nth(1), 220);
+    await page.getByTestId("post-pill").getByText("2 kept").waitFor();
     await sleep(500);
-    await click(page, page.getByTestId("commit-bar").getByRole("button", { name: /post selected/i }), 300);
-    await page.getByTestId("commit-posted").waitFor();
-    await sleep(2200);
+    await click(page, page.getByTestId("post-pill"), 300);
+    await page.getByTestId("post-sheet").waitFor();
+    await sleep(400);
+    cue.poster();
+    await sleep(HOLD - 400);
+    await click(page, page.getByTestId("post-confirm"), 300);
+    await page.getByTestId("post-success").waitFor();
+    await page.getByTestId("post-next").waitFor().catch(() => {});
+    await sleep(2400);
   },
 };
 

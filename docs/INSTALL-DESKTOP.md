@@ -62,6 +62,11 @@ attached to the terminal, output on screen.
   The menu-bar icon has **Open ReviewStage**, **Phone access: On/Off**, **Check for updates**
   (and **Update to <version>** when one is out) and **Quit ReviewStage**. Quitting — from that
   menu, ⌘Q, or a `kill` — stops the tunnel and the server with it.
+- **In your applications.** On its first run the app adds itself where launchers look:
+  `~/Applications/ReviewStage.app` on macOS (Spotlight, Launchpad and Finder find it; it is a
+  small signed bundle that runs `npx -y reviewstage@latest` with the node you launched with) and
+  `~/.local/share/applications/reviewstage.desktop` on Linux. After that you never need the
+  terminal. **Settings → Desktop app → Show in Applications** removes it and keeps it removed.
 - **Open at login** (Settings → Desktop app, off by default) starts it in the menu bar when you
   log in. On macOS it writes `~/Library/LaunchAgents/dev.reviewstage.desktop.plist`, which runs
   the same `node` and its sibling `npx` you launched with (`npx -y reviewstage@latest`) with the

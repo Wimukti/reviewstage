@@ -45,6 +45,8 @@ The app checks for a new version at launch and every 6 hours. When one is out, a
 
 ## How do I quit it, or start it at login?
 
+After the first `npx reviewstage`, open it like any app: the first run adds `~/Applications/ReviewStage.app` (macOS) or a launcher entry (Linux), so Spotlight and Launchpad find it. **Settings → Desktop app → Show in Applications** removes it.
+
 Closing the window keeps ReviewStage in the menu bar. Quit from the menu-bar icon (**Quit ReviewStage**) or ⌘Q while its window is in front; the tunnel and the server stop with it. **Settings → Desktop app → Open at login** starts it in the menu bar when you log in (a LaunchAgent at `~/Library/LaunchAgents/dev.reviewstage.desktop.plist` on macOS, `~/.config/autostart/reviewstage.desktop` on Linux); turning it off removes the file.
 
 ## Does it run on Windows?

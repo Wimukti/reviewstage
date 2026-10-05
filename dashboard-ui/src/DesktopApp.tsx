@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { openAtLoginBridge, refreshUpdate, updateBridge, useUpdate, whenText, type OpenAtLogin } from "./desktop";
+import { appShortcutBridge, openAtLoginBridge, refreshUpdate, updateBridge, useUpdate, whenText, type AppShortcut, type OpenAtLogin } from "./desktop";
 import { SettingRow, StatusBadge } from "./ui";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +15,22 @@ export function DesktopApp() {
   const [installErr, setInstallErr] = useState("");
   const [auto, setAuto] = useState<OpenAtLogin | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
+  const apps = appShortcutBridge();
+  const [shortcut, setShortcut] = useState<AppShortcut | null>(null);
+  const [shortcutBusy, setShortcutBusy] = useState(false);
+  useEffect(() => {
+    if (!apps) return;
+    apps.status().then(setShortcut, () => setShortcut(null));
+  }, [apps]);
+  const toggleShortcut = async (on: boolean) => {
+    if (!apps) return;
+    setShortcutBusy(true);
+    try {
+      setShortcut(await apps.set(on));
+    } finally {
+      setShortcutBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!login) return;
@@ -111,6 +127,30 @@ export function DesktopApp() {
               disabled={!auto || !auto.supported || (!auto.available && !auto.enabled) || autoBusy}
               onCheckedChange={(on) => void toggle(on)}
               data-testid="open-at-login"
+            />
+          </SettingRow>
+        )}
+        {apps && (
+          <SettingRow
+            label="Show in Applications"
+            htmlFor="app-shortcut"
+            hint={
+              <>
+                {!shortcut?.supported && shortcut
+                  ? "Available on macOS and Linux."
+                  : shortcut && !shortcut.available && !shortcut.installed
+                    ? "Start ReviewStage with npx reviewstage to turn this on."
+                    : "So Spotlight, Launchpad and your app launcher find ReviewStage. It opens the newest version."}
+                {shortcut?.error && <span className="mt-1.5 block text-red" role="alert">{shortcut.error}</span>}
+              </>
+            }
+          >
+            <Switch
+              id="app-shortcut"
+              checked={!!shortcut?.installed}
+              disabled={!shortcut || !shortcut.supported || (!shortcut.available && !shortcut.installed) || shortcutBusy}
+              onCheckedChange={(on) => void toggleShortcut(on)}
+              data-testid="app-shortcut"
             />
           </SettingRow>
         )}

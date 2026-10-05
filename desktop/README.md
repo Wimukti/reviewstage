@@ -40,6 +40,8 @@ bar — **Open ReviewStage**, **Phone access: On/Off**, **Check for updates**, *
 ReviewStage** — so phone access and notifications keep working. **Settings → Desktop app**
 shows the running version and turns on **Open at login** (a LaunchAgent on macOS, an XDG
 autostart entry on Linux, running `npx -y reviewstage@latest` with the node you launched with).
+On its first run it also adds itself to `~/Applications` (macOS) or your app launcher (Linux),
+so after that Spotlight or Launchpad opens it — no terminal needed.
 
 When a newer version is published, a banner says `ReviewStage <version> is available · Restart
 to update`; the restart installs it with `npx` and opens on the same data.

@@ -10,6 +10,7 @@
 // installed from inside the app.
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, shell, session, Tray } from "electron";
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,7 @@ import QRCode from "qrcode";
 import { ensureEnv, freePort, spawnServer, stopServer, SERVER_DIR } from "./server.js";
 import { ensureTools } from "./tools.js";
 import { startTunnel, stopTunnel, superviseTunnel, tunnelStatus, waitTunnelHealthy } from "./tunnel.js";
-import { acquireLock, autostartStatus, readDesktopState, setAutostart, writeDesktopState } from "./lifecycle.js";
+import { acquireLock, appShortcutStatus, autostartStatus, readDesktopState, removeAppShortcut, setAutostart, writeAppShortcut, writeDesktopState } from "./lifecycle.js";
 import { CHECK_EVERY_MS, createUpdater, spawnInstall } from "./update.js";
 import * as tailscale from "./tailscale.js";
 
@@ -581,6 +582,7 @@ async function boot() {
     // Phone access was on when the app last ran: turn it back on (a new address for the quick
     // tunnel; the server tells subscribed phones once it answers).
     if (readDesktopState(ROOT).phone) void enablePhone({ window: false });
+    ensureAppShortcut();
     void checkUpdates();
     updateTimer = setInterval(() => void checkUpdates(), CHECK_EVERY_MS);
   })().finally(() => { booting = null; });
@@ -604,6 +606,31 @@ const loginOpts = () => ({
   path: process.env.RS_LAUNCH_PATH || process.env.PATH || "",
   root: CUSTOM_ROOT ? ROOT : null,
   logFile: join(ROOT, "login.log"),
+});
+// In Applications: written on the first normal launch of the everyday ROOT, kept current when
+// the node that runs npx moves, and never brought back once the person turns it off.
+const shortcutOpts = () => ({
+  ...loginOpts(),
+  // The branded Electron bundle's icon (the launcher re-icons it before Electron starts).
+  icns: join(dirname(process.execPath), "..", "Resources", "electron.icns"),
+  png: join(SERVER_DIR, "static", "icons", "icon-512.png"),
+  run: (cmd, args) => { try { spawnSync(cmd, args, { stdio: "ignore", timeout: 15_000 }); } catch { /* best effort */ } },
+});
+function ensureAppShortcut() {
+  if (SMOKE || CUSTOM_ROOT || !process.env.RS_LAUNCH_NODE) return;
+  if (readDesktopState(ROOT).appShortcut === false) return;
+  try { writeAppShortcut(shortcutOpts()); } catch (e) { console.error(`app shortcut: ${e.message}`); }
+}
+const shortcutStatus = () => ({ ...appShortcutStatus(loginOpts()), available: !!process.env.RS_LAUNCH_NODE });
+ipcMain.handle("appShortcut:status", () => shortcutStatus());
+ipcMain.handle("appShortcut:set", (_e, on) => {
+  try {
+    writeDesktopState(ROOT, { appShortcut: !!on });
+    if (on) writeAppShortcut(shortcutOpts()); else removeAppShortcut(loginOpts());
+    return shortcutStatus();
+  } catch (e) {
+    return { ...shortcutStatus(), error: e.message };
+  }
 });
 ipcMain.handle("openAtLogin:status", () => ({ ...autostartStatus(loginOpts()), available: !!process.env.RS_LAUNCH_NODE }));
 ipcMain.handle("openAtLogin:set", (_e, on) => {

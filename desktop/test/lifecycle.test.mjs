@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -234,4 +234,50 @@ test("tailscale: status reads login and the MagicDNS name; serve runs only when 
   const broken = async () => { throw new Error("tailscaled not running"); };
   assert.deepEqual(await tailscaleStatus({ runImpl: broken, find }), { installed: true, loggedIn: false, url: null });
   await serveOff({ runImpl: broken, find }); // never throws
+});
+
+// ---- In Applications -------------------------------------------------------------------------
+import { appShortcutPath, appShortcutStatus, removeAppShortcut, writeAppShortcut } from "../lifecycle.js";
+
+test("macOS: a ~/Applications bundle that runs the newest version, signed and registered", () => {
+  const home = mkdtempSync(join(tmpdir(), "rs-apps-"));
+  const icns = join(home, "x.icns"); writeFileSync(icns, "icns");
+  const ran = [];
+  const opts = { platform: "darwin", home, node: "/Users/ann/.nvm/versions/node/v24.3.0/bin/node",
+    path: "/Users/ann/.nvm/versions/node/v24.3.0/bin:/opt/homebrew/bin:/usr/bin:/bin", root: null,
+    logFile: "/Users/ann/.reviewstage/launcher.log", icns, run: (c, a) => ran.push([c, ...a]) };
+  const st = writeAppShortcut(opts);
+  const app = join(home, "Applications", "ReviewStage.app");
+  assert.deepEqual(st, { supported: true, installed: true, file: app });
+  const script = readFileSync(join(app, "Contents", "MacOS", "ReviewStage"), "utf8");
+  assert.match(script, /^#!\/bin\/sh/);
+  assert.match(script, /exec env PATH=\/Users\/ann\/\.nvm\/versions\/node\/v24\.3\.0\/bin:\/opt\/homebrew\/bin:\/usr\/bin:\/bin \/Users\/ann\/\.nvm\/versions\/node\/v24\.3\.0\/bin\/node \/Users\/ann\/\.nvm\/versions\/node\/v24\.3\.0\/bin\/npx -y reviewstage@latest >>\/Users\/ann\/\.reviewstage\/launcher\.log 2>&1/);
+  assert.equal(statSync(join(app, "Contents", "MacOS", "ReviewStage")).mode & 0o111, 0o111);
+  const plist = readFileSync(join(app, "Contents", "Info.plist"), "utf8");
+  for (const s of ["<string>ReviewStage</string>", "<string>dev.reviewstage.launcher</string>", "<key>LSUIElement</key>"]) assert.ok(plist.includes(s), s);
+  assert.equal(readFileSync(join(app, "Contents", "Resources", "ReviewStage.icns"), "utf8"), "icns");
+  assert.deepEqual(ran.map((r) => r[0].split("/").pop()), ["codesign", "lsregister"]);
+  // Same inputs: nothing is rewritten or re-signed.
+  writeAppShortcut(opts);
+  assert.equal(ran.length, 2);
+  // A different node (nvm switched versions): rewritten.
+  writeAppShortcut({ ...opts, node: "/opt/homebrew/bin/node" });
+  assert.match(readFileSync(join(app, "Contents", "MacOS", "ReviewStage"), "utf8"), /\/opt\/homebrew\/bin\/npx -y reviewstage@latest/);
+  assert.equal(ran.length, 4);
+  assert.deepEqual(removeAppShortcut(opts), { supported: true, installed: false, file: app });
+});
+
+test("Linux: a launcher entry with the app icon", () => {
+  const home = mkdtempSync(join(tmpdir(), "rs-apps-l-"));
+  const png = join(home, "i.png"); writeFileSync(png, "png");
+  writeAppShortcut({ platform: "linux", home, node: "/usr/bin/node", path: "/usr/bin:/bin", root: null, logFile: "/tmp/l.log", png });
+  const entry = readFileSync(appShortcutPath("linux", home), "utf8");
+  assert.match(entry, /^Exec=env PATH=\/usr\/bin:\/bin \/usr\/bin\/node \/usr\/bin\/npx -y reviewstage@latest$/m);
+  assert.match(entry, new RegExp(`^Icon=${join(home, ".local", "share", "icons", "reviewstage.png").replace(/[.]/g, "\\.")}$`, "m"));
+  assert.equal(appShortcutStatus({ platform: "linux", home }).installed, true);
+});
+
+test("without the launcher's node there is nothing to point at", () => {
+  assert.throws(() => writeAppShortcut({ platform: "darwin", home: tmpdir(), node: "" }), /npx reviewstage/);
+  assert.equal(appShortcutPath("win32", tmpdir()), null);
 });

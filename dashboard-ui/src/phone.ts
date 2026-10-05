@@ -36,7 +36,7 @@ export type PhoneBridge = {
 
 declare global {
   interface Window {
-    reviewstage?: { phone?: PhoneBridge; update?: import("./desktop").UpdateBridge; openAtLogin?: import("./desktop").OpenAtLoginBridge };
+    reviewstage?: { phone?: PhoneBridge; update?: import("./desktop").UpdateBridge; openAtLogin?: import("./desktop").OpenAtLoginBridge; appShortcut?: import("./desktop").AppShortcutBridge };
   }
 }
 

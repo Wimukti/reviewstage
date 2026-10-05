@@ -33,6 +33,7 @@ import { useTodoCount } from "./queueCount";
 import { goBack, Link, setNavigationWrapper, useLocation } from "./router";
 import { Toaster } from "./Toast";
 import { UpdateBanner } from "./UpdateBanner";
+import { installViewportFix } from "./iosViewport";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -203,6 +204,7 @@ function TabBar({ active, count }: { active: TabKey; count: number | null }) {
 }
 
 export function PhoneShell({ me, children }: { me: Me; children: ReactNode }) {
+  useEffect(() => installViewportFix(), []);
   const { path, search } = useLocation();
   const qs = search.toString();
   const url = path + (qs ? `?${qs}` : "");

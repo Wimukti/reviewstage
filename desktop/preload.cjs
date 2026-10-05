@@ -28,4 +28,8 @@ contextBridge.exposeInMainWorld("reviewstage", {
     status: () => ipcRenderer.invoke("openAtLogin:status"),
     set: (on) => ipcRenderer.invoke("openAtLogin:set", !!on),
   },
+  appShortcut: {
+    status: () => ipcRenderer.invoke("appShortcut:status"),
+    set: (on) => ipcRenderer.invoke("appShortcut:set", !!on),
+  },
 });

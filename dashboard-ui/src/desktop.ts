@@ -28,6 +28,13 @@ export type OpenAtLoginBridge = { status(): Promise<OpenAtLogin>; set(on: boolea
 export function updateBridge(): UpdateBridge | undefined {
   return typeof window === "undefined" ? undefined : window.reviewstage?.update;
 }
+export type AppShortcut = { supported: boolean; installed: boolean; file: string | null; available: boolean; error?: string };
+export type AppShortcutBridge = { status(): Promise<AppShortcut>; set(on: boolean): Promise<AppShortcut> };
+
+export function appShortcutBridge(): AppShortcutBridge | undefined {
+  return typeof window === "undefined" ? undefined : window.reviewstage?.appShortcut;
+}
+
 export function openAtLoginBridge(): OpenAtLoginBridge | undefined {
   return typeof window === "undefined" ? undefined : window.reviewstage?.openAtLogin;
 }

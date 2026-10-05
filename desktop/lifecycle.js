@@ -2,7 +2,7 @@
 // when the launcher detaches, the single-instance retry, version comparison for updates, the
 // open-at-login files, and ROOT/desktop.json (what the app remembers between launches).
 // See openspec/changes/desktop-always-on/design.md.
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 // ---- F1: detach --------------------------------------------------------------------------
@@ -166,6 +166,126 @@ export function setAutostart(on, { platform, home, node, path, root, logFile }) 
     : autostartDesktopEntry({ node, path, root });
   writeFileSync(file, body, { mode: 0o644 });
   return autostartStatus({ platform, home });
+}
+
+// ---- In Applications: so Spotlight, Launchpad and the app launcher find ReviewStage ----------
+// `npx reviewstage` runs Electron out of the npm cache, which no launcher indexes. On first run
+// the app writes a small launcher of its own — a ~/Applications bundle on macOS, a .desktop
+// entry on Linux — that starts the newest published version the same way open-at-login does.
+
+const APP_SHORTCUT_VERSION = 1;
+
+/** Where the launcher lives, or null where it is not supported. */
+export function appShortcutPath(platform, home) {
+  if (platform === "darwin") return join(home, "Applications", "ReviewStage.app");
+  if (platform === "linux") return join(home, ".local", "share", "applications", "reviewstage.desktop");
+  return null;
+}
+
+/** The shell script inside the macOS bundle. It hands off to the launcher, which detaches. */
+export function appLauncherScript({ node, path, root, logFile }) {
+  const { program, args, env } = loginCommand({ node, root });
+  const vars = Object.entries({ PATH: path, ...env }).map(([k, v]) => `${k}=${shq(v)}`).join(" ");
+  return `#!/bin/sh
+# Written by ReviewStage. Starts the newest published version; running it again focuses the
+# open window. Delete this app, or turn off "Show in Applications", to remove it.
+exec env ${vars} ${[program, ...args].map(shq).join(" ")} >>${shq(logFile)} 2>&1
+`;
+}
+
+export function appInfoPlist() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>ReviewStage</string>
+	<key>CFBundleDisplayName</key>
+	<string>ReviewStage</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.reviewstage.launcher</string>
+	<key>CFBundleExecutable</key>
+	<string>ReviewStage</string>
+	<key>CFBundleIconFile</key>
+	<string>ReviewStage</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>${APP_SHORTCUT_VERSION}</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+</dict>
+</plist>
+`;
+}
+
+export function appDesktopEntry({ node, path, root, icon }) {
+  const { program, args, env } = loginCommand({ node, root });
+  const vars = Object.entries({ PATH: path, ...env }).map(([k, v]) => `${k}=${shq(v)}`).join(" ");
+  return `[Desktop Entry]
+Type=Application
+Name=ReviewStage
+Comment=Stage your PR review. Post it as yourself.
+Exec=env ${vars} ${[program, ...args].map(shq).join(" ")}
+${icon ? `Icon=${icon}\n` : ""}Terminal=false
+Categories=Development;
+StartupWMClass=ReviewStage
+`;
+}
+
+/** What was written last time, so a changed node path rewrites the launcher. */
+const stampOf = ({ node, path, root }) => JSON.stringify({ v: APP_SHORTCUT_VERSION, node, path, root: root || null });
+
+export function appShortcutStatus({ platform, home }) {
+  const file = appShortcutPath(platform, home);
+  return { supported: !!file, installed: !!file && existsSync(file), file };
+}
+
+/**
+ * Write the launcher. Returns the status. `icns` (macOS) and `png` (Linux) are the app icon
+ * to copy in; `run(cmd, args)` runs a system tool (codesign, lsregister) and may be a no-op in
+ * tests. Unchanged inputs and an existing launcher → nothing is rewritten.
+ */
+export function writeAppShortcut({ platform, home, node, path, root, logFile, icns, png, run = () => {} }) {
+  const file = appShortcutPath(platform, home);
+  if (!file) throw new Error("Adding ReviewStage to your applications works on macOS and Linux.");
+  if (!node) throw new Error("Start ReviewStage with `npx reviewstage` to add it to your applications.");
+  const stamp = stampOf({ node, path, root });
+  if (platform === "darwin") {
+    const stampFile = join(file, "Contents", "Resources", "reviewstage-launcher.json");
+    if (existsSync(stampFile) && readFileSync(stampFile, "utf8") === stamp) return appShortcutStatus({ platform, home });
+    rmSync(file, { recursive: true, force: true });
+    mkdirSync(join(file, "Contents", "MacOS"), { recursive: true });
+    mkdirSync(join(file, "Contents", "Resources"), { recursive: true });
+    writeFileSync(join(file, "Contents", "Info.plist"), appInfoPlist());
+    const exe = join(file, "Contents", "MacOS", "ReviewStage");
+    writeFileSync(exe, appLauncherScript({ node, path, root, logFile }));
+    chmodSync(exe, 0o755);
+    if (icns && existsSync(icns)) copyFileSync(icns, join(file, "Contents", "Resources", "ReviewStage.icns"));
+    writeFileSync(stampFile, stamp);
+    run("codesign", ["--force", "--sign", "-", file]);
+    run("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", ["-f", file]);
+    return appShortcutStatus({ platform, home });
+  }
+  let icon = "";
+  if (png && existsSync(png)) {
+    icon = join(home, ".local", "share", "icons", "reviewstage.png");
+    mkdirSync(dirname(icon), { recursive: true });
+    copyFileSync(png, icon);
+  }
+  const body = appDesktopEntry({ node, path, root, icon });
+  if (existsSync(file) && readFileSync(file, "utf8") === body) return appShortcutStatus({ platform, home });
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, body, { mode: 0o644 });
+  return appShortcutStatus({ platform, home });
+}
+
+export function removeAppShortcut({ platform, home }) {
+  const file = appShortcutPath(platform, home);
+  if (file) rmSync(file, { recursive: true, force: true });
+  return appShortcutStatus({ platform, home });
 }
 
 // ---- F3: what the app remembers ----------------------------------------------------------

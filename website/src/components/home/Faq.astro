@@ -1,0 +1,36 @@
+---
+/* Section 8. Six questions as native disclosures (no script). Answers from docs/launch/README.md
+ * "One sentence each", two sentences at most. */
+import { ChevronDown } from "lucide-react";
+import { withBase } from "../../content/site-links";
+const faq = [
+  { q: "What does it cost?", a: "Your existing Claude plan. No API key, no per-review bill, and no server bill for the desktop app." },
+  { q: "What leaves my machine?", a: "The diff, to Anthropic, through Claude Code on your account, and the review you choose to post, to GitHub. Nothing else." },
+  { q: "Can it approve on its own?", a: "No — not as an option, not behind a flag. Approve is your click." },
+  { q: "Does it work with my repositories?", a: "GitHub only: any repository you can review, public or private, as many as you like." },
+  { q: "Does it run on Windows?", a: "The Docker install runs under WSL2 today; a native app is on the roadmap." },
+  { q: "How is this different from Claude Code Review, CodeRabbit or Copilot review?", a: "They post as a bot on every PR. This drafts privately, and you post as yourself, only when you choose." },
+];
+---
+<section id="faq" class="home-section" aria-labelledby="faq-title">
+  <div class="container-page section-inner faq-inner">
+    <h2 id="faq-title" class="section-title">Questions people ask first.</h2>
+    <div class="grid gap-0">
+      {faq.map((f) => (
+        <details class="faq group border-b">
+          <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-3 text-base font-medium">
+            {f.q}
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+          </summary>
+          <p class="m-0 max-w-[60ch] pb-4 text-sm text-muted-foreground">{f.a}</p>
+        </details>
+      ))}
+      <a class="inline-flex min-h-11 w-fit items-center pt-3 text-sm font-medium text-primary underline-offset-4 hover:underline" href={withBase("/operations/faq/")}>All questions</a>
+    </div>
+  </div>
+</section>
+<style>
+  .faq summary::-webkit-details-marker { display: none; }
+  @media (min-width: 64rem) { .faq-inner { grid-template-columns: 1fr 1.6fr; align-items: start; } }
+  @media (prefers-reduced-motion: reduce) { .faq :global(svg) { transition: none; } }
+</style>

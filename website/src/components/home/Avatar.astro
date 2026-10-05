@@ -1,0 +1,8 @@
+---
+/* A person's avatar without a network request: the initial on the raised tone, as the app's
+ * UserAvatar draws it until GitHub's image arrives. */
+interface Props { login: string; size?: "sm" | "md"; class?: string }
+const { login, size = "md", class: extra = "" } = Astro.props;
+const dim = size === "sm" ? "size-5 text-[10px]" : "size-7 text-xs";
+---
+<span class={`inline-flex shrink-0 items-center justify-center rounded-full bg-accent font-semibold text-foreground ${dim} ${extra}`} aria-hidden="true">{login.replace(/[^a-z0-9]/gi, "").charAt(0).toUpperCase()}</span>

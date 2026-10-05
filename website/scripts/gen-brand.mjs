@@ -1,6 +1,6 @@
 // Renders the favicon set and the social image from assets/logo.svg into public/.
 // favicon.ico (16/32/48, PNG-in-ICO), favicon-192.png, favicon-512.png, apple-touch-icon.png
-// (180, mark on paper) and og.png (1200×630: mark, wordmark, descriptor on the dark paper).
+// (180, mark on paper). The social image, public/og.png, is a committed asset (1280×640).
 // Runs in `pnpm build`; `pnpm brand` runs it alone. Everything is overwritten each time.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,10 +12,8 @@ const root = join(here, "..", "..");
 const out = join(here, "..", "public");
 mkdirSync(out, { recursive: true });
 
-// The tokens the site's identity comes from (design.md §1). The dark theme is the default, so
-// the social image and the tiles are dark; the light values stay for the favicon tiles, where a
-// dark square on a dark browser tab bar disappears.
-const PAPER = "#0B0C10", INK = "#ECEEF3", BLUE = "#7A83FF", GRAPHITE = "#9AA0B4", HAIRLINE = "#22262F";
+// The tile paper comes from the light tokens (design.md §1): a dark square on a dark browser tab
+// bar disappears.
 const TILE_PAPER = "#F6F6F9";
 const markSvg = readFileSync(join(root, "assets", "logo.svg"), "utf8");
 
@@ -54,19 +52,7 @@ writeFileSync(join(out, "favicon-192.png"), await tile(192, 0.8));
 writeFileSync(join(out, "favicon-512.png"), await tile(512, 0.8));
 writeFileSync(join(out, "apple-touch-icon.png"), await tile(180, 0.72));
 
-/* og.png: wordmark (mark + "ReviewStage") top-left, the fold's two lines beneath, on dark paper.
-   The mark's own panels are dark ink, so on dark paper they are redrawn in --ink. */
-const W = 1200, H = 630;
-const descriptor = ["Stage every finding privately.", "Post the ones you mean, as yourself."];
-const ogMarkSvg = markSvg.replace(/url\(#dark\)/g, INK).replace(/url\(#blue\)/g, BLUE);
-const ogMark = await sharp(Buffer.from(ogMarkSvg)).resize(88, 88).png().toBuffer();
-const text = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-  <rect width="${W}" height="${H}" fill="${PAPER}"/>
-  <text x="208" y="234" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="44" font-weight="600" fill="${INK}">ReviewStage</text>
-  ${descriptor.map((line, i) => `<text x="96" y="${380 + i * 62}" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="46" font-weight="600" letter-spacing="-1" fill="${i ? BLUE : INK}">${line}</text>`).join("")}
-  <rect x="96" y="${H - 97}" width="${W - 192}" height="1" fill="${HAIRLINE}"/>
-  <text x="96" y="${H - 56}" font-family="Geist Variable, Geist, Inter, Helvetica, Arial, sans-serif" font-size="20" fill="${GRAPHITE}">reviewstage.dev · open source · self-hosted</text>
-</svg>`;
-const og = await sharp(Buffer.from(text)).composite([{ input: ogMark, left: 96, top: 176 }]).png().toBuffer();
-writeFileSync(join(out, "og.png"), og);
-console.log("brand → favicon.ico, favicon-192.png, favicon-512.png, apple-touch-icon.png, og.png");
+/* og.png is no longer drawn here: since landing-v2 the social preview is the designed 1280x640
+   image from the launch kit (the same one GitHub's repo settings carry), committed as
+   public/og.png. Rendering it on every build overwrote it with the old 1200x630 card. */
+console.log("brand → favicon.ico, favicon-192.png, favicon-512.png, apple-touch-icon.png");

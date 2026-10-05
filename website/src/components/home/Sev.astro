@@ -1,0 +1,21 @@
+---
+/* The app's StatusBadge, as static markup: a tinted pill, the kind's glyph in its tone, the word
+ * in ink. Same tone map as dashboard-ui/src/ui.tsx; severity colours appear only in mocks. */
+import { Check, CircleDot, Lightbulb, Loader2, MessageSquare, Sparkles, TriangleAlert, BadgeCheck } from "lucide-react";
+import { badge } from "../marketing/variants";
+type Kind = "should-fix" | "nit" | "new" | "reviewing" | "posted" | "reviewed" | "rule" | "confirmed";
+interface Props { kind: Kind; label?: string; class?: string }
+const { kind, label, class: extra = "" } = Astro.props;
+const map = {
+  "should-fix": { tone: "bg-amber/12 [&>svg]:text-amber", Icon: TriangleAlert, word: "Should fix" },
+  nit: { tone: "bg-muted [&>svg]:text-muted-foreground", Icon: Sparkles, word: "Nit" },
+  new: { tone: "bg-amber/12 [&>svg]:text-amber", Icon: CircleDot, word: "New" },
+  reviewing: { tone: "bg-amber/12 [&>svg]:text-amber", Icon: Loader2, word: "Reviewing" },
+  posted: { tone: "bg-green/12 [&>svg]:text-green", Icon: MessageSquare, word: "Posted" },
+  reviewed: { tone: "bg-green/12 [&>svg]:text-green", Icon: Check, word: "Reviewed" },
+  rule: { tone: "bg-blue/12 [&>svg]:text-blue", Icon: Lightbulb, word: "Suggested rule" },
+  confirmed: { tone: "bg-blue/12 [&>svg]:text-blue", Icon: BadgeCheck, word: "Confirmed by 2" },
+}[kind];
+const Icon = map.Icon;
+---
+<span class={badge({ variant: "secondary" }, `text-foreground ${map.tone} ${extra}`)} data-kind={kind}><Icon aria-hidden="true" />{label ?? map.word}</span>

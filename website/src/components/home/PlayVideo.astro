@@ -1,0 +1,27 @@
+---
+/* A recording that plays only when the reader asks: the poster with one play button over it,
+ * no native controls on the still (they cover the frame). On click the controls appear and it
+ * plays. preload="none", so nothing but the poster loads until then. */
+import { Play } from "lucide-react";
+interface Props { src: string; poster: string; label: string; width: number; height: number; class?: string; videoClass?: string }
+const { src, poster, label, width, height, class: extra = "", videoClass = "" } = Astro.props;
+---
+<div class={`play-video relative ${extra}`} data-play-video>
+  <video class={`block h-full w-full ${videoClass}`} width={width} height={height} muted playsinline preload="none" poster={poster} aria-label={label}>
+    <source src={src} type="video/mp4" />
+  </video>
+  <button type="button" class="absolute inset-0 m-auto inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-105 motion-reduce:transition-none" data-play aria-label={`Play: ${label}`}>
+    <Play className="ml-0.5 size-6" aria-hidden="true" fill="currentColor" />
+  </button>
+</div>
+<script>
+  for (const box of document.querySelectorAll<HTMLElement>("[data-play-video]")) {
+    const v = box.querySelector("video"), b = box.querySelector<HTMLButtonElement>("[data-play]");
+    b?.addEventListener("click", () => {
+      if (!v) return;
+      v.controls = true;
+      b.hidden = true;
+      v.play().catch(() => {});
+    });
+  }
+</script>

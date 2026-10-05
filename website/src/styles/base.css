@@ -96,9 +96,9 @@
  * appear in no other selector here. */
 .stage-hero { position: relative; isolation: isolate; }
 .stage-hero::before {
-  content: ""; position: absolute; left: 50%; top: -24%; width: min(140%, 1200px); height: 80%;
+  content: ""; position: absolute; left: 50%; top: -30%; width: min(140%, 1200px); height: 90%;
   transform: translateX(-50%); pointer-events: none; z-index: -1;
-  background: radial-gradient(60% 55% at 50% 0%, var(--light), transparent 70%);
+  background: radial-gradient(55% 50% at 50% 50%, var(--light), transparent 72%);
 }
 @media (prefers-reduced-motion: no-preference) {
   .stage-hero::before { animation: breathe 8s var(--ease) alternate infinite; }

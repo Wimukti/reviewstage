@@ -20,3 +20,7 @@
   .lift { transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
   .lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-raised); }
 }
+
+/* home sections (landing-v2): one rhythm for every band, the title then the content */
+.home-section { padding-block: var(--section-pad); scroll-margin-top: calc(var(--nav-height) + 1rem); }
+.section-inner { display: grid; gap: var(--section-gap); }

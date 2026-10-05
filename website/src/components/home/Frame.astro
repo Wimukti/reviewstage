@@ -1,0 +1,11 @@
+---
+/* The site's window frame (the same bar Shot.astro draws): a card, a 36px chrome bar with a glyph
+ * and a label, then the content on the canvas tone. Mocks and videos both sit in it. */
+import { AppWindow } from "lucide-react";
+interface Props { label: string; class?: string; bodyClass?: string }
+const { label, class: extra = "", bodyClass = "" } = Astro.props;
+---
+<div class={`frame overflow-hidden rounded-lg bg-card text-card-foreground shadow-sm ${extra}`}>
+  <div class="flex h-9 items-center gap-2 px-3 text-xs text-muted-foreground" aria-hidden="true"><AppWindow className="size-3.5" /><span class="truncate">{label}</span></div>
+  <div class={`bg-background ${bodyClass}`}><slot /></div>
+</div>

@@ -1,0 +1,100 @@
+---
+/* Section 3. The real sequence, so it is numbered: four steps, each a different moment of the
+ * product drawn as a static mock. A row of four on a desktop, two on a tablet, a scroll-snap
+ * strip on a phone. The id is part of the app's contract (ui.tsx HOW_URL). */
+import { Check, Loader2, Circle, MessageSquare } from "lucide-react";
+import Avatar from "./Avatar.astro";
+import Sev from "./Sev.astro";
+import Mark from "../marketing/Mark.astro";
+const phases = ["Fetching the PR", "Checking out the branch", "Reviewing the diff", "Writing the findings"];
+---
+<section id="how-it-works" class="home-section" aria-labelledby="how-title">
+  <div class="container-page section-inner">
+    <h2 id="how-title" class="section-title">Four steps, and only one of them is the AI's.</h2>
+    <ol class="steps m-0 list-none p-0" aria-label="How it works">
+      <li class="step">
+        <div class="step-visual" aria-hidden="true">
+          <div class="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+            <div class="flex items-start gap-2.5 rounded-lg bg-background p-2.5 shadow-sm ring-1 ring-border backdrop-blur">
+              <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-muted"><Mark size={16} /></span>
+              <span class="grid min-w-0 gap-0.5 text-xs">
+                <span class="flex items-center gap-1.5 font-semibold">ReviewStage <span class="font-normal text-muted-foreground">now</span></span>
+                <span class="text-muted-foreground">teammate requested your review on acme/widgets #38849</span>
+              </span>
+            </div>
+            <div class="flex items-center gap-2 rounded-md bg-background px-2.5 py-2 text-xs">
+              <Sev kind="new" />
+              <span class="truncate font-medium">Add lead-time badge to product cards</span>
+            </div>
+          </div>
+        </div>
+        <h3 class="step-title"><span class="step-n">1</span>Requested</h3>
+        <p class="step-line">A request lands in your queue and on your phone. Nothing runs until you click.</p>
+      </li>
+      <li class="step">
+        <div class="step-visual" aria-hidden="true">
+          <div class="grid w-full gap-1.5 rounded-lg bg-background p-3 text-xs">
+            {phases.map((p, i) => (
+              <span class={`flex items-center gap-2 ${i > 2 ? "text-muted-foreground" : ""}`}>
+                {i < 2 ? <Check className="size-3.5 text-green" /> : i === 2 ? <Loader2 className="size-3.5 text-amber" /> : <Circle className="size-3.5" />}
+                {p}
+              </span>
+            ))}
+            <span class="mt-1 h-1 overflow-hidden rounded-full bg-muted"><span class="block h-full w-3/5 rounded-full bg-primary"></span></span>
+          </div>
+        </div>
+        <h3 class="step-title"><span class="step-n">2</span>Drafted</h3>
+        <p class="step-line">Claude Code reads the real diff, on your own plan, at the effort you chose.</p>
+      </li>
+      <li class="step">
+        <div class="step-visual" aria-hidden="true">
+          <div class="grid w-full gap-2 text-xs">
+            <div class="grid gap-1.5 rounded-md bg-background p-2.5 ring-1 ring-primary/50">
+              <span class="flex items-center gap-2"><span class="inline-flex size-4 items-center justify-center rounded-sm bg-primary text-primary-foreground"><Check className="size-3" /></span><Sev kind="should-fix" /></span>
+              <span class="font-medium leading-snug">A product with no vendor can crash the lead-time badge</span>
+            </div>
+            <div class="grid gap-1.5 rounded-md bg-background p-2.5 opacity-55">
+              <span class="flex items-center gap-2"><span class="size-4 rounded-sm ring-1 ring-muted-foreground"></span><Sev kind="nit" /></span>
+              <span class="font-medium leading-snug line-through decoration-muted-foreground">Use const instead of let</span>
+            </div>
+          </div>
+        </div>
+        <h3 class="step-title"><span class="step-n">3</span>Staged</h3>
+        <p class="step-line">Findings wait privately. Keep what's worth your name, edit it, drop the rest.</p>
+      </li>
+      <li class="step">
+        <div class="step-visual" aria-hidden="true">
+          <div class="w-full overflow-hidden rounded-lg bg-background text-xs">
+            <div class="flex items-center gap-2 px-2.5 py-1.5 text-muted-foreground"><code class="truncate">app/models/Product.php</code></div>
+            <pre class="m-0 grid font-mono text-[11px] leading-5">
+              <span class="flex gap-2 px-2.5 text-muted-foreground"><span class="w-5 text-right">41</span>$vendor = $this-&gt;vendor();</span>
+              <span class="flex gap-2 bg-green/12 px-2.5"><span class="w-5 text-right text-muted-foreground">42</span>return $vendor-&gt;leadTime();</span>
+            </pre>
+            <div class="m-2 grid gap-1 rounded-md bg-background p-2">
+              <span class="flex items-center gap-1.5"><Avatar login="acme-dev" size="sm" /><span class="font-semibold">acme-dev</span><MessageSquare className="ml-auto size-3 text-muted-foreground" /></span>
+              <span>Guard against a null vendor before reading its lead time.</span>
+            </div>
+          </div>
+        </div>
+        <h3 class="step-title"><span class="step-n">4</span>Posted</h3>
+        <p class="step-line">One plain comment review, under your GitHub account. Approval is a separate click.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+<style>
+  .steps { display: grid; gap: 1rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .step { display: grid; grid-template-rows: auto auto 1fr; gap: 0.6rem; min-width: 0; }
+  .step-visual > * { min-width: 0; }
+  .step-visual { display: flex; align-items: center; height: 12.5rem; padding: 0.85rem; border-radius: var(--radius-lg); background: var(--panel); margin-bottom: 0.4rem; overflow: hidden; }
+  .step-title { margin: 0; display: flex; align-items: center; gap: 0.6rem; font-size: var(--t-16); font-weight: 600; }
+  .step-n { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: var(--r-full); background: var(--blue-bg); color: var(--blue); font-size: var(--t-12); font-variant-numeric: tabular-nums; }
+  .step-line { margin: 0; color: var(--graphite); font-size: var(--t-14); }
+  @media (max-width: 64rem) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 1rem; } }
+  @media (max-width: 40rem) {
+    /* a phone: a scroll-snap strip, the next card peeking so the reader knows to swipe */
+    .steps { display: flex; gap: 0.85rem; overflow-x: auto; scroll-snap-type: x mandatory; margin-inline: calc(-1 * var(--page-gutter)); padding-inline: var(--page-gutter); scroll-padding-inline: var(--page-gutter); scrollbar-width: none; }
+    .steps::-webkit-scrollbar { display: none; }
+    .step { flex: 0 0 82%; scroll-snap-align: start; }
+  }
+</style>

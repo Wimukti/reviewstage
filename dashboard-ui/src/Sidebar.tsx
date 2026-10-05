@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -6,25 +5,19 @@ import {
   ChevronsUpDown,
   ClipboardCheck,
   Code2,
-  Compass,
-  Ellipsis,
-  ExternalLink,
   FolderGit2,
   Inbox,
   LogOut,
   Plug,
   Search,
   Settings,
-  Smartphone,
   UserRoundCog,
 } from "lucide-react";
 import type { Me } from "./api";
 import { openPalette } from "./CommandPalette";
 import { Link, useLocation } from "./router";
 import { useRunning } from "./running";
-import { startTour } from "./Tour";
-import { ThemeControl } from "./ThemeControl";
-import { HOW_URL, StatusBadge, UserAvatar } from "./ui";
+import { StatusBadge, UserAvatar } from "./ui";
 import { Logo } from "./Logo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,7 +29,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 type NavItem = [key: string, label: string, to: string, icon: LucideIcon];
 
@@ -115,7 +107,7 @@ function NavLink({ item, active, className }: { item: NavItem; active: boolean; 
   );
 }
 
-function LiveBadge({ me }: { me: Me }) {
+export function LiveBadge({ me }: { me: Me }) {
   return (
     <StatusBadge
       kind={me.dry_run ? "dry" : "live"}
@@ -226,123 +218,5 @@ export function Sidebar({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut:
         <AccountMenu me={me} onSignOut={onSignOut} onSwitchAccount={onSwitchAccount} />
       </div>
     </aside>
-  );
-}
-
-// Phone (< 900px): a 56px header with the mark and the search, and a labelled four-tab bar.
-// More opens a bottom sheet with the rest of the navigation, the Help items, the theme switch,
-// the account row, Switch GitHub account and Sign out. Every target is at least 44px.
-const TABS: NavItem[] = [
-  ["queue", "Queue", "/", Inbox],
-  ["qa", "QA", "/qa", ClipboardCheck],
-  ["skills", "Skills", "/skills", Code2],
-];
-const MORE: NavItem[] = [
-  ["learnings", "Learnings", "/learnings", BookOpen],
-  ["dashboard", "Insights", "/dashboard", BarChart3],
-  ["integrations", "Integrations", "/integrations", Plug],
-  ["settings", "Settings", "/settings", Settings],
-  ["devices", "Devices", "/settings#devices", Smartphone],
-];
-
-const TAB_CLASS =
-  "flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 rounded-none text-xs font-medium text-muted-foreground hover:no-underline [&_svg]:size-5";
-
-export function PhoneShell({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: () => void; onSwitchAccount?: () => void }) {
-  const { path } = useLocation();
-  const active = activeKey(path);
-  const [more, setMore] = useState(false);
-  const moreItems = me.personal ? [REPOS, ...MORE] : MORE;
-  const inMore = moreItems.some(([k]) => k === active);
-
-  // The sheet closes on navigation (Escape and the trigger's focus return are Radix's).
-  useEffect(() => setMore(false), [path]);
-
-  return (
-    <>
-      <header className="phone-head sticky top-0 z-30 flex h-14 items-center justify-between bg-background px-4">
-        <Link className="-ml-2 flex size-[44px] items-center justify-center" to="/" aria-label={me.brand}>
-          <Logo me={me} className="size-6" />
-        </Link>
-        <Button variant="ghost" size="icon-lg" className="-mr-2 size-[44px]" type="button" aria-label="Review a PR" title="Review a PR" onClick={openPalette}>
-          <Search aria-hidden="true" className="size-5" />
-        </Button>
-      </header>
-
-      <Sheet open={more} onOpenChange={setMore}>
-        <nav
-          className="tabbar fixed inset-x-0 bottom-0 z-30 flex h-[calc(56px+env(safe-area-inset-bottom,0px))] border-t bg-background pb-[env(safe-area-inset-bottom,0px)]"
-          aria-label="Main"
-          data-testid="tab-bar"
-        >
-          {TABS.map(([k, label, to, Glyph]) => (
-            <Button key={k} asChild variant="ghost" className={cn(TAB_CLASS, active === k && "text-primary")}>
-              <Link to={to} aria-current={active === k ? "page" : undefined}>
-                <Glyph aria-hidden="true" />
-                <span>{label}</span>
-              </Link>
-            </Button>
-          ))}
-          <SheetTrigger asChild>
-            <Button type="button" variant="ghost" className={cn(TAB_CLASS, inMore && "text-primary")} data-testid="more-tab">
-              <Ellipsis aria-hidden="true" />
-              <span>More</span>
-            </Button>
-          </SheetTrigger>
-        </nav>
-
-        <SheetContent
-          side="bottom"
-          data-testid="more-sheet"
-          aria-label="More"
-          className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-xl border-t-0 bg-card px-2 pb-[calc(12px+env(safe-area-inset-bottom,0px))]"
-        >
-          <SheetHeader className="px-2 pb-2 pt-4">
-            <SheetTitle className="text-sm">More</SheetTitle>
-            <SheetDescription className="sr-only">The rest of the navigation, the theme and your account.</SheetDescription>
-          </SheetHeader>
-          {moreItems.map((it) => (
-            <NavLink key={it[0]} item={it} active={active === it[0]} className="h-[44px]" />
-          ))}
-          <Button asChild variant="ghost" className="h-[44px] w-full justify-start gap-2.5 px-2 text-muted-foreground hover:no-underline">
-            <a href={HOW_URL} target="_blank" rel="noopener">
-              <ExternalLink aria-hidden="true" />
-              <span>How it works</span>
-            </a>
-          </Button>
-          <Button
-            variant="ghost"
-            className="h-[44px] w-full justify-start gap-2.5 px-2 text-muted-foreground"
-            type="button"
-            onClick={() => {
-              setMore(false);
-              startTour();
-            }}
-          >
-            <Compass aria-hidden="true" />
-            <span>Take a tour</span>
-          </Button>
-          <div className="px-2 pb-1 pt-3">
-            <div className="mb-1.5 text-xs text-muted-foreground">Theme</div>
-            <ThemeControl tall />
-          </div>
-          <div className="mt-2 flex min-h-10 items-center gap-2.5 px-2" data-testid="account-card">
-            <AccountWords me={me} />
-          </div>
-          <div className="mt-1 flex flex-wrap justify-end gap-1">
-            {onSwitchAccount && (
-              <Button variant="ghost" className="h-[44px] text-muted-foreground" type="button" onClick={onSwitchAccount} data-testid="switch-account">
-                <UserRoundCog aria-hidden="true" />
-                Switch GitHub account
-              </Button>
-            )}
-            <Button variant="ghost" className="h-[44px] text-muted-foreground" type="button" onClick={onSignOut}>
-              <LogOut aria-hidden="true" />
-              Sign out
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </>
   );
 }

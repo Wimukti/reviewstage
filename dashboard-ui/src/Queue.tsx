@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, ArchiveRestore, Check, CircleCheck, Circle, Compass, Inbox, MessageSquare, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api, errMessage, type Me, type QueueData, type QueueRow } from "./api";
+import { ACTIVITY_VIEWS } from "./nav";
 import { parsePrRef, prUrl } from "./pr";
 import { noteFailure } from "./reach";
 import { getRepoFilter, REPO_FILTER_EVENT, setRepoFilter } from "./repoFilter";
 import { Link, navigate, useLocation } from "./router";
+import { setTodoCount } from "./queueCount";
 import { runningFor, useRunning } from "./running";
 import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge, UserAvatar } from "./ui";
 import { cn } from "@/lib/utils";
@@ -186,9 +188,14 @@ function QueueSkeleton() {
   );
 }
 
-export function Queue({ me }: { me: Me }) {
+/**
+ * The queue. `views` + `base` make it a narrower page at another address: the phone's Activity
+ * tab is the queue's Reviewed, Posted and Approved views under a segmented control.
+ */
+export function Queue({ me, views, base = "/", title = "Your review queue" }: { me: Me; views?: readonly string[]; base?: string; title?: string }) {
   const { search } = useLocation();
-  const tab = search.get("tab") || "todo";
+  const asked = search.get("tab") || "";
+  const tab = views ? (views.includes(asked) ? asked : views[0]) : asked || "todo";
   const sort = search.get("sort") || "newest";
   // ?running=1 — where the sidebar pill points when several jobs are in flight.
   const onlyRunning = search.get("running") === "1";
@@ -226,6 +233,8 @@ export function Queue({ me }: { me: Me }) {
         if (!live) return;
         setErr("");
         setData(d);
+        // The tab bar's badge, for free, whenever these counts are the whole install's.
+        if (!repoFilter && !query.trim()) setTodoCount(d.tabs.find((t) => t.key === "todo")?.count);
       })
       .catch((e: unknown) => {
         // The server is gone (a sleeping Mac behind the tunnel): the whole screen says so.
@@ -286,8 +295,8 @@ export function Queue({ me }: { me: Me }) {
 
   const header = (
     <PageHeader
-      title="Your review queue"
-      tour
+      title={title}
+      tour={!views}
       help={
         <>
           Reviews requested from you across{" "}
@@ -386,7 +395,22 @@ export function Queue({ me }: { me: Me }) {
         </Banner>
       )}
 
-      <Tabs value={tab} onValueChange={(v) => navigate(`/?tab=${v}&sort=${sort}`)} className="mt-1">
+      <Tabs value={tab} onValueChange={(v) => navigate(`${base}?tab=${v}&sort=${sort}`)} className="mt-1">
+        {views ? (
+          // Activity: a segmented control of its three views, one row at any width.
+          <TabsList className="h-9! w-full" aria-label="Activity views" data-testid="activity-views">
+            {data.tabs
+              .filter((t) => views.includes(t.key))
+              .map((t) => (
+                <TabsTrigger key={t.key} value={t.key} className="gap-1.5 px-2">
+                  {t.label}
+                  <span className="text-xs tabular-nums text-muted-foreground in-data-[state=active]:text-foreground" data-testid="tab-count">
+                    {t.count.toLocaleString("en-US")}
+                  </span>
+                </TabsTrigger>
+              ))}
+          </TabsList>
+        ) : (
         <TabsList variant="line" className="h-auto! flex-wrap justify-start gap-x-0.5 gap-y-1 p-0" aria-label="Queue views">
           {data.tabs.map((t) => (
             <TabsTrigger key={t.key} value={t.key} className="h-9 flex-none gap-1.5 px-3">
@@ -397,6 +421,7 @@ export function Queue({ me }: { me: Me }) {
             </TabsTrigger>
           ))}
         </TabsList>
+        )}
       </Tabs>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -431,7 +456,7 @@ export function Queue({ me }: { me: Me }) {
               size="sm"
               className={cn("hover:no-underline", sort !== k && "text-muted-foreground")}
             >
-              <Link aria-current={sort === k ? "true" : undefined} to={`/?tab=${tab}&sort=${k}`}>
+              <Link aria-current={sort === k ? "true" : undefined} to={`${base}?tab=${tab}&sort=${k}`}>
                 {lbl}
               </Link>
             </Button>
@@ -544,4 +569,9 @@ export function Queue({ me }: { me: Me }) {
       </div>
     </>
   );
+}
+
+/** The phone's Activity tab: what you reviewed, posted and approved. */
+export function Activity({ me }: { me: Me }) {
+  return <Queue me={me} views={ACTIVITY_VIEWS} base="/activity" title="Activity" />;
 }

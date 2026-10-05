@@ -21,3 +21,45 @@ transform:translateX(-100%)}
   @keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
 }
 @media (prefers-reduced-motion:reduce){.runbar::before{transform:none;width:100%}}
+
+/* ---- the phone shell (PhoneShell.tsx, openspec/changes/mobile-app-feel M1) -------------------- */
+/* An app, not a page: no grey flash on a tap, no rubber band handing the scroll to the browser,
+   and no field under 16px (iOS zooms the page into one when it is focused). */
+html{-webkit-tap-highlight-color:transparent}
+@media (max-width:899px){
+  html,body{overscroll-behavior-y:contain}
+  .overflow-y-auto,.overflow-auto,[data-slot="sheet-content"],[data-slot="dialog-content"]{overscroll-behavior:contain}
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{font-size:16px!important}
+}
+
+/* Route changes: a pushed page slides in from the right over 280ms, a popped one slides back,
+   a tab switch cross-fades. The bars keep their own snapshot so only the page moves. View
+   Transitions where the browser has them (PhoneShell.tsx stamps html[data-nav]); the [data-anim]
+   keyframes are the fallback. Nothing moves under reduced motion. */
+@media (max-width:899px){
+  .phone-head{view-transition-name:navbar}
+  .tabbar{view-transition-name:tabbar}
+  .phone-page{view-transition-name:page}
+}
+@media (max-width:899px) and (prefers-reduced-motion:no-preference){
+  ::view-transition-old(root),::view-transition-new(root){animation:none}
+  ::view-transition-group(page){animation-duration:280ms;animation-timing-function:var(--ease)}
+  html[data-nav="push"]::view-transition-old(page){animation:280ms var(--ease) both rs-out-left}
+  html[data-nav="push"]::view-transition-new(page){animation:280ms var(--ease) both rs-in-right}
+  html[data-nav="pop"]::view-transition-old(page){animation:280ms var(--ease) both rs-out-right;z-index:1}
+  html[data-nav="pop"]::view-transition-new(page){animation:280ms var(--ease) both rs-in-left}
+  html[data-nav="fade"]::view-transition-old(page){animation:180ms var(--ease) both rs-fade-out}
+  html[data-nav="fade"]::view-transition-new(page){animation:180ms var(--ease) both rs-fade-in}
+  .phone-page[data-anim="push"]{animation:280ms var(--ease) both rs-in-right}
+  .phone-page[data-anim="pop"]{animation:280ms var(--ease) both rs-in-left}
+  .phone-page[data-anim="fade"]{animation:180ms var(--ease) both rs-fade-in}
+  @keyframes rs-in-right{from{transform:translateX(100%)}to{transform:none}}
+  @keyframes rs-out-left{from{transform:none}to{transform:translateX(-30%);opacity:.6}}
+  @keyframes rs-in-left{from{transform:translateX(-30%);opacity:.6}to{transform:none;opacity:1}}
+  @keyframes rs-out-right{from{transform:none}to{transform:translateX(100%)}}
+  @keyframes rs-fade-in{from{opacity:0}to{opacity:1}}
+  @keyframes rs-fade-out{from{opacity:1}to{opacity:0}}
+}
+@media (prefers-reduced-motion:reduce){
+  ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}
+}

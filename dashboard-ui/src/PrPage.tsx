@@ -1166,28 +1166,32 @@ function RerunBody({ data, onDone }: { data: PrData; onDone: () => void }) {
 }
 
 // Breadcrumbs: Queue / repository pill / #123. Clicking the repo crumb filters the queue to it.
-const Sep = () => <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/60" />;
+const Sep = ({ className }: { className?: string }) => (
+  <ChevronRight aria-hidden="true" className={cn("size-3.5 shrink-0 text-muted-foreground/60", className)} />
+);
 export function Crumbs({ repo, num, tail, linkNum }: { repo: string; num: string; tail?: React.ReactNode; linkNum?: boolean }) {
   return (
     <nav aria-label="Breadcrumb" data-testid="crumbs" className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-      <Link to="/" className="text-muted-foreground hover:text-foreground">
+      {/* On a phone the navigation bar's back button is the way back; the repository stays. */}
+      <Link to="/" className="text-muted-foreground hover:text-foreground max-[899px]:hidden">
         Queue
       </Link>
       {repo && (
         <>
-          <Sep />
+          <Sep className="max-[899px]:hidden" />
           <Link to="/" className="hover:no-underline" onClick={() => setRepoFilter(repo)} title="Filter the queue to this repository">
             <RepoPill repo={repo} />
           </Link>
         </>
       )}
-      <Sep />
+      {/* The bar's title is the number on a phone; only the repository is new information. */}
+      <Sep className={tail ? undefined : "max-[899px]:hidden"} />
       {tail || linkNum ? (
         <Link to={prUrl({ repo, num })} className="text-muted-foreground hover:text-foreground">
           #{num}
         </Link>
       ) : (
-        <span className="text-foreground">#{num}</span>
+        <span className="text-foreground max-[899px]:hidden">#{num}</span>
       )}
       {tail && (
         <>
@@ -1256,7 +1260,7 @@ function HeaderTop({ data, tail }: { data: PrData; tail?: React.ReactNode }) {
   return (
     <>
       <Crumbs repo={data.repo} num={data.pr} tail={tail} />
-      <PageHeader title={<PrTitle num={data.pr} title={data.title} />} className="mb-3 items-start">
+      <PageHeader title={<PrTitle num={data.pr} title={data.title} />} className="mb-3 items-start" keepOnPhone>
         <div className="ml-auto shrink-0">
           <ActionsMenu data={data} />
         </div>
@@ -1542,7 +1546,7 @@ export function PrPage({ me }: { me: Me }) {
     return (
       <div className="prpage">
         <Crumbs repo="" num={num} />
-        <PageHeader title={`Which repository is #${num} in?`} />
+        <PageHeader title={`Which repository is #${num} in?`} keepOnPhone />
         <Card className="gap-0 border-0 py-0 shadow-sm" data-testid="repo-pick">
           <p className="m-0 px-4 py-3 text-sm text-muted-foreground">
             This link names a PR number but not a repository, and this ReviewStage reviews several.
@@ -1571,7 +1575,7 @@ export function PrPage({ me }: { me: Me }) {
     return (
       <div className="prpage" data-testid="pr-unknown">
         <Crumbs repo={repo} num={num} />
-        <PageHeader title={<PrTitle num={num} title="" />} className="mb-3" />
+        <PageHeader title={<PrTitle num={num} title="" />} className="mb-3" keepOnPhone />
         <Card className="border-0 py-0 shadow-sm">
           <EmptyState
             icon={SearchX}

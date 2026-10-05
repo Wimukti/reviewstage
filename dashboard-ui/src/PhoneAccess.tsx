@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
-import { PHONE_STRINGS as S, onPhoneData, phoneBridge, refreshPhoneStatus, usePhoneStatus, type PhoneData } from "./phone";
+import { PHONE_STRINGS as S, onPhoneData, phoneBridge, refreshPhoneStatus, usePhoneStatus, type PhoneData, type TailscaleStatus } from "./phone";
 import { SettingRow, StatusBadge } from "./ui";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 
 const NOTE = "text-xs text-muted-foreground";
 
@@ -20,6 +21,12 @@ export function PhoneAccess() {
   const [busy, setBusy] = useState<"enable" | "disable" | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [ts, setTs] = useState<TailscaleStatus | null>(null);
+  const [tsBusy, setTsBusy] = useState(false);
+
+  useEffect(() => {
+    bridge?.tailscale?.status().then(setTs, () => setTs(null));
+  }, [bridge]);
 
   useEffect(
     () =>
@@ -75,6 +82,19 @@ export function PhoneAccess() {
   };
 
   const off = !enabled && !opening;
+  const setTailscale = async (on: boolean) => {
+    if (!bridge.tailscale) return;
+    setTsBusy(true);
+    setError("");
+    try {
+      const r = await bridge.tailscale.set(on);
+      if (r.error) setError(r.error);
+      setTs(await bridge.tailscale.status());
+    } finally {
+      await refreshPhoneStatus();
+      setTsBusy(false);
+    }
+  };
 
   return (
     <Card className="gap-0 py-0">
@@ -119,6 +139,33 @@ export function PhoneAccess() {
             </Button>
           )}
         </SettingRow>
+
+        {bridge.tailscale && ts && (
+          <SettingRow
+            label="Use Tailscale"
+            htmlFor="use-tailscale"
+            data-testid="phone-tailscale"
+            hint={
+              ts.installed && ts.loggedIn ? (
+                <>
+                  A stable address, private to your own devices{ts.url ? <>: <code>{ts.url}</code></> : null}. It never changes, so
+                  the home-screen app keeps working after a restart.
+                </>
+              ) : (
+                <>
+                  For an address that never changes, install Tailscale on this computer and your phone and sign in.{" "}
+                  <a href="https://tailscale.com/download" target="_blank" rel="noopener" className="text-muted-foreground underline underline-offset-2">
+                    Get Tailscale
+                  </a>
+                </>
+              )
+            }
+          >
+            {ts.installed && ts.loggedIn && (
+              <Switch id="use-tailscale" checked={!!ts.preferred} disabled={tsBusy || !!busy} onCheckedChange={(on) => void setTailscale(on)} />
+            )}
+          </SettingRow>
+        )}
 
         {(error || data.stopped) && (
           <p className="m-0 py-3 text-xs text-red" role="alert" data-testid="phone-error">

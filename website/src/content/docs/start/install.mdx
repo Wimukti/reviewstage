@@ -32,7 +32,9 @@ Then your queue. The dock badge counts review requests; a notification fires whe
 
 <Demo name="phone-access" alt="The desktop app's phone window: a QR code, the tunnel address under it, and the line 'Scanning signs you in as octocat. Code valid until 14:32 — reopen this window for a new one.'" label="phone access · QR" />
 
-**What if my Wi-Fi drops?** The tunnel reconnects by itself after a dropped connection or sleep, and the address stays the same for as long as the app runs. Quitting the app ends it; the next **Enable phone access** gets a new address, so scan again.
+**It keeps running.** `npx reviewstage` prints `ReviewStage is running. You can close this terminal.` — closing the terminal leaves the app open. Closing the window keeps it in the menu bar (**Open ReviewStage**, **Phone access: On/Off**, **Check for updates**, **Quit ReviewStage**), so phone access and notifications keep working. **Settings → Desktop app** shows the running version and turns on **Open at login**. When a new version is out, a banner offers **Restart to update**.
+
+**What if my Wi-Fi drops?** The tunnel reconnects by itself after a dropped connection or sleep, and the address stays the same for as long as the app runs. Phone access is remembered and comes back on at the next launch, with a new address; a phone with notifications on gets "Your Mac has a new address" with a sign-in link for it. While the Mac sleeps, the phone says "Your Mac isn't reachable" and offers **Try again**.
 
 **Switch GitHub account** is in the account ⋯ menu. Everything lives under `~/.reviewstage`; delete it to start over. Posting is live from the first run: the Post button is the gate. More in the [FAQ](/operations/faq/) and [INSTALL-DESKTOP.md](https://github.com/Wimukti/reviewstage/blob/main/docs/INSTALL-DESKTOP.md).
 

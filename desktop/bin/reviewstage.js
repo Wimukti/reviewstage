@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 // `npx reviewstage` lands here. The job is small: find the Electron binary npm installed next
-// to this package and hand it main.js. Everything that matters happens in main.js.
+// to this package, hand it main.js, and get out of the terminal's way — the app runs detached,
+// so closing the terminal leaves it running (openspec/changes/desktop-always-on F1).
+// Everything that matters happens in main.js.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { shouldDetach } from "../lifecycle.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -78,8 +81,34 @@ if (process.platform === "linux") {
     if (!(st.uid === 0 && (st.mode & 0o4000))) flags.push("--no-sandbox");
   } catch { flags.push("--no-sandbox"); }
 }
-const child = spawn(electron, [join(here, "..", "main.js"), ...flags, ...process.argv.slice(2)], {
-  stdio: "inherit",
-  env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: "1" },
-});
-child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+const args = [join(here, "..", "main.js"), ...flags, ...process.argv.slice(2)];
+// What main.js needs from this process: the node that ran it (open at login and updates run
+// its sibling npx) and the PATH the person's shell had (launchd and a detached child would
+// otherwise start from a bare one).
+const env = {
+  ...process.env,
+  ELECTRON_DISABLE_SECURITY_WARNINGS: "1",
+  RS_LAUNCH_NODE: process.execPath,
+  RS_LAUNCH_PATH: process.env.PATH || "",
+};
+
+if (!shouldDetach(process.argv.slice(2), process.env)) {
+  // Foreground: the smoke test and CI read stdout, and --foreground keeps the old behaviour.
+  const child = spawn(electron, args, { stdio: "inherit", env });
+  child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+} else {
+  // Detached: its own session (no SIGHUP when the terminal closes), output to ROOT/desktop.log.
+  const root = process.env.ROOT || join(homedir(), ".reviewstage");
+  mkdirSync(root, { recursive: true });
+  const log = openSync(join(root, "desktop.log"), "w");
+  const child = spawn(electron, args, { detached: true, stdio: ["ignore", log, log], env });
+  child.once("error", (e) => {
+    console.error(`ReviewStage could not start: ${e.message}`);
+    process.exit(1);
+  });
+  child.once("spawn", () => {
+    child.unref();
+    console.log("ReviewStage is running. You can close this terminal.");
+    process.exit(0);
+  });
+}

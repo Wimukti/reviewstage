@@ -17,12 +17,22 @@
  *                       manifest) can change under a stable URL, so a reachable server always
  *                       wins and the cache only covers being offline.
  *   - navigations       network-first, falling back to the cached shell, then offline.html.
+ *                       A gateway answer (502, 503, 504, or Cloudflare's 530 for a quick
+ *                       tunnel whose Mac is asleep or whose app has quit) counts as no answer:
+ *                       the person sees the app or "Your Mac isn't reachable", never a raw
+ *                       error page (openspec/changes/desktop-always-on F5).
  *
  *   - push             shows the notification the server encrypted for this device (title,
  *                       one line, the page to open). A notification only ever opens a page.
- *   - notificationclick focuses an open window on that URL, or opens one. */
+ *   - notificationclick focuses an open window on that URL, or opens one. A URL on another
+ *                       origin (the Mac's new address after a restart) always opens a new
+ *                       window: this worker's origin is the old address. */
 const VERSION = "rs-__BUILD__";
 const SHELL = ["/", "/offline.html", "/manifest.webmanifest", "/icons/icon-192.png"];
+
+// What a dead tunnel or a down proxy answers. 530 is Cloudflare's "origin unreachable"
+// (error 1033): the Mac is asleep or ReviewStage quit.
+const GATEWAY = new Set([502, 503, 504, 530]);
 
 // Content-addressed: the hash is over the bytes, so one URL only ever has one body.
 const IMMUTABLE = /^\/static\/app-[0-9a-f]{8,}\.(?:js|css)$/;
@@ -74,19 +84,20 @@ self.addEventListener("fetch", (e) => {
   }
 
   if (req.mode === "navigate") {
+    const fallback = async () =>
+      (await caches.match("/")) || (await caches.match("/offline.html")) ||
+      new Response("Your Mac isn't reachable. Open ReviewStage there, or wake the Mac, and try again.", {
+        status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
     e.respondWith(
       fetch(req).then((res) => {
+        if (GATEWAY.has(res.status)) return fallback();
         if (res.ok) {
           const copy = res.clone();
           caches.open(VERSION).then((c) => c.put("/", copy));
         }
         return res;
-      }).catch(async () =>
-        (await caches.match("/")) || (await caches.match("/offline.html")) ||
-        new Response("ReviewStage needs a connection to your server.", {
-          status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" },
-        })
-      )
+      }).catch(fallback)
     );
   }
 });
@@ -114,7 +125,12 @@ self.addEventListener("push", (e) => {
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const target = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin).href;
+  const url = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin);
+  const target = url.href;
+  if (url.origin !== self.location.origin) {
+    e.waitUntil(self.clients.openWindow(target));
+    return;
+  }
   e.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
       const same = wins.find((w) => w.url === target) || wins.find((w) => "focus" in w);

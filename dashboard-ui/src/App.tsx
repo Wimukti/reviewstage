@@ -14,6 +14,9 @@ import { PhoneShell, RunningBar, Sidebar } from "./Sidebar";
 import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
 import { Tour } from "./Tour";
+import { Unreachable } from "./Unreachable";
+import { UpdateBanner } from "./UpdateBanner";
+import { noteFailure, setUnreachable, useUnreachable } from "./reach";
 import { Welcome } from "./Welcome";
 import { PageHeader } from "./ui";
 import { navigate, useLocation } from "./router";
@@ -68,15 +71,23 @@ export function App() {
   // them from the first paint and the poller only starts when there is something to watch.
   const load = useCallback(
     () =>
-      api.me().then((m) => {
-        setMe(m);
-        setRunning(m.running);
-      }),
+      api.me().then(
+        (m) => {
+          setUnreachable(false);
+          setMe(m);
+          setRunning(m.running);
+        },
+        (e: unknown) => {
+          noteFailure(e);
+          throw e;
+        },
+      ),
     [],
   );
+  const down = useUnreachable();
 
   useEffect(() => {
-    load();
+    load().catch(() => {});
   }, [load]);
 
   const signOut = useCallback(async () => {
@@ -84,7 +95,7 @@ export function App() {
     try {
       await api.logout();
     } finally {
-      load();
+      load().catch(() => {});
     }
   }, [load]);
 
@@ -96,7 +107,7 @@ export function App() {
       await api.logout();
     } finally {
       navigate(personal ? "/welcome" : "/login");
-      load();
+      load().catch(() => {});
     }
   }, [load, me?.personal]);
 
@@ -105,6 +116,9 @@ export function App() {
     if (redirect) navigate(redirect);
   }, [redirect]);
 
+  // The server behind the page has gone (a sleeping Mac behind the phone's tunnel): one
+  // full-screen state that retries by itself, never an error banner (reach.ts).
+  if (down) return <Unreachable retry={load} />;
   if (!me) return <div className="min-h-dvh" />;
   if (redirect) return <div className="min-h-dvh" />;
   // The wizard is a focused flow: no sidebar, no tour, signed in or not.
@@ -118,6 +132,7 @@ export function App() {
       <RunningBar />
       {phone ? <PhoneShell me={me} onSignOut={signOut} onSwitchAccount={switchAccount} /> : <Sidebar me={me} onSignOut={signOut} onSwitchAccount={switchAccount} />}
       <main className="main min-w-0 flex-1">
+        <UpdateBanner />
         <div className="min-w-0 max-w-[960px] px-6 pb-14 pt-6 max-[899px]:px-4 max-[899px]:pb-[calc(80px+env(safe-area-inset-bottom,0px))] max-[899px]:pt-5">
           <Routed me={me} reload={load} />
         </div>

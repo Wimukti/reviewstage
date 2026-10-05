@@ -31,6 +31,19 @@ version and SHA-256, into `~/.reviewstage/bin`. Everything stays on your machine
 No Apple notarisation dialog: the app is Electron installed by npm, the same way
 `npx @nervekit/desktop` and other npm-distributed desktop apps work.
 
+## It keeps running
+
+`npx reviewstage` prints `ReviewStage is running. You can close this terminal.` and returns:
+closing the terminal leaves the app running (`--foreground` keeps it attached). A second
+`npx reviewstage` brings the open window forward. Closing the window keeps the app in the menu
+bar — **Open ReviewStage**, **Phone access: On/Off**, **Check for updates**, **Quit
+ReviewStage** — so phone access and notifications keep working. **Settings → Desktop app**
+shows the running version and turns on **Open at login** (a LaunchAgent on macOS, an XDG
+autostart entry on Linux, running `npx -y reviewstage@latest` with the node you launched with).
+
+When a newer version is published, a banner says `ReviewStage <version> is available · Restart
+to update`; the restart installs it with `npx` and opens on the same data.
+
 ## Your phone
 
 **Settings → Your phone → Enable phone access** starts a Cloudflare quick tunnel to your laptop
@@ -42,8 +55,11 @@ request on a watched repository notifies the phone, and the queue, the findings 
 button are the same app at phone width.
 
 The tunnel lasts as long as the app runs: it reconnects by itself after a dropped connection or
-sleep and keeps its address. Quitting the app ends it; the next enable gets a new address, so
-scan again. The address is public while the tunnel is up (anyone with it reaches your sign-in
+sleep and keeps its address. Phone access is remembered and comes back on at the next launch,
+with a new address; phones with notifications on get "Your Mac has a new address" with a
+sign-in link for it. While the Mac sleeps the phone shows "Your Mac isn't reachable" and a Try
+again button, never an error code. With Tailscale installed and signed in, **Use Tailscale**
+gives an address that never changes. The address is public while the tunnel is up (anyone with it reaches your sign-in
 page, nothing more); **Turn off** on the card, **Disable phone access** in the menu, or quitting
 the app ends it.
 
@@ -64,7 +80,8 @@ add `DRY_RUN=1` to `.env` and relaunch.
 - *A tool's checksum did not match* — the download is discarded and the app stops. Try again
   later; if it persists, open an issue with the message.
 - `npx reviewstage --doctor` prints one PASS / WARN / FAIL line per check without opening a
-  window; the server's output from the last launch is in `~/.reviewstage/server.log`.
+  window; the server's output from the last launch is in `~/.reviewstage/server.log`, the app's
+  own in `~/.reviewstage/desktop.log`.
 
 Full documentation, the security model and the team install (one server, every reviewer as
 themselves) are at <https://reviewstage.dev/>. Source and issues:

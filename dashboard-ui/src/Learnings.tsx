@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, Info, Lightbulb } from "lucide-react";
 import { api, errMessage, type LearningsData, type Me } from "./api";
 import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge, wordOf, type Tone } from "./ui";
+import { useIsPhone } from "./theme";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ function LearningsSkeleton() {
 }
 
 export function Learnings({ me }: { me: Me }) {
+  const phone = useIsPhone();
   const [d, setD] = useState<LearningsData | null>(null);
   const [err, setErr] = useState("");
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -171,6 +173,30 @@ export function Learnings({ me }: { me: Me }) {
       ) : (
         <>
           <h2 className={H2}>Recent decisions</h2>
+          {phone ? (
+            // A phone reads a decision as a list row: the finding first, its facts small under it.
+            <Card className="gap-0 divide-y divide-border py-0" data-testid="learning-rows">
+              {d.rows.map((r, i) => (
+                <div key={i} className="flex flex-col gap-1.5 px-4 py-3" data-testid={r.dry ? "dry-row" : "learning-row"}>
+                  <div className="text-[15px] leading-snug">{r.gist}</div>
+                  {r.editedGist && <div className={NOTE}>Reworded to: {r.editedGist}</div>}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge tone={outcomeTone(r.label || r.kind)}>{wordOf(r.label || r.kind)}</StatusBadge>
+                    <StatusBadge kind={r.severity} />
+                    {r.dry && (
+                      <StatusBadge kind="dry" tone="graphite" data-testid="dry-mark">
+                        Dry run
+                      </StatusBadge>
+                    )}
+                    {multi && <RepoPill repo={r.repo} />}
+                    <span className={cn(NOTE, "min-w-0 max-w-full truncate")} title={r.loc}>
+                      {r.loc}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          ) : (
           <Card className="gap-0 overflow-x-auto py-0" data-testid="learning-rows">
             <table className="w-full text-sm max-[899px]:min-w-[640px]">
               <thead>
@@ -222,6 +248,7 @@ export function Learnings({ me }: { me: Me }) {
               </tbody>
             </table>
           </Card>
+          )}
         </>
       )}
 

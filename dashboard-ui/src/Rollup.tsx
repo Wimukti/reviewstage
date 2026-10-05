@@ -240,7 +240,7 @@ function InsightsSkeleton() {
   return (
     <div aria-busy="true">
       <span className="sr-only" role="status">Loading insights</span>
-      <div className="mb-6 grid grid-cols-9 gap-2 max-[899px]:grid-cols-3">
+      <div className="mb-6 grid grid-cols-9 gap-2 max-[899px]:grid-cols-2">
         {Array.from({ length: 9 }, (_, i) => (
           <Skeleton key={i} className="h-16 rounded-lg" />
         ))}
@@ -292,8 +292,8 @@ export function Rollup() {
   }, [d, range]);
 
   const rangeTabs = (
-    <Tabs value={String(range)} onValueChange={(v) => setRange(Number(v))} className="ml-auto">
-      <TabsList aria-label="Range" title="Applies to the activity chart and the first three tiles" data-testid="range-tabs">
+    <Tabs value={String(range)} onValueChange={(v) => setRange(Number(v))} className="ml-auto max-[899px]:ml-0 max-[899px]:w-full">
+      <TabsList aria-label="Range" title="Applies to the activity chart and the first three tiles" data-testid="range-tabs" className="max-[899px]:w-full">
         {RANGES.map(([label, days]) => (
           <TabsTrigger key={days} value={String(days)} className="px-3">
             {label}
@@ -433,9 +433,9 @@ export function Rollup() {
       )}
 
       {/* One row of nine tiles at 1440: the range group, then all time. The eyebrows take the
-          first grid row so every tile shares one top edge; below 900 the grid is three across
+          first grid row so every tile shares one top edge; below 900 the grid is two across
           and the all-time group follows the range group. */}
-      <div className="mt-1 mb-4 grid grid-cols-9 gap-2 max-[899px]:grid-cols-3" data-testid="kpis">
+      <div className="mt-1 mb-4 grid grid-cols-9 gap-2 max-[899px]:grid-cols-2" data-testid="kpis">
         <div className={cn(eyebrow, "col-span-3 max-[899px]:col-span-full")} data-testid="kpis-range-h">Last {range} days</div>
         <div className={cn(eyebrow, "col-span-6 max-[899px]:order-2 max-[899px]:col-span-full max-[899px]:mt-2")} data-testid="kpis-all-h">All time</div>
         <Kpi label="Reviews run" value={num(period.reviews)} />

@@ -51,3 +51,9 @@ export const docsFooterColumns: LinkColumn[] = [
   { title: "Build", links: [l.architecture, l.contributing, l.roadmap] },
   { title: "Project", links: [l.home, l.github, l.license] },
 ];
+
+/* The voiced demo. Empty: the hero's "Watch the demo" plays public/videos/reviewstage-demo.mp4
+ * in a lightbox. Set to the YouTube video id once it is uploaded and the lightbox embeds that
+ * instead (youtube-nocookie, loaded only when the lightbox opens). */
+export const DEMO_YOUTUBE_ID = "";
+export const demoVideo = `${base}/videos/reviewstage-demo.mp4`;

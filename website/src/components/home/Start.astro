@@ -1,0 +1,44 @@
+---
+/* Section 7. Two ways in, as two cards: just me (the command, three steps, then the phone) and my
+ * team (one Docker server). The wizard recording plays only from its own control. */
+import { getImage } from "astro:assets";
+import CommandPill from "./CommandPill.astro";
+import PlayVideo from "./PlayVideo.astro";
+import { button } from "../marketing/variants";
+import { withBase } from "../../content/site-links";
+import wizardMp4 from "../../assets/demos/wizard.mp4?url";
+import wizardSrc from "../../assets/demos/wizard.jpg";
+const wizardPoster = await getImage({ src: wizardSrc, width: 720, format: "jpg", quality: 72 });
+const solo = ["Continue with GitHub", "Connect Claude", "Pick repositories"];
+const team = ["One server for everyone", "Each reviewer signs in as themselves", "Each run on the reviewer's own Claude plan"];
+---
+<section id="install" class="home-section" aria-labelledby="install-title">
+  <div class="container-page section-inner">
+    <h2 id="install-title" class="section-title">Start on your laptop. Bring the team when it's worth it.</h2>
+    <div class="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+      <article class="grid items-start gap-5 rounded-xl bg-card p-5 sm:grid-cols-[minmax(0,1fr)_13rem] sm:p-6" aria-labelledby="start-solo">
+        <div class="grid content-start gap-5">
+        <h3 id="start-solo" class="m-0 text-lg font-semibold">Just me</h3>
+        <CommandPill class="w-fit" />
+        <ol class="m-0 grid list-none gap-2 p-0 text-sm">
+          {solo.map((s, i) => <li class="flex items-center gap-3"><span class="inline-flex size-6 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary tabular-nums">{i + 1}</span>{s}</li>)}
+        </ol>
+        <p class="m-0 text-sm text-muted-foreground">Then scan the QR code from the app menu to add your phone. Needs Node 20+, Git and Claude Code.</p>
+        </div>
+        <PlayVideo src={wizardMp4} poster={wizardPoster.src} width={720} height={900} class="aspect-[4/5] overflow-hidden rounded-lg bg-background max-sm:mx-auto max-sm:w-52" videoClass="object-cover" label="The first-run window: Continue with GitHub, Connect Claude, then pick repositories" />
+      </article>
+      <article class="grid content-start gap-5 rounded-xl bg-card p-5 sm:p-6" aria-labelledby="start-team">
+        <h3 id="start-team" class="m-0 text-lg font-semibold">My team</h3>
+        <div class="flex h-12 w-fit max-w-full items-center rounded-full bg-background px-5"><code class="truncate font-mono text-sm before:mr-2 before:text-primary before:content-['$']">docker compose up -d</code></div>
+        <ul class="m-0 grid list-none gap-2 p-0 text-sm">
+          {team.map((s) => <li class="flex items-center gap-3"><span class="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>{s}</li>)}
+        </ul>
+        <p class="m-0 text-sm text-muted-foreground">Same gate at every size: nothing reaches GitHub without a person clicking, under their own name.</p>
+        <div class="mt-auto flex flex-wrap gap-3">
+          <a class={button({}, "h-11")} href={withBase("/start/install/")}>Install guide</a>
+          <a class={button({ variant: "secondary" }, "h-11 bg-background hover:bg-accent")} href={withBase("/guides/team-workflow/")}>Team workflow</a>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,149 @@
+---
+/* Section 4. Six things it does, as a bento of two sizes: two large tiles (the phone, the team)
+ * and four small ones, each with a visual of the real thing. Still unless the reader acts: the
+ * phone recording plays only from its own control. */
+import { getImage } from "astro:assets";
+import { Image } from "astro:assets";
+import { Hash, MessageCircle, Webhook } from "lucide-react";
+import Avatar from "./Avatar.astro";
+import Sev from "./Sev.astro";
+import PlayVideo from "./PlayVideo.astro";
+import phoneMp4 from "../../assets/demos/phone.mp4?url";
+import phonePosterSrc from "../../assets/demos/phone.jpg";
+import qrSrc from "../../assets/demos/phone-access.jpg";
+const phonePoster = await getImage({ src: phonePosterSrc, width: 520, format: "jpg", quality: 72 });
+const repos = ["acme/widgets", "acme/api", "acme/billing"];
+const spark = "0,30 14,26 28,28 42,20 56,22 70,15 84,17 98,10 112,12 126,6";
+---
+<section id="features" class="home-section" aria-labelledby="features-title">
+  <div class="container-page section-inner">
+    <h2 id="features-title" class="section-title">Everything a reviewer needs, nothing that speaks for you.</h2>
+    <div class="bento">
+      <article class="tile tile-phone">
+        <div class="phone-visual">
+          <div class="phone-frame">
+            <PlayVideo src={phoneMp4} poster={phonePoster.src} width={390} height={844} videoClass="object-cover" class="h-full" label="On a phone, a finding is kept and Post as acme-dev sends the review" />
+          </div>
+          <figure class="qr-card m-0" aria-hidden="true">
+            <Image src={qrSrc} alt="" width={300} class="block h-auto w-full" loading="lazy" />
+          </figure>
+        </div>
+        <div class="tile-text">
+          <h3>Your phone, signed in by a QR code</h3>
+          <p>Scan once from the app. Get a push when a review is ready, swipe to keep a finding, tap Post.</p>
+        </div>
+      </article>
+
+      <article class="tile tile-cmd">
+        <div class="tile-visual" aria-hidden="true">
+          <pre class="term m-0 w-full rounded-lg bg-background p-3 font-mono text-xs leading-6"><span class="text-primary">$</span> npx reviewstage
+<span class="text-muted-foreground">ReviewStage is running. You can close this terminal.</span></pre>
+        </div>
+        <div class="tile-text">
+          <h3>One command, a real app</h3>
+          <p>A desktop window, a menu-bar icon, and updates with one restart. No Docker.</p>
+        </div>
+      </article>
+
+      <article class="tile tile-learn">
+        <div class="tile-visual" aria-hidden="true">
+          <div class="grid w-full gap-2 rounded-lg bg-background p-3 text-xs">
+            <span class="flex flex-wrap items-center gap-1.5"><Sev kind="rule" /><span class="text-muted-foreground">dropped 4 times</span></span>
+            <span class="text-sm font-medium leading-snug">Don't flag let over const.</span>
+            <span class="flex gap-1.5"><span class="rounded-md bg-primary px-2 py-1 font-medium text-primary-foreground">Accept</span><span class="rounded-md bg-muted px-2 py-1 font-medium">Dismiss</span></span>
+          </div>
+        </div>
+        <div class="tile-text">
+          <h3>It learns your team</h3>
+          <p>Drop the same complaint three times and it drafts a rule. Nothing changes until you accept.</p>
+        </div>
+      </article>
+
+      <article class="tile tile-effort">
+        <div class="tile-visual" aria-hidden="true">
+          <div class="grid w-full gap-2.5 rounded-lg bg-background p-3 text-xs">
+            <span class="grid grid-cols-3 rounded-md bg-muted p-0.5 text-center font-medium">
+              <span class="rounded px-2 py-1 text-muted-foreground">Quick</span>
+              <span class="rounded bg-background px-2 py-1 shadow-sm">Standard</span>
+              <span class="rounded px-2 py-1 text-muted-foreground">Deep</span>
+            </span>
+            <span class="flex items-center justify-between rounded-md bg-muted px-2.5 py-1.5"><span class="text-muted-foreground">Model</span><span class="font-medium">Opus</span></span>
+          </div>
+        </div>
+        <div class="tile-text">
+          <h3>Effort and model per run</h3>
+          <p>Quick, Standard or Deep, suggested from the diff. Tokens and model shown on every run.</p>
+        </div>
+      </article>
+
+      <article class="tile tile-two">
+        <div class="tile-visual" aria-hidden="true">
+          <div class="grid w-full gap-2 text-xs">
+            <div class="grid gap-1.5 rounded-md bg-background p-2.5">
+              <span class="flex items-center gap-1.5"><Sev kind="should-fix" /><Sev kind="confirmed" /></span>
+              <span class="font-medium leading-snug">A product with no vendor can crash the lead-time badge</span>
+            </div>
+            <div class="flex items-center gap-1.5 px-1 text-muted-foreground"><Avatar login="a" size="sm" /><Avatar login="t" size="sm" class="-ml-2.5 ring-2 ring-[var(--panel)]" />two separate runs</div>
+          </div>
+        </div>
+        <div class="tile-text">
+          <h3>Two reviewers, independent runs</h3>
+          <p>Each reviewer gets a separate run. Findings both raised are marked confirmed.</p>
+        </div>
+      </article>
+
+      <article class="tile tile-team">
+        <div class="tile-text">
+          <h3>For a team</h3>
+          <p>One server, everyone signed in as themselves, many repositories. Review requests go to Slack, Discord or any webhook; Insights shows what the team keeps.</p>
+        </div>
+        <div class="team-visual" aria-hidden="true">
+          <div class="grid gap-2">
+            {[{ I: Hash, t: "Slack" }, { I: MessageCircle, t: "Discord" }, { I: Webhook, t: "Webhook" }].map(({ I, t }) => (
+              <span class="flex items-center gap-2 rounded-md bg-background px-2.5 py-2 text-xs"><I className="size-3.5 text-muted-foreground" /><span class="font-medium">{t}</span><span class="ml-auto truncate text-muted-foreground">Review requested</span></span>
+            ))}
+          </div>
+          <div class="grid content-start gap-2">
+            <span class="flex flex-wrap gap-1.5">
+              {repos.map((r) => <span class="inline-flex items-center gap-1.5 rounded-full bg-background py-0.5 pl-0.5 pr-2 text-xs font-medium"><Avatar login="acme" size="sm" class="!size-4 !text-[9px]" />{r}</span>)}
+            </span>
+            <span class="grid gap-1 rounded-md bg-background p-2.5 text-xs">
+              <span class="text-muted-foreground">Keep rate</span>
+              <svg viewBox="0 0 126 34" class="h-9 w-full" preserveAspectRatio="none"><polyline points={spark} fill="none" stroke="var(--blue)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" /></svg>
+            </span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+<style>
+  .bento { display: grid; gap: 1rem; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-areas: "phone phone cmd learn" "phone phone effort two" "team team team team"; }
+  .tile { display: grid; grid-template-rows: 1fr auto; gap: 1rem; min-width: 0; padding: 1.15rem; border-radius: var(--radius-xl); background: var(--panel); }
+  .tile-phone { grid-area: phone; }
+  .tile-cmd { grid-area: cmd; } .tile-learn { grid-area: learn; } .tile-effort { grid-area: effort; } .tile-two { grid-area: two; }
+  .tile-team { grid-area: team; grid-template-rows: none; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: center; gap: 2rem; padding: 1.5rem; }
+  .tile-visual { display: flex; align-items: center; min-height: 8.5rem; }
+  .tile-visual > * { min-width: 0; }
+  .tile-text { display: grid; gap: 0.35rem; align-content: start; }
+  .tile-text h3 { margin: 0; font-size: var(--t-16); font-weight: 600; line-height: 1.3; }
+  .tile-text p { margin: 0; color: var(--graphite); font-size: var(--t-14); }
+  .term { white-space: pre-wrap; }
+  .phone-visual { display: flex; justify-content: center; align-items: flex-end; gap: 1.25rem; padding-top: 0.5rem; }
+  .phone-frame { width: 15rem; flex: none; aspect-ratio: 390 / 844; border-radius: 2.1rem; padding: 0.45rem; background: var(--paper); box-shadow: 0 0 0 1px var(--hairline), var(--shadow-raised); overflow: hidden; }
+  .phone-frame :global(video) { border-radius: 1.7rem; background: var(--panel); }
+  .qr-card { width: 9rem; flex: none; margin-bottom: 1.5rem; border-radius: var(--radius-md); overflow: hidden; box-shadow: 0 0 0 1px var(--hairline), var(--shadow-raised); }
+  .team-visual { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; align-content: center; }
+  @media (max-width: 64rem) {
+    .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "phone phone" "cmd learn" "effort two" "team team"; }
+    .tile-team { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  }
+  @media (max-width: 40rem) {
+    .bento { grid-template-columns: minmax(0, 1fr); grid-template-areas: "phone" "cmd" "learn" "effort" "two" "team"; }
+    .phone-visual { gap: 0.75rem; }
+    .phone-frame { width: 12rem; }
+    .qr-card { width: 6.75rem; margin-bottom: 1rem; }
+    .team-visual { grid-template-columns: minmax(0, 1fr); }
+    .tile-visual { min-height: 0; }
+  }
+</style>

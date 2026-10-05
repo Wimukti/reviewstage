@@ -1,0 +1,55 @@
+---
+/* Section 6. Three ways to review a PR, by category only (no competitor is named). A table on a
+ * desktop; on a phone each row becomes a block with the column name beside each answer. */
+const cols = ["ReviewStage", "Auto-posting review bots", "Reviewing alone"];
+const short = ["ReviewStage", "Review bots", "Alone"];
+const rows: Array<[string, string, string, string]> = [
+  ["Who posts", "You, when you click", "The bot, on every PR", "You"],
+  ["Whose name is on it", "Yours", "The bot's", "Yours"],
+  ["Approves on its own", "Never", "Some can", "Never"],
+  ["Learns what you drop", "Yes, as rules you accept", "Varies", "Only you do"],
+  ["Cost", "Your Claude plan", "Per seat or per review", "Your time"],
+  ["Where your data lives", "Your machine or your server", "The vendor's cloud", "Your machine"],
+];
+---
+<section id="compare" class="home-section" aria-labelledby="compare-title">
+  <div class="container-page section-inner">
+    <h2 id="compare-title" class="section-title">The speed of a bot, the judgement of a reviewer.</h2>
+    <div class="overflow-hidden rounded-xl bg-card">
+      <table class="cmp w-full border-collapse text-left text-sm">
+        <thead>
+          <tr><td></td>{cols.map((c, i) => <th scope="col" class={i === 0 ? "text-foreground" : "text-muted-foreground"}>{c}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, ...cells]) => (
+            <tr>
+              <th scope="row">{label}</th>
+              {cells.map((c, i) => <td data-col={short[i]} class={i === 0 ? "is-us" : ""}>{c}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="m-0 max-w-[44rem] text-sm text-muted-foreground">With ReviewStage the diff goes to Anthropic through Claude Code on your account, and the review you post goes to GitHub. Nothing else leaves.</p>
+  </div>
+</section>
+<style>
+  .cmp th, .cmp td { padding: 0.85rem 1.15rem; vertical-align: top; border-top: 1px solid var(--hairline); }
+  .cmp thead th, .cmp thead td { border-top: 0; font-weight: 600; }
+  .cmp tbody th { font-weight: 500; color: var(--graphite); width: 22%; }
+  .cmp td { color: var(--graphite); }
+  .cmp td.is-us { color: var(--ink); font-weight: 500; background: color-mix(in oklab, var(--blue-bg) 55%, transparent); }
+  .cmp thead th:nth-child(2) { background: color-mix(in oklab, var(--blue-bg) 55%, transparent); color: var(--blue); }
+  .cmp thead th { width: 26%; }
+  @media (max-width: 40rem) {
+    .cmp thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .cmp, .cmp tbody, .cmp tr, .cmp th, .cmp td { display: block; }
+    .cmp tr { padding: 0.85rem 1rem; border-top: 1px solid var(--hairline); }
+    .cmp tbody tr:first-child { border-top: 0; }
+    .cmp th, .cmp td { padding: 0.2rem 0; border: 0; width: auto; }
+    .cmp tbody th { color: var(--ink); font-weight: 600; margin-bottom: 0.2rem; width: auto; }
+    .cmp td { display: grid; grid-template-columns: 7.5rem 1fr; gap: 0.75rem; background: none; }
+    .cmp td.is-us { background: none; }
+    .cmp td::before { content: attr(data-col); color: var(--graphite); font-weight: 400; }
+  }
+</style>

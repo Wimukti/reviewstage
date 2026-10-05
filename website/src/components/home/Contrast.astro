@@ -1,0 +1,71 @@
+---
+/* Section 2. Two equal columns: what a review bot does to a PR, and what ReviewStage does
+ * instead. Each side opens with a small static mock of the thread it leaves behind. */
+import { Bot, Check, Minus } from "lucide-react";
+import Avatar from "./Avatar.astro";
+import Sev from "./Sev.astro";
+const bots = [
+  "Comments on every PR, under a bot account",
+  "Gets muted within weeks",
+  "Can approve, and nobody owns it",
+  "Bills per review",
+];
+const us = [
+  "Drafts privately, for your eyes only",
+  "You post one review, as you",
+  "Approve is always your click",
+  "Runs on the Claude plan you already pay for",
+];
+const noise = ["w-11/12", "w-3/4", "w-5/6", "w-2/3", "w-4/5", "w-3/5"];
+---
+<section id="why" class="home-section" aria-labelledby="why-title">
+  <div class="container-page section-inner">
+    <h2 id="why-title" class="section-title">A reviewer's assistant, not a review bot.</h2>
+    <div class="grid gap-4 md:grid-cols-2 md:grid-rows-[auto_1fr]">
+      <article class="grid grid-rows-[auto_1fr] gap-5 rounded-xl md:row-span-2 md:grid-rows-subgrid bg-card p-5 sm:p-6" aria-labelledby="why-bots">
+        <div class="mock-bots grid gap-2 rounded-lg bg-background p-3" aria-hidden="true">
+          {noise.map((w, i) => (
+            <div class={`${i > 3 ? "max-sm:hidden " : ""}flex items-center gap-2.5 rounded-md bg-card px-2.5 py-2`}>
+              <span class="inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><Bot className="size-3.5" /></span>
+              <span class="h-2 w-16 shrink-0 rounded-full bg-muted-foreground/40"></span>
+              <span class="rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground">bot</span>
+              <span class={`h-2 rounded-full bg-muted ${w}`}></span>
+            </div>
+          ))}
+        </div>
+        <div class="grid content-start gap-3">
+          <h3 id="why-bots" class="m-0 text-lg font-semibold text-muted-foreground">Review bots</h3>
+          <ul class="m-0 grid list-none gap-2 p-0">
+            {bots.map((t) => <li class="flex gap-2.5 text-sm text-muted-foreground"><Minus className="mt-[3px] size-4 shrink-0" aria-hidden="true" />{t}</li>)}
+          </ul>
+        </div>
+      </article>
+      <article class="grid grid-rows-[auto_1fr] gap-5 rounded-xl md:row-span-2 md:grid-rows-subgrid bg-card p-5 ring-1 ring-primary/30 sm:p-6" aria-labelledby="why-us">
+        <div class="mock-review grid content-center rounded-lg bg-background p-3" aria-hidden="true">
+          <div class="grid gap-3 rounded-md bg-card p-3.5">
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <Avatar login="acme-dev" />
+              <span class="font-semibold">acme-dev</span>
+              <span class="text-muted-foreground">reviewed</span>
+              <Sev kind="posted" label="Commented" class="ml-auto" />
+            </div>
+            <p class="m-0 text-sm leading-relaxed">Logic is sound; two small things. Guard a null vendor before reading its lead time.</p>
+            <div class="flex items-center gap-2 rounded-md bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">
+              <code class="truncate text-foreground">app/models/Product.php</code><span>line 42</span>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-3 px-1 text-xs text-muted-foreground">
+            <span>Approval is a separate click</span>
+            <span class="rounded-md bg-muted px-2.5 py-1 font-medium text-foreground">Approve</span>
+          </div>
+        </div>
+        <div class="grid content-start gap-3">
+          <h3 id="why-us" class="m-0 text-lg font-semibold">ReviewStage</h3>
+          <ul class="m-0 grid list-none gap-2 p-0">
+            {us.map((t) => <li class="flex gap-2.5 text-sm"><Check className="mt-[3px] size-4 shrink-0 text-primary" aria-hidden="true" />{t}</li>)}
+          </ul>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,92 @@
+---
+/* Section 1. Two lines, one sentence, the command as the button, the demo and GitHub beside it,
+ * three facts, then the product itself playing in the window frame under the stage light. */
+import { Play, X } from "lucide-react";
+import CommandPill from "./CommandPill.astro";
+import Frame from "./Frame.astro";
+import GitHubIcon from "../marketing/GitHubIcon.astro";
+import { button } from "../marketing/variants";
+import { repo, demoVideo, DEMO_YOUTUBE_ID } from "../../content/site-links";
+import reviewMp4 from "../../assets/demos/review.mp4?url";
+import reviewPoster from "../../assets/demos/review.jpg?url";
+---
+<section class="hero" aria-labelledby="hero-title">
+  <div class="container-page grid justify-items-center gap-5 text-center sm:gap-6">
+    <h1 id="hero-title" class="display-title">AI wrote the PR.<br /><span class="text-primary">You still have to review it.</span></h1>
+    <p class="m-0 max-w-[38rem] text-balance text-base text-muted-foreground sm:text-lg">Claude drafts the review from the real diff on your own plan. You keep what's worth saying and post it as yourself — nothing posts until you click.</p>
+    <div class="flex max-w-full flex-wrap items-center justify-center gap-3">
+      <CommandPill />
+      <button type="button" class={button({ variant: "secondary", size: "lg" }, "h-12 rounded-full")} data-demo-open aria-haspopup="dialog"><Play aria-hidden="true" />Watch the 70-second demo</button>
+      <a class={button({ variant: "ghost", size: "lg" }, "h-12 rounded-full text-muted-foreground hover:text-foreground")} href={repo}><GitHubIcon />GitHub</a>
+    </div>
+    <ul class="facts m-0 flex list-none flex-wrap justify-center gap-x-5 gap-y-1 p-0 text-sm text-muted-foreground">
+      <li>Open source, MIT</li>
+      <li>Runs on your Claude plan</li>
+      <li>Mac and Linux, plus your phone</li>
+    </ul>
+  </div>
+  <div class="container-page stage-hero hero-stage">
+    <Frame label="ReviewStage" class="mx-auto max-w-[60rem] shadow-xl">
+      <video class="hero-video block aspect-[1440/900] h-auto w-full" width="1440" height="900" muted loop playsinline preload="metadata" poster={reviewPoster} data-hero-video aria-label="A review from paste to post: a PR is opened from the queue, Run review drafts three findings, two are kept, and they post as the signed-in reviewer.">
+        <source src={reviewMp4} type="video/mp4" />
+      </video>
+    </Frame>
+  </div>
+  <dialog class="demo-dialog" data-demo-dialog aria-label="ReviewStage demo" data-youtube={DEMO_YOUTUBE_ID || undefined} data-src={demoVideo}>
+    <div class="relative grid gap-3">
+      <button type="button" class={button({ variant: "secondary", size: "icon" }, "absolute -top-12 right-0 size-11 rounded-full")} data-demo-close aria-label="Close the demo"><X aria-hidden="true" /></button>
+      <div class="demo-slot aspect-video w-full overflow-hidden rounded-lg bg-card" data-demo-slot></div>
+    </div>
+  </dialog>
+</section>
+<script>
+  // The fold's one motion: the review recording starts once the page has loaded (so it never
+  // competes with first paint), and never under reduced motion — the poster stands in.
+  const video = document.querySelector<HTMLVideoElement>("[data-hero-video]");
+  const still = matchMedia("(prefers-reduced-motion: reduce)");
+  const start = () => { if (video && !still.matches) video.play().catch(() => {}); };
+  if (document.readyState === "complete") start(); else addEventListener("load", start, { once: true });
+  still.addEventListener("change", () => (still.matches ? video?.pause() : start()));
+
+  // The demo lightbox: a native <dialog>; the player is created on open and removed on close,
+  // so nothing of the 10 MB recording (or YouTube) loads until someone asks for it.
+  const dialog = document.querySelector<HTMLDialogElement>("[data-demo-dialog]");
+  const slot = dialog?.querySelector<HTMLElement>("[data-demo-slot]");
+  document.querySelector("[data-demo-open]")?.addEventListener("click", () => {
+    if (!dialog || !slot) return;
+    const yt = dialog.dataset.youtube;
+    if (yt) {
+      const f = document.createElement("iframe");
+      f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt)}?autoplay=1&rel=0`;
+      f.title = "ReviewStage demo";
+      f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+      f.className = "block h-full w-full border-0";
+      slot.replaceChildren(f);
+    } else {
+      const v = document.createElement("video");
+      v.src = dialog.dataset.src ?? "";
+      v.controls = true;
+      v.autoplay = true;
+      v.playsInline = true;
+      v.preload = "auto";
+      v.className = "block h-full w-full";
+      slot.replaceChildren(v);
+    }
+    video?.pause();
+    dialog.showModal();
+  });
+  const close = () => dialog?.close();
+  dialog?.querySelector("[data-demo-close]")?.addEventListener("click", close);
+  dialog?.addEventListener("click", (e) => { if (e.target === dialog) close(); });
+  dialog?.addEventListener("close", () => { slot?.replaceChildren(); start(); });
+</script>
+<style>
+  .hero { padding-block: clamp(2.25rem, 6vw, 5.5rem) var(--section-pad); overflow-x: clip; }
+  .hero-stage { margin-top: clamp(1.75rem, 4.5vw, 3.75rem); }
+  .demo-dialog { width: min(calc(100vw - 2rem), 72rem); max-width: none; padding: 0; border: 0; background: transparent; overflow: visible; margin: auto; }
+  .demo-dialog::backdrop { background: color-mix(in oklab, var(--paper) 88%, transparent); backdrop-filter: blur(4px); }
+  @media (max-width: 40rem) {
+    .hero .display-title { font-size: 2.6rem; }
+    .facts { font-size: var(--t-13); }
+  }
+</style>

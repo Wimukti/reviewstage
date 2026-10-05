@@ -1,0 +1,51 @@
+---
+/* Section 5. The strongest argument, drawn as mechanism: three barriers, each with the line of
+ * the real job script that enforces it (bin/lib-common.sh, bin/run-review.sh). The band is the
+ * stage light's second placement; in the light theme it inverts to an ink band. */
+import { withBase } from "../../content/site-links";
+const barriers = [
+  { t: "No credentials", d: "Every GitHub token is removed from the agent's environment before it starts.", code: "env -u GH_TOKEN -u GITHUB_TOKEN \\\n    -u GITHUB_PAT … claude -p" },
+  { t: "No tools that write", d: "A deny list the prompt cannot lift, whatever a file in the diff says.", code: "--disallowedTools \"Bash(gh:*)\n  Bash(git push:*) Bash(curl:*) …\"" },
+  { t: "Proof afterwards", d: "The PR's reviews, comments and threads are counted before and after. Any change fails the run.", code: "gh_before=$(pr_write_fingerprint)\n…\n[ \"$gh_before\" != \"$gh_after\" ] && fail" },
+];
+---
+<section id="gate" class="gate home-section" aria-labelledby="gate-title">
+  <div class="container-page section-inner">
+    <div class="grid max-w-[44rem] gap-3">
+      <h2 id="gate-title" class="section-title">Enforced, not promised.</h2>
+      <p class="gate-lede m-0 text-base">A prompt-injected diff cannot post under your name. The agent that drafts the review has no way to reach GitHub, and the run checks that nothing landed.</p>
+    </div>
+    <ul class="m-0 grid list-none gap-4 p-0 md:grid-cols-3">
+      {barriers.map((b) => (
+        <li class="gate-card grid content-start gap-3 rounded-xl p-5">
+          <h3 class="m-0 text-base font-semibold">{b.t}</h3>
+          <p class="gate-muted m-0 text-sm">{b.d}</p>
+          <pre class="gate-code m-0 overflow-x-auto rounded-md p-3 font-mono text-xs leading-5">{b.code}</pre>
+        </li>
+      ))}
+    </ul>
+    <a class="gate-link inline-flex min-h-11 w-fit items-center text-sm font-medium underline underline-offset-4" href={withBase("/security/")}>Read the security model</a>
+  </div>
+</section>
+<style>
+  .gate { position: relative; isolation: isolate; overflow: hidden; background: var(--panel); border-block: 1px solid var(--hairline); }
+  .gate::before {
+    content: ""; position: absolute; inset: 0 auto auto 50%; width: min(140%, 1400px); height: 70%;
+    transform: translateX(-50%); pointer-events: none; z-index: -1;
+    background: radial-gradient(55% 60% at 50% 0%, var(--light), transparent 70%);
+  }
+  .gate-lede { color: var(--ink); }
+  .gate-muted { color: var(--graphite); }
+  .gate-card { background: var(--paper); }
+  .gate-code { background: var(--raised); color: var(--ink); white-space: pre; }
+  .gate-link { color: var(--ink); }
+  /* The light theme keeps the band dark by inverting to the ink tones: no new colours. */
+  :global(:root[data-resolved="light"]) .gate { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  :global(:root[data-resolved="light"]) .gate-lede,
+  :global(:root[data-resolved="light"]) .gate-link,
+  :global(:root[data-resolved="light"]) .gate-card h3 { color: var(--paper); }
+  :global(:root[data-resolved="light"]) .gate-muted { color: color-mix(in oklab, var(--paper) 72%, var(--ink)); }
+  :global(:root[data-resolved="light"]) .gate-card { background: color-mix(in oklab, var(--paper) 7%, var(--ink)); }
+  :global(:root[data-resolved="light"]) .gate-code { background: color-mix(in oklab, var(--paper) 12%, var(--ink)); color: var(--paper); }
+  :global(:root[data-resolved="light"]) .gate :focus-visible { outline-color: var(--paper); }
+</style>

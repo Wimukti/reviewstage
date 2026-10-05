@@ -1,0 +1,21 @@
+---
+/* Section 9. The headline's second line, closing the page; the command and a star. */
+import CommandPill from "./CommandPill.astro";
+import GitHubIcon from "../marketing/GitHubIcon.astro";
+import { button } from "../marketing/variants";
+import { repo } from "../../content/site-links";
+---
+<section class="home-section final" aria-labelledby="final-title">
+  <div class="container-page grid justify-items-center gap-6 text-center">
+    <h2 id="final-title" class="display-title final-title">You still have to review it.</h2>
+    <p class="m-0 -mt-2 text-base text-muted-foreground sm:text-lg">Let Claude write the first draft.</p>
+    <div class="flex max-w-full flex-wrap items-center justify-center gap-3">
+      <CommandPill />
+      <a class={button({ variant: "secondary", size: "lg" }, "h-12 rounded-full")} href={repo}><GitHubIcon />Star on GitHub</a>
+    </div>
+  </div>
+</section>
+<style>
+  .final { padding-block: clamp(4rem, 8vw, 7rem); }
+  .final-title { font-size: clamp(2rem, 4.5vw, 3.5rem); max-width: 18ch; }
+</style>

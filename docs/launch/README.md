@@ -1,49 +1,87 @@
-# Launch kit
+# Launch playbook
 
-Everything needed to take ReviewStage public, in the order agreed: a short polish window, ten
-design partners, then one morning of posts. Each post is a file here; copy it as is, fill the
-two blanks (`<DEMO_LINK>`, `<ISSUE_LINK>`) and post from your own account. Dates are MM/DD/YY.
+How ReviewStage goes from 0 stars to a project people find, try and tell others about. Every
+post is a file in this folder, ready to paste. Dates are MM/DD/YY.
 
-## Go-live checklist
+## The one idea
 
-Before the first public post, every box ticked:
+**AI wrote the PR. You still have to review it.** ReviewStage drafts the review on your own
+Claude plan; you keep what's worth saying and post it as yourself. Nothing posts until you click.
 
-- [ ] `npx reviewstage@latest` on a clean Mac (not your dev machine): wizard → queue → one
-      review posted on a real PR → phone paired by QR → push notification received. Record what
-      broke; fix; retag. This is the only gate that matters.
-- [ ] The same on Linux (Ubuntu 24.04 VM is enough): the sandbox fallback and the tool downloads.
-- [ ] A second GitHub account requests your review on a repo you watch; the Dock badge and the
-      phone notification arrive without you touching anything.
-- [ ] One team install from the Docker instructions by someone who has never seen the repo
-      (a design partner counts), timed. Under 15 minutes to a posted review or the docs change.
-- [ ] `v1.0.0` tagged — the first non-prerelease. Until then npm's `latest` is an rc, which the
-      README calls out; the posts should not go out while the version string says "rc".
-- [ ] README's top: the one command, the 20-second recording, the gate in one sentence. Nothing
-      about Docker above the fold.
-- [ ] 8–12 **good first issues** open, each with a file path, the expected behaviour, and the
-      test that proves it (see `good-first-issues.md`).
-- [ ] Discussions enabled on the repo; a pinned "Ask anything" thread.
-- [ ] Security policy (`SECURITY.md`) reachable from the repo's Security tab; a contact that
-      you read.
-- [ ] A 60–90 s screen recording with voice (phone in hand for the QR scan) uploaded as an
-      unlisted YouTube video → `<DEMO_LINK>`. The GIFs carry the README; the video carries the
-      posts.
-- [ ] You can answer, in one sentence each: *why not Claude Code Review / CodeRabbit / Copilot
-      review?* (they post; this stages and you post), *what does it cost?* (your Claude plan;
-      nothing else), *what leaves my machine?* (the diff to Anthropic through Claude Code, the
-      review you post to GitHub; nothing else).
+Say it the same way everywhere. The foil is the review *bot* — the thing that comments on every
+PR under a bot account and gets muted in two weeks. We are the opposite: a colleague-shaped
+review, signed by a human. Three proof points, in this order, whenever there is room:
 
-## Order of posting (one morning, US Eastern, Tuesday–Thursday)
+1. **One command, a real app:** `npx reviewstage` → desktop app, then your phone by a QR code.
+2. **You stay the reviewer:** findings are staged privately; you keep, edit, drop, then post as you.
+3. **It learns your team:** what you drop three times becomes a proposed rule.
 
-| When | Where | File |
+## Assets (all ready before the first post)
+
+| Asset | Where | Used by |
 | --- | --- | --- |
-| 08:30 | Hacker News — Show HN | `show-hn.md` |
-| 08:40 | r/ClaudeAI and r/ClaudeCode | `reddit-claude.md` |
-| day 2, 09:00 | r/selfhosted | `reddit-selfhosted.md` |
-| day 3 | r/opensource | `reddit-opensource.md` |
-| day 4 | r/ExperiencedDevs (discussion framing, no link in the title) | `reddit-experienceddevs.md` |
-| week after | "One month later" post on the site + HN | — |
+| 90 s launch video, captions burned in | `~/Desktop/reviewstage-launch/reviewstage-launch-1080p.mp4` → upload to YouTube (unlisted is fine) | every post's first line |
+| Same cut without captions | `…-1080p-clean.mp4` + `voiceover-script.md` | your voiced version |
+| 40 s vertical cut | `…-vertical.mp4` | X, LinkedIn, Shorts/Reels |
+| 20 s review GIF | `docs/demos/review.gif` | README, Reddit image posts |
+| YouTube thumbnail | `…-thumbnail.png` | YouTube |
+| GitHub social preview | `…/github-social-preview.png` → repo **Settings → General → Social preview → Upload** (GitHub has no API for this; it is what every link to the repo shows on X, Slack, Discord, LinkedIn) | all shares |
 
-Rules for the day: reply to every comment within the hour for the first six hours; never argue
-a judgement call, answer with what the thing does; if someone finds a bug, link the issue you
-opened for it in your reply. Product Hunt last, if at all.
+## The README is the landing page
+
+Most clicks from every channel land on the GitHub README, not the site. It already opens with
+the one-liner, the 20-second recording and the command. Keep it that way: nothing about Docker
+above the fold, a star is one scroll away (the recording ends where the eye is), and the first
+link after the command is the site.
+
+## Order (one week, US Eastern; Tuesday–Thursday mornings get the most eyes)
+
+| Day | Time | Channel | File | Notes |
+| --- | --- | --- | --- | --- |
+| D-7 → D-1 | — | Be a person on the subs you'll post in | — | Answer 5–10 questions in r/ClaudeAI / r/ClaudeCode. Reddit's rule of thumb: ~90% of your activity is not about your product. Accounts with no history get filtered. |
+| D-1 | evening | Repo ready | — | Social preview uploaded, Discussions on, 8–12 good-first-issues open (`good-first-issues.md`), release v1.0.0 visible. |
+| D0 | 08:30 | **Show HN** | `show-hn.md` | Post the repo URL; your first comment within a minute. Stay in the thread 4–6 hours. |
+| D0 | 09:00 | **r/ClaudeAI** (flair *Built with Claude*) | `reddit-claudeai.md` | Native video upload, not a YouTube link — native video autoplays. |
+| D0 | 12:00 | **r/ClaudeCode** | `reddit-claudecode.md` | Different text from r/ClaudeAI; never cross-post the same body. |
+| D0 | 13:00 | **X / Twitter** thread + **LinkedIn** | `x-thread.md`, `linkedin.md` | Vertical cut on X; tag @AnthropicAI and @claudeai once, in the last post. |
+| D1 | 09:00 | **r/selfhosted** | `reddit-selfhosted.md` | Lead with "your data stays on your box". |
+| D2 | 09:00 | **r/opensource** | `reddit-opensource.md` | Lead with the design decision and the help wanted. |
+| D3 | — | **dev.to / Hashnode** article | `article.md` | The story + how the gate is enforced. Link it from replies, not as a new Reddit post. |
+| D4 | 09:00 | **r/ExperiencedDevs** | `reddit-experienceddevs.md` | A discussion, not an ad. No link unless asked. |
+| D14+ | — | **awesome-claude-code** | `awesome-lists.md` | Their rule: the resource is ≥ 14 days old with active development, or ≥ 100 stars; submitted by a human through the web form. |
+| D30 | — | "One month later" post (site + HN) | — | Numbers, what changed from feedback, what's next. |
+| later | — | Product Hunt | — | Only once there are users who'll show up for it. |
+| 01/12/27+ | — | awesome-selfhosted | `awesome-lists.md` | Requires the first release to be ≥ 4 months old (first release 09/12/26). |
+
+## How to behave on launch day (this decides how far a post travels)
+
+- **Reply to every comment in the first 6 hours**, within ~15 minutes when you can. Early replies
+  are what the ranking sees.
+- **Answer with what the thing does**, never argue taste. "It doesn't do X because Y; here's the
+  issue if you want it" beats a defence.
+- **Turn every bug report into an issue on the spot** and link it in your reply. People star
+  projects that visibly respond.
+- **Never ask for upvotes or stars**, and never have friends vote — Reddit and HN both detect it
+  and bury the post. Asking for *feedback* is fine.
+- **Ship something within 48 hours** from what people said, then reply to them that it's in.
+
+## What to watch
+
+| Metric | Where | A good first week |
+| --- | --- | --- |
+| Stars | GitHub | 100+ (enough for awesome-claude-code without waiting) |
+| npm installs | `npm view reviewstage` / npmjs.com weekly downloads | 300+ |
+| Site visits | GitHub Pages has none — add a privacy-friendly counter if you want this | — |
+| Issues from strangers | GitHub | 5+ (people only file issues for things they use) |
+| Comments → clicks | the posts | reply rate matters more than score |
+
+## One sentence each, for the questions you will get
+
+- **Why not Claude Code Review / CodeRabbit / Copilot review?** They post as a bot on every PR;
+  this drafts privately and you post as yourself, only when you choose.
+- **What does it cost?** Your existing Claude plan. Nothing else; no API key, no server bill
+  for the desktop app.
+- **What leaves my machine?** The diff, to Anthropic, through Claude Code on your account, and
+  the review you choose to post, to GitHub. Nothing else.
+- **Can it auto-approve?** No — not as an option, not behind a flag. Approve is your click.
+- **Windows?** Docker install under WSL2 today; native is on the roadmap.

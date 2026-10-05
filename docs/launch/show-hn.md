@@ -32,5 +32,5 @@ Things I would like to hear about: whether the gate (nothing posts until a signe
 clicks) is enough for you to let it near your team's PRs, and what you drop that it keeps
 raising.
 
-Demo (90 s): <DEMO_LINK>
+Demo (90 s): <DEMO_LINK> · Site: https://reviewstage.dev
 Security model: https://reviewstage.dev/security/

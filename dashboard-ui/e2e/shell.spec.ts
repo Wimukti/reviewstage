@@ -130,22 +130,27 @@ test.describe("desktop shell at 1440", () => {
 test.describe("phone shell at 390", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test("the header is the mark and the search only; the More sheet holds the theme switch", async ({ page }) => {
+  test("the queue's large title is the mark beside the name; the bar holds the search; You holds the theme", async ({ page }) => {
     await page.goto("/");
     await settled(page);
     const head = page.locator(".phone-head");
-    await expect(head.locator(".phone-title")).toHaveCount(0);
-    expect((await head.innerText()).trim()).toBe("");
-    await expect(head.getByRole("link", { name: "ReviewStage" })).toBeVisible();
+    // At the top the compact title is hidden (the large title is showing) and is not a heading.
+    await expect(head.getByTestId("nav-title")).toHaveCSS("opacity", "0");
+    await expect(head.getByRole("heading")).toHaveCount(0);
     await expect(head.getByRole("button", { name: "Review a PR" })).toBeVisible();
+    const large = page.getByTestId("large-title");
+    await expect(large.getByRole("heading", { level: 1 })).toHaveText("ReviewStage");
+    await expect(large.locator("img:visible")).toHaveCount(1); // the mark, once, beside the word
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
     await expect(page.getByTestId("running-bar")).toBeVisible();
     expect(Math.round((await page.getByTestId("running-bar").boundingBox())!.height)).toBe(2);
-    await page.getByTestId("more-tab").click();
-    const sheet = page.getByTestId("more-sheet");
-    await expect(sheet.getByTestId("theme-control")).toBeVisible();
-    await expect(sheet.getByRole("link", { name: "How it works" })).toHaveAttribute("href", /#how-it-works$/);
-    await expect(sheet.getByRole("button", { name: /switch github account/i })).toBeVisible();
-    await expect(sheet.getByRole("button", { name: /sign out/i })).toBeVisible();
+    await page.getByTestId("tab-bar").getByRole("link", { name: "You" }).click();
+    const you = page.getByTestId("you-list");
+    await expect(you.getByRole("link", { name: "How it works" })).toHaveAttribute("href", /#how-it-works$/);
+    await expect(you.getByRole("button", { name: /switch github account/i })).toBeVisible();
+    await expect(you.getByRole("button", { name: /sign out/i })).toBeVisible();
+    await you.getByRole("link", { name: /^Appearance/ }).click();
+    await expect(page.getByTestId("theme-control")).toBeVisible();
   });
 
   for (const [name, path] of [

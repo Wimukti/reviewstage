@@ -19,6 +19,7 @@ import { parsePrRef, prLabel, prUrl, usageChip, usageTitle } from "./pr";
 import { Link, navigate, useLocation } from "./router";
 import { pokeRunning, runningFor, useRunning } from "./running";
 import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge } from "./ui";
+import { useIsPhone } from "./theme";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +45,7 @@ const GUIDE =
   "[&_table]:my-2.5 [&_table]:block [&_table]:overflow-x-auto";
 
 function QaIndex({ me }: { me: Me }) {
+  const phone = useIsPhone();
   const [guides, setGuides] = useState<QaGuide[]>([]);
   const [repos, setRepos] = useState<string[]>(me.repos || []);
   const [pr, setPr] = useState("");
@@ -135,9 +137,30 @@ function QaIndex({ me }: { me: Me }) {
                 data-running={status ? "true" : undefined}
                 className="flex min-h-[44px] items-start gap-3 px-4 py-2.5 text-inherit hover:bg-accent/40 hover:no-underline"
               >
-                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted" aria-hidden="true">
+                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted max-[899px]:hidden" aria-hidden="true">
                   <FlaskConical className="size-4 text-muted-foreground" />
                 </span>
+                {phone ? (
+                  // A phone row: the title first (two lines at most), its facts small under it.
+                  <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="line-clamp-2 text-[15px] font-medium leading-snug">{g.title || `PR #${g.num}`}</span>
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+                      <span className="truncate">{multi && g.repo ? `${g.repo} ` : ""}#{g.num}</span>
+                      <span aria-hidden="true">·</span>
+                      {status ? (
+                        <span className="flex items-center gap-1.5" data-testid="row-running">
+                          <StatusBadge kind="reviewing" live>Building</StatusBadge>
+                          <span className="text-amber">{status}</span>
+                        </span>
+                      ) : (
+                        <>
+                          <StatusBadge kind="done">Guide ready</StatusBadge>
+                          <span>{g.when}</span>
+                        </>
+                      )}
+                    </span>
+                  </span>
+                ) : (
                 <span className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <span className="flex min-w-0 flex-wrap items-center gap-2">
                     {multi && g.repo && <RepoPill repo={g.repo} />}
@@ -157,6 +180,8 @@ function QaIndex({ me }: { me: Me }) {
                     </span>
                   )}
                 </span>
+                )}
+                {phone && <ChevronRight aria-hidden="true" className="mt-1 size-4 shrink-0 text-muted-foreground/70" />}
               </Link>
             );
           })}

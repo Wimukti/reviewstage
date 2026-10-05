@@ -286,7 +286,9 @@ test("QR pairing: the link the desktop mints signs a cookie-less phone in exactl
   await page.goto(url);
   expect((await landed).status()).toBe(302);
   await expect(page).toHaveURL(new RegExp(`^${PERSONAL_ORIGIN}/$`));
-  await expect(page.getByTestId("page-header")).toContainText("Your review queue");
+  // A phone: the queue's large title is the product name, the queue's tab is lit.
+  await expect(page.getByRole("heading", { level: 1, name: "ReviewStage" })).toBeVisible();
+  await expect(page.getByTestId("tab-bar").getByRole("link", { name: /^Queue/ })).toHaveAttribute("aria-current", "page");
   const me = await page.evaluate(() => fetch("/api/me").then((r) => r.json()));
   expect(me.login).toBe(PERSONAL_USER);
   const jar = await phone.cookies();
@@ -317,10 +319,9 @@ test.describe("phone", () => {
       viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
     });
     const page = await ctx.newPage();
-    await page.goto("/");
-    await page.getByTestId("more-tab").click();
-    await expect(page.getByTestId("more-sheet").getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repos");
-    await page.keyboard.press("Escape");
+    // Personal mode: Repositories is a row of the You tab's Reviewing group.
+    await page.goto("/you");
+    await expect(page.getByTestId("you-reviewing").getByRole("link", { name: /^Repositories/ })).toHaveAttribute("href", "/repos");
     for (const path of ["/welcome/claude", "/welcome/repos", "/repos"]) {
       await page.goto(path);
       if (path.startsWith("/welcome")) await expect(page.getByTestId("welcome-steps")).toBeVisible();

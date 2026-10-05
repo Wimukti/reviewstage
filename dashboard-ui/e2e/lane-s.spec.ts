@@ -184,14 +184,16 @@ test.describe("settings", () => {
   test.describe("phone", () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-    test("Devices is one tap from More", async ({ page }) => {
+    test("Devices is one row of the You tab, pushed as a page of its own", async ({ page }) => {
       await page.goto("/");
       await settled(page);
-      await page.getByTestId("more-tab").click();
-      await page.getByTestId("more-sheet").getByRole("link", { name: "Devices" }).click();
-      await expect(page).toHaveURL(/\/settings#devices$/);
+      await page.getByTestId("tab-bar").getByRole("link", { name: "You" }).click();
+      await page.getByTestId("you-list").getByRole("link", { name: /^Devices/ }).click();
+      await expect(page).toHaveURL(/\/you\/devices$/);
       await settled(page);
-      await expect(page.locator("#devices").getByRole("heading", { name: "Devices" })).toBeInViewport();
+      await expect(page.getByRole("heading", { level: 1, name: "Devices" })).toBeInViewport();
+      await expect(page.locator("#devices")).toBeInViewport();
+      await expect(page.getByTestId("settings-pills")).toHaveCount(0);
     });
 
     test("label rows do not wrap a word per line", async ({ page }) => {
@@ -286,8 +288,9 @@ test.describe("tour on the phone", () => {
   test("step 4 never covers the list it points at", async ({ page }) => {
     await page.goto("/");
     await settled(page);
-    await page.getByTestId("more-tab").click();
+    await page.getByTestId("tab-bar").getByRole("link", { name: "You" }).click();
     await page.getByRole("button", { name: /take a tour/i }).click();
+    await expect(page).toHaveURL(/\/$/); // the tour walks the queue, so it starts there
     const tour = page.getByTestId("tour");
     await expect(tour).toBeVisible();
     await expect(tour).toHaveAttribute("aria-modal", "true");

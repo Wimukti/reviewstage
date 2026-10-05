@@ -6,11 +6,13 @@ import { Qa } from "./Qa";
 import { CommandPalette } from "./CommandPalette";
 import { Integrations } from "./Integrations";
 import { Learnings } from "./Learnings";
-import { Queue } from "./Queue";
+import { Activity, Queue } from "./Queue";
 import { Repos } from "./Repos";
 import { Rollup } from "./Rollup";
 import { Settings } from "./Settings";
-import { PhoneShell, RunningBar, Sidebar } from "./Sidebar";
+import { RunningBar, Sidebar } from "./Sidebar";
+import { PhoneShell } from "./PhoneShell";
+import { You } from "./You";
 import { Skills } from "./Skills";
 import { StackPage } from "./StackPage";
 import { Tour } from "./Tour";
@@ -32,9 +34,14 @@ function NotFound() {
   );
 }
 
-function Routed({ me, reload }: { me: Me; reload: () => Promise<unknown> }) {
+type Account = { onSignOut: () => void; onSwitchAccount?: () => void };
+
+function Routed({ me, reload, account }: { me: Me; reload: () => Promise<unknown>; account: Account }) {
   const { path } = useLocation();
   if (path === "/") return <Queue me={me} />;
+  if (path === "/activity") return <Activity me={me} />;
+  if (path === "/you") return <You me={me} {...account} />;
+  if (path.startsWith("/you/")) return <Settings me={me} section={path.slice(5)} standalone />;
   if (path.startsWith("/repos")) return <Repos me={me} reload={reload} />;
   if (path.startsWith("/pr")) return <PrPage me={me} />;
   if (path.startsWith("/qa")) return <Qa me={me} />;
@@ -125,16 +132,29 @@ export function App() {
   if (me.personal && path.startsWith("/welcome")) return <Welcome me={me} reload={load} />;
   if (!me.authed) return <Login me={me} onDone={load} />;
 
-  // The shell: sidebar beside the page on the desktop, header above and tab bar below it on
-  // the phone. The page keeps clear of the fixed tab bar with its bottom padding.
+  const account: Account = { onSignOut: signOut, onSwitchAccount: switchAccount };
+  // The phone: a navigation bar above the page and three tabs below it (PhoneShell).
+  if (phone)
+    return (
+      <div className="flex min-h-dvh flex-col bg-background">
+        <RunningBar />
+        <PhoneShell me={me}>
+          <Routed me={me} reload={load} account={account} />
+        </PhoneShell>
+        <CommandPalette me={me} />
+        <Tour me={me} />
+      </div>
+    );
+
+  // The desktop: the sidebar beside the page.
   return (
     <div className="flex min-h-dvh items-stretch bg-background max-[899px]:flex-col">
       <RunningBar />
-      {phone ? <PhoneShell me={me} onSignOut={signOut} onSwitchAccount={switchAccount} /> : <Sidebar me={me} onSignOut={signOut} onSwitchAccount={switchAccount} />}
+      <Sidebar me={me} onSignOut={signOut} onSwitchAccount={switchAccount} />
       <main className="main min-w-0 flex-1">
         <UpdateBanner />
         <div className="min-w-0 max-w-[960px] px-6 pb-14 pt-6 max-[899px]:px-4 max-[899px]:pb-[calc(80px+env(safe-area-inset-bottom,0px))] max-[899px]:pt-5">
-          <Routed me={me} reload={load} />
+          <Routed me={me} reload={load} account={account} />
         </div>
       </main>
       <CommandPalette me={me} />

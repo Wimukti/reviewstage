@@ -27,6 +27,7 @@ import {
 } from "./api";
 import { MdEditor } from "./MdEditor";
 import { Banner, EmptyState, PageHeader, RawBanner, RepoPill, SlowBusy, StatusBadge } from "./ui";
+import { useIsPhone } from "./theme";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1143,7 +1144,58 @@ function SkillsSkeleton() {
   );
 }
 
+// Scores on a phone: one card per skill — the name and its rating on top, the four counts
+// as a small grid under it — instead of a six-column table that scrolls sideways.
+function SkillScoreCards({ stats, user }: { stats: SkillStat[]; user: string }) {
+  return (
+    <div className="flex flex-col gap-2" data-testid="skill-stat-cards">
+      {stats.map((s) => (
+        <Card key={s.skill} className="gap-3 px-4 py-3.5" data-testid="skill-stat-card">
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-[15px] font-medium">
+              {s.label ? s.label[0].toUpperCase() + s.label.slice(1) : s.skill}
+              {s.skill === user && (
+                <Badge variant="outline" className="ml-1.5 align-middle">you</Badge>
+              )}
+            </span>
+            {ratable(s) ? (
+              <StatusBadge tone={s.rate >= 70 ? "green" : s.rate >= 40 ? "amber" : "red"} icon={null} className="tabular-nums">
+                {s.rate.toFixed(1)}%
+              </StatusBadge>
+            ) : (
+              <StatusBadge tone="graphite" icon={null} className="tabular-nums">
+                n = {s.total.toLocaleString("en-US")} of {floorOf(s).toLocaleString("en-US")} · too few
+              </StatusBadge>
+            )}
+          </div>
+          {ratable(s) && (
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${s.rate}%` }} />
+            </div>
+          )}
+          <dl className="m-0 grid grid-cols-4 gap-2 text-center">
+            {(
+              [
+                ["Kept", s.kept],
+                ["Reworded", s.edited],
+                ["Dropped", s.dropped],
+                ["Findings", s.total],
+              ] as const
+            ).map(([k, v]) => (
+              <div key={k} className="flex flex-col-reverse gap-0.5">
+                <dt className="text-[11px] text-muted-foreground">{k}</dt>
+                <dd className="m-0 text-base font-semibold tabular-nums">{v.toLocaleString("en-US")}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function Skills() {
+  const phone = useIsPhone();
   const [d, setD] = useState<SkillsData | null>(null);
   const [banner, setBanner] = useState("");
   const [err, setErr] = useState("");
@@ -1244,9 +1296,19 @@ export function Skills() {
       {banner && <RawBanner html={banner} />}
 
       <Tabs value={tab} onValueChange={go}>
-        <TabsList variant="line" className="h-auto! flex-wrap justify-start gap-x-0.5 gap-y-1 p-0" aria-label="Skills" data-testid="skill-tabs">
+        <TabsList
+          variant={phone ? "default" : "line"}
+          className={
+            phone
+              ? // One segmented row that scrolls sideways on its own; the page never does.
+                "h-10! w-full justify-start overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              : "h-auto! flex-wrap justify-start gap-x-0.5 gap-y-1 p-0"
+          }
+          aria-label="Skills"
+          data-testid="skill-tabs"
+        >
           {TABS.map(([k, label]) => (
-            <TabsTrigger key={k} value={k} className="h-9 flex-none gap-1.5 px-3">
+            <TabsTrigger key={k} value={k} className={phone ? "h-full flex-none gap-1.5 px-3" : "h-9 flex-none gap-1.5 px-3"}>
               {label}
               {counts[k] ? (
                 <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-[11px] tabular-nums text-muted-foreground in-data-[state=active]:text-foreground">
@@ -1290,6 +1352,9 @@ export function Skills() {
                   </EmptyState>
                 </Card>
               ) : (
+                phone ? (
+                  <SkillScoreCards stats={d.stats} user={d.user} />
+                ) : (
                 <Card className="gap-0 overflow-x-auto py-0">
                   <table data-testid="skill-stats" className="w-full text-sm">
                     <thead>
@@ -1339,6 +1404,7 @@ export function Skills() {
                     </tbody>
                   </table>
                 </Card>
+                )
               )}
             </Section>
           </>,

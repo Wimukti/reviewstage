@@ -22,7 +22,8 @@ const PAGES: [string, string][] = [
 // Loading is a Skeleton in the shape of the content; settled means none is left.
 async function settled(page: Page) {
   await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByTestId("page-header")).toBeVisible();
+  // A phone names the page in the navigation bar rather than repeating it in a page header.
+  await expect(page.getByTestId("page-header").or(page.getByTestId("nav-title")).first()).toBeVisible();
 }
 
 // Monospace is permitted only inside code: <pre>, <code>, <kbd>, a textarea, the skill editor.

@@ -71,7 +71,29 @@ const plain = async (size, name) =>
 const maskable = async (size, name) =>
   writeFile(join(icons, name), await tile(sharp, svg, size, { radius: 0, inner: 0.62 }));
 
+// iOS launch screens: the mark centred on the dark paper (the shell's default theme), one per
+// portrait iPhone size the server's STARTUP_SIZES lists (bin/server.py). Kept in step by hand;
+// pwa.spec.ts checks that every size the shell links is served.
+const PAPER = "#0B0C10";
+const STARTUP = [
+  [1320, 2868], [1290, 2796], [1284, 2778], [1242, 2688], [828, 1792],
+  [1206, 2622], [1179, 2556], [1170, 2532], [1125, 2436], [750, 1334],
+];
+const startup = async (w, h) => {
+  const glyph = Math.round(w * 0.24);
+  const mark = await sharp(Buffer.from(svg), { density: 300 })
+    .resize(glyph, glyph, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+  const png = await sharp({ create: { width: w, height: h, channels: 3, background: PAPER } })
+    .composite([{ input: mark, gravity: "centre" }])
+    .png({ compressionLevel: 9, palette: true })
+    .toBuffer();
+  await writeFile(join(icons, `startup-${w}x${h}.png`), png);
+};
+
 await Promise.all([
+  ...STARTUP.map(([w, h]) => startup(w, h)),
   plain(192, "icon-192.png"),
   plain(512, "icon-512.png"),
   maskable(192, "maskable-192.png"),

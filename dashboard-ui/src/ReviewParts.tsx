@@ -434,7 +434,7 @@ export function CommitBar({
         posted && "is-posted",
         lit && "has-staged",
         "sticky bottom-0 z-20 mt-4 gap-0 rounded-lg border-0 bg-popover py-0 shadow-xl",
-        "max-[899px]:fixed max-[899px]:inset-x-0 max-[899px]:bottom-[calc(56px+env(safe-area-inset-bottom,0px))] max-[899px]:mt-0 max-[899px]:rounded-b-none",
+        "max-[899px]:fixed max-[899px]:inset-x-0 max-[899px]:bottom-[calc(49px+env(safe-area-inset-bottom,0px))] max-[899px]:mt-0 max-[899px]:rounded-b-none",
       )}
       data-testid="commit-bar"
     >

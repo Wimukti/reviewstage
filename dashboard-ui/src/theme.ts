@@ -33,6 +33,10 @@ export function applyTheme(choice = getTheme()): void {
   if (scheme) scheme.content = choice === "system" ? "light dark" : choice;
   const color = document.querySelector<HTMLMetaElement>("meta[name=theme-color]");
   if (color) color.content = PAPER[resolvedTheme(choice)];
+  // The home-screen app's status bar: translucent (white clock) over dark paper, the opaque
+  // default (dark clock) over light. iOS reads it as the page loads; kept in step regardless.
+  const bar = document.querySelector<HTMLMetaElement>("meta[name=apple-mobile-web-app-status-bar-style]");
+  if (bar) bar.content = resolvedTheme(choice) === "dark" ? "black-translucent" : "default";
 }
 
 export function setTheme(choice: ThemeChoice): void {

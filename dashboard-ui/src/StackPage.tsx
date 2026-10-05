@@ -83,6 +83,7 @@ export function StackPage() {
       <PageHeader
         title={<PrTitle num={pr} title="Stacked review" />}
         className="mb-3"
+        keepOnPhone
         help={
           <>
             These open PRs form a stack — each is based on the one above it. Tick the ones to review

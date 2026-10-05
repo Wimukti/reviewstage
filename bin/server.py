@@ -2919,7 +2919,7 @@ def device_page(login, headers, name):
     e = html.escape
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
         f"<title>{e(BRAND)} — connect this device</title>"
         f"<link rel=icon href='{rs_assets.FAVICON}'>"
         f"<link rel=stylesheet href='{bundle_urls()[1]}'></head><body>"
@@ -3365,6 +3365,17 @@ def bundle_urls():
     return urls
 
 
+# iOS launch screens (scripts/icons.mjs renders one per size: the mark on the dark paper), so
+# opening the home-screen app shows the brand instead of a white flash. Portrait iPhones by
+# CSS size and pixel ratio; a size not listed simply falls back to the app's own first paint.
+STARTUP_SIZES = ((440, 956, 3), (430, 932, 3), (428, 926, 3), (414, 896, 3), (414, 896, 2),
+                 (402, 874, 3), (393, 852, 3), (390, 844, 3), (375, 812, 3), (375, 667, 2))
+STARTUP_LINKS = "".join(
+    "<link rel=apple-touch-startup-image media='screen and (device-width: %dpx) and "
+    "(device-height: %dpx) and (-webkit-device-pixel-ratio: %d) and (orientation: portrait)' "
+    "href='/icons/startup-%dx%d.png'>" % (w, h, r, w * r, h * r) for w, h, r in STARTUP_SIZES)
+
+
 def index_html():
     """The minimal HTML shell the React SPA mounts into (bundle built to bin/static/app-*)."""
     js, css = bundle_urls()
@@ -3375,7 +3386,7 @@ def index_html():
         # flashes the other one: "light", or "system" (which the tokens' media query targets).
         # Fonts are bundled (fontsource), so nothing is fetched from a CDN.
         "<!doctype html><html lang=en data-theme=dark><head><meta charset=utf-8>"
-        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
         f"<title>{html.escape(BRAND)}</title>"
         f"<link rel=icon href='{rs_assets.FAVICON}'>"
         "<link rel=manifest href='/manifest.webmanifest'>"
@@ -3390,9 +3401,17 @@ def index_html():
         "c.content=dark?'#0B0C10':'#F6F6F9';}catch(e){}})()</script>"
         "<meta name=mobile-web-app-capable content='yes'>"
         "<meta name=apple-mobile-web-app-capable content='yes'>"
-        "<meta name=apple-mobile-web-app-status-bar-style content='default'>"
+        # The home-screen app draws under the status bar (black-translucent, viewport-fit=cover;
+        # the phone shell pads by the safe area). That style's clock is white, so a light theme
+        # asks for the opaque default bar instead — iOS reads this tag as the page loads.
+        "<meta name=apple-mobile-web-app-status-bar-style content='black-translucent'>"
+        "<script>(function(){try{var t=localStorage.getItem('rs-theme');"
+        "if(t==='light'||(t==='system'&&!matchMedia('(prefers-color-scheme: dark)').matches))"
+        "document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]')"
+        ".content='default';}catch(e){}})()</script>"
         f"<meta name=apple-mobile-web-app-title content='{html.escape(BRAND)}'>"
         "<link rel=apple-touch-icon href='/icons/apple-touch-icon.png'>"
+        + STARTUP_LINKS +
         f"<link rel=stylesheet href='{css}'>"
         "</head><body><div id=root></div>"
         f"<script src='{js}'></script></body></html>")

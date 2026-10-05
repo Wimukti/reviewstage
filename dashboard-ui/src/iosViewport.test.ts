@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { installViewportFix, isIosStandalone, remeasureViewport } from "./iosViewport.ts";
+import { installViewportFix, isIosStandalone, remeasureViewport, viewportGap } from "./iosViewport.ts";
 
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1";
 
@@ -29,4 +29,18 @@ test("a browser tab installs nothing", () => {
   const undo = installViewportFix(win, {} as Document);
   undo();
   assert.equal(added, 0);
+});
+
+const win = (innerHeight: number, w = 440, h = 956, portrait = true) =>
+  ({ innerHeight, innerWidth: portrait ? w : h, screen: { width: w, height: h },
+     matchMedia: () => ({ matches: portrait }) }) as unknown as Window;
+
+test("the cold-launch gap is the missing status-bar inset, and zero once iOS corrects", () => {
+  // iPhone 16 Pro Max: 440×956 points, 62pt status-bar inset (the maintainer's screenshots).
+  assert.equal(viewportGap(win(956 - 62)), 62);
+  assert.equal(viewportGap(win(956)), 0);
+  // Landscape uses the short side of the screen.
+  assert.equal(viewportGap(win(440, 440, 956, false)), 0);
+  // Something else entirely (a much smaller window) is not this bug.
+  assert.equal(viewportGap(win(500)), 0);
 });

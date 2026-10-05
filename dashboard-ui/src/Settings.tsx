@@ -190,7 +190,7 @@ function SaveBar({
       data-state={state}
       inert={hidden}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur transition-[transform,opacity,visibility] duration-(--dur-slow) ease-(--ease) max-[899px]:bottom-[calc(49px+env(safe-area-inset-bottom,0px))] min-[900px]:left-[216px]",
+        "fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur transition-[transform,opacity,visibility] duration-(--dur-slow) ease-(--ease) max-[899px]:bottom-[calc(49px+env(safe-area-inset-bottom,0px)-var(--ios-gap,0px))] min-[900px]:left-[216px]",
         hidden ? "invisible translate-y-full opacity-0" : "visible translate-y-0 opacity-100",
       )}
     >

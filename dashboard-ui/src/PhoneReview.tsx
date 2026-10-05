@@ -441,7 +441,7 @@ export function PostPill({
       delete document.documentElement.dataset.pill;
     };
   }, []);
-  const at = "fixed inset-x-0 z-20 flex justify-center px-4 bottom-[calc(49px+env(safe-area-inset-bottom,0px)+12px)] pointer-events-none";
+  const at = "fixed inset-x-0 z-20 flex justify-center px-4 bottom-[calc(49px+env(safe-area-inset-bottom,0px)+12px-var(--ios-gap,0px))] pointer-events-none";
   const quiet = "pointer-events-auto flex h-14 items-center gap-2 rounded-full bg-popover px-6 text-[15px] text-muted-foreground shadow-xl ring-1 ring-border";
   if (posted)
     return (

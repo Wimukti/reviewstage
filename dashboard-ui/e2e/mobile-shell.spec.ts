@@ -277,3 +277,36 @@ test.describe("desktop at 1440 is unchanged", () => {
     expect(await page.evaluate(() => document.documentElement.dataset.nav ?? null)).toBeNull();
   });
 });
+
+// iOS home-screen apps (iOS 26) lay out a cold launch with the layout viewport short by the
+// status-bar inset — 62pt on the maintainer's iPhone — so the tab bar floated 62pt above the
+// bottom until the first scroll (screenshots 10/05/26). Recreated here: a viewport 62px shorter
+// than the screen, an iPhone user agent and navigator.standalone.
+test.describe("iOS cold launch: the layout viewport is short of the screen", () => {
+  test.use({
+    viewport: { width: 440, height: 894 },
+    isMobile: true,
+    hasTouch: true,
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
+  });
+
+  test("the tab bar is drawn at the screen's bottom, not the short viewport's", async ({ page }) => {
+    // The project's device settings win over test.use({ screen }), so the screen is set here.
+    await page.addInitScript("Object.defineProperty(navigator, 'standalone', { get: () => true });" +
+      "Object.defineProperty(Screen.prototype, 'height', { get: () => 956 });" +
+      "Object.defineProperty(Screen.prototype, 'width', { get: () => 440 });");
+    await page.goto("/");
+    const bar = page.getByTestId("tab-bar");
+    await expect(bar).toBeVisible();
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ios-gap").trim())).toBe("62px");
+    const box = await bar.boundingBox();
+    expect(Math.round(box!.y + box!.height)).toBe(956);
+  });
+
+  test("a browser tab is left alone", async ({ page }) => {
+    await page.goto("/");
+    const box = await page.getByTestId("tab-bar").boundingBox();
+    expect(Math.round(box!.y + box!.height)).toBe(894);
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ios-gap").trim())).toBe("");
+  });
+});

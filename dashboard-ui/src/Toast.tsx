@@ -43,7 +43,7 @@ export function Toaster() {
     <div
       role="status"
       aria-live="polite"
-      className="rs-toaster pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 bottom-[calc(49px+env(safe-area-inset-bottom,0px)+12px)]"
+      className="rs-toaster pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 bottom-[calc(49px+env(safe-area-inset-bottom,0px)+12px-var(--ios-gap,0px))]"
     >
       {t && (
         <div

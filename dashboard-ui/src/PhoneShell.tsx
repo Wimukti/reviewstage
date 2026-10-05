@@ -164,7 +164,7 @@ function TabBar({ active, count }: { active: TabKey; count: number | null }) {
     <nav
       aria-label="Main"
       data-testid="tab-bar"
-      className="tabbar fixed inset-x-0 bottom-0 z-30 flex h-[calc(49px+env(safe-area-inset-bottom,0px))] border-t bg-background/80 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl backdrop-saturate-150"
+      className="tabbar fixed inset-x-0 bottom-[calc(0px-var(--ios-gap,0px))] z-30 flex h-[calc(49px+env(safe-area-inset-bottom,0px))] border-t bg-background/80 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl backdrop-saturate-150"
     >
       {TABS.map(({ key, label, root }) => {
         const on = key === active;

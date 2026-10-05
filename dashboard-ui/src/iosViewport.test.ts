@@ -10,17 +10,23 @@ test("only the iOS home-screen app counts as standalone", () => {
   assert.equal(isIosStandalone({ userAgent: "Mozilla/5.0 (Linux; Android 15) Chrome/140", standalone: true } as unknown as Navigator), false);
 });
 
-test("re-measuring restores the viewport meta and the scroll position", () => {
+test("re-measuring makes a short page scrollable for the round trip, then restores it", () => {
   const sets: string[] = [];
   const meta = { _c: "width=device-width,initial-scale=1,viewport-fit=cover",
     get content() { return this._c; }, set content(v: string) { sets.push(v); this._c = v; } };
+  const minHeights: string[] = [];
+  const style = { _m: "12px", get minHeight() { return this._m; }, set minHeight(v: string) { minHeights.push(v); this._m = v; } };
   const scrolls: number[] = [];
-  const doc = { querySelector: () => meta } as unknown as Document;
-  const win = { scrollY: 40, scrollTo: (_x: number, y: number) => scrolls.push(y) } as unknown as Window;
+  const doc = { querySelector: () => meta, body: { style } } as unknown as Document;
+  // A 956pt screen (iPhone Pro Max) during the cold launch, innerHeight short by 62.
+  const win = { scrollY: 0, innerHeight: 894, screen: { height: 956 },
+    scrollTo: (_x: number, y: number) => scrolls.push(y) } as unknown as Window;
   remeasureViewport(doc, win);
   assert.equal(meta.content, "width=device-width,initial-scale=1,viewport-fit=cover");
   assert.equal(sets.length, 2);
-  assert.deepEqual(scrolls, [41, 40]);
+  assert.deepEqual(minHeights, ["958px", "12px"]);
+  assert.deepEqual(scrolls, [1, 0]);
+  assert.equal(style.minHeight, "12px");
 });
 
 test("a browser tab installs nothing", () => {
@@ -43,4 +49,5 @@ test("the cold-launch gap is the missing status-bar inset, and zero once iOS cor
   assert.equal(viewportGap(win(440, 440, 956, false)), 0);
   // Something else entirely (a much smaller window) is not this bug.
   assert.equal(viewportGap(win(500)), 0);
+  assert.equal(viewportGap(win(894)), 62);
 });

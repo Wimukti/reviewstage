@@ -164,7 +164,7 @@ function TabBar({ active, count }: { active: TabKey; count: number | null }) {
     <nav
       aria-label="Main"
       data-testid="tab-bar"
-      className="tabbar fixed inset-x-0 bottom-[calc(0px-var(--ios-gap,0px))] z-30 flex h-[calc(49px+env(safe-area-inset-bottom,0px))] border-t bg-background/80 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl backdrop-saturate-150"
+      className="tabbar fixed inset-x-0 bottom-[calc(0px-var(--ios-gap,0px))] z-30 flex h-[calc(49px+env(safe-area-inset-bottom,0px))] border-t bg-background/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl backdrop-saturate-150"
     >
       {TABS.map(({ key, label, root }) => {
         const on = key === active;
@@ -248,7 +248,7 @@ export function PhoneShell({ me, children }: { me: Me; children: ReactNode }) {
         data-collapsed={collapsed ? "true" : "false"}
         data-scrolled={scrolled ? "true" : "false"}
         className={cn(
-          "phone-head sticky top-0 z-30 border-b bg-background/80 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150 transition-[border-color] duration-(--dur)",
+          "phone-head sticky top-0 z-30 border-b bg-background/95 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150 transition-[border-color] duration-(--dur)",
           scrolled ? "border-border" : "border-transparent",
         )}
       >

@@ -1,8 +1,8 @@
 // iOS home-screen apps (seen on iOS 26) lay out the first screen after a cold launch with a
-// stale viewport: the fixed tab bar sits too high with a band of empty space under it until the
-// first scroll or navigation makes WebKit measure again. Asking for that measurement ourselves
-// — re-applying the viewport meta and a 1px scroll round trip — puts the bar where it belongs
-// on the first frame. Only the standalone iOS app runs this; everywhere else it is a no-op.
+// stale viewport, short by the status-bar inset, until the first scroll makes WebKit measure
+// again: the tab bar is placed wrong or its lower part is not painted. We publish the gap as
+// --ios-gap (every bottom-anchored fixed element subtracts it) and ask WebKit to re-measure.
+// Only the standalone iOS app runs this; everywhere else it is a no-op.
 
 export function isIosStandalone(nav: Navigator = navigator): boolean {
   const standalone = (nav as Navigator & { standalone?: boolean }).standalone === true;
@@ -16,9 +16,15 @@ export function remeasureViewport(doc: Document = document, win: Window = window
     meta.content = `${content},maximum-scale=1`;
     meta.content = content;
   }
+  // The scroll round trip is what makes WebKit re-measure, and it does nothing on a page too
+  // short to scroll (a queue of a few rows). Make the page 2px taller than the screen for it.
+  const body = doc.body;
+  const prev = body ? body.style.minHeight : "";
+  if (body) body.style.minHeight = `${Math.max(win.innerHeight, win.screen?.height || 0) + 2}px`;
   const y = win.scrollY;
   win.scrollTo(0, y + 1);
   win.scrollTo(0, y);
+  if (body) body.style.minHeight = prev;
 }
 
 /**
@@ -53,6 +59,7 @@ export function installViewportFix(win: Window = window, doc: Document = documen
   const onVisible = () => { if (doc.visibilityState === "visible") run(); };
   run();
   const late = win.setTimeout(run, 350);
+  const later = win.setTimeout(run, 1200);
   win.addEventListener("pageshow", run);
   win.addEventListener("orientationchange", run);
   win.addEventListener("resize", onResize);
@@ -60,6 +67,7 @@ export function installViewportFix(win: Window = window, doc: Document = documen
   doc.addEventListener("visibilitychange", onVisible);
   return () => {
     win.clearTimeout(late);
+    win.clearTimeout(later);
     win.removeEventListener("pageshow", run);
     win.removeEventListener("orientationchange", run);
     win.removeEventListener("resize", onResize);

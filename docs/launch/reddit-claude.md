@@ -30,5 +30,5 @@ Things people here might care about:
 Repo: https://github.com/Wimukti/reviewstage · 90-second demo: <DEMO_LINK>
 
 Honest limits: Mac and Linux today (Windows via the Docker install), GitHub only, and it is
-beta — the install and UI moved a lot this week. If something breaks I would rather hear it
+1.0, but new — if something breaks I would rather hear it
 here than not.

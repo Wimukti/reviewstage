@@ -71,13 +71,16 @@ jobs:
         working-directory: desktop
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        # npm refuses a prerelease without an explicit dist-tag. Pre-releases go to `latest` while
-        # there is no stable version for `npx reviewstage` to resolve to (see docs/INSTALL-DESKTOP.md).
-        run: npm publish reviewstage-*.tgz --provenance --access public --tag latest
+        # Stable versions go to `latest` (what `npx reviewstage` and the in-app updater resolve);
+        # release candidates go to `next`, so an rc never replaces a stable release for anyone.
+        run: |
+          case "$VERSION" in *-*) TAG=next ;; *) TAG=latest ;; esac
+          npm publish reviewstage-*.tgz --provenance --access public --tag "$TAG"
+          echo "DIST_TAG=$TAG" >> "$GITHUB_ENV"
       - name: Summary
         run: |
           {
-            echo "Published \`reviewstage@$VERSION\`."
+            echo "Published \`reviewstage@$VERSION\` on the \`$DIST_TAG\` tag."
             echo
             echo '```'
             echo "npx reviewstage@$VERSION"

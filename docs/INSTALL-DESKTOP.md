@@ -194,7 +194,8 @@ reviewstage@<version>`, which waits for this instance to quit and opens on the s
 the banner says why and nothing quits.
 
 By hand, `npx reviewstage@latest` does the same. Your data in `~/.reviewstage` is untouched by
-an update. Pre-releases are published too, under the same tag, while the project is in beta.
+an update. Release candidates are published under npm's `next` tag and never reach `latest`;
+`npx reviewstage@next` tries one.
 
 ## Linux note
 

@@ -127,15 +127,20 @@ def public_key(root=None):
     return vapid_pair(root)["public"]
 
 
+# Apple's push service answers 403 BadJwtToken to a `localhost` contact (Chrome and Firefox
+# accept it), and a desktop or plain-http install has no https address of its own.
+DEFAULT_SUBJECT = "https://reviewstage.dev"
+
+
 def vapid_subject():
-    """`sub` for the JWT: VAPID_SUBJECT, else the install's https PUBLIC_URL, else a mailto."""
+    """`sub` for the JWT: VAPID_SUBJECT, else the install's https PUBLIC_URL, else the project's."""
     sub = os.environ.get("VAPID_SUBJECT", "").strip()
-    if sub:
+    if sub and "localhost" not in sub:
         return sub
     pub = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
-    if pub.startswith("https://"):
+    if pub.startswith("https://") and "localhost" not in pub:
         return pub
-    return "mailto:reviewstage@localhost"
+    return DEFAULT_SUBJECT
 
 
 def vapid_jwt(endpoint, pair, now=None, subject=None):

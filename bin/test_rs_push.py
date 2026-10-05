@@ -247,11 +247,16 @@ class Vapid(PushCase):
         hdr = rs_push.vapid_headers("https://web.push.apple.com/abc", pair)["Authorization"]
         self.assertTrue(hdr.startswith("vapid t="))
         self.assertIn(f", k={pair['public']}", hdr)
-        self.assertEqual(rs_push.vapid_subject(), "mailto:reviewstage@localhost")
+        # Never a localhost contact: Apple rejects it with 403 BadJwtToken (seen live, 10/05/26).
+        self.assertEqual(rs_push.vapid_subject(), "https://reviewstage.dev")
         with mock.patch.dict(os.environ, {"VAPID_SUBJECT": "mailto:ops@acme.test"}):
             self.assertEqual(rs_push.vapid_subject(), "mailto:ops@acme.test")
         with mock.patch.dict(os.environ, {"PUBLIC_URL": "http://localhost:8899"}):
-            self.assertEqual(rs_push.vapid_subject(), "mailto:reviewstage@localhost")
+            self.assertEqual(rs_push.vapid_subject(), "https://reviewstage.dev")
+        with mock.patch.dict(os.environ, {"PUBLIC_URL": "https://reviews.acme.test"}):
+            self.assertEqual(rs_push.vapid_subject(), "https://reviews.acme.test")
+        with mock.patch.dict(os.environ, {"VAPID_SUBJECT": "mailto:me@localhost"}):
+            self.assertEqual(rs_push.vapid_subject(), "https://reviewstage.dev")
 
     def test_topic_fits_the_rfc8030_alphabet(self):
         t = rs_push.topic_for("review:acme/widgets#42")

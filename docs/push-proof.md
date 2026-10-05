@@ -91,5 +91,6 @@ are the exact steps on the maintainer's test box.
 | iOS shows the "Add to Home Screen" hint | Opened in a Safari tab; open from the home-screen icon. |
 | Permission prompt never appears on iOS | The app was installed before this build; remove and re-add it so Safari re-reads the manifest. |
 | `WARN: push: … answered 403` | The VAPID pair changed since the device subscribed (keys rotated). Turn notifications off and on again on the device. |
+| `WARN: push: … answered 403` on `web.push.apple.com` | Apple rejected the JWT (`BadJwtToken`). The usual cause is a `localhost` contact in `sub`; the server never sends one now, so check `VAPID_SUBJECT` is a real `mailto:` or `https:` address. |
 | `WARN: push: … answered 401/400` | `VAPID_SUBJECT` is not a `mailto:`/`https:` URL, or the system clock is far off (the JWT's `exp` is checked). |
 | Nothing in the log, nothing on the phone | The poller did not run (`--profile team`), or the request was for a different GitHub login than the one signed in on the phone. |

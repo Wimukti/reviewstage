@@ -30,6 +30,18 @@ html{-webkit-tap-highlight-color:transparent}
   html,body{overscroll-behavior-y:contain}
   .overflow-y-auto,.overflow-auto,[data-slot="sheet-content"],[data-slot="dialog-content"]{overscroll-behavior:contain}
   input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{font-size:16px!important}
+  /* M5: body copy is 16px on a phone (list titles set their own 17px). */
+  body{font-size:16px}
+  /* The toasts sit above the PR page's floating Post pill while it is on screen. */
+  html[data-pill] .rs-toaster{bottom:calc(49px + env(safe-area-inset-bottom,0px) + 80px)}
+}
+/* A bottom sheet rises, its scrim fades (the phone's filter, Post and ⋯ sheets). */
+@media (max-width:899px) and (prefers-reduced-motion:no-preference){
+  .rs-sheet[data-state="open"]{animation:rs-sheet-up 280ms var(--ease) both}
+  
+  .rs-toaster [data-testid="toast"]{animation:rs-toast-in 220ms var(--ease) both}
+  @keyframes rs-sheet-up{from{transform:translateY(100%)}to{transform:none}}
+  @keyframes rs-toast-in{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
 }
 
 /* Route changes: a pushed page slides in from the right over 280ms, a popped one slides back,

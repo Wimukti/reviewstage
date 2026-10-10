@@ -1,4 +1,10 @@
-# Decisions that need the maintainer (10/10/26)
+# Decisions that need the maintainer (10/10/26; updated 10/11/26)
+
+**10/11/26 — maintainer decision: keep the name ReviewStage for now.** Items 1–4 and 7 below are
+parked, not closed: the blind test, inventory and `scripts/brand-audit.sh` stay ready if the
+decision is revisited (e.g. after design-partner feedback or if Stage's growth makes the
+collision bite). Launch posts, when they go out, use "ReviewStage — the human review layer for
+AI-written pull requests" everywhere, with the descriptor always attached.
 
 Everything else from the third-pass memo is either done, in progress, or scheduled below. These
 items cannot be done by the assistant: they bind the maintainer's money, identity or legal

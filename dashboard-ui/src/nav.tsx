@@ -25,6 +25,7 @@ export const SECTION_LABELS: Record<string, string> = {
   phone: "Your phone",
   desktop: "Desktop app",
   appearance: "Appearance",
+  privacy: "Privacy",
   repositories: "Repositories",
   poller: "Poller",
   filters: "PR filters",

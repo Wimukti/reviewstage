@@ -62,6 +62,8 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `POLL_INTERVAL` | `180` | Seconds between poller passes when Settings has not set `poll_interval_seconds`. Read from the process environment by `poller-loop.sh` (the Docker poller's loop, which does not source `.env`) and from `.env` by `pr-watch.sh`; the dashboard shows the `.env` value on the Settings page. Prefer the Settings page — it applies without a restart and governs both. |
 | `RS_BIND` | `127.0.0.1` | Process environment only (the image sets `0.0.0.0`). Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
 | `RS_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` for any `http://` `PUBLIC_URL`, but the **server honours it only when `PUBLIC_URL` is unset or a genuine loopback host** — a real hostname served over plain http keeps `Secure` cookies and gets a log line saying so. |
+| `RS_TELEMETRY` | unset | `0` is the kill switch for product telemetry: nothing is ever sent and the consent switch in Settings → Privacy is locked off with that reason. Local counters still accrue (they never leave the box anyway). Any other value, or unset, leaves the decision to the admin setting, consent and the endpoint. See [Telemetry](/security/telemetry/). |
+| `RS_TELEMETRY_ENDPOINT` | **unset** | The `https://` address one daily summary of the telemetry counters is posted to when — and only when — the kill switch is off, the admin allows it and the install has consented. **No release sets this**, so in 1.0.x nothing is sent even with consent. Not `https://` = treated as unset. |
 | `ROOT` | `~/.reviewstage` | Process environment only. Base directory for `.env`, the base clones (`repos/<owner>__<name>`), worktrees, per-PR state (`state/<owner>__<name>/<pr>`), `users.json`, learnings and skills. Docker mounts the data volume here. |
 
 ## GitHub sign-in
@@ -131,6 +133,7 @@ Precedence for every key it carries: **`settings.json` > `.env` > default**. Onl
   "notify_backends": ["slack", "discord"],
   "max_pr_age_days": 45,
   "skip_bot_prs": false,
+  "telemetry_enabled": true,
   "auto_profile": { "acme__widgets": true },
   "updated_at": 1789265317
 }
@@ -143,6 +146,7 @@ Precedence for every key it carries: **`settings.json` > `.env` > default**. Onl
 | `notify_backends` | list of `slack` / `discord` / `generic` / `none` | derived from configured URLs | `NOTIFY_BACKENDS` | Which backends `notify_card` posts to. `none` cannot be combined with others. |
 | `max_pr_age_days` | int, 0–3,650 | `45` | `RS_MAX_PR_AGE_DAYS` | Suppress cards for PRs opened more than this many days ago; `0` = no cutoff. |
 | `skip_bot_prs` | bool | `false` | `SKIP_BOT_PRS` | Skip bot-authored PRs entirely. |
+| `telemetry_enabled` | bool | `true` | — | The admin's server-wide telemetry switch (Settings → Privacy). `false` disables product telemetry for everyone on this server, whatever they consented to. `true` only *allows the question to be asked* — each install still needs consent and an endpoint before anything is sent. See [Telemetry](/security/telemetry/). |
 | `auto_profile` | object, repo slug (`owner__name`) → bool | `{}` | — | Re-profile that repository automatically when its file tree changes materially (checked by `pr-watch.sh` at most once a day; runs as the admin on the admin's connected Claude account, skipped with a log line otherwise). Set from the Skills page's **Repository profile** card, admin only. See [Repository profile](/guides/repo-profile/). |
 
 `DRY_RUN` is deliberately **not** a runtime setting: flipping GitHub writes on stays an `.env` edit plus a restart.

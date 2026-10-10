@@ -100,6 +100,14 @@ export function buildFixture() {
   // rewriting /api/me.
   write(join(FIXTURE, "poller.last"), "1778000000\n");
 
+  // The one-time telemetry question has been answered here (locally, the default), so the
+  // specs that rewrite /api/me into personal mode are not sent to the wizard's last card.
+  // welcome.spec.ts runs on the personal fixture, where it is still unanswered.
+  write(
+    join(FIXTURE, "telemetry", "consent.json"),
+    JSON.stringify({ schema: 1, decided: true, consented: false, at: 1 }) + "\n",
+  );
+
   write(
     join(FIXTURE, "queue.json"),
     JSON.stringify([

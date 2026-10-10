@@ -42,7 +42,9 @@ desktop apps run, and why no Apple Developer account is involved.
    github.com/login/device, or paste a fine-grained token), *Connect Claude* (the same
    `claude setup-token` flow as the team install, skippable for now), *Pick repositories* (a
    searchable list of the repositories you own, collaborate on or belong to through an
-   organisation; up to 50). Then your queue.
+   organisation; up to 50). Then one card, once: share anonymous usage counters or keep them
+   local (the default; nothing is sent either way while no endpoint is configured, and none
+   ships — see the website's Security → Telemetry page). Then your queue.
 
 From then on the app polls GitHub itself for review requests on the repositories you picked,
 with your own signed-in token (kept encrypted at rest; never in `.env`). The dock badge shows

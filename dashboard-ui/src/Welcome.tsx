@@ -4,6 +4,9 @@
 //   /welcome          Continue with GitHub   (Login.tsx's flow, embedded)
 //   /welcome/claude   Connect Claude         (Integrations.tsx's control, embedded; skippable)
 //   /welcome/repos    Pick repositories      (GET /api/github/repos → POST /api/repos)
+//   /welcome/privacy  One question, once     (Privacy.tsx's ConsentCard → POST /api/telemetry/consent)
+// The privacy card is not a setup step — nothing is configured by it — so the stepper keeps its
+// three chips, all done by then, and the card follows the repositories step until answered.
 // App.tsx sends a personal install here while it has no signed-in user or no repository, and
 // renders this without the sidebar: it is a focused flow, not a page in the shell.
 import { useEffect, useState } from "react";
@@ -14,6 +17,7 @@ import { ClaudeCtl } from "./Integrations";
 import { LoginForm } from "./Login";
 import { Logo } from "./Logo";
 import { RepoPicker } from "./RepoPicker";
+import { ConsentCard } from "./Privacy";
 import { navigate, useLocation } from "./router";
 import { Banner, RawBanner, StatusBadge, UserAvatar } from "./ui";
 import { cn } from "@/lib/utils";
@@ -22,13 +26,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const STEPS = ["GitHub", "Claude", "Repositories"] as const;
-type StepIndex = 0 | 1 | 2;
-
-export function welcomeStep(path: string): StepIndex {
-  if (path.startsWith("/welcome/repos")) return 2;
-  if (path.startsWith("/welcome/claude")) return 1;
-  return 0;
-}
+export { welcomeStep } from "./welcomeFlow";
+import { welcomeStep, type WelcomeStep } from "./welcomeFlow";
 
 // Each chip carries the mark of what it connects to — GitHub's, Claude's, a repository —
 // coloured by state; a small check joins the label once the step is done.
@@ -36,7 +35,7 @@ const STEP_ICONS = [BrandIcon.gh, BrandIcon.claude, <FolderGit2 key="repo" strok
 
 // Three chips joined by a line — the PR page's stepper, with `current` pinned to the route
 // rather than to the first undone step, because Claude can be skipped and come back to later.
-function Stepper({ current, done }: { current: StepIndex; done: boolean[] }) {
+function Stepper({ current, done }: { current: WelcomeStep; done: boolean[] }) {
   return (
     <ol className="m-0 flex list-none flex-wrap items-center justify-center gap-y-1 p-0 text-xs text-muted-foreground" data-testid="welcome-steps" aria-label="Setup steps">
       {STEPS.map((label, i) => {
@@ -87,13 +86,16 @@ export function Welcome({ me, reload }: { me: Me; reload: () => Promise<unknown>
   const signedIn = !!me.authed && !!me.login;
   const claude = !!me.claude_connected;
   const haveRepos = (me.repos || []).length > 0;
+  // Older servers never report the flag: then there is no card to show.
+  const askPrivacy = me.telemetry_decided === false;
 
   // The route is the truth; these only move it forward when a fact changes under it.
   useEffect(() => {
     if (!signedIn && step !== 0) navigate("/welcome");
     else if (signedIn && step === 0) navigate("/welcome/claude");
     else if (signedIn && claude && step === 1) navigate("/welcome/repos");
-  }, [signedIn, claude, step]);
+    else if (step === 3 && !askPrivacy) navigate("/");
+  }, [signedIn, claude, step, askPrivacy]);
 
   return (
     <div className="auth flex min-h-dvh items-center justify-center overflow-x-hidden px-4 py-10" data-testid="welcome">
@@ -110,7 +112,16 @@ export function Welcome({ me, reload }: { me: Me; reload: () => Promise<unknown>
             </div>
             {step === 0 && <GithubStep me={me} reload={reload} />}
             {step === 1 && <ClaudeStep me={me} reload={reload} />}
-            {step === 2 && <ReposStep me={me} reload={reload} />}
+            {step === 2 && <ReposStep me={me} reload={reload} askPrivacy={askPrivacy} />}
+            {step === 3 && (
+              <ConsentCard
+                me={me}
+                onDone={() => {
+                  void reload();
+                  navigate("/");
+                }}
+              />
+            )}
           </CardContent>
         </Card>
       </div>
@@ -181,7 +192,7 @@ function ClaudeStep({ me, reload }: { me: Me; reload: () => Promise<unknown> }) 
   );
 }
 
-function ReposStep({ me, reload }: { me: Me; reload: () => Promise<unknown> }) {
+function ReposStep({ me, reload, askPrivacy }: { me: Me; reload: () => Promise<unknown>; askPrivacy: boolean }) {
   return (
     <div data-testid="welcome-repos" className="flex min-h-0 flex-col">
       <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -195,7 +206,7 @@ function ReposStep({ me, reload }: { me: Me; reload: () => Promise<unknown> }) {
         me={me}
         onSaved={async () => {
           await reload();
-          navigate("/");
+          navigate(askPrivacy ? "/welcome/privacy" : "/");
         }}
       />
     </div>

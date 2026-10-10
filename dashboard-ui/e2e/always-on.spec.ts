@@ -117,7 +117,7 @@ test.describe("Settings → Desktop app", () => {
     await expect(card.getByRole("heading", { name: "Desktop app" })).toBeVisible();
     await expect(sections(page).getByRole("link", { name: "Desktop app" })).toHaveAttribute("aria-current", "page");
     // In the "This device" group, right after Your phone.
-    await expect(sections(page).getByRole("link")).toHaveText([/Your phone/, /Desktop app/, /Appearance/, /Repositories/, /Poller/, /PR filters/, /Notifications/, /Webhooks/, /Devices/]);
+    await expect(sections(page).getByRole("link")).toHaveText([/Your phone/, /Desktop app/, /Appearance/, /Privacy/, /Repositories/, /Poller/, /PR filters/, /Notifications/, /Webhooks/, /Devices/]);
     await expect(card.getByTestId("desktop-version")).toContainText("1.0.0-rc.31");
     await expect(card.getByTestId("desktop-version")).toContainText("1.0.0-rc.40 available");
     await expect(card.getByTestId("desktop-checked")).toHaveText("Checked at launch and every 6 hours. Last checked 10/05/26 09:41.");

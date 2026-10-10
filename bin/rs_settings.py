@@ -18,6 +18,9 @@ Schema (all keys optional):
                                      first-run wizard in personal mode). The effective list
                                      is the UNION of .env REPOS and this key — unlike every
                                      other setting, neither layer hides the other. Max 50.
+  telemetry_enabled      bool        default true  — "allowed to ask", never "send": false
+                                     disables product telemetry for the whole server (the
+                                     admin's switch, see rs_telemetry.decision()).
 """
 import json
 import os
@@ -75,6 +78,7 @@ def env_defaults(env):
         vals["notify_backends"], src["notify_backends"] = env_backends(env), "default"
     put("max_pr_age_days", "RS_MAX_PR_AGE_DAYS", int, 45)
     put("skip_bot_prs", "SKIP_BOT_PRS", _truthy, False)
+    put("telemetry_enabled", None, None, True)
     env_repos = P.parse_repos(env)
     vals["repos"], src["repos"] = env_repos, "env" if env_repos else "default"
     return vals, src
@@ -163,6 +167,10 @@ def validate(body):
         if not isinstance(body["skip_bot_prs"], bool):
             return None, "skip_bot_prs must be true or false."
         out["skip_bot_prs"] = body["skip_bot_prs"]
+    if "telemetry_enabled" in body:
+        if not isinstance(body["telemetry_enabled"], bool):
+            return None, "telemetry_enabled must be true or false."
+        out["telemetry_enabled"] = body["telemetry_enabled"]
     if "auto_profile" in body:
         v = body["auto_profile"]
         if not isinstance(v, dict) or not all(isinstance(b, bool) for b in v.values()):

@@ -54,18 +54,9 @@ function Routed({ me, reload, account }: { me: Me; reload: () => Promise<unknown
   return <NotFound />;
 }
 
-/**
- * Personal mode (`npx reviewstage`) has a first-run wizard at /welcome. While the install has
- * no signed-in user or no repository, every route but the wizard itself (and /login) goes
- * there; afterwards the wizard is still reachable but nothing redirects to it. Team installs
- * never redirect — the rule only reads `me.personal`.
- */
-export function welcomeRedirect(me: Me, path: string): string | null {
-  if (!me.personal) return null;
-  if (path.startsWith("/welcome") || path === "/login") return null;
-  const incomplete = !me.authed || !me.login || (me.repos || []).length === 0;
-  return incomplete ? "/welcome" : null;
-}
+// The wizard's routing rules live in welcomeFlow.ts (testable without the bundler).
+export { welcomeRedirect } from "./welcomeFlow";
+import { welcomeRedirect } from "./welcomeFlow";
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);

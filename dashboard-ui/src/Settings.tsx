@@ -16,6 +16,7 @@ import { openAtLoginBridge, updateBridge } from "./desktop";
 import { DesktopApp } from "./DesktopApp";
 import { phoneBridge } from "./phone";
 import { PhoneAccess } from "./PhoneAccess";
+import { PrivacyRows } from "./Privacy";
 import { PushDevices } from "./PushDevices";
 import { ThemeControl } from "./ThemeControl";
 import { useIsPhone } from "./theme";
@@ -55,13 +56,14 @@ function Source({ s }: { s: SettingSource }) {
 
 // ---- sections -----------------------------------------------------------------------------
 
-type SectionId = "phone" | "desktop" | "appearance" | "repositories" | "poller" | "filters" | "notifications" | "webhooks" | "devices";
+type SectionId = "phone" | "desktop" | "appearance" | "privacy" | "repositories" | "poller" | "filters" | "notifications" | "webhooks" | "devices";
 type Group = "This device" | "Reviewing" | "Notifications";
 const GROUPS: Group[] = ["This device", "Reviewing", "Notifications"];
 const SECTIONS: { id: SectionId; label: string; group: Group }[] = [
   { id: "phone", label: "Your phone", group: "This device" },
   { id: "desktop", label: "Desktop app", group: "This device" },
   { id: "appearance", label: "Appearance", group: "This device" },
+  { id: "privacy", label: "Privacy", group: "This device" },
   { id: "repositories", label: "Repositories", group: "Reviewing" },
   { id: "poller", label: "Poller", group: "Reviewing" },
   { id: "filters", label: "PR filters", group: "Reviewing" },
@@ -780,6 +782,37 @@ export function Settings({ me, section: only, standalone }: { me: Me; section?: 
               <Row label="Theme" hint="A choice for this device, kept in this browser. Dark unless you pick otherwise.">
                 <ThemeControl tall={alone} />
               </Row>
+            </Rows>
+          </>
+        );
+      case "privacy":
+        return (
+          <>
+            <SectionHeader title="Privacy">What this install counts about itself, and whether any of it leaves this machine.</SectionHeader>
+            <Rows data-testid="privacy-card">
+              <PrivacyRows
+                adminRow={
+                  !me.personal && (
+                    <Row
+                      label="Allow telemetry on this server"
+                      hint={
+                        ro
+                          ? "Only the admin can change this. Off disables telemetry for everyone here, whatever they consented to."
+                          : "Off disables telemetry for everyone on this server, whatever they consented to. On only allows the question to be asked."
+                      }
+                    >
+                      <Source s={d.sources.telemetry_enabled ?? "default"} />
+                      <Switch
+                        aria-label="Allow telemetry on this server"
+                        checked={form.telemetry_enabled !== false}
+                        disabled={ro}
+                        onCheckedChange={(v) => set("telemetry_enabled", v)}
+                        data-testid="telemetry-admin"
+                      />
+                    </Row>
+                  )
+                }
+              />
             </Rows>
           </>
         );

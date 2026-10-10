@@ -23,6 +23,7 @@ The dashboard is a process holding GitHub tokens that can comment on, review and
 | Reviews, payloads, logs | per-PR state directory | Plain files. Contain diff excerpts and the agent's prose. |
 | Sessions | HttpOnly, Secure, SameSite cookie | HMAC-signed with `RS_SECRET`, 30-day expiry. |
 | Device tokens (mobile, CLI) | users file | **SHA-256 hash only**; the plaintext is shown once. Expire 180 days after last use; revocable per device in Settings → Devices. |
+| Product telemetry counters | `ROOT/telemetry/` (chmod 600) | Per-day counts from a closed schema; no names, repos, paths or text. **Never sent in 1.0.x** — no endpoint exists; consent is off by default and `RS_TELEMETRY=0` locks it off. See [Telemetry](/security/telemetry/). |
 
 Rotating `RS_SECRET` invalidates every session, every signed link and every stored token at once. That is the right outcome if it was rotated because it leaked.
 

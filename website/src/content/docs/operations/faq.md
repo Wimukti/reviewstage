@@ -1,6 +1,6 @@
 ---
 title: ReviewStage FAQ
-description: Short answers on the phone tunnel, why its address changes, the app in the menu bar, updates, switching accounts, adding repositories, the dry run and Windows.
+description: Short answers on the phone tunnel, why its address changes, the app in the menu bar, updates, switching accounts, adding repositories, the dry run, telemetry and Windows.
 sidebar:
   order: 2
 ---
@@ -48,6 +48,10 @@ The app checks for a new version at launch and every 6 hours. When one is out, a
 After the first `npx reviewstage`, open it like any app: the first run adds `~/Applications/ReviewStage.app` (macOS) or a launcher entry (Linux), so Spotlight and Launchpad find it. **Settings → Desktop app → Show in Applications** removes it.
 
 Closing the window keeps ReviewStage in the menu bar. Quit from the menu-bar icon (**Quit ReviewStage**) or ⌘Q while its window is in front; the tunnel and the server stop with it. **Settings → Desktop app → Open at login** starts it in the menu bar when you log in (a LaunchAgent at `~/Library/LaunchAgents/dev.reviewstage.desktop.plist` on macOS, `~/.config/autostart/reviewstage.desktop` on Linux); turning it off removes the file.
+
+## Does it phone home?
+
+Not in 1.0.x. ReviewStage keeps a few counters about itself on your machine — reviews started, findings kept or dropped, posts attempted — from a fixed list with no names, repositories, paths or text in it; **Settings → Privacy** shows them, exports them and clears them. They can only be sent if `RS_TELEMETRY=0` is not set, the admin has not switched telemetry off, you said yes (the wizard asks once; the default is **Keep it local**), *and* an endpoint is configured — and no release configures one, so today nothing leaves the box whatever you answer. The only unprompted network call the desktop app makes is the update check against the npm registry every 6 hours. The full schema and the commitments for a future endpoint are in [Telemetry](/security/telemetry/).
 
 ## Does it run on Windows?
 

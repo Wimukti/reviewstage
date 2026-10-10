@@ -24,6 +24,7 @@ import {
   Settings as SettingsIcon,
   Smartphone,
   UserRoundCog,
+  ShieldCheck,
 } from "lucide-react";
 import type { Me } from "./api";
 import { Link, navigate } from "./router";
@@ -131,6 +132,7 @@ export function You({ me, onSignOut, onSwitchAccount }: { me: Me; onSignOut: () 
     ...(has.has("desktop") ? [{ key: "desktop", label: "Desktop app", icon: Laptop, tone: "graphite" as Tone, to: "/you/desktop" }] : []),
     { key: "notifications", label: "Notifications", icon: Bell, tone: "red", to: "/you/notifications" },
     { key: "appearance", label: "Appearance", icon: Palette, tone: "blue", to: "/you/appearance", detail: THEME_WORD[theme] },
+    { key: "privacy", label: "Privacy", icon: ShieldCheck, tone: "green", to: "/you/privacy" },
   ];
   const reviewing: Item[] = [
     ...(me.personal

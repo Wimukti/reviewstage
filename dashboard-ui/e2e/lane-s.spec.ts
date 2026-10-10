@@ -254,7 +254,7 @@ test.describe("settings", () => {
     await expect(page.getByTestId("settings-pills")).toBeHidden();
     // The browser install: no Your phone; the three groups in order.
     expect((await nav.innerText()).replace(/\s+/g, " ").trim()).toBe(
-      "This device Appearance Reviewing Repositories Poller PR filters Notifications Notifications Webhooks Devices",
+      "This device Appearance Privacy Reviewing Repositories Poller PR filters Notifications Notifications Webhooks Devices",
     );
     const active = nav.locator('a[aria-current="page"]');
     await expect(active).toHaveText("PR filters");

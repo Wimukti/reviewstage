@@ -184,6 +184,24 @@ test("selecting two and Start reviewing posts them and lands on the queue", asyn
   await page.getByTestId("start-reviewing").click();
   const body = await (await saved).json();
   expect(body.repos).toEqual(["acme-solo/widgets", "acme/api"]);
+  // One more card, once: the telemetry question (lane1-telemetry.md). Three chips, all done,
+  // the exact schema and the never-list on the card, two equal buttons, local first.
+  await expect(page).toHaveURL(/\/welcome\/privacy$/);
+  await expect(page.getByTestId("welcome-privacy")).toBeVisible();
+  await expect(steps(page)).toHaveCount(3);
+  // GitHub and Repositories are done; Claude was skipped with "later", so its chip stays pending.
+  await expect(steps(page).nth(0)).toHaveAttribute("data-state", "done");
+  await expect(steps(page).nth(1)).toHaveAttribute("data-state", "pending");
+  await expect(steps(page).nth(2)).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("telemetry-schema-table")).toContainText("findings_dropped");
+  await expect(page.getByTestId("telemetry-never")).toContainText("tokens of any kind");
+  await expect(page.getByTestId("telemetry-endpoint")).toContainText("No endpoint is configured");
+  await expect(page.getByTestId("telemetry-keep-local")).toBeFocused();
+  const before = await (await fetch(`${PERSONAL_ORIGIN}/api/me`, { headers: { cookie: `${sessionCookie(PERSONAL_USER).name}=${sessionCookie(PERSONAL_USER).value}` } })).json();
+  expect(before.telemetry_decided).toBe(false);
+  const decided = page.waitForResponse((r) => r.url().endsWith("/api/telemetry/consent") && r.request().method() === "POST");
+  await page.getByTestId("telemetry-keep-local").click();
+  expect((await (await decided).json()).state).toBe("no_consent");
   await expect(page).toHaveURL(new RegExp(`^${PERSONAL_ORIGIN}/(\\?.*)?$`));
   // The queue now knows both repositories: its repository filter offers them.
   await page.getByLabel("Filter by repository").click();
@@ -193,6 +211,8 @@ test("selecting two and Start reviewing posts them and lands on the queue", asyn
   // And the server agrees — settings.json carries them, unioned with (the empty) .env.
   const me = await page.evaluate(() => fetch("/api/me").then((r) => r.json()));
   expect(me.repos).toEqual(["acme-solo/widgets", "acme/api"]);
+  // Answered once: the flag is set and the card never comes back by itself.
+  expect(me.telemetry_decided).toBe(true);
   await ctx.close();
 });
 

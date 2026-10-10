@@ -80,6 +80,11 @@ jobs:
       - name: Assemble the package (dashboard build + server/)
         run: node scripts/prepack.mjs
         working-directory: desktop
+      # pnpm skips electron's postinstall; fetch the binary once here so no test file downloads
+      # it while another spawns it (node runs test files in parallel -> ETXTBSY).
+      - name: Fetch the Electron binary
+        working-directory: desktop
+        run: node -e "require('electron')"
       - name: Tools, tunnel and the real Electron launch
         run: xvfb-run -a node --test --test-reporter=spec test/*.test.mjs
         working-directory: desktop

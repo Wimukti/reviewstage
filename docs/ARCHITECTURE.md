@@ -143,7 +143,11 @@ title of the review you just ran.
 minutes), pointing it at the chosen skill plus an explicit output contract: no bottom table,
 no GitHub writes, just a `review.json` with `event`, `summary`, `keyPoints`, `explainer`,
 `analysis`, and a `comments` array carrying `path`, `line`, `severity`, `title`, `impact`,
-`body`, `reply_to`, `suggestion` and `confidence`.
+`how_to_verify`, `body`, `reply_to`, `suggestion` and `confidence`. After the shape check the
+script runs `rs_review_schema.py` over the file: vocabularies are folded, `why_it_matters` is
+accepted for `impact`, a multi-line `how_to_verify` is dropped, and fields an older run never
+wrote are `null` — it warns into `agent.log` and never fails a run. The server applies the same
+normaliser when it renders, so a review on disk from before a field existed renders identically.
 
 The agent is launched through `agent_env` (`lib-common.sh`), which strips every GitHub, Slack,
 webhook and HMAC credential from the environment and points `GH_CONFIG_DIR` at an empty

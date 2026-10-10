@@ -266,6 +266,26 @@ class ReviewResultHandling(JobScriptCase):
         self.assertIn("comments array", (self.udir / "status").read_text())
         self.assertFalse((self.udir / "review.json").exists())
 
+    def test_findings_are_normalised_after_the_shape_check_and_warnings_reach_the_log(self):
+        self.write_review({**GOOD_REVIEW, "comments": [
+            {"path": "a.py", "line": 1, "severity": "major", "body": "x",
+             "why_it_matters": "Users wait.", "how_to_verify": "Run it.\nThen look."},
+            {"path": "a.py", "line": 1, "severity": "nit", "body": "y",
+             "how_to_verify": "Run pytest -k a.", "confidence": "high"}]})
+        r = self.run_job("run-review.sh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        got = json.loads((self.udir / "review.json").read_text())["comments"]
+        self.assertEqual(got[0]["severity"], "nit")
+        self.assertEqual(got[0]["impact"], "Users wait.")
+        self.assertIsNone(got[0]["how_to_verify"])
+        self.assertIsNone(got[0]["confidence"])
+        self.assertEqual(got[1]["how_to_verify"], "Run pytest -k a.")
+        self.assertEqual(got[1]["confidence"], "high")
+        log = (self.udir / "agent.log").read_text()
+        self.assertIn("[review-schema] finding 0: severity 'major'", log)
+        self.assertIn("[review-schema] finding 0: how_to_verify is not a single line", log)
+        self.assertNotIn("finding 1", log)
+
     def test_invalid_utf8_from_the_agent_is_re_encoded(self):
         self.behave("printf '{\"summary\":\"bad \\xe2\\x28 byte\",\"comments\":[]}' > review.json\n")
         r = self.run_job("run-review.sh")

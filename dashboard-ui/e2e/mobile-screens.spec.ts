@@ -425,6 +425,12 @@ test.describe("the PR page on a phone", () => {
     await settled(page);
     const card = page.getByTestId("finding").first();
     await expect(card.getByTestId("finding-detail")).toHaveCount(0);
+    // Closed, the card already carries the verification contract: confidence in the head,
+    // why it matters and how to verify under the claim. The nit has no verify line, so no row.
+    await expect(card.getByTestId("confidence")).toHaveText("high confidence");
+    await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
+    await expect(card.getByTestId("how-to-verify")).toContainText("Open a product whose vendor is null");
+    await expect(page.getByTestId("finding").nth(1).getByTestId("how-to-verify")).toHaveCount(0);
     await card.getByTestId("finding-expand").click();
     await expect(card.getByTestId("finding-detail")).toBeVisible();
     await card.getByRole("button", { name: "Edit" }).click();

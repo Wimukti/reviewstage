@@ -30,6 +30,8 @@
         "line": 42,
         "title": "A product with no vendor can crash the lead-time badge",
         "impact": "A shopper viewing such a product would see the card fail instead of loading.",
+        "confidence": "high",
+        "howToVerify": "Open a product whose vendor is null; the badge throws instead of rendering.",
         "body": "Guard against a null vendor before reading its lead time.",
         "suggestion": "if ($vendor === null) return null;",
         "anchorable": true
@@ -41,6 +43,8 @@
         "line": 10,
         "title": "Use const instead of let",
         "impact": "Style only — no effect on behavior.",
+        "confidence": "medium",
+        "howToVerify": "",
         "body": "Prefer `const` over `let` here.",
         "suggestion": "",
         "anchorable": false

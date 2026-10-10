@@ -39,7 +39,7 @@ import { api, type Finding, type PrData, type QueueRow } from "./api";
 import { useSwipe } from "./gestures";
 import { NavBarAction, useNavBar } from "./nav";
 import { prUrl } from "./pr";
-import { ExplainBody, OFFDIFF_HINT, placementOf, UNKNOWN_HINT, useExplain } from "./ReviewParts";
+import { ConfidenceBadge, ExplainBody, HowToVerify, OFFDIFF_HINT, placementOf, UNKNOWN_HINT, useExplain } from "./ReviewParts";
 import { goBack, Link } from "./router";
 import { StatusBadge, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
@@ -285,6 +285,7 @@ export function PhoneFindingCard({
             className="size-5 data-[state=checked]:border-green data-[state=checked]:bg-green dark:data-[state=checked]:bg-green"
           />
           <StatusBadge kind={f.severity} />
+          <ConfidenceBadge confidence={f.confidence} />
           {place === "summary" && (
             <StatusBadge tone="graphite" icon={ExternalLink} title={OFFDIFF_HINT} data-testid="placement">
               In summary
@@ -295,7 +296,7 @@ export function PhoneFindingCard({
               Unknown
             </StatusBadge>
           )}
-          {kept && <span className="text-[13px] font-medium text-green" data-testid="kept-label">Kept</span>}
+          {kept &&<span className="text-[13px] font-medium text-green" data-testid="kept-label">Kept</span>}
           <span className="flex-1" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -364,6 +365,10 @@ export function PhoneFindingCard({
           className="flex flex-col gap-1 px-4 pb-3 pl-[18px] text-left"
         >
           <span className={cn("text-base font-medium leading-snug text-foreground", !open && "line-clamp-3")}>{title}</span>
+          {f.structured && f.impact && (
+            <span className="text-[14px] leading-snug text-muted-foreground" data-testid="why-it-matters">{f.impact}</span>
+          )}
+          <HowToVerify text={f.howToVerify} className="text-[14px]" />
           <span className="flex min-w-0 max-w-full items-center gap-1 text-[13px] text-muted-foreground" data-testid="finding-path">
             <span className="truncate select-all">{loc}</span>
             {copied && <span className="shrink-0 text-green">· Copied</span>}
@@ -372,12 +377,6 @@ export function PhoneFindingCard({
         </button>
         {open && (
           <div className="flex flex-col gap-2.5 px-4 pb-3 pl-[18px]" data-testid="finding-detail">
-            {f.structured && f.impact && (
-              <p className="m-0 text-[15px] leading-relaxed text-muted-foreground">
-                <span className="mr-1.5 text-xs font-medium uppercase tracking-wide">Why it matters</span>
-                {f.impact}
-              </p>
-            )}
             {f.thread && <p className="m-0 text-[13px] text-muted-foreground">Reply to {f.thread}</p>}
             <div className="-ml-2 flex flex-wrap gap-1" data-testid="finding-actions">
               {f.structured && (

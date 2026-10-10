@@ -172,6 +172,19 @@ test.describe("the status line", () => {
     await expect(path).toHaveText("app/models/Product.php:42");
     expect(await path.evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/mono/i);
     await expect(card.getByRole("button", { name: /copy app\/models/i })).toBeVisible();
+    // The verification contract: confidence beside the severity, then claim · why it matters ·
+    // how to verify in that order. The second card's run gave no verify line, so it has no row.
+    await expect(head.getByTestId("confidence")).toHaveText("high confidence");
+    await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
+    await expect(card.getByTestId("how-to-verify")).toContainText("How to verify");
+    await expect(card.getByTestId("how-to-verify")).toContainText("Open a product whose vendor is null");
+    const whyBox = (await card.getByTestId("why-it-matters").boundingBox())!;
+    const verifyBox = (await card.getByTestId("how-to-verify").boundingBox())!;
+    expect(verifyBox.y).toBeGreaterThan(whyBox.y);
+    const second = page.locator(".finding").nth(1);
+    await expect(second.getByTestId("confidence")).toHaveText("medium confidence");
+    await expect(second.getByTestId("how-to-verify")).toHaveCount(0);
+    await expect(second).not.toContainText("How to verify");
     // Explain opens and closes again.
     const explain = card.getByTestId("explain");
     await expect(explain).toHaveText("Explain simply");

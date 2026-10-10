@@ -150,3 +150,25 @@ class ProfileRepoHandsThePromptOverStdin(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheFindingContract(unittest.TestCase):
+    """The output contract the job script appends and the bundled skill's own review.json block
+    must name the same fields — a reviewer sees what the card promises only if both ask for it."""
+    CONTRACT_SRC = (HERE / "run-review.sh").read_text()
+    SKILL_SRC = (HERE.parent / "skills" / "pr-review" / "SKILL.md").read_text()
+
+    def test_both_ask_for_how_to_verify_as_one_imperative_line(self):
+        for src in (self.CONTRACT_SRC, self.SKILL_SRC):
+            self.assertIn('how_to_verify', src)
+            self.assertRegex(src, r"how_to_verify.{0,80}ONE imperative line", )
+            self.assertIn("under two minutes", src)
+
+    def test_both_keep_impact_as_the_field_and_name_the_synonym(self):
+        for src in (self.CONTRACT_SRC, self.SKILL_SRC):
+            self.assertIn('"impact"', src.replace("\\", ""))
+            self.assertIn("why_it_matters", src)
+
+    def test_both_ask_for_confidence(self):
+        for src in (self.CONTRACT_SRC, self.SKILL_SRC):
+            self.assertRegex(src, r'confidence.{0,8}high.{0,6}medium.{0,6}low')

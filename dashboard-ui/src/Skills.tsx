@@ -20,6 +20,7 @@ import {
   errBanner,
   errMessage,
   type ProfileData,
+  reasonLabel,
   type RuleSuggestion,
   type SkillsData,
   type SkillStat,
@@ -855,6 +856,11 @@ function Suggestion({
         <div className={ROW}>
           <StatusBadge tone="blue" icon={Lightbulb}>Suggested rule</StatusBadge>
           <StatusBadge kind={s.severity} />
+          {s.topReason && (
+            <StatusBadge tone="graphite" icon={null} data-testid="reason-mark" data-reason={s.topReason} title="The reason reviewers gave most often" className="font-normal">
+              {reasonLabel(s.topReason).toLowerCase()}
+            </StatusBadge>
+          )}
           {s.repos.length === 1 && <RepoPill repo={s.repos[0]} />}
           <span className="text-xs text-muted-foreground">{from}</span>
         </div>

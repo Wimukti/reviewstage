@@ -109,3 +109,68 @@ test("the two pieces render nothing at all for an absent value", () => {
   assert.equal(renderToStaticMarkup(createElement(HowToVerify, {})), "");
   assert.match(renderToStaticMarkup(createElement(ConfidenceBadge, { confidence: "low" })), /low confidence/);
 });
+
+// ---- dismissal reasons (openspec/changes/p0-proof/lane2-reasons.md) ---------------------------
+// The drop is the tick: a card rendered unticked is unticked in the same render that opens the
+// "Why?" row — nothing about the row gates the decision. Both cards render with react-dom/server.
+import { REASONS, type Reason } from "./api";
+import { ReasonChips } from "./ReviewParts";
+
+const chips = (html: string) => (html.match(/data-testid="reason-chip"/g) || []).length;
+
+test("the desk card is unticked and asking in one render; the row is a group under the head", () => {
+  const html = renderToStaticMarkup(createElement(FindingCard, { f: full, checked: false, onToggle: noop, askReason: true, onReason: noop }));
+  assert.doesNotMatch(html, /data-staged="1"/, "the drop has already landed");
+  assert.match(html, /data-testid="reason-row"/);
+  assert.match(html, /role="group"[^>]*aria-label="Why did you drop this finding\?"/);
+  assert.equal(chips(html), REASONS.length, "one chip per reason in the taxonomy");
+  assert.ok(ascending(order(html, ['class="fhead', 'data-testid="reason-row"', full.title])), "the row sits between the head and the claim");
+  for (const r of REASONS) assert.match(html, new RegExp(`data-reason="${r}"`));
+});
+
+test("a card not being asked, or ticked, shows no row and no chips", () => {
+  const quiet = renderToStaticMarkup(createElement(FindingCard, { f: full, checked: false, onToggle: noop, askReason: false, onReason: noop }));
+  assert.doesNotMatch(quiet, /reason-row|reason-chip|Why\?/);
+  const ticked = renderToStaticMarkup(createElement(FindingCard, { f: full, checked: true, onToggle: noop, askReason: true, onReason: noop }));
+  assert.doesNotMatch(ticked, /reason-row|reason-chip/, "a ticked card is never asked why it was dropped");
+  const legacy = desk(full);
+  assert.doesNotMatch(legacy, /reason-row|reason-chip/, "a caller without onReason gets the card it always had");
+});
+
+test("a chosen reason collapses the row to one chip with a clear button, and outlives the question", () => {
+  const html = renderToStaticMarkup(
+    createElement(FindingCard, { f: full, checked: false, onToggle: noop, askReason: false, reason: "style_nit" as Reason, onReason: noop }),
+  );
+  assert.match(html, /data-testid="reason-picked"[^>]*data-reason="style_nit"/);
+  assert.match(html, /Dropped · style nit/);
+  assert.match(html, /data-testid="reason-clear"/);
+  assert.doesNotMatch(html, /data-testid="reason-row"/);
+  assert.equal(chips(html), 0);
+});
+
+test("the phone's dropped line carries the answer or a Why? chip, and stays one line", () => {
+  const asking = renderToStaticMarkup(
+    createElement(PhoneFindingCard, { f: full, kept: false, dropped: true, onToggle: noop, onKeep: noop, onDrop: noop, onRestore: noop, onAskReason: noop }),
+  );
+  assert.match(asking, /data-testid="reason-open"/);
+  assert.match(asking, />Why\?</);
+  assert.doesNotMatch(asking, /data-testid="reason-row"/, "the chips live in the bottom bar, not in the line");
+  const answered = renderToStaticMarkup(
+    createElement(PhoneFindingCard, { f: full, kept: false, dropped: true, onToggle: noop, onKeep: noop, onDrop: noop, onRestore: noop, onAskReason: noop, reason: "duplicate" as Reason }),
+  );
+  assert.match(answered, /data-testid="reason-picked"[^>]*data-reason="duplicate"/);
+  assert.match(answered, />Duplicate</);
+  const legacy = renderToStaticMarkup(
+    createElement(PhoneFindingCard, { f: full, kept: false, dropped: true, onToggle: noop, onKeep: noop, onDrop: noop, onRestore: noop }),
+  );
+  assert.doesNotMatch(legacy, /reason-open|reason-picked/);
+});
+
+test("the chip row offers Skip only when it can close, and every chip is a real button", () => {
+  const closable = renderToStaticMarkup(createElement(ReasonChips, { onPick: noop, onClose: noop }));
+  assert.match(closable, /data-testid="reason-skip"/);
+  assert.equal((closable.match(/<button /g) || []).length, REASONS.length + 1);
+  const bare = renderToStaticMarkup(createElement(ReasonChips, { onPick: noop }));
+  assert.doesNotMatch(bare, /reason-skip/);
+  assert.equal((bare.match(/<button /g) || []).length, REASONS.length);
+});

@@ -257,6 +257,118 @@ test.describe("the stack page", () => {
   });
 });
 
+// Dismissal reasons (openspec/changes/p0-proof/lane2-reasons.md). The drop is the untick and
+// is instant; the "Why?" chip row appears under the card for ~6 s or until the next decision;
+// a chosen reason rides the post body as `reasons[i]` for dropped indices only.
+test.describe("dismissal reasons", () => {
+  const DRY =
+    "<div class='banner warn'><span class='status is-amber' aria-hidden='true'><i></i></span>" +
+    "<div><b>DRY RUN — nothing was sent to GitHub.</b></div></div>";
+
+  test("an untick drops at once and asks why; the chosen reason collapses to one chip and travels with the post", async ({ page }) => {
+    const posts: Array<Record<string, unknown>> = [];
+    await page.route("**/api/post", async (route) => {
+      posts.push(route.request().postDataJSON());
+      await route.fulfill({ json: { bannerHtml: DRY } });
+    });
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    const cards = page.getByTestId("finding");
+    const nit = cards.nth(1);
+    await expect(page.getByTestId("reason-row")).toHaveCount(0);
+    await nit.getByTestId("finding-select").uncheck();
+    // The decision landed before anything was asked.
+    await expect(nit.getByTestId("finding-select")).not.toBeChecked();
+    await expect(nit).not.toHaveAttribute("data-staged", "1");
+    await expect(page.getByTestId("commit-bar")).toContainText("1 staged");
+    // The row: a group of seven chips and a skip, under this card only, below the head.
+    const row = nit.getByTestId("reason-row");
+    await expect(row).toBeVisible();
+    await expect(row).toHaveRole("group");
+    await expect(row.getByTestId("reason-chip")).toHaveCount(7);
+    await expect(cards.nth(0).getByTestId("reason-row")).toHaveCount(0);
+    const head = (await nit.locator(".fhead").boundingBox())!;
+    const rowBox = (await row.boundingBox())!;
+    expect(rowBox.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+    await row.getByRole("button", { name: "Style nit" }).click();
+    await expect(nit.getByTestId("reason-row")).toHaveCount(0);
+    const picked = nit.getByTestId("reason-picked");
+    await expect(picked).toHaveAttribute("data-reason", "style_nit");
+    await expect(picked).toContainText("Dropped · style nit");
+    // Post: the reason goes with the dropped index, and only that one.
+    await page.getByTestId("commit-bar").getByRole("button", { name: /post selected/i }).click();
+    await expect(page.getByTestId("commit-posted")).toBeVisible();
+    expect(posts).toHaveLength(1);
+    expect(posts[0].reasons).toEqual({ "1": "style_nit" });
+    expect(posts[0].selected).toEqual([0]);
+  });
+
+  test("the row leaves by itself after six seconds, or on the next decision, and a re-tick clears the answer", async ({ page }) => {
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    await page.clock.install();
+    const cards = page.getByTestId("finding");
+    const [first, second] = [cards.nth(0), cards.nth(1)];
+    await second.getByTestId("finding-select").uncheck();
+    await expect(second.getByTestId("reason-row")).toBeVisible();
+    await page.clock.fastForward(5_900);
+    await expect(second.getByTestId("reason-row")).toBeVisible();
+    await page.clock.fastForward(200);
+    await expect(second.getByTestId("reason-row")).toHaveCount(0);
+    await expect(second.getByTestId("reason-picked")).toHaveCount(0);
+    await expect(second.getByTestId("finding-select")).not.toBeChecked();
+    // Another card's decision ends an open question at once.
+    await second.getByTestId("finding-select").check();
+    await second.getByTestId("finding-select").uncheck();
+    await expect(second.getByTestId("reason-row")).toBeVisible();
+    await first.getByTestId("finding-select").uncheck();
+    await expect(second.getByTestId("reason-row")).toHaveCount(0);
+    await expect(first.getByTestId("reason-row")).toBeVisible();
+    // A chosen reason outlives the row, and a re-tick forgets it.
+    await first.getByRole("button", { name: "Incorrect" }).click();
+    await expect(first.getByTestId("reason-picked")).toHaveAttribute("data-reason", "incorrect");
+    await page.clock.fastForward(10_000);
+    await expect(first.getByTestId("reason-picked")).toBeVisible();
+    await first.getByTestId("reason-clear").click();
+    await expect(first.getByTestId("reason-picked")).toHaveCount(0);
+    await expect(first.getByTestId("finding-select")).not.toBeChecked();
+    await first.getByTestId("finding-select").check();
+    await first.getByTestId("finding-select").uncheck();
+    await first.getByRole("button", { name: "Irrelevant" }).click();
+    await expect(first.getByTestId("reason-picked")).toHaveAttribute("data-reason", "irrelevant");
+    await first.getByTestId("finding-select").check();
+    await expect(first.getByTestId("reason-picked")).toHaveCount(0);
+    await expect(first.getByTestId("reason-row")).toHaveCount(0);
+  });
+
+  test("the chips are reachable from the keyboard, and Escape dismisses the row", async ({ page }) => {
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    const nit = page.getByTestId("finding").nth(1);
+    const box = nit.getByTestId("finding-select");
+    await box.focus();
+    await page.keyboard.press("Space");
+    await expect(box).not.toBeChecked();
+    const row = nit.getByTestId("reason-row");
+    await expect(row).toBeVisible();
+    // Tab order: checkbox → the head's copy-path button → the chips, left to right.
+    await page.keyboard.press("Tab");
+    await expect(nit.locator(".fhead").getByRole("button")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(row.getByTestId("reason-chip").first()).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(row.getByTestId("reason-chip").nth(1)).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(nit.getByTestId("reason-row")).toHaveCount(0);
+    await expect(box).not.toBeChecked();
+    // The skip button closes it too.
+    await box.check();
+    await box.uncheck();
+    await nit.getByTestId("reason-skip").click();
+    await expect(nit.getByTestId("reason-row")).toHaveCount(0);
+  });
+});
+
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 

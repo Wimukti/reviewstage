@@ -364,5 +364,137 @@ class ProposalCache(Base):
         self.assertEqual(p["model"], "haiku")
 
 
+# --- dismissal reasons (p0-proof/lane2-reasons.md) -------------------------------------------
+class DismissalReasons(Base):
+    """A drop may say why. The reason is optional on the wire, stored on the row, tallied
+    beside the outcome, carried by clusters as `topReason`, and never part of a cluster's
+    identity. Rows written before reasons existed read as `unspecified`."""
+
+    def post_with_reasons(self, reasons, pr="1", key="", n=3):
+        originals = [{"path": "app/models/Product.php", "line": 3, "severity": "nit",
+                      "body": f"finding {i} on pr {pr}"} for i in range(n)]
+        form = {f"reason_{i}": [r] for i, r in reasons.items()}
+        self.L.record("acme/widgets", pr, "acme-dev", originals, form, key=key)
+
+    def test_a_drop_with_a_reason_stores_it(self):
+        self.post_with_reasons({0: "incorrect", 2: "style_nit"})
+        rows = self.L._read()
+        self.assertEqual([r.get("reason") for r in rows], ["incorrect", None, "style_nit"])
+        self.assertTrue(all(r["outcome"] == "dropped" for r in rows))
+
+    def test_a_drop_without_a_reason_is_the_row_it_always_was(self):
+        self.post(2, "1")
+        for r in self.L._read():
+            self.assertNotIn("reason", r)
+
+    def test_an_unknown_reason_is_not_stored(self):
+        self.post_with_reasons({0: "because"})
+        self.assertNotIn("reason", self.L._read()[0])
+
+    def test_a_reason_on_a_kept_finding_is_ignored(self):
+        originals = [{"path": "a.py", "line": 1, "severity": "nit", "body": "kept one"}]
+        self.L.record("acme/widgets", "1", "acme-dev", originals,
+                      {"sel_0": ["1"], "body_0": ["kept one"], "reason_0": ["incorrect"]})
+        row = self.L._read()[0]
+        self.assertEqual(row["outcome"], "kept")
+        self.assertNotIn("reason", row)
+
+    def test_reasons_are_tallied_beside_the_outcome(self):
+        self.post_with_reasons({0: "incorrect", 1: "incorrect"}, pr="1")   # third: unspecified
+        self.post_with_reasons({0: "duplicate"}, pr="2", n=1)
+        c = self.L.reason_counts()
+        self.assertEqual(c["incorrect"], 2)
+        self.assertEqual(c["duplicate"], 1)
+        self.assertEqual(c[self.L.UNSPECIFIED], 1)
+        self.assertEqual(c["irrelevant"], 0, "every id is present, zero when never chosen")
+        self.assertEqual(set(c), set(self.L.REASONS) | {self.L.UNSPECIFIED})
+        self.assertEqual(self.L.counts()["dropped"], 4, "the outcome count is unchanged")
+
+    def test_per_skill_reason_counts(self):
+        originals = [{"path": "a.py", "line": 1, "severity": "nit", "body": "x"}]
+        self.L.record("acme/widgets", "1", "acme-dev", originals, {"reason_0": ["irrelevant"]},
+                      skill="alice")
+        self.assertEqual(self.L.reason_counts("alice")["irrelevant"], 1)
+        self.assertEqual(self.L.reason_counts("global")["irrelevant"], 0)
+
+    def test_a_retry_replaces_its_reasons_too(self):
+        self.post_with_reasons({0: "incorrect"}, key="k", n=1)
+        self.post_with_reasons({0: "irrelevant"}, key="k", n=1)
+        c = self.L.reason_counts()
+        self.assertEqual((c["incorrect"], c["irrelevant"]), (0, 1))
+
+    def test_rebuilding_the_tally_from_mixed_old_and_new_rows(self):
+        self.write([row("Prefer const over let", pr="1"),
+                    {**row("Prefer const over let", pr="2"), "reason": "style_nit"},
+                    {**row("Prefer const over let", pr="3"), "reason": "style_nit"},
+                    row("Kept thing", pr="4", outcome="kept")])
+        t = self.L.rebuild_totals(self.L._read())
+        self.assertEqual(t["outcomes"]["reasons"],
+                         {"style_nit": 2, self.L.UNSPECIFIED: 1})
+        self.assertEqual(t["outcomes"]["kept"], 1, "a kept row adds no reason")
+
+    def test_a_tally_written_before_reasons_existed_still_loads(self):
+        self.post(2, "1")
+        t = json.loads(self.L.TOTALS.read_text())
+        del t["outcomes"]["reasons"]
+        self.L.TOTALS.write_text(json.dumps(t))
+        c = self.L.reason_counts()
+        self.assertEqual(c[self.L.UNSPECIFIED], 0)
+        self.assertEqual(set(c), set(self.L.REASONS) | {self.L.UNSPECIFIED})
+        # and the next recorded drop starts the key without disturbing the old counts
+        self.post_with_reasons({0: "incorrect"}, pr="2", n=1)
+        self.assertEqual(self.L.reason_counts()["incorrect"], 1)
+        self.assertEqual(self.L.counts()["dropped"], 3)
+
+    def test_a_cluster_carries_its_reasons_and_top_reason(self):
+        rows = [{**r, "reason": "style_nit"} for r in CONST[:3]] + [
+            {**CONST[3], "reason": "incorrect"}]
+        self.write(rows)
+        c = self.L.clusters("dropped")[0]
+        self.assertEqual(c["topReason"], "style_nit")
+        self.assertEqual(c["reasons"], {"style_nit": 3, "incorrect": 1})
+        self.assertEqual([f["reason"] for f in c["findings"]].count("style_nit"), 3)
+
+    def test_a_cluster_of_old_rows_has_no_top_reason(self):
+        self.write(CONST)
+        c = self.L.clusters("dropped")[0]
+        self.assertEqual(c["topReason"], "")
+        self.assertEqual(c["reasons"], {})
+        self.assertTrue(self.L.proposable(c))
+
+    def test_the_reason_is_not_part_of_the_cluster_identity(self):
+        """Half the team says 'incorrect', half says 'irrelevant': still one complaint, and
+        the same signature the reason-less rows minted."""
+        plain = self.L.clusters("dropped", rows=CONST)[0]
+        mixed = self.L.clusters("dropped", rows=[
+            {**CONST[0], "reason": "incorrect"}, {**CONST[1], "reason": "incorrect"},
+            {**CONST[2], "reason": "irrelevant"}, {**CONST[3], "reason": "irrelevant"}])
+        self.assertEqual(len(mixed), 1)
+        self.assertEqual(mixed[0]["signature"], plain["signature"])
+        self.assertEqual(mixed[0]["count"], 4)
+
+    def test_situational_reasons_are_not_proposable(self):
+        for why in ("already_handled", "duplicate"):
+            c = self.L.clusters("dropped", rows=[{**r, "reason": why} for r in CONST])[0]
+            self.assertEqual(c["topReason"], why)
+            self.assertFalse(self.L.proposable(c), why)
+        for why in ("incorrect", "irrelevant", "style_nit", "lacks_context",
+                    "not_worth_raising"):
+            c = self.L.clusters("dropped", rows=[{**r, "reason": why} for r in CONST])[0]
+            self.assertTrue(self.L.proposable(c), why)
+
+    def test_cluster_status_names_the_top_reason(self):
+        self.write([{**r, "reason": "duplicate"} for r in CONST])
+        self.assertEqual(self.L.cluster_status()[0]["topReason"], "duplicate")
+
+    def test_the_prompt_block_says_why(self):
+        self.write([{**row("Prefer const over let here", pr="1"), "reason": "style_nit"},
+                    row("Extract the magic timeout into a constant", pr="2")])
+        block = self.L.render()
+        self.assertIn("Prefer const over let here (style nit)", block)
+        self.assertIn("Extract the magic timeout into a constant\n", block)
+        self.assertNotIn("Extract the magic timeout into a constant (", block)
+
+
 if __name__ == "__main__":
     unittest.main()

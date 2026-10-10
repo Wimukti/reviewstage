@@ -526,6 +526,8 @@ export interface RuleSuggestion {
   needsDraft?: boolean;
   drafting?: boolean;
   draftError?: string;
+  // The commonest stated dismissal reason among the evidence; "" when nobody said.
+  topReason?: string;
 }
 export interface DepthInfo { name: string; meta: string; content: string; edited: boolean }
 export interface SkillsData {
@@ -608,6 +610,31 @@ export interface SettingsData {
   bannerHtml?: string;
 }
 
+// Why a reviewer dropped a finding (openspec/changes/p0-proof/lane2-reasons.md). The ids are
+// the server's — rs_learn.REASONS, mirrored here verbatim and checked by a unit test — so
+// `_post_form` can refuse anything else with a 400. The labels are UI copy.
+export const REASONS = [
+  "incorrect",
+  "irrelevant",
+  "already_handled",
+  "style_nit",
+  "lacks_context",
+  "duplicate",
+  "not_worth_raising",
+] as const;
+export type Reason = (typeof REASONS)[number];
+export const REASON_LABELS: Record<Reason, string> = {
+  incorrect: "Incorrect",
+  irrelevant: "Irrelevant",
+  already_handled: "Already handled",
+  style_nit: "Style nit",
+  lacks_context: "Lacks context",
+  duplicate: "Duplicate",
+  not_worth_raising: "Not worth raising",
+};
+export const isReason = (v: unknown): v is Reason => typeof v === "string" && (REASONS as readonly string[]).includes(v);
+export const reasonLabel = (r: string): string => (isReason(r) ? REASON_LABELS[r] : r === "unspecified" ? "No reason given" : r);
+
 export interface LearningRow {
   kind: string;
   label: string;
@@ -618,6 +645,8 @@ export interface LearningRow {
   // The post this decision came from was a DRY_RUN: a real human judgement that never reached
   // GitHub. It teaches the reviewer's skill but is excluded from every published rate.
   dry?: boolean;
+  // Why it was dropped, when the reviewer said. "" (or absent, on older servers) otherwise.
+  reason?: string;
   editedGist: string;
 }
 export interface LearningCluster {
@@ -629,6 +658,8 @@ export interface LearningCluster {
   outcome: "dropped" | "edited";
   status: "promoted" | "dismissed" | "rolling";
   rule: string;
+  // The commonest stated reason among the cluster's drops; "" when nobody said.
+  topReason?: string;
 }
 export interface LearningsData {
   // How many of each outcome a review actually reads back (rs_learn caps them separately).
@@ -642,6 +673,9 @@ export interface LearningsData {
   repos: string[];
   clusters: LearningCluster[];
   promoted: number;
+  // All-time drops by dismissal reason — every id in REASONS plus `unspecified` for drops made
+  // without one. Absent on older servers.
+  reasons?: Record<string, number>;
   rows: LearningRow[];
 }
 
@@ -886,6 +920,9 @@ export const api = {
       // The review these indices belong to. The server matches findings by array index, so a
       // re-run from another device would otherwise silently re-point every comment.
       review_key: string;
+      // Why each dropped finding was dropped, by index — optional, and only read for indices
+      // that are not in `selected`. An older server ignores the key.
+      reasons?: Record<number, Reason>;
     }
   ) => post<BannerResult>("/post", { ...prBody(ref), ...t, ...payload }),
   // `reviewedHead` is the commit the verdict on screen was written against. The server refuses

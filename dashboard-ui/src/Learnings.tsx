@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, Info, Lightbulb } from "lucide-react";
-import { api, errMessage, type LearningsData, type Me } from "./api";
+import { api, errMessage, isReason, reasonLabel, REASONS, type LearningsData, type Me } from "./api";
 import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge, wordOf, type Tone } from "./ui";
 import { useIsPhone } from "./theme";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,52 @@ const OUTCOME_TONE: Record<string, Tone> = { dropped: "graphite", reworded: "amb
 const outcomeTone = (label: string): Tone => OUTCOME_TONE[label] ?? "graphite";
 
 const NOTE = "text-xs text-muted-foreground";
+
+// Why a finding was dropped, as the reviewer said it (lane2-reasons.md). Graphite: it is a
+// qualifier on a neutral outcome, not a verdict of its own.
+function ReasonMark({ reason, title }: { reason: string; title?: string }) {
+  return (
+    <StatusBadge tone="graphite" icon={null} data-testid="reason-mark" data-reason={reason} title={title} className="font-normal">
+      {reasonLabel(reason).toLowerCase()}
+    </StatusBadge>
+  );
+}
+
+// All-time drops by reason: a bar per reason, counts and a share to one decimal. Drops recorded
+// without a reason (old rows, reviewers who did not say) are listed last as "no reason given",
+// so the shares add up to every drop and not only to the ones that were explained.
+function WhyDropped({ reasons }: { reasons?: Record<string, number> }) {
+  if (!reasons) return null;
+  const total = Object.values(reasons).reduce((a, n) => a + n, 0);
+  if (total === 0) return null;
+  const order = [...REASONS.filter((r) => (reasons[r] ?? 0) > 0).sort((a, b) => (reasons[b] ?? 0) - (reasons[a] ?? 0)), "unspecified"];
+  const max = Math.max(...order.map((r) => reasons[r] ?? 0), 1);
+  return (
+    <>
+      <h2 className={H2}>Why findings are dropped</h2>
+      <Card className="gap-0 py-3" data-testid="why-dropped">
+        <CardContent className="flex flex-col gap-2 px-4">
+          {order.map((r) => {
+            const n = reasons[r] ?? 0;
+            if (n === 0) return null;
+            const pct = (100 * n) / total;
+            return (
+              <div key={r} className="grid grid-cols-[minmax(8rem,10rem)_1fr_auto] items-center gap-3 text-sm" data-testid="why-dropped-row" data-reason={r}>
+                <span className={cn(r === "unspecified" ? "text-muted-foreground" : "text-foreground")}>{reasonLabel(r)}</span>
+                <span className="h-2 overflow-hidden rounded-full bg-accent" aria-hidden="true">
+                  <span className={cn("block h-full rounded-full", isReason(r) ? "bg-graphite" : "bg-border")} style={{ width: `${(100 * n) / max}%` }} />
+                </span>
+                <span className={cn(NOTE, "tabular-nums")}>
+                  {n.toLocaleString("en-US")} · {pct.toFixed(1)}%
+                </span>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
 const H2 = "mb-2 mt-6 text-sm font-medium";
 const TH = "h-10 whitespace-nowrap border-0 px-4 text-left font-medium";
 const TD = "border-0 px-4 py-2.5 align-top";
@@ -148,6 +194,7 @@ export function Learnings({ me }: { me: Me }) {
                           : "Rolling preference"}
                     </StatusBadge>
                     <StatusBadge kind={c.severity} />
+                    {c.topReason && <ReasonMark reason={c.topReason} title="The reason reviewers gave most often" />}
                     <span className={NOTE}>
                       {c.count} {c.outcome === "dropped" ? "drops" : "rewordings"} across {c.prs} PRs
                     </span>
@@ -164,6 +211,7 @@ export function Learnings({ me }: { me: Me }) {
           </div>
         </>
       )}
+      <WhyDropped reasons={d.reasons} />
       {d.rows.length === 0 ? (
         <Card className="mt-6 py-0">
           <EmptyState icon={Lightbulb} title="Nothing learned yet">
@@ -182,6 +230,7 @@ export function Learnings({ me }: { me: Me }) {
                   {r.editedGist && <div className={NOTE}>Reworded to: {r.editedGist}</div>}
                   <div className="flex flex-wrap items-center gap-1.5">
                     <StatusBadge tone={outcomeTone(r.label || r.kind)}>{wordOf(r.label || r.kind)}</StatusBadge>
+                    {r.reason && <ReasonMark reason={r.reason} />}
                     <StatusBadge kind={r.severity} />
                     {r.dry && (
                       <StatusBadge kind="dry" tone="graphite" data-testid="dry-mark">
@@ -214,6 +263,7 @@ export function Learnings({ me }: { me: Me }) {
                     <td className={TD}>
                       <div className="flex flex-col items-start gap-1">
                         <StatusBadge tone={outcomeTone(r.label || r.kind)}>{wordOf(r.label || r.kind)}</StatusBadge>
+                        {r.reason && <ReasonMark reason={r.reason} />}
                         {r.dry && (
                           <StatusBadge
                             kind="dry"

@@ -303,6 +303,25 @@ test.describe("iOS cold launch: the layout viewport is short of the screen", () 
     expect(Math.round(box!.y + box!.height)).toBe(956);
   });
 
+  test("the reason bar after a drop respects the same gap: above the pill, above the tab bar", async ({ page }) => {
+    await page.addInitScript("Object.defineProperty(navigator, 'standalone', { get: () => true });" +
+      "Object.defineProperty(Screen.prototype, 'height', { get: () => 956 });" +
+      "Object.defineProperty(Screen.prototype, 'width', { get: () => 440 });");
+    await page.goto(`/pr?repo=${encodeURIComponent(REPO)}&pr=${PR}`);
+    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0, { timeout: 15_000 });
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ios-gap").trim())).toBe("62px");
+    await page.getByTestId("finding").nth(1).getByTestId("finding-menu").click();
+    await page.getByRole("menuitem", { name: "Drop" }).click();
+    const bar = page.getByTestId("reason-bar").locator("> div");
+    await expect(bar).toBeVisible();
+    const b = (await bar.boundingBox())!;
+    const pill = (await page.getByTestId("post-pill").boundingBox())!;
+    const tab = (await page.getByTestId("tab-bar").boundingBox())!;
+    expect(b.y + b.height).toBeLessThanOrEqual(pill.y + 1);
+    expect(b.y + b.height).toBeLessThanOrEqual(tab.y + 1);
+    expect(Math.round(tab.y + tab.height)).toBe(956);
+  });
+
   test("a browser tab is left alone", async ({ page }) => {
     await page.goto("/");
     const box = await page.getByTestId("tab-bar").boundingBox();

@@ -41,6 +41,7 @@ import {
   type Me,
   type PrData,
   type PrRef,
+  type Reason,
   type ReviewersData,
   type RunFormData,
   type Token,
@@ -53,7 +54,8 @@ import { setRepoFilter } from "./repoFilter";
 import { Link, useLocation } from "./router";
 import { useIsPhone } from "./theme";
 import { haptic } from "./gestures";
-import { PhoneFindingCard, PhonePrHeader, PhonePrSkeleton, PostPill, PostSheet, PostSuccess, PrActionSheet } from "./PhoneReview";
+import { PhoneFindingCard, PhonePrHeader, PhonePrSkeleton, PhoneReasonBar, PostPill, PostSheet, PostSuccess, PrActionSheet } from "./PhoneReview";
+import { ReasonPrompt } from "./reasonPrompt";
 import { defaultModelFor } from "./quickRun";
 import { pokeRunning } from "./running";
 import { BrandIcon } from "./icons";
@@ -774,17 +776,46 @@ function ReviewBody({
   const [dropped, setDropped] = useState<Set<number>>(() => new Set());
   const [sheetOpen, setSheetOpen] = useState(false);
   const [postedCount, setPostedCount] = useState(0);
+  // Why each dropped finding was dropped (lane2-reasons.md). Optional: the drop itself is the
+  // tick or the swipe and is already done; `askReason` is the one card the chip row is open
+  // for, and the prompt closes it after ~6 s or on the next decision about any card.
+  const [reasons, setReasons] = useState<Record<number, Reason>>({});
+  const [askReason, setAskReason] = useState<number | null>(null);
+  const prompt = useRef<ReasonPrompt | null>(null);
+  if (!prompt.current) prompt.current = new ReasonPrompt(setAskReason);
+  useEffect(() => () => prompt.current?.dismiss(), []);
+  const forgetReason = (i: number) =>
+    setReasons((r) => {
+      if (!(i in r)) return r;
+      const n = { ...r };
+      delete n[i];
+      return n;
+    });
+  const pickReason = (i: number, r: Reason | null) => {
+    if (r) setReasons((all) => ({ ...all, [i]: r }));
+    else forgetReason(i);
+    prompt.current?.dismiss();
+  };
 
   // approve
   const [approveBody, setApproveBody] = useState(rev.approve?.defaultMsg || "");
   const [ack, setAck] = useState(false);
 
-  const toggle = (i: number) =>
+  // An explicit untick is a drop and asks why; a re-tick clears the answer. Either way the
+  // tick lands first — the question never stands between the reviewer and the decision.
+  const toggle = (i: number) => {
+    const wasSelected = selected.has(i);
     setSelected((s) => {
       const n = new Set(s);
       n.has(i) ? n.delete(i) : n.add(i);
       return n;
     });
+    if (wasSelected) prompt.current?.ask(i);
+    else {
+      forgetReason(i);
+      prompt.current?.decided();
+    }
+  };
   // A swipe stages exactly what the checkbox does: keep adds to `selected`, drop takes it out.
   const without = (s: Set<number>, i: number) => {
     const n = new Set(s);
@@ -794,14 +825,21 @@ function ReviewBody({
   const keep = (i: number) => {
     setSelected((s) => new Set(s).add(i));
     setDropped((d) => without(d, i));
+    forgetReason(i);
+    prompt.current?.decided();
     haptic();
   };
   const drop = (i: number) => {
     setSelected((s) => without(s, i));
     setDropped((d) => new Set(d).add(i));
+    prompt.current?.ask(i);
     haptic();
   };
-  const restore = (i: number) => setDropped((d) => without(d, i));
+  const restore = (i: number) => {
+    setDropped((d) => without(d, i));
+    forgetReason(i);
+    prompt.current?.decided();
+  };
 
   // Where the selected findings will land — GitHub only takes an inline comment on a changed
   // line, and sometimes it will not say which lines those are.
@@ -855,6 +893,9 @@ function ReviewBody({
             suggs: {},
             request_changes: requestChanges,
             review_key: reviewIdentity(rev),
+            // Only the reasons for findings that are still dropped travel; a re-ticked card
+            // already forgot its answer, so this is the whole map.
+            reasons,
           }),
       );
       setBanner(res.bannerHtml);
@@ -943,10 +984,22 @@ function ReviewBody({
         onKeep={() => keep(f.i)}
         onDrop={() => drop(f.i)}
         onRestore={() => restore(f.i)}
+        reason={reasons[f.i]}
+        onAskReason={() => prompt.current?.ask(f.i)}
         {...extras(f)}
       />
     ) : (
-      <FindingCard key={f.i} f={f} checked={selected.has(f.i)} onToggle={() => toggle(f.i)} {...extras(f)} />
+      <FindingCard
+        key={f.i}
+        f={f}
+        checked={selected.has(f.i)}
+        onToggle={() => toggle(f.i)}
+        reason={reasons[f.i]}
+        askReason={askReason === f.i}
+        onReason={(r) => pickReason(f.i, r)}
+        onReasonDismiss={() => prompt.current?.dismiss()}
+        {...extras(f)}
+      />
     );
 
   // At most one full-width banner, and only for something that went wrong. The server's answer
@@ -1130,6 +1183,14 @@ function ReviewBody({
         {rev.count > 0 && (
           <>
             <PostPill kept={selected.size} posted={posted} postedAs={me.login || ""} stale={stale} onOpen={() => setSheetOpen(true)} />
+            {askReason !== null && !posted && (
+              <PhoneReasonBar
+                finding={rev.findings.find((f) => f.i === askReason)}
+                value={reasons[askReason]}
+                onPick={(r) => pickReason(askReason, r)}
+                onClose={() => prompt.current?.dismiss()}
+              />
+            )}
             <PostSheet
               open={sheetOpen}
               onOpenChange={setSheetOpen}

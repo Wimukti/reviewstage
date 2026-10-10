@@ -69,6 +69,23 @@ def _env_int(name, default, lo):
 RULE_SUGGEST_MIN = _env_int("RULE_SUGGEST_MIN", 3, 2)
 MIN_PRS = 2
 
+# Why a reviewer dropped a finding (p0-proof/lane2-reasons.md). Optional on every drop — the
+# drop itself stays a bare tick — and stored on the row as `reason`. The ids are API values the
+# dashboard mirrors verbatim (REASONS in api.ts, with a parity test); labels are UI copy.
+# Rows written before this existed have no reason and count under UNSPECIFIED.
+REASONS = ("incorrect", "irrelevant", "already_handled", "style_nit", "lacks_context",
+           "duplicate", "not_worth_raising")
+REASON_LABELS = {"incorrect": "incorrect", "irrelevant": "irrelevant",
+                 "already_handled": "already handled", "style_nit": "style nit",
+                 "lacks_context": "lacks context", "duplicate": "duplicate",
+                 "not_worth_raising": "not worth raising"}
+UNSPECIFIED = "unspecified"
+# Reasons that describe THIS PR rather than the complaint: a finding that was already fixed, or
+# raised twice, says nothing about whether the complaint should be raised next time. A cluster
+# whose commonest reason is one of these is evidence of a situation, not of a standard, and is
+# never proposed as a rule.
+SITUATIONAL_REASONS = frozenset({"already_handled", "duplicate"})
+
 
 # --- concurrency + atomic writes ---------------------------------------------------------------
 # Two reviewers posting at the same instant used to read the same JSON, each add their own row
@@ -190,6 +207,10 @@ def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=No
                "gist": _gist(ob), "outcome": outcome}
         if orig.get("critical_path"):
             row["critical_path"] = str(orig["critical_path"])[:200]
+        # A reason only ever qualifies a drop; one sent for a kept finding is noise and ignored.
+        reason = one(f"reason_{i}")
+        if outcome == "dropped" and reason in REASONS:
+            row["reason"] = reason
         if outcome == "edited":
             row["edited_gist"] = _gist(edited_body)
         if key:
@@ -242,7 +263,14 @@ def _apply_row(t, row, sign):
     day = _utc_daystart(int(row.get("at") or 0))
     for path in (("outcomes",), ("repos", repo or "-"), ("skills", row.get("skill") or "global"),
                  ("days", str(day))):
-        _tally_slot(t, path)[o] += sign
+        slot = _tally_slot(t, path)
+        slot[o] += sign
+        if o == "dropped":
+            # Why it was dropped, beside how often. The key is additive: a slot written before
+            # reasons existed has none, and an old row with no reason counts as unspecified.
+            why = slot.setdefault("reasons", {})
+            key = row.get("reason") if row.get("reason") in REASONS else UNSPECIFIED
+            why[key] = int(why.get(key, 0)) + sign
     if row.get("critical_path"):
         for path in (("criticalPath",), ("repoCriticalPath", repo or "-")):
             _tally_slot(t, path)[o] += sign
@@ -425,21 +453,42 @@ def cluster_rows(rows):
     return sorted(clusters, key=lambda c: -len(c))
 
 
+def _reason_tally(rows):
+    """{reason: n} over the rows that carry one. Rows without a reason are left out here (a
+    cluster's `topReason` is the commonest STATED reason, or "" when nobody said)."""
+    out = {}
+    for r in rows:
+        why = r.get("reason")
+        if why in REASONS:
+            out[why] = out.get(why, 0) + 1
+    return out
+
+
 def _cluster_info(members, outcome):
     prs = sorted({f"{m.get('repo', '')}#{m.get('pr', '')}" for m in members})
     repos = sorted({m.get("repo", "") for m in members if m.get("repo")})
     longest = max(members, key=lambda m: len(m.get("gist", "")))
+    reasons = _reason_tally(members)
     return {"signature": signature(members), "outcome": outcome,
             "severity": _commonest(m.get("severity") or "nit" for m in members) or "nit",
             "dir": _commonest(_dirkey(m.get("path", "")) for m in members),
             "count": len(members), "prs": len(prs), "repos": repos,
             "gist": longest.get("gist", ""),
+            # The reason is NOT part of _same_group: splitting a complaint by reason would
+            # fragment the evidence a rule needs, and early rows have none. It rides along.
+            "reasons": reasons, "topReason": _commonest(m.get("reason") for m in members),
             "rowIds": [row_id(m) for m in members],
             "findings": [{"repo": m.get("repo", ""), "pr": str(m.get("pr", "")),
                           "path": m.get("path", ""), "line": m.get("line"),
                           "severity": m.get("severity", "nit"), "at": m.get("at", 0),
-                          "rid": row_id(m),
+                          "rid": row_id(m), "reason": m.get("reason", ""),
                           "gist": m.get("gist", "")} for m in members]}
+
+
+def proposable(cluster):
+    """May this cluster be offered as a Team rule? A situational top reason says the drops were
+    about those PRs (already fixed there, raised twice there), not about the complaint."""
+    return cluster.get("topReason", "") not in SITUATIONAL_REASONS
 
 
 def clusters(outcome="dropped", rows=None, min_rows=None):
@@ -646,6 +695,7 @@ def cluster_status(max_clusters=8):
             rec = proms.get(sig)
             out.append({"signature": sig, "gist": c["gist"], "severity": c["severity"],
                         "count": c["count"], "prs": c["prs"], "outcome": outcome,
+                        "topReason": c.get("topReason", ""),
                         "status": "promoted" if rec else
                                   ("dismissed" if dismissed_match(c, dis) else "rolling"),
                         "rule": (rec or {}).get("rule", "")})
@@ -689,7 +739,9 @@ def render(repo="", max_items=40):
                      "and omit them unless clearly higher-stakes here):")
         for r in dropped[-WINDOW_DROPPED:]:
             loc = f"{r.get('path', '')}" + (f":{r['line']}" if r.get("line") else "")
-            lines.append(f"- [{r.get('severity', 'nit')}] {loc} — {r.get('gist', '')}")
+            why = REASON_LABELS.get(r.get("reason", ""), "")
+            lines.append(f"- [{r.get('severity', 'nit')}] {loc} — {r.get('gist', '')}"
+                         + (f" ({why})" if why else ""))
     if edited:
         lines.append("\nFindings the reviewer kept but reworded (prefer this tighter phrasing "
                      "and level of detail):")
@@ -715,6 +767,20 @@ def counts():
     c = dict(t.get("outcomes") or _blank())
     return {"dropped": c.get("dropped", 0), "edited": c.get("edited", 0),
             "kept": c.get("kept", 0), "dry": int(t.get("dryDecisions", 0) or 0)}
+
+
+def reason_counts(skill=None):
+    """All-time count of dropped findings by dismissal reason, from the running tally.
+
+    Every REASONS id is present (zero when never chosen), plus UNSPECIFIED for drops recorded
+    without one — old rows, old clients, and reviewers who did not say. Per skill when `skill`
+    is given. This is the one readout a telemetry counter (`dismissal_reason`) reads from."""
+    t = load_totals()
+    slot = (t.get("skills") or {}).get(skill) if skill else t.get("outcomes")
+    why = (slot or {}).get("reasons") or {}
+    out = {r: int(why.get(r, 0)) for r in REASONS}
+    out[UNSPECIFIED] = int(why.get(UNSPECIFIED, 0))
+    return out
 
 
 # One definition of "keep rate" ships in this product: a finding was worth posting when the

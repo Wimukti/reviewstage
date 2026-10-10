@@ -4,6 +4,29 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+## 1.1.0 — 10/11/26
+
+Five changes that make a review easier to trust and the product easier to prove, from the
+third-pass strategy memo. No auto-post, no auto-approve, nothing new leaves your machine.
+
+- **Every finding says how to verify it.** Cards now show claim · severity · confidence ·
+  path:line · why it matters · how to verify. Reviews from older runs render unchanged.
+- **Tell it why you dropped a finding — optionally.** Dropping is as instant as before; a row of
+  reason chips (incorrect, irrelevant, already handled, style/nit, lacks context, duplicate,
+  not worth raising) appears for six seconds. Reasons show up on the Learnings page and steer
+  which rules get proposed. On the phone the chips sit above the Post pill after a swipe.
+- **Try it without signing in.** reviewstage.dev/try runs the real PR page on a precomputed
+  example with three findings — one to keep, one to drop, one to edit — with no network at all.
+  Three worked examples at /examples.
+- **`reviewstage --doctor` works for personal installs.** It no longer fails because there is no
+  service token; it checks Claude and GitHub sign-in and expiry, finds the app's real port, and
+  has `--json`, `--live` and `--strict`.
+- **Telemetry: local counters only, nothing sent.** The app keeps anonymous usage counters on
+  your disk. Sending them is off unless you say yes on first run, your team admin has not
+  disabled it, `RS_TELEMETRY` is not `0`, and an endpoint is configured — and no endpoint ships
+  in 1.1.0. Settings → Privacy lets you view, export, clear or disable. Schema and exact fields
+  are in the docs; tests prove zero egress when off.
+
 ### Upgrading, sign-in and rate limits — 09/18/26
 
 Four things found by running a real install rather than by reading the code.

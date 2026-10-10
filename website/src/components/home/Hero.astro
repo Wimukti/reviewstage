@@ -1,19 +1,22 @@
 ---
 /* Section 1. Two lines, one sentence, the command as the button, the demo and GitHub beside it,
- * three facts, then the product itself playing in the window frame under the stage light. */
+ * three facts, then the product itself playing in the window frame under the stage light.
+ * The display line is a <p>; the page's one <h1> is the category statement under it. */
 import { Play, X } from "lucide-react";
 import CommandPill from "./CommandPill.astro";
 import Frame from "./Frame.astro";
 import GitHubIcon from "../marketing/GitHubIcon.astro";
 import { button } from "../marketing/variants";
 import { repo, demoVideo, DEMO_YOUTUBE_ID } from "../../content/site-links";
+import { categoryStatement } from "../../content/brand";
 import reviewMp4 from "../../assets/demos/review.mp4?url";
 import reviewPoster from "../../assets/demos/review.jpg?url";
 ---
 <section class="hero" aria-labelledby="hero-title">
   <div class="container-page grid justify-items-center gap-5 text-center sm:gap-6">
-    <h1 id="hero-title" class="display-title">AI wrote the PR.<br /><span class="text-primary">You still have to review it.</span></h1>
-    <p class="m-0 max-w-[38rem] text-balance text-base text-muted-foreground sm:text-lg">Claude drafts the review from the real diff on your own plan. You keep what's worth saying and post it as yourself — nothing posts until you click.</p>
+    <p class="display-title m-0">AI wrote the PR.<br /><span class="text-primary">You still have to review it.</span></p>
+    <h1 id="hero-title" class="m-0 max-w-[38rem] text-balance text-base font-medium text-foreground sm:text-lg">{categoryStatement}</h1>
+    <p class="m-0 -mt-2 max-w-[38rem] text-balance text-base text-muted-foreground sm:-mt-3 sm:text-lg">Claude drafts the review from the real diff on your own plan — nothing posts until you click.</p>
     <div class="flex max-w-full flex-wrap items-center justify-center gap-3">
       <CommandPill />
       <button type="button" class={button({ variant: "secondary", size: "lg" }, "h-12 rounded-full")} data-demo-open aria-haspopup="dialog"><Play aria-hidden="true" />Watch the 70-second demo</button>

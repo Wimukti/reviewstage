@@ -2,15 +2,52 @@
 import SiteHeader from "../components/marketing/SiteHeader.astro";
 import SiteFooter from "../components/marketing/SiteFooter.astro";
 import "../styles/app.css";
+import { categorySentence } from "../content/brand";
+import { DEMO_YOUTUBE_ID } from "../content/site-links";
+import { softwareVersion } from "../../scripts/site-meta.mjs";
 interface Props { title: string; description: string; noindex?: boolean; }
 const { title, description, noindex = false } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const ogImage = new URL(`${base}/og.png`, Astro.site).href;
+// SoftwareApplication per Google's guidance (name, offers, applicationCategory, operatingSystem)
+// plus the download/install paths, the author and the demo video; the version comes from the
+// package or the latest tag (scripts/site-meta.mjs). One WebSite node names the publisher.
+const siteUrl = Astro.site!.href;
+const author = {
+  "@type": "Person", name: "Wimukthi Indeewara", url: "https://github.com/Wimukti",
+  sameAs: ["https://www.linkedin.com/in/wimukti/", "https://x.com/WimukthiSL", "https://scholar.google.com/citations?user=ydorJu0AAAAJ"],
+};
 const ld = {
-  "@context": "https://schema.org", "@type": "SoftwareApplication", name: "ReviewStage", description,
-  applicationCategory: "DeveloperApplication", operatingSystem: "Linux, macOS (Docker)",
-  license: "https://opensource.org/license/mit", url: canonical, codeRepository: "https://github.com/Wimukti/reviewstage",
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      name: "ReviewStage",
+      description: `${categorySentence} Desktop app for macOS and Linux; Docker for a team.`,
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "macOS, Linux",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      downloadUrl: "https://www.npmjs.com/package/reviewstage",
+      installUrl: new URL(`${base}/start/install/`, Astro.site).href,
+      softwareVersion: softwareVersion(),
+      license: "https://opensource.org/license/mit",
+      url: siteUrl,
+      codeRepository: "https://github.com/Wimukti/reviewstage",
+      author,
+      screenshot: ogImage,
+      video: {
+        "@type": "VideoObject",
+        name: "ReviewStage in 70 seconds",
+        description: "A review from paste to post: a PR is opened, Claude drafts the findings privately, the reviewer keeps two, edits one and posts the review as themselves.",
+        thumbnailUrl: `https://i.ytimg.com/vi/${DEMO_YOUTUBE_ID}/hqdefault.jpg`,
+        uploadDate: "2026-10-06",
+        contentUrl: `https://youtu.be/${DEMO_YOUTUBE_ID}`,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${DEMO_YOUTUBE_ID}`,
+      },
+    },
+    { "@type": "WebSite", name: "ReviewStage", url: siteUrl, description: categorySentence, publisher: author },
+  ],
 };
 ---
 <!doctype html>
@@ -52,7 +89,7 @@ const ld = {
         document.documentElement.dataset.resolved = pref === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : pref;
       })();
     </script>
-    <script is:inline type="application/ld+json" set:html={JSON.stringify(ld)} />
+    {!noindex && <script is:inline type="application/ld+json" set:html={JSON.stringify(ld)} />}
   </head>
   <body>
     <a class="skip-link fixed left-1/2 top-2 z-[100] -translate-x-1/2 -translate-y-[200%] rounded-md bg-popover px-4 py-2.5 text-sm font-medium text-popover-foreground no-underline shadow-xl focus-visible:translate-y-0" href="#main">Skip to content</a>

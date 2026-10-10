@@ -4,6 +4,8 @@ import react from "@astrojs/react";
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import tailwindcss from "@tailwindcss/vite";
+import { lastmodFor } from "./scripts/site-meta.mjs";
+import { categorySentence } from "./src/content/brand.ts";
 
 // The site lives at its own domain (registered 10/05/26); GitHub Pages serves it at the root
 // and redirects the old reviewstage.dev path here.
@@ -35,11 +37,15 @@ export default defineConfig({
   integrations: [
     react(),
     // stage-proof is the island's proof page (design §7), not a page for readers.
-    sitemap({ filter: (page) => !page.includes("/stage-proof/") }),
+    // <lastmod> is each page's last commit date (scripts/site-meta.mjs), so a crawler can tell
+    // a changed page from an untouched one; the build time stands in where git has no answer.
+    sitemap({
+      filter: (page) => !page.includes("/stage-proof/"),
+      serialize: (item) => ({ ...item, lastmod: lastmodFor(item.url) }),
+    }),
     starlight({
       title: "ReviewStage",
-      description:
-        "ReviewStage drafts your PR review from the real diff, on your own Claude plan, and stages every finding privately. Nothing posts until you click.",
+      description: categorySentence,
       favicon: "/favicon.svg",
       head: [
         { tag: "link", attrs: { rel: "icon", href: `${base}/favicon.ico`, sizes: "16x16 32x32 48x48" } },
@@ -82,7 +88,7 @@ export default defineConfig({
         {
           label: "Start here",
           items: [
-            { label: "What you get", link: "/start/" },
+            { label: "What ReviewStage is", link: "/start/" },
             { label: "Install", link: "/start/install/" },
             { label: "First review", link: "/start/first-review/" },
             { label: "Team workflow", link: "/guides/team-workflow/" },

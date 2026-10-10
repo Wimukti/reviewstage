@@ -160,6 +160,9 @@ async function prepare() {
   ensureEnv(ROOT, port);
   try {
     server = await spawnServer({ root: ROOT, binDir: tools.binDir, port });
+    // The port changes every launch; `npx reviewstage --doctor` reads it from here to find
+    // the running app (PUBLIC_URL stops being loopback once the phone tunnel is up).
+    writeDesktopState(ROOT, { port });
   } catch (e) {
     progress({ step: "server", state: "failed" });
     progress({ error: `${esc(e.message)}<br><code>${esc((e.log || []).join("\n"))}</code>` });

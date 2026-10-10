@@ -11,7 +11,7 @@
   "type": "module",
   "engines": { "node": ">=20" },
   "files": [
-    "bin/", "main.js", "preload.cjs", "tools.json", "tools.js", "flock.py", "server.js", "tunnel.js", "lifecycle.js", "update.js", "tailscale.js", "pages/", "assets/", "server/"
+    "bin/", "main.js", "preload.cjs", "tools.json", "tools.js", "flock.py", "server.js", "tunnel.js", "lifecycle.js", "update.js", "tailscale.js", "doctor.js", "pages/", "assets/", "server/"
   ],
   "scripts": {
     "prepack": "node scripts/prepack.mjs",

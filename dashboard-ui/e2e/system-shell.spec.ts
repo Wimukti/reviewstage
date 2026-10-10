@@ -140,7 +140,7 @@ test.describe("phone shell at 390", () => {
     const groups = you.locator("section h2");
     await expect(groups).toHaveText([/this device/i, /reviewing/i, /tools/i, /more/i]);
     // A browser install: no Your phone, no Desktop app; a team install: no Repositories.
-    await expect(you.getByTestId("you-device").getByTestId("you-row")).toHaveText([/^Notifications/, /^Appearance/]);
+    await expect(you.getByTestId("you-device").getByTestId("you-row")).toHaveText([/^Notifications/, /^Appearance/, /^Privacy/]);
     await expect(you.getByTestId("you-reviewing").getByTestId("you-row")).toHaveText([/^Poller/, /^PR filters/]);
     await expect(you.getByTestId("you-tools").getByTestId("you-row")).toHaveText([/^Learnings/, /^Insights/, /^Skills/, /^QA guides/]);
     for (const row of await you.getByTestId("you-row").all()) {

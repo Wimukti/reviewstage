@@ -137,6 +137,9 @@ export interface Me {
   // Personal mode (`npx reviewstage`): one person, their own token, repositories chosen in the
   // first-run wizard. Absent on older servers, which are never personal.
   personal?: boolean;
+  // Has anyone answered the one-time product-telemetry question on this install? Absent on
+  // older servers; the personal wizard shows its last card only while this is `false`.
+  telemetry_decided?: boolean;
 }
 
 // One of the signed-in user's repositories, from GET /api/github/repos (their own token).
@@ -581,6 +584,9 @@ export interface RuntimeSettings {
   notify_backends: NotifyBackend[];
   max_pr_age_days: number;
   skip_bot_prs: boolean;
+  // Product telemetry allowed on this server at all (the admin's switch). `true` means
+  // "allowed to ask", never "send": each install still needs its own consent and an endpoint.
+  telemetry_enabled: boolean;
 }
 export type SettingSource = "settings" | "env" | "default";
 // $ROOT/webhooks.json + derived fields; the secret itself is never sent.
@@ -594,6 +600,30 @@ export interface WebhooksStatus {
   count: number;
   last_error: string;
 }
+// GET /api/telemetry — the decision, why, and everything the store holds (rs_telemetry.py).
+export type TelemetryState = "killed" | "disabled_by_admin" | "no_consent" | "no_endpoint" | "active";
+export interface TelemetryOutboxRow {
+  day: string;
+  queued_at: number;
+  sent_at?: number;
+  payload: Record<string, unknown>;
+}
+export interface TelemetryData {
+  state: TelemetryState;
+  reason: string;
+  consented: boolean;
+  decided: boolean;
+  counters: Record<string, Record<string, number>>; // day → counter key → n
+  outbox: TelemetryOutboxRow[];
+  endpointSet: boolean;
+  adminDisabled: boolean;
+  killSwitch: boolean;
+  schema: Record<string, Record<string, string[] | "slug">>;
+  derived: string[];
+}
+// The Export button is a plain download of the three files; no JS in the path.
+export const TELEMETRY_EXPORT_URL = `${BASE}/telemetry/export`;
+
 export interface SettingsData {
   token: Token;
   settings: RuntimeSettings;
@@ -989,4 +1019,8 @@ export const api = {
     get<{ repos: GithubRepo[] }>(`/github/repos${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   saveRepos: (repos: string[]) => post<{ repos: string[] }>("/repos", { repos }),
   publicUrl: () => get<{ url: string; runtime: boolean }>("/public-url"),
+  // Product telemetry (Settings → Privacy, and the wizard's last card). Off by default.
+  telemetry: () => get<TelemetryData>("/telemetry"),
+  telemetryConsent: (consented: boolean) => post<TelemetryData>("/telemetry/consent", { consented }),
+  telemetryClear: () => post<TelemetryData>("/telemetry/clear"),
 };

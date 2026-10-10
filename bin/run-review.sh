@@ -39,7 +39,15 @@ status() {
     || echo "[$REPO#$PR] WARN: cannot write $DIR/status (disk full?)" >&2
   echo "[$REPO#$PR] $1"
 }
-fail() { status "failed: $1"; notify_fail "$1"; exit 1; }
+# Product telemetry: a COUNT of what happened, from a closed vocabulary (rs_telemetry.SCHEMA).
+# Never the message, the repo or the PR. Best effort — a counter must never fail a run.
+tally() { PYTHONPATH="$(dirname "$0")" ROOT="$ROOT" python3 "$(dirname "$0")/rs_telemetry.py" bump "$@" >/dev/null 2>&1 || true; }
+fail() {
+  status "failed: $1"; notify_fail "$1"
+  case "$1" in *"timed out"*) tally review_completed outcome=timeout ;;
+                           *) tally review_completed outcome=failed ;; esac
+  exit 1
+}
 
 # The worktree and its review-<pr>-<login> branch are removed on EVERY exit path. `fail` exits
 # straight away, so before this trap existed a failed run left both behind for good: the branch
@@ -406,6 +414,11 @@ summary=$(jq -r '(.summary // "") | .[0:2500]' "$DIR/review.json")
 detail=$(signed_link pr "$REPO" "$PR" 604800)
 author=$(echo "$meta" | jq -r '.author.login // ""')
 status "done ($n findings)"
+tally review_completed outcome=done
+tally findings_shown --n "$n"
+tally run_duration_bucket bucket="$(PYTHONPATH="$HERE" python3 -c \
+  'import json,sys,rs_telemetry;print(rs_telemetry.duration_bucket(json.load(open(sys.argv[1])).get("duration_ms",0)))' \
+  "$DIR/usage.json" 2>/dev/null || echo lt1m)"
 
 notify_card review_ready "$(jq -n --arg repo "$REPO" --arg t "$title" --arg u "$url" --arg p "$PR" \
       --arg s "$summary" --arg e "$event" --argjson n "$n" --argjson b "$blockers" --arg l "$detail" \

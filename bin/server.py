@@ -60,6 +60,7 @@ import rs_review_schema
 import rs_rollup
 import rs_settings
 import rs_stack
+import rs_telemetry
 import rs_state
 import rs_users
 import rs_webhook
@@ -213,6 +214,30 @@ SESSION_TTL = 30 * 24 * 3600
 def runtime_settings():
     """(values, sources) for every runtime setting, layered settings.json > .env > default."""
     return rs_settings.effective(SETTINGS, ENV)
+
+
+def telemetry_env():
+    """.env plus the process environment, for rs_telemetry's switches (the process wins)."""
+    return {**ENV, **os.environ}
+
+
+def telemetry_mode():
+    return "personal" if PERSONAL else "team"
+
+
+def tally(event, n=1, **dims):
+    """Count one product event from rs_telemetry.SCHEMA's closed vocabulary. Best effort: a
+    counter must never break the action it counts."""
+    try:
+        rs_telemetry.bump(event, n=n, **dims)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def tally_install(first_sign_in):
+    """The first sign-in of a personal install is the install completing."""
+    if PERSONAL and first_sign_in and len(load_users()) == 1:
+        tally("install_completed")
 
 
 def is_admin(login):
@@ -2210,6 +2235,7 @@ def stop_review(repo, pr, user=""):
     time.sleep(0.2)
     d.mkdir(parents=True, exist_ok=True)
     (d / "status").write_text("stopped")
+    tally("review_completed", outcome="stopped")
     confirmed = (dead is not False) and not is_running(repo, pr, user)
     _notify_stopped(repo, pr, user, confirmed, runner, "review")
     return confirmed
@@ -4413,6 +4439,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"url": PUBLIC_URL, "runtime": PUBLIC_URL != PUBLIC_URL_ENV})
         if route == "/api/learnings":
             return self.api_json(self.api_learnings(user))
+        if route == "/api/telemetry":
+            return self.api_json(rs_telemetry.status(telemetry_env()))
+        if route == "/api/telemetry/export":
+            raw = json.dumps(rs_telemetry.export_bundle(telemetry_env()), indent=1).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Disposition",
+                             'attachment; filename="reviewstage-telemetry.json"')
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return None
         if route == "/api/rollup":
             # The filter names a repository, so validate it rather than passing an arbitrary
             # string through to the walk (and so a typo is an error, not an empty dashboard).
@@ -5050,7 +5088,10 @@ class Handler(BaseHTTPRequestHandler):
                 # Has discovery ever completed a cycle? The new-install setup state depends on
                 # it; /api/settings exposes the timestamp itself as poller.lastPoll.
                 "poller_ran": (ROOT / "poller.last").exists(),
-                "webhooks_configured": bool(GITHUB_WEBHOOK_SECRET)}
+                "webhooks_configured": bool(GITHUB_WEBHOOK_SECRET),
+                # Has anyone answered the one-time telemetry question on this install? The
+                # personal wizard shows its last card until they have.
+                "telemetry_decided": rs_telemetry.consent()["decided"]}
 
     # -- devices (docs/MOBILE.md) -----------------------------------------------------------
     def api_devices(self, user):
@@ -5282,6 +5323,7 @@ class Handler(BaseHTTPRequestHandler):
                     # A pasted PAT tells us nothing about the app's org approval, so this is
                     # only ever recorded against the person who pasted it.
                     record_oauth_block(f"pat:{self.client_key()}", "no-access")
+                tally("connect_result", service="github", error_category="bad_token")
                 return self.api_json({"error": msg}, 400)
             first = login not in load_users()
 
@@ -5294,6 +5336,8 @@ class Handler(BaseHTTPRequestHandler):
                 users[login] = u
             modify_users(apply)
             clear_oauth_block(login)
+            tally("connect_result", service="github", error_category="ok")
+            tally_install(first)
             print(f"login (api): {login}", flush=True)
             return self.api_json({"ok": True, "login": login, "welcome": first},
                                  cookie=session_cookie(login, self.headers.get("Host", "")))
@@ -5367,6 +5411,16 @@ class Handler(BaseHTTPRequestHandler):
                     u["tour_seen"] = seen
             modify_users(mark)
             return self.api_json({"ok": True, "tour_seen": seen})
+        if route == "/api/telemetry/consent":
+            # Per-user consent in spirit, per-install in storage: counters cannot tell two
+            # reviewers apart, so there is one switch, and anyone signed in may flip it off.
+            c = rs_telemetry.set_consent(bool(body.get("consented")))
+            print(f"telemetry consent: {'on' if c['consented'] else 'off'}", flush=True)
+            return self.api_json(rs_telemetry.status(telemetry_env()))
+        if route == "/api/telemetry/clear":
+            rs_telemetry.clear()
+            print("telemetry: counters and queue cleared", flush=True)
+            return self.api_json(rs_telemetry.status(telemetry_env()))
         if route == "/api/devices/revoke":
             self._reissue = None
             out, code = self.api_devices_revoke(user, body)
@@ -5669,11 +5723,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_json({"status": "expired",
                                   "error": "That sign-in has expired \u2014 start again."})
         if st != "ok":
+            if st in ("denied", "expired", "error"):
+                tally("connect_result", service="github",
+                      error_category={"denied": "denied",
+                                      "expired": "expired_code"}.get(st, "other"))
             return self.api_json(res)
         login, name, err = verify_pat(d["access_token"])
         if err:
             msg, kind = split_verify_error(err)
             record_oauth_block(who_from_token(d["access_token"]), kind or "no-access")
+            tally("connect_result", service="github", error_category="bad_token")
             return self.api_json({"status": "error", "error": msg})
         first_sign_in = login not in load_users()
         prev = load_users().get(login) or {}
@@ -5689,6 +5748,8 @@ class Handler(BaseHTTPRequestHandler):
                                   "error": "GitHub signed you in, but this box could not store "
                                            f"the token: {str(e).splitlines()[0][:160]}"})
         clear_oauth_block(login)
+        tally("connect_result", service="github", error_category="ok")
+        tally_install(first_sign_in)
         print(f"login (github device): {login}", flush=True)
         return self.api_json({"status": "ok", "login": login, "welcome": first_sign_in},
                              cookie=session_cookie(login, self.headers.get("Host", "")))
@@ -5722,12 +5783,16 @@ class Handler(BaseHTTPRequestHandler):
                     "you.</div></div>")
         result, err = claude_connect_code(user, code)
         if err:
+            tally("connect_result", service="claude",
+                  error_category=rs_telemetry.connect_error_category(err))
             return f"<div class='banner err'><span>🚫</span><div>{html.escape(err)}</div></div>"
         ok, why = verify_claude_token(result["access_token"])
         if not ok:
+            tally("connect_result", service="claude", error_category="bad_token")
             return (f"<div class='banner err'><span>🚫</span><div>Got a token from Claude but it "
                     f"did not work here: <code>{html.escape(why)}</code></div></div>")
         store_claude_token(user, result)
+        tally("connect_result", service="claude", error_category="ok")
         print(f"claude connected: {user}", flush=True)
         return ("<div class='banner ok'><span>✓</span><div>Claude connected — reviews you start "
                 "now run on your own account.</div></div>")
@@ -5913,6 +5978,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _start_review_locked(self, repo, pr, user, d, meta, eff, focus, mdl, head):
         """The body of _spawn_review, run with this (repo, pr, user) held."""
+        tally("review_started", effort=eff)
         # The prior run is read into memory now and written to history/ only once the
         # replacement genuinely exists — see snapshot_review().
         snap = snapshot_review(repo, pr, user)
@@ -5942,6 +6008,10 @@ class Handler(BaseHTTPRequestHandler):
             (d / "status").write_text("done")
             (d / "cached").write_text(json.dumps(
                 {"at": int(time.time()), "source_at": cached.get("created_at", 0)}))
+            # A reused result completes at once: run-review.sh is not involved, so count here.
+            tally("review_completed", outcome="done")
+            tally("run_duration_bucket", bucket="lt1m")
+            tally("findings_shown", n=len(cached["review"].get("comments") or []))
             return True
         (d / "cached").unlink(missing_ok=True)       # a fresh run is not a reuse
         (d / "effort").write_text(eff)
@@ -6296,11 +6366,13 @@ class Handler(BaseHTTPRequestHandler):
                       f"{len(unresolved)} file(s), so those findings went into the summary "
                       "rather than risk a 422 that would lose the whole review.")
 
+        tally("post_attempted", dry="1" if DRY_RUN else "0")
         if DRY_RUN:
             # Recorded, but flagged: the reviewer's judgement is real signal for the prompt block
             # and the rule clusters, while nothing reached GitHub, so no published rate may
             # count it. See rs_learn.record().
             learn(dry=True)
+            tally("post_succeeded", dry="1")
             return _banner("warn", "\U0001f9ea",
                            "<b>DRY RUN — nothing was sent to GitHub.</b><br>Your review would "
                            f"post as <code>{event}</code> — "
@@ -6320,6 +6392,7 @@ class Handler(BaseHTTPRequestHandler):
                                     "Nothing was posted — your selection is still here.")
         record_posted_run(repo, pr, user, key, head, len(inline), event)
         learn()
+        tally("post_succeeded", dry="0")
         msg = RB.posted_message(f"<code>{html.escape(user)}</code>", len(inline), len(orphans))
         return _banner("ok", "\u2713", msg
                        + (f" Submitted as <code>{event}</code>." if event != "COMMENT" else "")
@@ -6337,6 +6410,23 @@ class Handler(BaseHTTPRequestHandler):
         retry REPLACE its predecessor instead of appending.
         """
         rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key, dry=dry)
+        # Telemetry counts the same decisions — how many kept, edited, dropped, and the dropped
+        # ones' reason slugs when the client sent any (`reason_i`, lane 2) — never the text.
+        try:
+            one = lambda k: (form.get(k) or [""])[0]  # noqa: E731
+            outcomes, reasons = [], []
+            for i, orig in enumerate(originals):
+                if not form.get(f"sel_{i}"):
+                    outcomes.append("dropped")
+                    if reason := one(f"reason_{i}").strip():
+                        reasons.append(reason)
+                elif rs_learn._norm(one(f"body_{i}")) != rs_learn._norm(orig.get("body", "")):
+                    outcomes.append("edited")
+                else:
+                    outcomes.append("kept")
+            rs_telemetry.record_decisions(outcomes, reasons)
+        except Exception:  # noqa: BLE001 — a counter never breaks a post
+            pass
 
     def _approve_result(self, repo, pr, user, form):
         """Approve as the user. Serialised on the same lock the post path takes, so two tabs
@@ -6453,4 +6543,16 @@ if __name__ == "__main__":
     if PERSONAL:
         # No cron, no pr-watch.sh: the server polls with each signed-in user's own token.
         rs_personal.start(personal_poller_context)
-    ThreadingHTTPServer((bind, port), Handler).serve_forever()
+    # Product telemetry: counters are local; a daily flush sends them ONLY when every gate in
+    # rs_telemetry.decision() agrees (the shipped default never does — no endpoint).
+    _tlog = lambda m: print(m, flush=True)  # noqa: E731
+    rs_telemetry.start_daemon(telemetry_env, mode_fn=telemetry_mode, log=_tlog)
+
+    def _on_term(_sig, _frame):
+        raise SystemExit(0)                      # so the finally below runs on a clean stop
+    signal.signal(signal.SIGTERM, _on_term)
+    try:
+        ThreadingHTTPServer((bind, port), Handler).serve_forever()
+    finally:
+        with contextlib.suppress(Exception):
+            rs_telemetry.flush(env=telemetry_env(), mode=telemetry_mode(), log=_tlog)

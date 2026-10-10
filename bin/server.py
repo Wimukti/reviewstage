@@ -1229,15 +1229,43 @@ def suggestion_target(cluster):
     return "global"
 
 
+def post_reasons(body):
+    """The client's `reasons` ({index: reason id}) as a str-keyed dict, or {} when absent or
+    malformed (an old client never sends it)."""
+    raw = body.get("reasons")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items() if v}
+
+
+def unknown_reason(body):
+    """The first reason id outside rs_learn.REASONS in the post body, or "" when all are known.
+    The taxonomy is the server's: a client that invents one gets a 400, not a stored stray."""
+    for v in post_reasons(body).values():
+        if v not in rs_learn.REASONS:
+            return v[:40]
+    return ""
+
+
 def _house_prompt(cluster, existing):
     ex = "\n".join(f"- {r}" for r in existing[:8]) or "- (none yet)"
     gists = "\n".join(f"- [{f['severity']}] {f['path'] or 'no file'} — {f['gist']}"
                       for f in cluster["findings"][:12])
+    why = cluster.get("topReason", "")
+    said = ""
+    if why in rs_learn.REASON_LABELS:
+        said = f' The reviewers mostly said why: "{rs_learn.REASON_LABELS[why]}".'
+    if why == "lacks_context":
+        # The complaint was not wrong so much as blind: the rule should send the reviewer to
+        # read around the line before raising it, not forbid the topic.
+        said += (" So the rule should tell the reviewer to read the surrounding code — the "
+                 "callers, the guards above it, the tests — before raising this, rather than "
+                 "never raising it.")
     return (
         "A code-review assistant raised these findings and a human reviewer chose NOT to post "
         f"any of them ({cluster['count']} times across {cluster['prs']} pull requests). They are "
         "the same complaint in different words. Write the standing rule that would have stopped "
-        "the assistant raising it.\n\n"
+        "the assistant raising it." + said + "\n\n"
         "Existing rules, for house style — match their voice and length exactly:\n" + ex +
         "\n\nThe rejected findings:\n" + gists +
         "\n\nReply with EXACTLY two lines and nothing else:\n"
@@ -1331,6 +1359,8 @@ def rule_suggestions(user, draft=False):
             sig = c["signature"]
             if sig in proms:
                 continue                       # already a rule
+            if not rs_learn.proposable(c):
+                continue                       # dropped for reasons about those PRs, not a rule
             target = suggestion_target(c)
             if rs_learn.covered_by_rule(c, rs_learn.parse_rules(read_skill(target),
                                                                 RULES_MARKER)):
@@ -4966,8 +4996,12 @@ class Handler(BaseHTTPRequestHandler):
                     # True when the post it came from was a DRY_RUN: a real decision that never
                     # reached GitHub. Counted in `counts.dry`, excluded from every rate.
                     "dry": bool(r.get("dry")),
+                    # Why it was dropped, when the reviewer said (lane2-reasons.md); "" else.
+                    "reason": r.get("reason", "") if o == "dropped" else "",
                     "editedGist": r.get("edited_gist", "") if o == "edited" else ""}
         return {"counts": rs_learn.counts(), "repos": all_repos(),
+                # All-time drops by dismissal reason: every id, plus `unspecified`.
+                "reasons": rs_learn.reason_counts(),
                 # How many rows of each outcome a review actually reads back. The page states
                 # these numbers to the user; they are data, not something to hardcode.
                 "windows": rs_learn.windows(),
@@ -5492,6 +5526,8 @@ class Handler(BaseHTTPRequestHandler):
                               "selection no longer lines up with the findings on the server — "
                               "nothing was posted. Reload the page and pick again.",
                      "reviewKey": current, "sentKey": sent}, 409)
+            if bad := unknown_reason(body):
+                return self.api_json({"error": f"Unknown dismissal reason: {bad}"}, 400)
             form = self._post_form(repo, pr, user, body)
             return self.api_json({"bannerHtml": self._post_result(repo, pr, user, form)})
         if route == "/api/approve":
@@ -5505,8 +5541,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post_form(self, repo, pr, user, body):
         """Rebuild the form dict _post_result expects from the JSON post body. path/line/severity
-        come from the stored review (not the client) — only selection, body and suggestion are
-        the reviewer's to change."""
+        come from the stored review (not the client) — only selection, body, suggestion and the
+        dismissal reason are the reviewer's to change. The route checks `reasons` with
+        unknown_reason() before calling this, so an unknown id is a 400, never a dropped field."""
         rev = load_review(repo, pr, user) or {}
         # Exactly what _review_data rendered, in the same order and with the same cap — the
         # client's indices address THAT list, so anything beyond the cap it never saw.
@@ -5515,12 +5552,17 @@ class Handler(BaseHTTPRequestHandler):
         sel = set(body.get("selected") or [])
         bodies = body.get("bodies") or {}
         suggs = body.get("suggs") or {}
+        reasons = post_reasons(body)
         form = {"pr": [pr], "count": [str(len(originals))]}
         if body.get("request_changes"):
             form["request_changes"] = ["on"]
         for i, c in enumerate(originals):
             if i in sel:
                 form[f"sel_{i}"] = ["on"]
+            elif str(i) in reasons:
+                # Why the reviewer dropped it. Only a drop has a reason, so one that arrived
+                # for a kept finding is not forwarded.
+                form[f"reason_{i}"] = [reasons[str(i)]]
             form[f"body_{i}"] = [str(bodies.get(str(i), c.get("body", "")))]
             form[f"sugg_{i}"] = [str(suggs.get(str(i), c.get("suggestion", "") or ""))]
             form[f"path_{i}"] = [c.get("path", "")]

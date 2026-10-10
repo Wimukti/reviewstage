@@ -444,6 +444,80 @@ test.describe("the PR page on a phone", () => {
     await expect(card.getByTestId("teach")).toBeVisible();
   });
 
+  // Dismissal reasons (openspec/changes/p0-proof/lane2-reasons.md) on the phone: the drop is
+  // the swipe and has already happened; a bottom chip row above the pill asks why for ~6 s.
+  test("a swipe-drop opens the reason bar above the pill; a pick marks the dropped line and rides the post", async ({ page }) => {
+    const posts = await stub(page, "**/api/post", { bannerHtml: DRY_BANNER });
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    const cards = page.getByTestId("finding");
+    const pill = page.getByTestId("post-pill");
+    await expect(page.getByTestId("reason-bar")).toHaveCount(0);
+    await swipe(page, cards.nth(1), -200);
+    const dropped = page.locator("[data-testid=finding][data-dropped]");
+    await expect(dropped).toHaveCount(1);
+    await expect(pill).toHaveText(/1 kept/);
+    // The bar: the dropped title, seven 44 px chips in a scrolling row, above the pill, above
+    // the tab bar — and the dropped line is still one line, with a Why? chip of its own.
+    const bar = page.getByTestId("reason-bar");
+    await expect(bar).toBeVisible();
+    await expect(bar.getByTestId("reason-bar-title")).toContainText("Use const instead of let");
+    const chips = bar.getByTestId("reason-chip");
+    await expect(chips).toHaveCount(7);
+    expect((await chips.first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    const barBox = (await bar.locator("> div").boundingBox())!;
+    const pillBox = (await pill.boundingBox())!;
+    const tab = (await page.locator(".tabbar").boundingBox())!;
+    expect(barBox.y + barBox.height).toBeLessThanOrEqual(pillBox.y + 1);
+    expect(barBox.y + barBox.height).toBeLessThanOrEqual(tab.y + 1);
+    expect(Math.round((await dropped.boundingBox())!.height)).toBeLessThanOrEqual(52);
+    await expect(dropped.getByTestId("reason-open")).toHaveText("Why?");
+    await chips.filter({ hasText: "Duplicate" }).click();
+    await expect(page.getByTestId("reason-bar")).toHaveCount(0);
+    await expect(dropped.getByTestId("reason-picked")).toHaveText("Duplicate");
+    await expect(dropped).toHaveAttribute("data-reason", "duplicate");
+    // Tapping the answer asks again; Restore forgets it and closes the bar.
+    await dropped.getByTestId("reason-picked").click();
+    await expect(page.getByTestId("reason-bar")).toBeVisible();
+    await expect(page.getByTestId("reason-bar").getByTestId("reason-picked")).toHaveAttribute("data-reason", "duplicate");
+    await page.getByTestId("reason-bar").getByTestId("reason-clear").click();
+    await expect(dropped.getByTestId("reason-open")).toHaveText("Why?");
+    await dropped.getByTestId("reason-open").click();
+    await page.getByTestId("reason-bar").getByRole("button", { name: "Irrelevant" }).click();
+    await expect(dropped).toHaveAttribute("data-reason", "irrelevant");
+    // Post: the reason goes with the dropped index.
+    await pill.click();
+    await page.getByTestId("post-confirm").click();
+    await expect(page.getByTestId("post-success")).toBeVisible();
+    expect(posts).toHaveLength(1);
+    const body = posts[0].postDataJSON();
+    expect(body.reasons).toEqual({ "1": "irrelevant" });
+    expect(body.selected).toEqual([0]);
+  });
+
+  test("the reason bar closes after six seconds, on Restore, and never asks a kept card", async ({ page }) => {
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    await page.clock.install();
+    const cards = page.getByTestId("finding");
+    await cards.nth(1).getByTestId("finding-menu").click();
+    await page.getByRole("menuitem", { name: "Drop" }).click();
+    await expect(page.getByTestId("reason-bar")).toBeVisible();
+    await page.clock.fastForward(6_100);
+    await expect(page.getByTestId("reason-bar")).toHaveCount(0);
+    const dropped = page.locator("[data-testid=finding][data-dropped]");
+    await expect(dropped).toHaveCount(1, { timeout: 2_000 });
+    await dropped.getByTestId("reason-open").click();
+    await expect(page.getByTestId("reason-bar")).toBeVisible();
+    await dropped.getByTestId("finding-restore").click();
+    await expect(page.getByTestId("reason-bar")).toHaveCount(0);
+    await expect(page.locator("[data-testid=finding][data-dropped]")).toHaveCount(0);
+    // Keeping asks nothing.
+    await swipe(page, cards.nth(1), 200);
+    await expect(cards.nth(1)).toHaveClass(/is-staged/);
+    await expect(page.getByTestId("reason-bar")).toHaveCount(0);
+  });
+
   test("every card gesture has a button: Keep and Drop in the ⋯ menu, Restore on the dropped line", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await settled(page);

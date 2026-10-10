@@ -614,3 +614,109 @@ class FindingContractInThePayload(PostCase):
         loaded = self.srv.load_review(REPO, PR, USER)
         self.assertEqual(self.srv.review_key(loaded, HEAD_A),
                          self.srv.review_key(self.srv.load_review(REPO, PR, USER), HEAD_A))
+
+
+# --- dismissal reasons ride the post body (p0-proof/lane2-reasons.md) -------------------------
+class DismissalReasonsOnThePostBody(PostCase):
+    """`reasons: {index: id}` is optional on /api/post. _post_form forwards a reason only for
+    an index that was NOT selected; the route refuses an id outside the taxonomy with a 400."""
+
+    def body(self, selected, reasons=None):
+        b = {"selected": selected, "bodies": {}, "suggs": {}, "request_changes": False}
+        if reasons is not None:
+            b["reasons"] = reasons
+        return b
+
+    def test_a_reason_is_forwarded_for_a_dropped_index_only(self):
+        form = self.handler()._post_form(REPO, PR, USER,
+                                         self.body([0], {"0": "incorrect", "1": "style_nit"}))
+        self.assertEqual(form.get("sel_0"), ["on"])
+        self.assertNotIn("reason_0", form, "a reason on a kept finding is dropped")
+        self.assertEqual(form["reason_1"], ["style_nit"])
+
+    def test_a_post_without_reasons_builds_the_form_it_always_did(self):
+        with_key = self.handler()._post_form(REPO, PR, USER, self.body([0]))
+        self.assertFalse([k for k in with_key if k.startswith("reason_")])
+        self.assertEqual(self.srv.unknown_reason(self.body([0])), "")
+
+    def test_malformed_reasons_are_ignored_not_fatal(self):
+        for bad in ("incorrect", ["incorrect"], 7, None):
+            form = self.handler()._post_form(REPO, PR, USER, self.body([], bad))
+            self.assertFalse([k for k in form if k.startswith("reason_")], repr(bad))
+            self.assertEqual(self.srv.unknown_reason(self.body([], bad)), "")
+
+    def test_an_unknown_reason_is_named(self):
+        self.assertEqual(self.srv.unknown_reason(self.body([], {"1": "because"})), "because")
+        self.assertEqual(self.srv.unknown_reason(self.body([], {"1": ""})), "",
+                         "an empty value is 'no reason', not an unknown one")
+
+    def test_the_reason_reaches_the_learning_row(self):
+        self.fake_github()
+        importlib.reload(self.srv.rs_learn)   # fake_github stubs record(); this test wants it
+        form = self.handler()._post_form(REPO, PR, USER, self.body([0], {"1": "duplicate"}))
+        self.assertIn("Posted your review", self.handler()._post_result(REPO, PR, USER, form))
+        rows = {r["outcome"]: r for r in self.srv.rs_learn._read()}
+        self.assertEqual(rows["dropped"]["reason"], "duplicate")
+        self.assertNotIn("reason", rows["kept"])
+        self.assertEqual(self.srv.rs_learn.reason_counts()["duplicate"], 1)
+
+    def test_the_taxonomy_the_route_enforces_is_rs_learn_s(self):
+        for r in self.srv.rs_learn.REASONS:
+            self.assertEqual(self.srv.unknown_reason(self.body([], {"0": r})), "", r)
+
+
+class UnknownReasonIs400(MismatchedReviewKeyIs409):
+    """The route, end to end: an invented reason id is refused before anything is posted."""
+
+    def test_an_unknown_reason_is_refused_with_400(self):
+        good = self.srv.review_key(REVIEW, HEAD_A)
+        status, data = self.post({**self.body(good), "reasons": {"1": "meh"}})
+        self.assertEqual(status, 400)
+        self.assertIn("meh", data["error"])
+        self.assertEqual(self.posts, [], "nothing may reach GitHub on a bad reason")
+
+    def test_a_known_reason_is_accepted(self):
+        good = self.srv.review_key(REVIEW, HEAD_A)
+        status, data = self.post({**self.body(good), "reasons": {"1": "not_worth_raising"}})
+        self.assertEqual(status, 200)
+        self.assertIn("bannerHtml", data)
+
+
+class SituationalReasonsAreNotProposed(PostCase):
+    """The proposer: a cluster whose commonest reason says 'about this PR' (already handled,
+    duplicate) is skipped; every other reason is offered, and `lacks_context` steers the draft
+    towards reading around the line instead of forbidding the topic."""
+
+    CONST = ["Prefer const over let for this binding",
+             "Use const rather than let here — the binding is never reassigned",
+             "This let is never reassigned; const would be preferable"]
+
+    def seed(self, reason):
+        L = importlib.reload(self.srv.rs_learn)
+        rows = [{"at": 1, "repo": REPO, "pr": str(i), "user": USER, "skill": "global",
+                 "path": "src/Badge.tsx", "line": 10, "severity": "nit", "gist": g,
+                 "outcome": "dropped", **({"reason": reason} if reason else {})}
+                for i, g in enumerate(self.CONST)]
+        L.FILE.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return L
+
+    def test_already_handled_and_duplicate_clusters_are_skipped(self):
+        for why in ("already_handled", "duplicate"):
+            self.seed(why)
+            self.assertEqual(self.srv.rule_suggestions(USER), [], why)
+
+    def test_every_other_reason_and_no_reason_is_offered(self):
+        for why in ("", "incorrect", "irrelevant", "style_nit", "lacks_context",
+                    "not_worth_raising"):
+            self.seed(why)
+            out = self.srv.rule_suggestions(USER)
+            self.assertEqual(len(out), 1, why or "no reason")
+            self.assertEqual(out[0]["topReason"], why)
+
+    def test_lacks_context_steers_the_drafted_rule(self):
+        L = self.seed("lacks_context")
+        prompt = self.srv._house_prompt(L.clusters("dropped")[0], [])
+        self.assertIn("lacks context", prompt)
+        self.assertIn("read the surrounding code", prompt)
+        L = self.seed("")
+        self.assertNotIn("said why", self.srv._house_prompt(L.clusters("dropped")[0], []))

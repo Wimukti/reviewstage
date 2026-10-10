@@ -86,6 +86,12 @@ When the next review starts, recent *dropped* and *reworded* rows are rendered i
 
 This is **not machine learning**. It is in-context steering with your own recent decisions, shared per repository and attributed per user. The **Learnings** page shows the counts and the recent decisions so you can see what the agent is being told.
 
+### Saying why you dropped it
+
+A drop is still one tick or one swipe — nothing asks you anything first. For about six seconds afterwards, or until your next decision on any card, the dropped finding offers a row of **Why?** chips: *incorrect*, *irrelevant*, *already handled*, *style nit*, *lacks context*, *duplicate*, *not worth raising*. On the desk the row sits under the card and the chips are reachable from the keyboard (Escape closes the row); on a phone it is a bar above the Post pill, and the dropped line carries the answer, or a **Why?** chip to be asked again. Pick one or let it go; a chosen reason collapses to a single chip and goes with the post as the row's `reason`.
+
+The reason is kept beside the outcome, never instead of it: the keep rate and the clustering do not change, and rows from before this existed read as *no reason given*. What it changes is what the record is used for. The prompt block names the reason after a dropped gist (`… (style nit)`), the Learnings page lists **Why findings are dropped** with a share to one decimal, each cluster and each suggested rule carries the reason reviewers gave most often — and a cluster whose top reason is **already handled** or **duplicate** is never proposed as a rule, because those say something about the pull request, not about the complaint. A cluster mostly marked **lacks context** is proposed with the draft steered towards *read the surrounding code before raising this* rather than *never raise this*.
+
 ### Teaching the skill from one finding
 
 Repetition is slow, and it only ever learns from rejection. A reviewer reading a finding already knows whether it should be raised again, so each finding card carries a **Teach the skill** button next to Edit comment.

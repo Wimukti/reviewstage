@@ -28,7 +28,9 @@ import {
   Send,
   Sparkles,
   Users,
+  X,
 } from "lucide-react";
+import { REASON_LABELS, REASONS, type Reason } from "./api";
 import { StatusBadge, iconOf, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -147,6 +149,85 @@ export interface FindingCardProps {
   editor?: ReactNode;
   // Teach the skill from this finding; absent, the button is not rendered.
   teach?: { panel: (onTaught: () => void) => ReactNode };
+  // Why the reviewer dropped it (lane2-reasons.md). `askReason` opens the chip row under the
+  // card for a moment after an untick; `reason` is the answer, shown as one chip while the card
+  // stays unticked. Both are PrPage's state; a card never asks on its own.
+  reason?: Reason;
+  askReason?: boolean;
+  onReason?: (r: Reason | null) => void;
+  onReasonDismiss?: () => void;
+}
+
+// The chip row that asks why a finding was dropped — purely presentational, shared by the desk
+// card and the phone's bottom bar. Chips are buttons in a group; Escape dismisses the row; a
+// chosen reason collapses the row to one chip with a ✕ to clear it. 44 px targets on touch.
+export function ReasonChips({
+  value,
+  onPick,
+  onClose,
+  size = "sm",
+  className,
+}: {
+  value?: Reason;
+  onPick: (r: Reason | null) => void;
+  onClose?: () => void;
+  size?: "sm" | "lg";
+  className?: string;
+}) {
+  const chip = cn(
+    "inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    size === "lg" ? "min-h-[44px] px-3.5 text-[14px]" : "h-6",
+  );
+  if (value) {
+    return (
+      <div className={cn("flex flex-wrap items-center gap-1.5", className)} data-testid="reason-picked" data-reason={value}>
+        <span className={cn(chip, "border-foreground/30 text-foreground")}>
+          Dropped · {REASON_LABELS[value].toLowerCase()}
+          <button
+            type="button"
+            aria-label="Clear the reason"
+            data-testid="reason-clear"
+            className="-mr-1 ml-0.5 inline-flex size-5 items-center justify-center rounded-full hover:bg-accent"
+            onClick={() => onPick(null)}
+          >
+            <X aria-hidden="true" className="size-3" />
+          </button>
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div
+      role="group"
+      aria-label="Why did you drop this finding?"
+      data-testid="reason-row"
+      className={cn("flex items-center gap-1.5", size === "lg" ? "overflow-x-auto [scrollbar-width:none]" : "flex-wrap", className)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && onClose) {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <span className={cn("shrink-0 text-xs text-muted-foreground", size === "lg" && "text-[14px]")}>Why?</span>
+      {REASONS.map((r) => (
+        <button key={r} type="button" className={chip} data-testid="reason-chip" data-reason={r} aria-pressed={false} onClick={() => onPick(r)}>
+          {REASON_LABELS[r]}
+        </button>
+      ))}
+      {onClose && (
+        <button
+          type="button"
+          aria-label="Skip"
+          data-testid="reason-skip"
+          className={cn("inline-flex shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground", size === "lg" ? "size-11" : "size-6")}
+          onClick={onClose}
+        >
+          <X aria-hidden="true" className={size === "lg" ? "size-4" : "size-3.5"} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 // "Explain simply": fetched once, on the first open. The desk card and the phone card share it.
@@ -235,7 +316,7 @@ export function HowToVerify({ text, className }: { text?: string; className?: st
   );
 }
 
-export function FindingCard({ f, checked, onToggle, disabled, explain, editor, teach }: FindingCardProps) {
+export function FindingCard({ f, checked, onToggle, disabled, explain, editor, teach, reason, askReason, onReason, onReasonDismiss }: FindingCardProps) {
   const x = useExplain(explain);
   const { expOpen, setExpOpen, runExplain } = x;
   // Unstructured findings (older reviews) show the comment inline; structured ones tuck it away.
@@ -285,6 +366,9 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
         <CopyPath loc={loc} />
       </div>
       <div className="flex flex-col gap-2 px-4 pb-3 pl-[18px]">
+        {!checked && onReason && (reason || askReason) && (
+          <ReasonChips value={reason} onPick={onReason} onClose={onReasonDismiss} />
+        )}
         {f.structured && <div className="text-sm font-medium leading-snug">{f.title}</div>}
         {f.structured && f.impact && (
           <p className="m-0 max-w-[72ch] text-sm leading-relaxed text-muted-foreground" data-testid="why-it-matters">

@@ -35,11 +35,11 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import { api, type Finding, type PrData, type QueueRow } from "./api";
+import { api, REASON_LABELS, type Finding, type PrData, type QueueRow, type Reason } from "./api";
 import { useSwipe } from "./gestures";
 import { NavBarAction, useNavBar } from "./nav";
 import { prUrl } from "./pr";
-import { ConfidenceBadge, ExplainBody, HowToVerify, OFFDIFF_HINT, placementOf, UNKNOWN_HINT, useExplain } from "./ReviewParts";
+import { ConfidenceBadge, ExplainBody, HowToVerify, OFFDIFF_HINT, placementOf, ReasonChips, UNKNOWN_HINT, useExplain } from "./ReviewParts";
 import { goBack, Link } from "./router";
 import { StatusBadge, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
@@ -182,6 +182,8 @@ export function PhoneFindingCard({
   onKeep,
   onDrop,
   onRestore,
+  reason,
+  onAskReason,
   explain,
   editor,
   teach,
@@ -194,6 +196,10 @@ export function PhoneFindingCard({
   onKeep: () => void;
   onDrop: () => void;
   onRestore: () => void;
+  // Why it was dropped, once the reviewer said (shown on the dropped line); and a way to be
+  // asked again — the bottom bar itself is PrPage's (PhoneReasonBar), not the card's.
+  reason?: Reason;
+  onAskReason?: () => void;
 } & CardExtras) {
   const [open, setOpen] = useState(false);
   const [showEdit, setShowEdit] = useState(!f.structured);
@@ -222,9 +228,10 @@ export function PhoneFindingCard({
   if (dropped) {
     return (
       <div
-        className="finding relative mt-2 overflow-hidden rounded-xl"
+        className="finding relative mt-2 flex min-h-[48px] items-center overflow-hidden rounded-xl bg-card/60"
         data-testid="finding"
         data-dropped="1"
+        data-reason={reason}
       >
         <button
           type="button"
@@ -232,7 +239,7 @@ export function PhoneFindingCard({
           onClick={onRestore}
           disabled={disabled}
           aria-label={`Dropped: ${title}. Restore`}
-          className="flex min-h-[48px] w-full items-center gap-2.5 rounded-xl bg-card/60 px-4 text-left text-[15px] text-muted-foreground opacity-70 active:bg-accent/40"
+          className="flex min-h-[48px] min-w-0 flex-1 items-center gap-2.5 rounded-xl px-4 text-left text-[15px] text-muted-foreground opacity-70 active:bg-accent/40"
         >
           <X aria-hidden="true" className="size-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate line-through decoration-muted-foreground/50">{title}</span>
@@ -241,6 +248,22 @@ export function PhoneFindingCard({
             Restore
           </span>
         </button>
+        {onAskReason && !disabled && (
+          // The answer, or the way to give one: a chip the reviewer can tap to be asked again.
+          <button
+            type="button"
+            data-testid={reason ? "reason-picked" : "reason-open"}
+            data-reason={reason}
+            onClick={onAskReason}
+            aria-label={reason ? `Dropped as ${REASON_LABELS[reason].toLowerCase()}. Change the reason` : "Say why you dropped this"}
+            className={cn(
+              "mr-2 inline-flex min-h-[44px] shrink-0 items-center rounded-full px-3 text-[13px] font-medium",
+              reason ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {reason ? REASON_LABELS[reason] : "Why?"}
+          </button>
+        )}
       </div>
     );
   }
@@ -414,6 +437,38 @@ export function PhoneFindingCard({
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+// ---- the reason bar after a drop ---------------------------------------------------------------
+// Sits above the Post pill, which sits above the tab bar, all three nudged by --ios-gap the way
+// the shell is. Horizontally scrollable, 44 px targets, closes with the prompt that opened it.
+export function PhoneReasonBar({
+  finding,
+  value,
+  onPick,
+  onClose,
+}: {
+  finding?: Finding;
+  value?: Reason;
+  onPick: (r: Reason | null) => void;
+  onClose: () => void;
+}) {
+  const title = finding ? (finding.structured ? finding.title : finding.body.split("\n")[0]) : "";
+  return (
+    <div
+      className="fixed inset-x-0 z-20 flex justify-center px-3 bottom-[calc(49px+env(safe-area-inset-bottom,0px)+12px+56px+8px-var(--ios-gap,0px))] pointer-events-none"
+      data-testid="reason-bar"
+    >
+      <div className="pointer-events-auto flex w-full max-w-[560px] flex-col gap-1 rounded-2xl bg-popover px-3 py-2 shadow-xl ring-1 ring-border">
+        {title && (
+          <div className="truncate px-1 text-[13px] text-muted-foreground" data-testid="reason-bar-title">
+            Dropped: {title}
+          </div>
+        )}
+        <ReasonChips value={value} onPick={onPick} onClose={onClose} size="lg" className="-mx-1 px-1 pb-0.5" />
+      </div>
     </div>
   );
 }

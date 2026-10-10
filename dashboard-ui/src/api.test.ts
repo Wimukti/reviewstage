@@ -200,3 +200,43 @@ test("tourSeen and deviceCancel are real calls, not hand-rolled fetches", async 
   assert.equal(calls[0].url, "/api/auth/device/cancel");
   assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { session: "sess-1" });
 });
+
+// ---- dismissal reasons: the taxonomy is the server's, mirrored verbatim ----------------------
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { isReason, REASON_LABELS, REASONS, reasonLabel } from "./api";
+
+test("REASONS matches rs_learn.REASONS id for id, in order", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const py = readFileSync(join(here, "..", "..", "bin", "rs_learn.py"), "utf8");
+  const m = py.match(/^REASONS = \(([\s\S]*?)\)\n/m);
+  assert.ok(m, "rs_learn.py declares REASONS = (...)");
+  const server = [...m![1].matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
+  assert.deepEqual([...REASONS], server);
+  assert.deepEqual(Object.keys(REASON_LABELS).sort(), [...REASONS].sort(), "every id has a label");
+});
+
+test("isReason and reasonLabel", () => {
+  assert.equal(isReason("style_nit"), true);
+  assert.equal(isReason("because"), false);
+  assert.equal(isReason(undefined), false);
+  assert.equal(reasonLabel("already_handled"), "Already handled");
+  assert.equal(reasonLabel("unspecified"), "No reason given");
+  assert.equal(reasonLabel("zzz"), "zzz");
+});
+
+test("api.post carries the reasons map beside the selection", async () => {
+  stubFetch(200, { bannerHtml: "ok" });
+  await api.post({ repo: "acme/widgets", num: "7" }, { exp: "1", sig: "s" }, {
+    selected: [0],
+    bodies: {},
+    suggs: {},
+    request_changes: false,
+    review_key: "rk",
+    reasons: { 1: "incorrect" },
+  });
+  const sent = JSON.parse(String(calls[0].init?.body));
+  assert.deepEqual(sent.reasons, { "1": "incorrect" });
+  assert.deepEqual(sent.selected, [0]);
+});

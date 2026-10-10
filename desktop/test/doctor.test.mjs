@@ -92,7 +92,12 @@ test("`reviewstage --doctor --json` against a fixture ROOT: valid JSON, no GITHU
     cwd: root,
   });
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  const doc = JSON.parse(r.stdout);
+  let doc;
+  try {
+    doc = JSON.parse(r.stdout);
+  } catch (e) {
+    assert.fail(`--json stdout is not one JSON document: ${e.message}\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+  }
   assert.equal(doc.fails, 0, JSON.stringify(doc.checks.filter((c) => c.status === "FAIL")));
   assert.ok(!doc.checks.some((c) => /GITHUB_PAT not set/.test(c.text)), "a personal install has no service token by design");
   const port = doc.checks.find((c) => c.id === "port.free");

@@ -33,6 +33,11 @@ for a in "$@"; do
     -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0;;
   esac
 done
+# --json promises one JSON document on stdout. Tools this script calls (gh, claude, node) can
+# print notices of their own there — Claude Code's first run says "Downloading…" — so while
+# building the report everything goes to stderr and only the document is written to the
+# saved stdout at the end.
+if [ "$JSON" = 1 ]; then exec 3>&1 1>&2; fi
 
 ROOT="${ROOT:-$HOME/.reviewstage}"
 ENV_FILE="$ROOT/.env"
@@ -354,7 +359,8 @@ section users
 py_json=""
 if command -v python3 >/dev/null; then
   live_flag=""; [ "$LIVE" = 1 ] && live_flag="--live"
-  py_json=$(cd "$BIN_DIR" && ROOT="$ROOT" python3 rs_doctor.py --root "$ROOT" --json $live_flag 2>/tmp/rs_doctor.$$.err)
+  export ROOT
+  py_json=$(cd "$BIN_DIR" && python3 rs_doctor.py --root "$ROOT" --json $live_flag 2>/tmp/rs_doctor.$$.err)
   py_rc=$?
   if [ -z "$py_json" ] || [ "$py_rc" -gt 2 ]; then
     fail "rs_doctor.py did not run: $(head -1 /tmp/rs_doctor.$$.err 2>/dev/null)"
@@ -369,13 +375,13 @@ if [ -n "$py_json" ] && command -v jq >/dev/null; then
   done < <(printf '%s' "$py_json" | jq -r '.checks[] | [.id, .status, .text] | @tsv')
 elif [ -n "$py_json" ]; then
   # No jq to merge with: show the Python report as is and count its outcome.
-  (cd "$BIN_DIR" && ROOT="$ROOT" python3 rs_doctor.py --root "$ROOT" $live_flag) || fails=$((fails + 1))
+  (cd "$BIN_DIR" && python3 rs_doctor.py --root "$ROOT" $live_flag) || fails=$((fails + 1))
 fi
 
 rc=0
 if [ "$fails" -gt 0 ]; then rc=1; elif [ "$STRICT" = 1 ] && [ "$warns" -gt 0 ]; then rc=2; fi
 if [ "$JSON" = 1 ]; then
-  printf '{"checks":[%s],"fails":%d,"warns":%d}\n' "$rows" "$fails" "$warns"
+  printf '{"checks":[%s],"fails":%d,"warns":%d}\n' "$rows" "$fails" "$warns" >&3
   exit "$rc"
 fi
 echo

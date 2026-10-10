@@ -7,5 +7,6 @@
     "paths": { "@app/*": ["../dashboard-ui/src/*"] }
   },
   "include": [".astro/types.d.ts", "**/*", "../dashboard-ui/src/assets.d.ts"],
-  "exclude": ["dist"]
+  // public/try holds the built replay (a 700 KB bundle) — not for the checker.
+  "exclude": ["dist", "public/try"]
 }

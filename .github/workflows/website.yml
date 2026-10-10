@@ -3,7 +3,16 @@ name: website
 on:
   push:
     branches: [main]
-    paths: ["website/**", ".github/workflows/website.yml"]
+    # The site ships the dashboard's replay build (website/scripts/build-replay.mjs), so a
+    # change to the PR page or the replay fixtures rebuilds the site too.
+    paths:
+      - "website/**"
+      - "dashboard-ui/src/**"
+      - "dashboard-ui/fixtures/**"
+      - "dashboard-ui/scripts/build-replay.mjs"
+      - "dashboard-ui/package.json"
+      - "dashboard-ui/pnpm-lock.yaml"
+      - ".github/workflows/website.yml"
   workflow_dispatch:
 
 permissions:
@@ -30,7 +39,13 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: website/pnpm-lock.yaml
+          cache-dependency-path: |
+            website/pnpm-lock.yaml
+            dashboard-ui/pnpm-lock.yaml
+      # The replay (/try/) is built from dashboard-ui by `pnpm build` in website/, so the
+      # dashboard's dependencies have to be installed too.
+      - run: pnpm install --frozen-lockfile
+        working-directory: dashboard-ui
       - run: pnpm install --frozen-lockfile
         working-directory: website
       - run: pnpm build

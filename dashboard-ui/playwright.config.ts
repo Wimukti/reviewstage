@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { FIXTURE, PORT, SECRET } from "./e2e/fixture";
+import { REPLAY_ORIGIN } from "./e2e/replay-server";
 
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -19,16 +20,26 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    // Build the fixture (so the server boots against a ready .env/users.json), build the SPA
-    // bundle, then serve it (SPA on) against the offline fixture. The fake gh in the fixture
-    // shadows any real gh on PATH so no call reaches GitHub.
-    command:
-      "node --import tsx e2e/fixture.ts && pnpm build && " +
-      `PATH="${FIXTURE}/fakebin:$PATH" ROOT="${FIXTURE}" RS_SECRET="${SECRET}" ` +
-      `RS_SPA=1 RS_PORT=${PORT} python3 ../bin/server.py`,
-    url: `${BASE}/health`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      // Build the fixture (so the server boots against a ready .env/users.json), build the SPA
+      // bundle, then serve it (SPA on) against the offline fixture. The fake gh in the fixture
+      // shadows any real gh on PATH so no call reaches GitHub.
+      command:
+        "node --import tsx e2e/fixture.ts && pnpm build && " +
+        `PATH="${FIXTURE}/fakebin:$PATH" ROOT="${FIXTURE}" RS_SECRET="${SECRET}" ` +
+        `RS_SPA=1 RS_PORT=${PORT} python3 ../bin/server.py`,
+      url: `${BASE}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      // The public replay (lane 4): the same PR page built as its own bundle and served from a
+      // static origin with no /api at all (e2e/replay-server.ts), for replay.spec.ts.
+      command: "node --import tsx e2e/replay-server.ts",
+      url: `${REPLAY_ORIGIN}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

@@ -36,11 +36,12 @@ export default defineConfig({
   },
   integrations: [
     react(),
-    // stage-proof is the island's proof page (design §7), not a page for readers.
+    // /try/ hosts the interactive replay (lane 4), an app rather than a page to index; its
+    // readable twins are the /examples/ pages, which are in the map.
     // <lastmod> is each page's last commit date (scripts/site-meta.mjs), so a crawler can tell
     // a changed page from an untouched one; the build time stands in where git has no answer.
     sitemap({
-      filter: (page) => !page.includes("/stage-proof/"),
+      filter: (page) => !page.includes("/try/"),
       serialize: (item) => ({ ...item, lastmod: lastmodFor(item.url) }),
     }),
     starlight({

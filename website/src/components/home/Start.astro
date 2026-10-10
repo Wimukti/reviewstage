@@ -23,7 +23,7 @@ const team = ["One server for everyone", "Each reviewer signs in as themselves",
         <ol class="m-0 grid list-none gap-2 p-0 text-sm">
           {solo.map((s, i) => <li class="flex items-center gap-3"><span class="inline-flex size-6 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary tabular-nums">{i + 1}</span>{s}</li>)}
         </ol>
-        <p class="m-0 text-sm text-muted-foreground">Then scan the QR code from the app menu to add your phone. Needs Node 20+, Git and Claude Code.</p>
+        <p class="m-0 text-sm text-muted-foreground">Then scan the QR code from the app menu to add your phone. Needs Node 20+, Git and Claude Code. Not ready to install? <a class="inline-flex min-h-11 items-center" href={withBase("/try/")}>Try a stored review live</a>.</p>
         </div>
         <PlayVideo src={wizardMp4} poster={wizardPoster.src} width={720} height={900} class="aspect-[4/5] overflow-hidden rounded-lg bg-background max-sm:mx-auto max-sm:w-52" videoClass="object-cover" label="The first-run window: Continue with GitHub, Connect Claude, then pick repositories" />
       </article>

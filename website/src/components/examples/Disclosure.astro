@@ -1,0 +1,10 @@
+---
+/* The disclosure every example page carries, in the same words as the replay's banner. */
+import { FlaskConical } from "lucide-react";
+interface Props { class?: string }
+const { class: extra = "" } = Astro.props;
+---
+<p role="note" data-testid="example-disclosure" class={`m-0 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-amber/12 px-4 py-2.5 text-sm ${extra}`}>
+  <FlaskConical className="size-4 shrink-0 text-amber" aria-hidden="true" />
+  <span><b>Precomputed example.</b> This review was run once on a real pull request and stored. Nothing on this page talks to GitHub or Claude, and nothing leaves this page.</span>
+</p>

@@ -1,0 +1,51 @@
+---
+/* The examples index: three stored reviews, each a PR with one finding to keep, one to drop and
+ * one to edit. Every card reads as a page and runs as the live replay (/try/). */
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+import Disclosure from "../../components/examples/Disclosure.astro";
+import { StatusBadge } from "@app/ui";
+import { button } from "../../components/marketing/variants";
+import { withBase } from "../../content/site-links";
+import { EXAMPLES_H1, examples, review, tryUrl, verdictOf } from "../../content/examples";
+
+const title = `${EXAMPLES_H1} | ReviewStage`;
+const description = "Three real pull-request reviews, stored: a bug worth keeping, a plausible finding that was wrong, a valid one said badly. See what a reviewer kept, dropped and edited — then try it live.";
+---
+<MarketingLayout {title} {description}>
+  <section class="home-section" aria-labelledby="examples-title">
+    <div class="container-page section-inner">
+      <nav aria-label="Breadcrumb" class="text-sm text-muted-foreground"><a href={withBase("/")} class="text-muted-foreground hover:text-foreground">Home</a> / <span class="text-foreground">Examples</span></nav>
+      <div class="grid gap-4">
+        <h1 id="examples-title" class="section-title">{EXAMPLES_H1}</h1>
+        <p class="m-0 max-w-[64ch] text-base text-muted-foreground">Every review ReviewStage drafts goes through a person before it posts. These three were run once on real pull requests and stored, so you can see the whole shape of it: the diff, what the agent found, how sure it was, and what the reviewer did with each finding.</p>
+        <Disclosure />
+      </div>
+      <ol class="m-0 grid list-none gap-4 p-0 lg:grid-cols-3" data-testid="example-list">
+        {examples.map((fx) => {
+          const v = verdictOf(fx);
+          const rev = review(fx);
+          return (
+            <li class="grid content-start gap-4 rounded-xl bg-card p-5 sm:p-6" data-slug={fx.slug}>
+              <p class="m-0 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span class="font-medium text-foreground">{fx.repo}</span>#{fx.pr}<span>·</span>{fx.language}</p>
+              <h2 class="m-0 text-lg font-semibold leading-snug"><a href={withBase(`/examples/${fx.slug}/`)} class="text-foreground no-underline hover:underline">{fx.title}</a></h2>
+              <p class="m-0 text-sm text-muted-foreground">{fx.headline}</p>
+              <div class="flex flex-wrap items-center gap-1.5">
+                {rev.chips.map((c) => <StatusBadge kind={c.kind}>{c.n} {c.label}</StatusBadge>)}
+              </div>
+              <p class="m-0 text-sm">{v.text}</p>
+              <div class="mt-auto flex flex-wrap gap-2">
+                <a class={button({}, "h-11")} href={withBase(`/examples/${fx.slug}/`)}>Read the example</a>
+                <a class={button({ variant: "secondary" }, "h-11 bg-background hover:bg-accent")} href={withBase(tryUrl(fx.slug))}>Try it live</a>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  </section>
+  <script>
+    import { bump, exposeEvents } from "@app/replay/events";
+    exposeEvents();
+    bump("example_viewed");
+  </script>
+</MarketingLayout>

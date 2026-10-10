@@ -1,0 +1,45 @@
+---
+/* One file's hunks as GitHub shows them: new-file line numbers, added and removed lines on the
+ * token tints, and the finding's line marked. Static markup, no script; colours are tokens.
+ * The lines are built as escaped HTML here because a <pre> keeps every character, and template
+ * whitespace inside it would otherwise become part of the diff. */
+interface Props { filename: string; patch: string; hit?: number; class?: string }
+const { filename, patch, hit, class: extra = "" } = Astro.props;
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+let n = 0;
+const rows: string[] = [];
+for (const raw of patch.replace(/\n$/, "").split("\n")) {
+  const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+  if (h) {
+    n = Number(h[1]);
+    rows.push(`<span class="line hunk"><span class="n" aria-hidden="true"></span><span class="sign" aria-hidden="true"> </span><span class="t">${esc(raw)}</span>\n</span>`);
+    continue;
+  }
+  if (raw.startsWith("-")) {
+    rows.push(`<span class="line del"><span class="n" aria-hidden="true"></span><span class="sign" aria-hidden="true">−</span><span class="t">${esc(raw.slice(1))}</span>\n</span>`);
+    continue;
+  }
+  const add = raw.startsWith("+");
+  const cls = `line ${add ? "add" : "ctx"}${hit === n ? " hit" : ""}`;
+  rows.push(`<span class="${cls}" data-n="${n}"><span class="n" aria-hidden="true">${n}</span><span class="sign" aria-hidden="true">${add ? "+" : " "}</span><span class="t">${esc(raw.slice(1))}</span>\n</span>`);
+  n += 1;
+}
+const html = rows.join("");
+---
+<figure class={`diff m-0 min-w-0 max-w-full overflow-hidden rounded-lg bg-background ${extra}`}>
+  <figcaption class="flex items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground"><span class="font-medium text-foreground">{filename}</span></figcaption>
+  <pre class="m-0 overflow-x-auto bg-transparent p-0 py-1 text-xs leading-[1.55]"><code set:html={html} /></pre>
+</figure>
+<style>
+  .diff { contain: inline-size; }
+  .diff .line { display: grid; grid-template-columns: 3.25rem 1.1rem minmax(0, 1fr); padding-inline: .5rem; }
+  .diff .n { text-align: right; padding-right: .75rem; color: var(--graphite); user-select: none; }
+  .diff .sign { color: var(--graphite); user-select: none; }
+  .diff .t { white-space: pre; }
+  .diff .hunk { color: var(--graphite); background: var(--blue-bg); }
+  .diff .add { background: var(--green-bg); }
+  .diff .add .sign { color: var(--green); }
+  .diff .del { background: var(--red-bg); }
+  .diff .del .sign { color: var(--red); }
+  .diff .hit { background: var(--amber-bg); box-shadow: inset 3px 0 0 var(--amber); }
+</style>

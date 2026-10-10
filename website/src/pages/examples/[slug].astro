@@ -1,0 +1,145 @@
+---
+/* One stored review, as a page: the PR, the verdict, then each finding with its diff, the
+ * agent's evidence and confidence, how to verify it, the person's decision and why, and
+ * finally the review that would post. Rendered from the same fixture the live replay runs. */
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+import Disclosure from "../../components/examples/Disclosure.astro";
+import DiffHunk from "../../components/examples/DiffHunk.astro";
+import CommandPill from "../../components/home/CommandPill.astro";
+import { Verdict } from "@app/ReviewParts";
+import { StatusBadge } from "@app/ui";
+import { MdText } from "../../components/examples/MdText";
+import { Check, Pencil, Trash2 } from "lucide-react";
+import { button } from "../../components/marketing/variants";
+import { withBase } from "../../content/site-links";
+import { CONFIDENCE_WORD, DECISION_TONE, DECISION_WORD, examples, findingsOf, review, tryUrl, verdictOf } from "../../content/examples";
+
+export function getStaticPaths() {
+  return examples.map((fx) => ({ params: { slug: fx.slug }, props: { fx } }));
+}
+const { fx } = Astro.props;
+const rev = review(fx);
+const v = verdictOf(fx);
+const findings = findingsOf(fx);
+const posted = findings.filter((f) => f.finalBody !== null);
+const title = `${fx.title} | ReviewStage`;
+const description = `A stored ReviewStage review of ${fx.repo}#${fx.pr}: ${fx.headline}`;
+const ICON = { keep: Check, drop: Trash2, edit: Pencil } as const;
+const size = `+${fx.additions.toLocaleString("en-US")} −${fx.deletions.toLocaleString("en-US")} · ${fx.changedFiles} files`;
+---
+<MarketingLayout {title} {description}>
+  <article class="home-section" aria-labelledby="example-title" data-testid="example" data-slug={fx.slug}>
+    <div class="container-page grid min-w-0 gap-8">
+      <header class="grid min-w-0 gap-4">
+        <nav aria-label="Breadcrumb" class="text-sm text-muted-foreground"><a href={withBase("/")} class="text-muted-foreground hover:text-foreground">Home</a> / <a href={withBase("/examples/")} class="text-muted-foreground hover:text-foreground">Examples</a> / <span class="text-foreground">{fx.repo}#{fx.pr}</span></nav>
+        <h1 id="example-title" class="section-title">{fx.title}</h1>
+        <p class="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" data-testid="example-meta"><span class="font-medium text-foreground">{fx.repo}</span><span>#{fx.pr}</span><span>·</span><span>by {fx.author}</span><span>·</span><span>{size}</span><span>·</span><span>{fx.language}</span></p>
+        <Disclosure />
+        <div class="flex flex-wrap gap-2">
+          <a class={button({}, "h-11")} href={withBase(tryUrl(fx.slug))} data-testid="example-try">Try it live — keep, drop and edit these yourself</a>
+        </div>
+      </header>
+
+      <section class="grid min-w-0 gap-3 rounded-xl bg-card p-5 sm:p-6" aria-labelledby="verdict-title">
+        <h2 id="verdict-title" class="m-0 text-base font-semibold text-muted-foreground">What the agent said</h2>
+        <Verdict tone={v.tone} text={v.text} chips={rev.chips} testid="verdict" />
+        <ul class="m-0 grid list-none gap-1.5 p-0 text-base">
+          {rev.keyPoints.map((k) => <li class="flex gap-3"><span class="mt-[.6em] size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true"></span><span>{k}</span></li>)}
+        </ul>
+        <details class="text-sm text-muted-foreground">
+          <summary class="min-h-11 cursor-pointer list-none py-2 font-medium text-foreground [&::-webkit-details-marker]:hidden">Full summary and the reviewer's notes</summary>
+          <div class="grid gap-3 pt-1 [&_p]:m-0">
+            <MdText text={rev.summary} />
+            {rev.explainer && <p><b class="text-foreground">What this PR does.</b> {rev.explainer}</p>}
+            {rev.analysis && <p><b class="text-foreground">What was checked, and what was dropped.</b> {rev.analysis}</p>}
+          </div>
+        </details>
+      </section>
+
+      <ol class="m-0 grid min-w-0 list-none gap-6 p-0" data-testid="example-findings">
+        {findings.map((f) => {
+          const Icon = ICON[f.decision.action];
+          return (
+            <li class="grid min-w-0 gap-4 rounded-xl bg-card p-5 sm:p-6" data-testid="example-finding" data-decision={f.decision.action}>
+              <header class="grid min-w-0 gap-2">
+                <p class="m-0 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>Finding {f.index + 1} of {findings.length}</span>
+                  <StatusBadge kind={f.comment.severity} />
+                  <span class="font-medium text-foreground">{f.comment.path}:{f.comment.line}</span>
+                </p>
+                <h2 class="m-0 text-lg font-semibold leading-snug">{f.comment.title}</h2>
+                {f.comment.impact && <p class="m-0 max-w-[72ch] text-sm text-muted-foreground"><span class="mr-1.5 text-xs font-medium uppercase tracking-wide">Why it matters</span>{f.comment.impact}</p>}
+              </header>
+
+              {f.file && <DiffHunk filename={f.file.filename} patch={f.file.patch} hit={f.comment.line} />}
+
+              <div class="grid min-w-0 gap-4 lg:grid-cols-2">
+                <section class="grid min-w-0 content-start gap-2" aria-label="The finding">
+                  <h3 class="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">The comment as drafted</h3>
+                  <div class="rounded-lg bg-background px-4 py-3 text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2"><MdText text={f.comment.body} /></div>
+                  {f.comment.suggestion && (
+                    <div class="overflow-hidden rounded-lg bg-green/10">
+                      <div class="px-3 py-1.5 text-xs text-green">Suggested change — the author could apply this in one click on GitHub</div>
+                      <pre class="m-0 overflow-x-auto rounded-none bg-transparent p-3 text-xs"><code>{f.comment.suggestion}</code></pre>
+                    </div>
+                  )}
+                </section>
+                <section class="grid min-w-0 content-start gap-3" aria-label="Evidence and confidence">
+                  <h3 class="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence and confidence</h3>
+                  <p class="m-0 flex flex-wrap gap-1.5">
+                    <StatusBadge tone={f.comment.confidence === "high" ? "green" : f.comment.confidence === "medium" ? "amber" : "graphite"}>{CONFIDENCE_WORD[f.comment.confidence ?? "medium"]}</StatusBadge>
+                    <StatusBadge tone="graphite">{f.anchorable ? "Lands inline on the diff" : "Lands in the review summary"}</StatusBadge>
+                  </p>
+                  {f.comment.how_to_verify && (
+                    <p class="m-0 text-sm"><b class="text-foreground">How to verify.</b> <span class="text-muted-foreground">{f.comment.how_to_verify}</span></p>
+                  )}
+                </section>
+              </div>
+
+              <section class={`grid gap-2 rounded-lg px-4 py-3 ${DECISION_TONE[f.decision.action]}`} aria-label="The human decision" data-testid="example-decision">
+                <p class="m-0 flex flex-wrap items-center gap-2 text-sm font-semibold"><Icon className="size-4" aria-hidden="true" /><span>{DECISION_WORD[f.decision.action]} by the reviewer</span></p>
+                <p class="m-0 text-sm">{f.decision.reason}</p>
+                {f.decision.action === "edit" && f.decision.edited_body && (
+                  <div class="grid gap-1 text-sm">
+                    <p class="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">Posted instead</p>
+                    <div class="rounded-md bg-background px-3 py-2 leading-relaxed">{f.decision.edited_body}</div>
+                  </div>
+                )}
+              </section>
+            </li>
+          );
+        })}
+      </ol>
+
+      <section class="grid min-w-0 gap-4 rounded-xl bg-card p-5 sm:p-6" aria-labelledby="posted-title" data-testid="example-review">
+        <h2 id="posted-title" class="m-0 text-base font-semibold">The review that posts — {posted.length} of {findings.length} comments, as one {rev.event === "REQUEST_CHANGES" ? "request for changes" : "comment review"}, under the reviewer's own name</h2>
+        <ol class="m-0 grid min-w-0 list-none gap-2 p-0">
+          {posted.map((f) => (
+            <li class="min-w-0 rounded-lg bg-background px-4 py-3" data-testid="example-posted">
+              <p class="mb-1.5 mt-0 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><StatusBadge kind={f.comment.severity} /><span class="font-medium text-foreground">{f.comment.path}:{f.comment.line}</span><span>{f.anchorable ? "inline" : "in the summary"}</span>{f.decision.action === "edit" && <span>· edited</span>}</p>
+              <div class="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2"><MdText text={f.finalBody ?? ""} /></div>
+              {f.comment.suggestion && f.decision.action !== "edit" && <pre class="mb-0 mt-2 overflow-x-auto rounded-md bg-green/10 p-3 text-xs"><code>{f.comment.suggestion}</code></pre>}
+            </li>
+          ))}
+        </ol>
+        <p class="m-0 text-sm text-muted-foreground">Nothing was sent from this page: the review above is what the reviewer's click would post from their own ReviewStage, with their own GitHub account.</p>
+      </section>
+
+      <section class="grid min-w-0 gap-4 rounded-xl bg-card p-5 sm:p-6" aria-labelledby="cta-title">
+        <h2 id="cta-title" class="m-0 text-lg font-semibold">Run this on your PR</h2>
+        <p class="m-0 max-w-[60ch] text-sm text-muted-foreground">One command on your laptop. Your GitHub account, your Claude subscription, your call on every comment — nothing posts until you click.</p>
+        <div class="flex flex-wrap items-center gap-3">
+          <CommandPill class="w-fit" />
+          <a class={button({ variant: "secondary" }, "h-11 bg-background hover:bg-accent")} href={withBase("/start/install/")}>Install guide</a>
+          <a class={button({ variant: "ghost" }, "h-11")} href={withBase(tryUrl(fx.slug))}>Try it live</a>
+        </div>
+      </section>
+    </div>
+  </article>
+  <script>
+    import { bump, exposeEvents } from "@app/replay/events";
+    exposeEvents();
+    bump("example_viewed");
+    for (const b of document.querySelectorAll("[data-install]")) b.addEventListener("click", () => bump("install_copied"));
+  </script>
+</MarketingLayout>

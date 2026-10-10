@@ -1,0 +1,105 @@
+{
+  "slug": "cache-stale-read",
+  "repo": "harbor-tools/catalog-api",
+  "pr": "88",
+  "title": "Cache product lookups for 60 seconds",
+  "author": "jun-w",
+  "head": "c21d5e8f0b93",
+  "additions": 57,
+  "deletions": 6,
+  "changedFiles": 3,
+  "language": "TypeScript · Node 22 service",
+  "headline": "An invalidation that deletes the wrong key, an eviction the reviewer overlooked, and a magic-number nit worth rephrasing.",
+  "me": { "login": "sam", "name": "Sam", "personal": true, "dry_run": true },
+  "usage": { "model": "claude-sonnet-4-5", "inputTokens": 35120, "outputTokens": 2988, "cacheReadTokens": 20900, "realTokens": 17208, "costUsd": 0.16, "durationMs": 149000 },
+  "effort": { "label": "Standard", "hint": "The default depth: reads the diff and the files it touches." },
+  "files": [
+    {
+      "filename": "src/catalog/cache.ts",
+      "status": "added",
+      "patch": "@@ -0,0 +1,31 @@\n+const MAX_ENTRIES = 5_000;\n+\n+interface Entry<T> { value: T; expires: number }\n+\n+export class TtlCache<T> {\n+  private readonly map = new Map<string, Entry<T>>();\n+\n+  constructor(private readonly ttlMs: number) {}\n+\n+  get(key: string): T | undefined {\n+    const e = this.map.get(key);\n+    if (!e) return undefined;\n+    if (e.expires <= Date.now()) {\n+      this.map.delete(key);\n+      return undefined;\n+    }\n+    return e.value;\n+  }\n+\n+  set(key: string, value: T): void {\n+    if (this.map.size >= MAX_ENTRIES) {\n+      const oldest = this.map.keys().next().value;\n+      if (oldest !== undefined) this.map.delete(oldest);\n+    }\n+    this.map.set(key, { value, expires: Date.now() + this.ttlMs });\n+  }\n+\n+  delete(key: string): void {\n+    this.map.delete(key);\n+  }\n+}\n"
+    },
+    {
+      "filename": "src/catalog/service.ts",
+      "status": "modified",
+      "patch": "@@ -1,18 +1,33 @@\n import { db } from \"../db\";\n+import { TtlCache } from \"./cache\";\n import type { Product, ProductPatch } from \"./types\";\n \n+const cache = new TtlCache<Product>(60_000);\n+const key = (tenant: string, id: string) => `${tenant}:${id}`;\n+\n export async function getProduct(tenant: string, id: string): Promise<Product | null> {\n-  return db.products.findOne({ tenant, id });\n+  const hit = cache.get(key(tenant, id));\n+  if (hit) return hit;\n+  const row = await db.products.findOne({ tenant, id });\n+  if (row) cache.set(key(tenant, id), row);\n+  return row;\n }\n \n export async function updateProduct(tenant: string, id: string, patch: ProductPatch): Promise<Product> {\n   const row = await db.products.update({ tenant, id }, patch);\n+  cache.delete(id);\n   return row;\n }\n"
+    },
+    {
+      "filename": "test/service.test.ts",
+      "status": "modified",
+      "patch": "@@ -30,4 +30,12 @@ describe(\"catalog service\", () => {\n+  it(\"serves the second lookup from cache\", async () => {\n+    await getProduct(\"t1\", \"p1\");\n+    await getProduct(\"t1\", \"p1\");\n+    expect(db.products.findOne).toHaveBeenCalledTimes(1);\n+  });\n });\n"
+    }
+  ],
+  "review": {
+    "event": "COMMENT",
+    "summary": "Puts a 60 s TTL cache in front of `getProduct`, keyed by tenant and id, with FIFO eviction at 5,000 entries. The cache class is small and correct. The wiring has one bug: `updateProduct` invalidates by `id` alone while the entries are stored under `tenant:id`, so the delete never matches and a product reads stale for up to a minute after it is edited — the exact case the one new test does not cover.",
+    "keyPoints": [
+      "Invalidation deletes `id` but entries are keyed `tenant:id` — updates read stale for 60 s.",
+      "Entry count is bounded by FIFO eviction; worth confirming the bound is right for this service.",
+      "The TTL is a literal in the service module."
+    ],
+    "explainer": "Product lookups are the hottest query in the catalog API. This PR remembers each product for a minute after it is first read so repeated lookups skip the database, and forgets a product when it is updated so the change shows immediately.",
+    "analysis": "Checked: expiry is lazy on read (fine for this size); `set` evicts the oldest insertion when full — `Map` preserves insertion order so `keys().next()` is the oldest; a miss on a null row is not cached (every lookup of a missing product still hits the DB — acceptable, flagged nowhere). Dropped: a suggestion to cache nulls (a product decision, not a review finding); a note that `hit` would skip a product whose value is falsy (a `Product` is an object, never falsy).",
+    "comments": [
+      {
+        "path": "src/catalog/service.ts",
+        "line": 20,
+        "severity": "should-fix",
+        "confidence": "high",
+        "title": "Invalidation uses the wrong key — updated products read stale for up to 60 s",
+        "impact": "An edit to a product (price, availability) is invisible to the API for up to a minute, on every instance that has the old entry cached.",
+        "how_to_verify": "Read a product, update its price, read it again inside 60 s: the old price comes back. The new test passes because it never updates.",
+        "body": "Entries go in under `key(tenant, id)` — `\"acme:p1\"` — but `updateProduct` calls `cache.delete(id)`, which looks for `\"p1\"` and deletes nothing. Use the same key builder so the update really evicts the entry.",
+        "suggestion": "cache.delete(key(tenant, id));",
+        "reply_to": null,
+        "teach": "keep"
+      },
+      {
+        "path": "src/catalog/cache.ts",
+        "line": 20,
+        "severity": "should-fix",
+        "confidence": "medium",
+        "title": "Unbounded growth — entries are never evicted, only expired on read",
+        "impact": "A catalog with millions of products and a scan-style client (a crawler, an export job) fills the map until the process runs out of memory; expired entries are only removed if the same key is read again.",
+        "how_to_verify": "Call `set` with 1,000,000 distinct keys and watch heap usage.",
+        "body": "`set()` adds to the `Map` without any size check, and `get()` only removes the entry it is asked for. Under a wide key space (a crawler walking the catalog) the map grows without bound until the process is OOM-killed. Add a maximum entry count and evict when it is reached, or sweep expired entries on a timer.",
+        "suggestion": "",
+        "reply_to": null,
+        "teach": "drop"
+      },
+      {
+        "path": "src/catalog/service.ts",
+        "line": 5,
+        "severity": "nit",
+        "confidence": "high",
+        "title": "TTL is a literal in the service module",
+        "impact": "Tuning the cache lifetime — the first thing ops will want to do once it is live — needs a code change and a deploy.",
+        "how_to_verify": "Search `src/config.ts` for the other catalog settings; the TTL is the only one not there.",
+        "body": "Why is the TTL hardcoded? Magic numbers everywhere. `60_000` should obviously be in config like everything else.",
+        "suggestion": "",
+        "reply_to": null,
+        "teach": "edit"
+      }
+    ]
+  },
+  "decisions": [
+    {
+      "action": "keep",
+      "reason": "Confirmed by reading the two lines side by side: `set` goes through `key(tenant, id)`, `delete` does not. The one-line suggestion is the whole fix. Posted as written."
+    },
+    {
+      "action": "drop",
+      "reason": "Not true: `cache.ts:20-23` evicts the oldest entry once the map reaches `MAX_ENTRIES` (5,000), so the bound exists. The reviewer saw the lazy expiry in `get` and stopped reading. Whether 5,000 is the right number is a fair question, but that is not what this finding says."
+    },
+    {
+      "action": "edit",
+      "reason": "A real nit — the other catalog settings live in config — but \"magic numbers everywhere\" is both rude and false (there is one). Said what to do and where.",
+      "edited_body": "Could the 60 s TTL move to `src/config.ts` next to the other catalog settings? It is the first value ops will want to tune once this is live, and today that needs a deploy."
+    }
+  ],
+  "explain": {
+    "0": "The cache files each product under a label like \"shop-A / product-1\". When a product changes, the code tries to throw away the stale copy — but it looks for a label that says just \"product-1\", finds nothing, and leaves the old copy in place for up to a minute.",
+    "1": "The reviewer thought the cache could grow forever. It cannot: once it holds 5,000 items it throws out the oldest before adding a new one. The limit is right there in the cache class, a few lines above the spot the reviewer pointed at.",
+    "2": "\"Remember each product for 60 seconds\" is written straight into the code. Moving that number to the settings file means someone can change it without a new release."
+  }
+}

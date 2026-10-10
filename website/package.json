@@ -10,11 +10,12 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/gen-brand.mjs && astro build",
+    "build": "node scripts/gen-brand.mjs && node scripts/build-replay.mjs && astro build",
     "check": "astro check",
     "preview": "astro preview",
     "brand": "node scripts/gen-brand.mjs",
-    "verify": "node scripts/verify-site.mjs"
+    "verify": "node scripts/verify-site.mjs",
+    "build:replay": "node scripts/build-replay.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",

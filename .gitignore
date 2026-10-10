@@ -27,3 +27,7 @@ dashboard-ui/e2e/.launch-video/
 desktop/node_modules/
 desktop/server/
 desktop/*.tgz
+
+# lane 4: the public replay build and its copy inside the site
+dashboard-ui/replay-dist/
+website/public/try/

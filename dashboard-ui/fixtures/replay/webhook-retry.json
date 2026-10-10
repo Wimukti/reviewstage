@@ -1,0 +1,110 @@
+{
+  "slug": "webhook-retry",
+  "repo": "northwind/dispatch",
+  "pr": "412",
+  "title": "Retry failed webhook deliveries with exponential backoff",
+  "author": "priya-k",
+  "head": "9f3c2a1d7e04",
+  "additions": 61,
+  "deletions": 9,
+  "changedFiles": 4,
+  "language": "TypeScript · Node 22 service",
+  "headline": "A retry loop that never gives up on a 404, a backoff cap the reviewer missed, and a jitter nit said rudely.",
+  "me": { "login": "sam", "name": "Sam", "personal": true, "dry_run": true },
+  "usage": { "model": "claude-sonnet-4-5", "inputTokens": 48210, "outputTokens": 3904, "cacheReadTokens": 31050, "realTokens": 21064, "costUsd": 0.21, "durationMs": 184000 },
+  "effort": { "label": "Standard", "hint": "The default depth: reads the diff and the files it touches." },
+  "files": [
+    {
+      "filename": "src/webhooks/deliver.ts",
+      "status": "modified",
+      "patch": "@@ -14,9 +14,24 @@ import { backoffMs, MAX_ATTEMPTS } from \"./backoff\";\n import { DeliveryError } from \"./errors\";\n \n export async function deliver(hook: Webhook, payload: Payload): Promise<void> {\n-  const res = await fetch(hook.url, { method: \"POST\", body: JSON.stringify(payload) });\n-  if (!res.ok) throw new DeliveryError(res.status);\n+  let attempt = 0;\n+  while (true) {\n+    const res = await fetch(hook.url, {\n+      method: \"POST\",\n+      headers: { \"content-type\": \"application/json\", \"x-dispatch-attempt\": String(attempt + 1) },\n+      body: JSON.stringify(payload),\n+      signal: AbortSignal.timeout(10_000),\n+    });\n+    if (res.ok) return;\n+    attempt += 1;\n+    if (attempt >= MAX_ATTEMPTS) throw new DeliveryError(res.status, attempt);\n+    await sleep(backoffMs(attempt));\n+  }\n }\n+\n+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));\n"
+    },
+    {
+      "filename": "src/webhooks/backoff.ts",
+      "status": "added",
+      "patch": "@@ -0,0 +1,12 @@\n+export const MAX_ATTEMPTS = 5;\n+const BASE_MS = 1_000;\n+const MAX_BACKOFF_MS = 30_000;\n+\n+/**\n+ * Delay before retry number `attempt` (1-based): 1 s, 2 s, 4 s, 8 s, 16 s, capped at 30 s.\n+ */\n+export function backoffMs(attempt: number): number {\n+  return Math.min(MAX_BACKOFF_MS, BASE_MS * 2 ** (attempt - 1));\n+}\n"
+    },
+    {
+      "filename": "src/webhooks/errors.ts",
+      "status": "modified",
+      "patch": "@@ -3,6 +3,9 @@ export class DeliveryError extends Error {\n-  constructor(public readonly status: number) {\n-    super(`webhook delivery failed with ${status}`);\n+  constructor(public readonly status: number, public readonly attempts = 1) {\n+    super(`webhook delivery failed with ${status} after ${attempts} attempt(s)`);\n   }\n }\n"
+    },
+    {
+      "filename": "test/deliver.test.ts",
+      "status": "modified",
+      "patch": "@@ -22,4 +22,19 @@ describe(\"deliver\", () => {\n+  it(\"retries a 503 and succeeds on the second attempt\", async () => {\n+    fetchMock.mockResponseOnce(\"\", { status: 503 }).mockResponseOnce(\"\", { status: 200 });\n+    await deliver(hook, payload);\n+    expect(fetchMock).toHaveBeenCalledTimes(2);\n+  });\n+\n+  it(\"gives up after MAX_ATTEMPTS\", async () => {\n+    fetchMock.mockResponse(\"\", { status: 503 });\n+    await expect(deliver(hook, payload)).rejects.toThrow(/after 5 attempt/);\n+  });\n });\n"
+    }
+  ],
+  "review": {
+    "event": "COMMENT",
+    "summary": "Replaces the single-shot webhook POST with a bounded retry loop and a new `backoffMs` helper. The shape is right — a cap on attempts, a timeout per request, tests for the retry and the give-up path. One correctness problem: the loop retries on every non-2xx status, including the 4xx replies that can never succeed, so a receiver that returns 404 costs five attempts and 31 s of worker time per event. Two smaller notes on the backoff itself.",
+    "keyPoints": [
+      "Retries 4xx responses that cannot succeed — each dead endpoint burns all five attempts.",
+      "Backoff grows 2× per attempt; check the cap holds for a long outage.",
+      "No jitter: simultaneous failures retry in lockstep."
+    ],
+    "explainer": "When an event happens, `deliver()` POSTs it to a customer's webhook URL. Before this PR a single failed request lost the event. Now the request is retried up to five times with a growing delay between attempts, and the error names how many attempts were made.",
+    "analysis": "Checked: the loop terminates (attempt increments on every failure and the throw fires at MAX_ATTEMPTS); the per-request timeout aborts a hung receiver; the tests cover a transient failure and the give-up path. Dropped: a note about `sleep` being module-private (it is only used here); a question about whether `x-dispatch-attempt` should be 0- or 1-based (the header is new, either is fine).",
+    "comments": [
+      {
+        "path": "src/webhooks/deliver.ts",
+        "line": 25,
+        "severity": "should-fix",
+        "confidence": "high",
+        "title": "Every non-2xx is retried, including 4xx replies that can never succeed",
+        "impact": "A receiver that answers 404 or 400 costs five requests and ~31 s of backoff per event; a disabled endpoint with a busy stream will hold the delivery worker for most of its time.",
+        "how_to_verify": "Point a hook at a URL that returns 404 and deliver one event: watch five POSTs land 31 s apart. With the fix, one.",
+        "body": "`if (res.ok) return;` treats every non-2xx the same, so a `400`, `404` or `410` from the receiver is retried five times with the full backoff even though it cannot succeed. Only `408`, `425`, `429` and `5xx` are worth retrying. Throw straight away on the other 4xx so a dead endpoint costs one request, not five and 31 seconds.",
+        "suggestion": "if (res.ok) return;\nif (res.status >= 400 && res.status < 500 && ![408, 425, 429].includes(res.status)) {\n  throw new DeliveryError(res.status, attempt + 1);\n}",
+        "reply_to": null,
+        "teach": "keep"
+      },
+      {
+        "path": "src/webhooks/deliver.ts",
+        "line": 28,
+        "severity": "should-fix",
+        "confidence": "medium",
+        "title": "Backoff is unbounded — a long outage produces multi-minute sleeps",
+        "impact": "During a receiver outage the delay doubles every attempt with no ceiling, so late attempts sleep for minutes and the worker's queue backs up behind them.",
+        "how_to_verify": "Fail every request and log `backoffMs(attempt)` for attempts 1–5.",
+        "body": "`backoffMs(attempt)` doubles on every attempt (`BASE_MS * 2 ** (attempt - 1)`) and nothing caps it, so a sustained outage turns the fifth attempt into a very long sleep. Clamp the delay to a maximum (30 s is typical) so a down receiver degrades to a steady retry rate instead of ever-longer pauses.",
+        "suggestion": "",
+        "reply_to": null,
+        "teach": "drop"
+      },
+      {
+        "path": "src/webhooks/backoff.ts",
+        "line": 9,
+        "severity": "nit",
+        "confidence": "high",
+        "title": "No jitter on the backoff",
+        "impact": "When a receiver goes down, every in-flight delivery fails together and then retries at exactly the same moments, hammering it in waves as it comes back.",
+        "how_to_verify": "Fail 50 deliveries at once and plot the retry timestamps: without jitter they land in five tight spikes.",
+        "body": "No jitter. This is the textbook mistake — every retry guide written in the last decade covers it. Add randomness to the delay or this will just DDoS the receiver in waves the moment it recovers.",
+        "suggestion": "",
+        "reply_to": null,
+        "teach": "edit"
+      }
+    ]
+  },
+  "decisions": [
+    {
+      "action": "keep",
+      "reason": "Checked `deliver.ts:25` — `res.ok` is the only branch, so a 404 really does loop five times. The suggestion is a correct, minimal fix. Posted as written."
+    },
+    {
+      "action": "drop",
+      "reason": "Wrong: `backoff.ts:9` clamps the delay with `Math.min(MAX_BACKOFF_MS, …)`. The reviewer read the call site in `deliver.ts` without opening the helper it calls. Plausible on its face, so it was worth checking rather than trusting."
+    },
+    {
+      "action": "edit",
+      "reason": "The point stands — simultaneous failures retry in lockstep — but \"textbook mistake\" and \"DDoS\" are not how this team talks to each other. Kept the substance, said it plainly, and added the concrete range.",
+      "edited_body": "Consider adding jitter to the backoff (for example ±20% of the computed delay). When a receiver goes down, every in-flight delivery fails at the same moment and then retries at the same moments, so it comes back to a wave of requests. A little randomness spreads them out."
+    }
+  ],
+  "explain": {
+    "0": "Imagine mailing a letter to an address that no longer exists. The post office tells you \"no such address\" straight away. This code ignores that answer and tries to mail the same letter four more times, waiting longer each time, before giving up. The fix is to stop as soon as the answer is \"this will never work\" and only retry when the answer is \"try again later\".",
+    "1": "The reviewer thought the waiting time between tries could grow forever — a minute, then two, then four. It is a fair worry in general, but the helper that computes the wait caps it at 30 seconds, so this one does not apply here.",
+    "2": "If a thousand deliveries fail at the same second, they all retry at the same second, then the same second again. Adding a small random wobble to each wait spreads them out so the receiver gets a steady trickle instead of waves."
+  }
+}

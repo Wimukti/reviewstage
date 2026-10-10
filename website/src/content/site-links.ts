@@ -10,6 +10,8 @@ export const repo = "https://github.com/Wimukti/reviewstage";
 const l = {
   home: { label: "Home", href: "/" },
   getStarted: { label: "Get started", href: "/start/" },
+  examples: { label: "Examples", href: "/examples/" },
+  tryIt: { label: "Try it live", href: "/try/" },
   install: { label: "Install", href: "/start/install/" },
   firstReview: { label: "First review", href: "/start/first-review/" },
   teamWorkflow: { label: "Team workflow", href: "/guides/team-workflow/" },
@@ -32,6 +34,7 @@ const l = {
 };
 
 export const navLinks = [
+  { label: "Examples", href: l.examples.href },
   { label: "Docs", href: l.getStarted.href },
   { label: "Guides", href: l.reviewing.href },
   { label: "Security", href: l.security.href },
@@ -39,14 +42,14 @@ export const navLinks = [
 ];
 
 export const marketingFooterColumns: LinkColumn[] = [
-  { title: "Product", links: [l.getStarted, l.install, l.firstReview, l.teamWorkflow] },
+  { title: "Product", links: [l.examples, l.tryIt, l.getStarted, l.install, l.firstReview, l.teamWorkflow] },
   { title: "Documentation", links: [l.reviewing, l.skills, l.qa, l.notifications, l.teamMode, l.configuration, l.faq, l.troubleshooting] },
   { title: "Developers", links: [l.architecture, l.contributing, l.roadmap] },
   { title: "Project", links: [l.github, l.issues, l.license, l.security] },
 ];
 
 export const docsFooterColumns: LinkColumn[] = [
-  { title: "Start", links: [l.getStarted, l.install, l.firstReview, l.teamWorkflow] },
+  { title: "Start", links: [l.examples, l.getStarted, l.install, l.firstReview, l.teamWorkflow] },
   { title: "Operate", links: [l.security, l.configuration, l.faq, l.troubleshooting] },
   { title: "Build", links: [l.architecture, l.contributing, l.roadmap] },
   { title: "Project", links: [l.home, l.github, l.license] },

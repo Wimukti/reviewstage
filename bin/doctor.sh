@@ -6,6 +6,17 @@
 #   bin/doctor.sh                         from a checkout, a box, or a Compose project dir
 #   docker compose exec app doctor        inside the running container
 #   docker compose run --rm app doctor    a throwaway container sharing the data volume
+#   npx reviewstage --doctor              the desktop install (RS_DOCTOR_DESKTOP=1, tools on PATH)
+#
+# Flags: --json   {"checks":[{id,status,text,note?}],"fails":n,"warns":n} instead of lines
+#        --live   also probe GitHub and Claude with the stored tokens, and the sign-in hosts
+#                 (the default run makes no network call beyond loopback and never decrypts)
+#        --strict exit 2 when anything WARNed (0 all pass, 1 any FAIL, otherwise)
+#
+# Personal mode (npx reviewstage, RS_PERSONAL=1 or a desktop.json in ROOT) has no service token
+# by design — each user's own GitHub token polls and posts — so GITHUB_PAT is never required
+# there, and the app picks a free port each launch and records it in desktop.json, which is
+# where the /health probe looks. The per-user token checks live in rs_doctor.py.
 #
 # On a Docker install the install IS the container: the .env, the state volume, `claude`, `gh`
 # and ~/.claude/skills all live inside it, and none of them are on the host. Run from the host
@@ -15,23 +26,47 @@
 # is a ReviewStage Compose project whose `app` service is up, re-exec inside it.
 set -uo pipefail
 
+JSON=0; LIVE=0; STRICT=0
+for a in "$@"; do
+  case "$a" in
+    --json) JSON=1;; --live) LIVE=1;; --strict) STRICT=1;;
+    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0;;
+  esac
+done
+
 ROOT="${ROOT:-$HOME/.reviewstage}"
 ENV_FILE="$ROOT/.env"
 STATE="$ROOT/state"
-PORT="${RS_PORT:-8899}"
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The free-memory / free-disk floors, from the same file the job scripts read. Sourced rather
 # than restated: the doctor used to default MIN_FREE_DISK_MB to 1024 while the jobs defaulted it
 # to 500, and FAILed at a level no job script objects to. lib-common.sh is deliberately NOT
 # sourced here — it creates directories and pulls in notify.sh, and the doctor writes nothing.
 # shellcheck source=bin/lib-limits.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-limits.sh"
+. "$BIN_DIR/lib-limits.sh"
 
-if [ -t 1 ]; then G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; D=$'\e[2m'; N=$'\e[0m'; else G=; Y=; R=; D=; N=; fi
+if [ -t 1 ] && [ "$JSON" = 0 ]; then G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; D=$'\e[2m'; N=$'\e[0m'; else G=; Y=; R=; D=; N=; fi
 fails=0; warns=0
-pass() { printf '%sPASS%s  %s\n' "$G" "$N" "$*"; }
-warn() { printf '%sWARN%s  %s\n' "$Y" "$N" "$*"; warns=$((warns + 1)); }
-fail() { printf '%sFAIL%s  %s\n' "$R" "$N" "$*"; fails=$((fails + 1)); }
-note() { printf '      %s%s%s\n' "$D" "$*" "$N"; }
+# Every line is also a row for --json. `check <id>` names the next row; without one the id is
+# derived from the section the row was printed in.
+CHECK_ID=""; SECTION="doctor"; rows=""
+check() { CHECK_ID="$1"; }
+section() { SECTION="$1"; }
+json_str() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"; printf '"%s"' "$s"; }
+row() { # status text
+  local id="${CHECK_ID:-$SECTION}"; CHECK_ID=""
+  rows="$rows${rows:+,}{\"id\":$(json_str "$id"),\"status\":$(json_str "$1"),\"text\":$(json_str "$2")}"
+}
+pass() { row PASS "$*"; [ "$JSON" = 1 ] || printf '%sPASS%s  %s\n' "$G" "$N" "$*"; }
+warn() { row WARN "$*"; warns=$((warns + 1)); [ "$JSON" = 1 ] || printf '%sWARN%s  %s\n' "$Y" "$N" "$*"; }
+fail() { row FAIL "$*"; fails=$((fails + 1)); [ "$JSON" = 1 ] || printf '%sFAIL%s  %s\n' "$R" "$N" "$*"; }
+note() { row NOTE "$*"; [ "$JSON" = 1 ] || printf '      %s%s%s\n' "$D" "$*" "$N"; }
+say()  { [ "$JSON" = 1 ] || printf '%s\n' "$*"; }
+# with_timeout SECS cmd… — coreutils `timeout` where it exists; macOS ships without it, and a
+# probe that cannot be bounded is still better than one reported as "printed nothing".
+if command -v timeout >/dev/null 2>&1; then with_timeout() { timeout "$@"; }
+elif command -v gtimeout >/dev/null 2>&1; then with_timeout() { gtimeout "$@"; }
+else with_timeout() { shift; "$@"; }; fi
 
 # --- Docker: diagnose the install, not the laptop it is driven from --------------------------
 # in_container — true inside the ReviewStage image (or any container), so the re-exec below can
@@ -70,12 +105,12 @@ app_running() {
 }
 
 compose_fallback=""
-if ! in_container && is_rs_project; then
+if [ "${RS_DOCTOR_DESKTOP:-0}" != 1 ] && ! in_container && is_rs_project; then
   dc=$(compose_cmd)
   if [ -z "$dc" ]; then
     compose_fallback="this is a ReviewStage Compose project but docker is not on PATH — checking the host instead, which is not where a Docker install lives"
   elif app_running "$dc"; then
-    printf '%s\n' "${D}Compose project detected — running the checks inside the app container ($dc exec app doctor).${N}"
+    say "${D}Compose project detected — running the checks inside the app container ($dc exec app doctor).${N}"
     # -T when there is no terminal: without it Compose fails outright in a pipe or from cron.
     if [ -t 1 ]; then exec $dc exec app doctor "$@"; else exec $dc exec -T app doctor "$@"; fi
   else
@@ -83,28 +118,31 @@ if ! in_container && is_rs_project; then
   fi
 fi
 
-echo "ReviewStage doctor  ${D}(ROOT=$ROOT)${N}"
-[ -n "$compose_fallback" ] && warn "$compose_fallback"
-
 # --- config --------------------------------------------------------------------------------
+section config
 if [ -r "$ENV_FILE" ]; then
-  pass ".env present and readable ($ENV_FILE)"
   set -a
   # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
-  # The desktop app picks a free port at launch and records it only as a loopback PUBLIC_URL;
-  # its fetched tools (gh, jq, flock) live in ROOT/bin rather than on the system PATH.
-  if [ -z "${RS_PORT:-}" ] && [[ "${PUBLIC_URL:-}" =~ ^http://127\.0\.0\.1:([0-9]+)$ ]]; then PORT="${BASH_REMATCH[1]}"; fi
+fi
+# Personal mode: RS_PERSONAL=1 from the launcher or .env, or the desktop app has been here.
+PERSONAL=0
+if [ "${RS_PERSONAL:-0}" = 1 ] || [ "${RS_DOCTOR_DESKTOP:-0}" = 1 ] || [ -f "$ROOT/desktop.json" ]; then PERSONAL=1; fi
+if [ "$PERSONAL" = 1 ]; then say "ReviewStage doctor — desktop install at $ROOT"
+else say "ReviewStage doctor  ${D}(ROOT=$ROOT)${N}"; fi
+[ -n "$compose_fallback" ] && warn "$compose_fallback"
+if [ -r "$ENV_FILE" ]; then
+  check config.env; pass ".env present and readable ($ENV_FILE)"
+  # The desktop's fetched tools (gh, jq, cloudflared, flock) live in ROOT/bin, not on PATH.
   [ -d "$ROOT/bin" ] && PATH="$ROOT/bin:$PATH" && note "tools in $ROOT/bin are on PATH for this check (desktop install)"
-  mode=$(stat -c %a "$ENV_FILE" 2>/dev/null || stat -f %Lp "$ENV_FILE" 2>/dev/null)
-  [ "${mode:-600}" = 600 ] || warn ".env mode is $mode (expected 600)"
 else
-  fail ".env missing or unreadable at $ENV_FILE"
+  check config.env; fail ".env missing or unreadable at $ENV_FILE"
 fi
 
 # Repositories: REPOS (list) ∪ REPO (single alias) ∪ settings.json "repos" (added from the
 # dashboard — the first-run wizard in personal mode); each must be owner/name.
+check config.repos
 settings_repos=$(jq -r '.repos // [] | .[]' "$ROOT/settings.json" 2>/dev/null)
 repos=$(printf '%s %s %s' "${REPOS:-}" "${REPO:-}" "$settings_repos" | tr ',' ' ' | tr -s '[:space:]' '\n' | awk 'NF && !s[tolower($0)]++')
 if [ -n "$repos" ]; then
@@ -114,15 +152,16 @@ if [ -n "$repos" ]; then
     printf '%s' "$r" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9_.-]+$' \
       || fail "'$r' in REPOS/REPO/settings.json is not owner/name shaped"
   done
-elif [ "${RS_PERSONAL:-0}" = 1 ]; then
+elif [ "$PERSONAL" = 1 ]; then
   warn "no repository configured yet — personal mode boots without one; the first-run wizard (/welcome) adds them"
 else
   fail "no repository configured (set REPOS=owner/name[,…] or REPO=owner/name)"
 fi
-[ "${RS_PERSONAL:-0}" = 1 ] && note "RS_PERSONAL=1 — the server polls GitHub itself with each signed-in user's token; GITHUB_PAT is not needed"
+[ "$PERSONAL" = 1 ] && note "personal mode — the server polls GitHub itself with each signed-in user's token; GITHUB_PAT is not needed"
 # RS_SECRET: sessions, every signed link and the at-rest encryption key all derive from it.
 # Empty means HMAC with a key anyone can reproduce — a forged rs_session cookie is accepted as
 # any user, including an admin. The server refuses to start without one; say so here too.
+check config.secret
 if [ -z "${RS_SECRET:-}" ]; then
   fail "RS_SECRET is empty — session cookies and signed links would be forgeable by anyone (the server refuses to start)"
   note "fix: RS_SECRET=\$(openssl rand -hex 32) in $ENV_FILE, then restart"
@@ -140,46 +179,59 @@ case "${DRY_RUN:-1}" in
 esac
 
 # --- tools ---------------------------------------------------------------------------------
-if command -v git >/dev/null; then pass "git $(git --version | awk '{print $3}')"; else fail "git not on PATH"; fi
-if command -v gh >/dev/null; then pass "gh $(gh --version | head -1 | awk '{print $3}')"; else fail "gh not on PATH"; fi
+section tools
+check tools.git; if command -v git >/dev/null; then pass "git $(git --version | awk '{print $3}')"; else fail "git not on PATH"; fi
+check tools.gh;  if command -v gh >/dev/null; then pass "gh $(gh --version | head -1 | awk '{print $3}')"; else fail "gh not on PATH"; fi
+check claude.cli
 if command -v claude >/dev/null; then
-  v=$(timeout 20 claude --version 2>/dev/null | head -1)
+  v=$(with_timeout 20 claude --version 2>/dev/null | head -1)
   [ -n "$v" ] && pass "claude $v" || warn "claude is on PATH but --version printed nothing"
+  # The CLI keeps its own login and settings under ~/.claude and refuses to run when it
+  # cannot write there — a review would die on its first line.
+  if [ -d "$HOME/.claude" ] && [ ! -w "$HOME/.claude" ]; then
+    check claude.cli; fail "$HOME/.claude is not writable — the claude CLI cannot run"
+  elif [ ! -d "$HOME/.claude" ] && [ ! -w "$HOME" ]; then
+    check claude.cli; fail "$HOME is not writable — the claude CLI cannot create ~/.claude"
+  fi
 else
   fail "claude (Claude Code CLI) not on PATH — reviews cannot run"
 fi
-for t in jq flock openssl curl; do
-  command -v "$t" >/dev/null || fail "$t not on PATH"
+for t in jq flock openssl curl python3; do
+  check "tools.$t"; command -v "$t" >/dev/null || fail "$t not on PATH"
 done
 
 # --- github ----------------------------------------------------------------------------------
+# The service token is a team-install thing. Personal mode has none by design; its per-user
+# tokens (presence, expiry, client) are rs_doctor.py's job further down.
+section github.auth
 if [ -n "${GITHUB_PAT:-}" ] && command -v gh >/dev/null; then
-  if out=$(GH_TOKEN="$GITHUB_PAT" timeout 20 gh auth status 2>&1); then
+  if out=$(GH_TOKEN="$GITHUB_PAT" with_timeout 20 gh auth status 2>&1); then
     pass "gh auth status: $(echo "$out" | grep -o 'Logged in to [^ ]* account [^ ]*' | head -1)"
   else
     fail "gh auth status failed with the service token"
     note "$(echo "$out" | head -2 | tr '\n' ' ')"
   fi
   for r in $repos; do
-    if GH_TOKEN="$GITHUB_PAT" timeout 20 gh repo view "$r" --json nameWithOwner -q .nameWithOwner >/dev/null 2>&1; then
+    if GH_TOKEN="$GITHUB_PAT" with_timeout 20 gh repo view "$r" --json nameWithOwner -q .nameWithOwner >/dev/null 2>&1; then
       pass "gh repo view $r works with the service token"
     else
       fail "the service token cannot see $r (repository access or Metadata: Read missing?)"
     fi
   done
   if [ -n "${REPO_ALLOW_ORG:-}" ]; then
-    if GH_TOKEN="$GITHUB_PAT" timeout 20 gh api "orgs/$REPO_ALLOW_ORG" -q .login >/dev/null 2>&1 \
-       || GH_TOKEN="$GITHUB_PAT" timeout 20 gh api "users/$REPO_ALLOW_ORG" -q .login >/dev/null 2>&1; then
+    if GH_TOKEN="$GITHUB_PAT" with_timeout 20 gh api "orgs/$REPO_ALLOW_ORG" -q .login >/dev/null 2>&1 \
+       || GH_TOKEN="$GITHUB_PAT" with_timeout 20 gh api "users/$REPO_ALLOW_ORG" -q .login >/dev/null 2>&1; then
       pass "the service token can see the REPO_ALLOW_ORG owner $REPO_ALLOW_ORG"
     else
       warn "the service token cannot see $REPO_ALLOW_ORG — org discovery will find nothing"
     fi
   fi
-elif [ "${RS_PERSONAL:-0}" = 1 ]; then
+elif [ "$PERSONAL" = 1 ]; then
   note "no service token — personal mode reads GitHub with each signed-in user's own token"
 else
   fail "GITHUB_PAT not set — nothing can read GitHub"
 fi
+section repos
 for r in $repos; do
   slug="${r/\//__}"
   if [ -d "$ROOT/repos/$slug/.git" ]; then
@@ -195,6 +247,7 @@ if [ -d "$ROOT/repo/.git" ] || ls -d "$STATE"/[0-9]* >/dev/null 2>&1; then
 fi
 
 # --- resources -------------------------------------------------------------------------------
+section resources
 free_disk_mb=$(df -Pm "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')
 if [ -n "$free_disk_mb" ]; then
   if [ "$free_disk_mb" -ge "$MIN_FREE_DISK_MB" ]; then
@@ -216,6 +269,7 @@ else
 fi
 
 # --- state -----------------------------------------------------------------------------------
+section state
 if [ -d "$STATE" ]; then
   probe="$STATE/.doctor.$$"
   if (: > "$probe") 2>/dev/null; then rm -f "$probe"; pass "STATE dir writable ($STATE)"
@@ -226,13 +280,12 @@ fi
 if [ -f "$ROOT/skills/_global.md" ]; then pass "team-default skill seeded"; else warn "team-default skill not seeded ($ROOT/skills/_global.md)"; fi
 
 # --- server ----------------------------------------------------------------------------------
-health=""
-for u in "http://127.0.0.1:$PORT/health" "http://app:$PORT/health"; do
-  if [ "$(curl -s -m 5 "$u" 2>/dev/null)" = "ok" ]; then health="$u"; break; fi
-done
-if [ -n "$health" ]; then pass "server /health -> ok ($health)"; else fail "server not answering on port $PORT (tried 127.0.0.1 and app)"; fi
-
-if [ -n "${PUBLIC_URL:-}" ]; then
+# /health on the right port (desktop.json's, else RS_PORT, else PUBLIC_URL's) is rs_doctor.py's
+# port.free check below. PUBLIC_URL is checked here because it is a plain curl.
+section callback.public_url
+if [ "$PERSONAL" = 1 ] && [[ "${PUBLIC_URL:-}" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/?$ ]]; then
+  note "PUBLIC_URL is the app's own loopback address ($PUBLIC_URL) — whether it answers is the port check below"
+elif [ -n "${PUBLIC_URL:-}" ]; then
   code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' "${PUBLIC_URL%/}/health" 2>/dev/null)
   if [ "$code" = 200 ]; then pass "PUBLIC_URL reachable ($PUBLIC_URL)"
   else warn "PUBLIC_URL ${PUBLIC_URL%/}/health returned '${code:-no response}' from here (fine if it only resolves from outside)"; fi
@@ -256,6 +309,7 @@ else
 fi
 
 # --- notifications -----------------------------------------------------------------------------
+section notifications
 if [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_CHANNEL:-}" ]; then pass "Slack: bot token + channel (threaded)"
 elif [ -n "${SLACK_WEBHOOK:-}" ]; then pass "Slack: incoming webhook set"; fi
 [ -n "${DISCORD_WEBHOOK:-}" ] && pass "Discord: webhook set"
@@ -267,6 +321,7 @@ if [ -z "${SLACK_WEBHOOK:-}${SLACK_BOT_TOKEN:-}${DISCORD_WEBHOOK:-}${WEBHOOK_URL
   warn "no notification backend configured — no review-request cards; the dashboard is the inbox"
 fi
 [ -s "$ROOT/settings.json" ] && note "runtime settings in $ROOT/settings.json override .env (Settings page)"
+section push
 # Web push (bin/rs_push.py). Never a FAIL: the pair is generated the first time someone turns
 # notifications on in the dashboard, so its absence just means nobody has yet.
 if [ "${RS_PUSH:-1}" = "0" ]; then
@@ -284,6 +339,7 @@ python3 -c 'import cryptography' 2>/dev/null \
   || warn "push: python3 cannot import \`cryptography\` — subscriptions will be accepted but nothing can be sent"
 
 # --- skills ------------------------------------------------------------------------------------
+section skills
 for s in pr-review pr-qa-guide; do
   if [ -f "$HOME/.claude/skills/$s/SKILL.md" ]; then pass "skill installed: ~/.claude/skills/$s"
   else warn "skill missing: ~/.claude/skills/$s"; fi
@@ -291,20 +347,43 @@ done
 [ -f "$HOME/.claude/skills/pr-review/SKILL.md" ] \
   || note "in Docker, ~/.claude lives inside the app container: run 'docker compose exec app doctor' for this check"
 
-# --- users -------------------------------------------------------------------------------------
-if [ -r "$ROOT/users.json" ] && command -v jq >/dev/null; then
-  n=$(jq 'length' "$ROOT/users.json" 2>/dev/null || echo 0)
-  c=$(jq '[.[] | select(.claude_token_enc != null and .claude_token_enc != "")] | length' "$ROOT/users.json" 2>/dev/null || echo 0)
-  if [ "${n:-0}" -eq 0 ]; then warn "no users signed in yet (users.json is empty)"
-  else pass "$n user(s) signed in"; fi
-  if [ "${c:-0}" -gt 0 ]; then pass "$c user(s) have connected a Claude account"
-  else warn "nobody has connected a Claude account — reviews cannot start until someone does (Settings -> Connect Claude)"; fi
-else
-  warn "users.json not readable at $ROOT/users.json"
+# --- users, tokens, permissions, port, runtime (rs_doctor.py) ---------------------------------
+# The checks that read users.json need to know the record shape, so they live in Python. Its
+# rows are merged into this report: same statuses, same counting, same --json list.
+section users
+py_json=""
+if command -v python3 >/dev/null; then
+  live_flag=""; [ "$LIVE" = 1 ] && live_flag="--live"
+  py_json=$(cd "$BIN_DIR" && ROOT="$ROOT" python3 rs_doctor.py --root "$ROOT" --json $live_flag 2>/tmp/rs_doctor.$$.err)
+  py_rc=$?
+  if [ -z "$py_json" ] || [ "$py_rc" -gt 2 ]; then
+    fail "rs_doctor.py did not run: $(head -1 /tmp/rs_doctor.$$.err 2>/dev/null)"
+    py_json=""
+  fi
+  rm -f /tmp/rs_doctor.$$.err
+fi
+if [ -n "$py_json" ] && command -v jq >/dev/null; then
+  while IFS=$'\t' read -r id status text; do
+    check "$id"
+    case "$status" in PASS) pass "$text";; WARN) warn "$text";; FAIL) fail "$text";; NOTE) note "$text";; esac
+  done < <(printf '%s' "$py_json" | jq -r '.checks[] | [.id, .status, .text] | @tsv')
+elif [ -n "$py_json" ]; then
+  # No jq to merge with: show the Python report as is and count its outcome.
+  (cd "$BIN_DIR" && ROOT="$ROOT" python3 rs_doctor.py --root "$ROOT" $live_flag) || fails=$((fails + 1))
 fi
 
+rc=0
+if [ "$fails" -gt 0 ]; then rc=1; elif [ "$STRICT" = 1 ] && [ "$warns" -gt 0 ]; then rc=2; fi
+if [ "$JSON" = 1 ]; then
+  printf '{"checks":[%s],"fails":%d,"warns":%d}\n' "$rows" "$fails" "$warns"
+  exit "$rc"
+fi
 echo
 if [ "$fails" -gt 0 ]; then
-  printf '%s%d check(s) failed%s, %d warning(s)\n' "$R" "$fails" "$N" "$warns"; exit 1
+  printf '%s%d check(s) failed%s, %d warning(s) — exit 1\n' "$R" "$fails" "$N" "$warns"
+elif [ "$rc" = 2 ]; then
+  printf '%sall checks passed%s, %d warning(s) — exit 2 (--strict)\n' "$Y" "$N" "$warns"
+else
+  printf '%sall checks passed%s, %d warning(s) — exit 0\n' "$G" "$N" "$warns"
 fi
-printf '%sall checks passed%s, %d warning(s)\n' "$G" "$N" "$warns"
+exit "$rc"

@@ -132,9 +132,9 @@ as of 10/10/26 (semantic collisions still to be checked for the top picks):
 
 | Candidate | Says | Reservation |
 | --- | --- | --- |
-| **KeepDrop** | the interaction itself: keep what's worth saying, drop the rest — also the phone gesture and the learnings loop ("learns what you drop") | unusual as a brand; two verbs |
-| **DiffKeeper** | a human keeps only the findings worth raising | "keeper" reads a little like a vault/backup tool |
-| **PeerLayer** | human judgment layered over AI output (the category sentence) | abstract; "HumanLayer" (11.7k ★) exists, so the "-layer" pattern is crowded |
+| **KeepDrop** | the interaction itself: keep what's worth saying, drop the rest — also the phone gesture and the learnings loop ("learns what you drop") | unusual as a brand; two verbs. Web check: only a defunct Android file-transfer app (last updated 10/16/21, removed from Play) — no developer-tool collision |
+| **DiffKeeper** | a human keeps only the findings worth raising | "keeper" reads a little like a vault/backup tool. Web check: no collision (Diffchecker is a different product) |
+| **PeerLayer** | human judgment layered over AI output (the category sentence) | abstract; "HumanLayer" (11.7k ★) exists, so the "-layer" pattern is crowded. Web check: no collision |
 | PR Attest (`prattest`) | a human attests the review is worth posting | formal; hard to say aloud |
 | ReviewVerdict / JudgeCall / SignedReview / HumanSign | judgment / signature | generic or legal in tone |
 

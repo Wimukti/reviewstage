@@ -10,20 +10,16 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { shouldDetach } from "../lifecycle.js";
+import { runDoctor } from "../doctor.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-// `npx reviewstage --doctor` runs the server's own doctor against this install, no window:
-// the same PASS/WARN/FAIL lines the team install gets, with the fetched tools on PATH.
+// `npx reviewstage --doctor [--json] [--live] [--strict]` runs the server's own doctor against
+// this install, no window: the same PASS/WARN/FAIL lines the team install gets, with the
+// fetched tools on PATH and this launcher's node and Electron reported for the runtime checks.
 if (process.argv.includes("--doctor")) {
-  const root = process.env.ROOT || join(homedir(), ".reviewstage");
-  const sep = process.platform === "win32" ? ";" : ":";
-  const r = spawnSync("bash", [join(here, "..", "server", "bin", "doctor.sh")], {
-    stdio: "inherit",
-    env: { ...process.env, ROOT: root, RS_PERSONAL: process.env.RS_PERSONAL || "1", PATH: `${join(root, "bin")}${sep}${process.env.PATH || ""}` },
-  });
-  process.exit(r.status ?? 1);
+  process.exit(runDoctor(process.argv.slice(2), { env: process.env, require, pkgDir: join(here, "..") }));
 }
 let electron;
 try {

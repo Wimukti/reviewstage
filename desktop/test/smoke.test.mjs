@@ -40,6 +40,7 @@ test("launches, boots the server, loads the window, quits", async (t) => {
   assert.equal(code, 0);
   const env = readFileSync(join(root, ".env"), "utf8");
   assert.match(env, new RegExp(`PUBLIC_URL=http://127\\.0\\.0\\.1:${ok[1]}`), "the launcher records the port it chose");
+  assert.equal(JSON.parse(readFileSync(join(root, "desktop.json"), "utf8")).port, Number(ok[1]), "desktop.json carries the port so --doctor can find the running app");
   assert.ok(existsSync(join(root, "bin", "flock")) || process.platform === "linux", "the flock shim is installed where the OS lacks flock");
   assert.match(env, /DRY_RUN=0/, "a pre-stamp personal .env is upgraded to live");
   assert.match(env, /RS_DESKTOP_DEFAULTS=2/);

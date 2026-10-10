@@ -290,8 +290,10 @@ export function removeAppShortcut({ platform, home }) {
 
 // ---- F3: what the app remembers ----------------------------------------------------------
 
-/** ROOT/desktop.json: { phone: bool, phoneVia: "tunnel" | "tailscale" }. Unknown or broken
- *  files read as {} — a missing preference is "off", never a crash. */
+/** ROOT/desktop.json: { phone: bool, phoneVia: "tunnel" | "tailscale", port: number }. `port` is
+ *  the loopback port the last launch chose, written by main.js once the server is up so the
+ *  doctor can find the running app. Unknown or broken files read as {} — a missing preference
+ *  is "off", never a crash. */
 export function readDesktopState(root) {
   try {
     const d = JSON.parse(readFileSync(join(root, "desktop.json"), "utf8"));

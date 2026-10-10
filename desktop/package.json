@@ -1,7 +1,8 @@
 {
   "name": "reviewstage",
   "version": "0.0.0-dev",
-  "description": "Stage your PR review. Post it as yourself. The desktop app — `npx reviewstage`.",
+  "description": "ReviewStage is the human review layer for AI-written pull requests. Claude drafts the review privately; you verify, edit and post it as yourself. Desktop app: npx reviewstage",
+  "keywords": ["ai-code-review", "pr-review", "pull-request", "code-review", "claude-code", "claude", "github", "human-in-the-loop", "self-hosted", "developer-tools", "electron"],
   "license": "MIT",
   "homepage": "https://reviewstage.dev/",
   "repository": { "type": "git", "url": "https://github.com/Wimukti/reviewstage.git", "directory": "desktop" },

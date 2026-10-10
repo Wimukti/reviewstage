@@ -34,7 +34,7 @@
 > [!NOTE]
 > ReviewStage 1.0. The gate — nothing reaches GitHub without a signed-in person clicking, under their own name — has held since the first version. From 1.0 the configuration keys and the install follow semantic versioning: anything that would break an existing install waits for a major version.
 
-ReviewStage is an open-source, self-hosted PR review assistant built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code). It drafts your review from the real diff, on your own Claude plan, and stages every finding privately in a dashboard. You tick the ones worth posting, edit any of them, and post them as a plain `COMMENT` review under your own GitHub account. Approval is a separate click. Nothing posts until you click.
+**ReviewStage is the human review layer for AI-written pull requests. Claude drafts the review privately; you verify, edit and post it as yourself.** It is open source and self-hosted, built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code): it drafts your review from the real diff, on your own Claude plan, and stages every finding privately in a dashboard. You tick the ones worth posting, edit any of them, and post them as a plain `COMMENT` review under your own GitHub account. Approval is a separate click. Nothing posts until you click.
 
 ## Quick start
 

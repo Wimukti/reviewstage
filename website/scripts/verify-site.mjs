@@ -9,6 +9,10 @@
 // discovery contract (openspec/changes/go-to-tool, lane seo-discovery): robots.txt names the
 // sitemap, every sitemap entry carries <lastmod>, the SoftwareApplication JSON-LD is complete,
 // the title and the one <h1> carry the category, and each docs page's <title> is its heading.
+// Lane 4 (openspec/changes/p0-proof/recon.md): the replay is built into /try/app/ with its
+// Content-Security-Policy, the /try/ page embeds it, /examples/ and every /examples/<slug>/
+// render from the fixtures (verdict, three findings, decisions, the posted review), and the
+// new pages hold the phone contract (no sideways scroll at 390) in both themes.
 // Usage: node scripts/verify-site.mjs [outDir]
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -29,7 +33,13 @@ const pages = {
   "docs-sidebar": ["/start/", "sidebar"],
   "team-workflow": ["/guides/team-workflow/", "page"],
   faq: ["/operations/faq/", "page"],
+  examples: ["/examples/", "page"],
+  "example-webhook": ["/examples/webhook-retry/", "page"],
+  try: ["/try/", "page"],
 };
+// The replay fixtures the example pages and the live replay render (dashboard-ui/fixtures/replay).
+const fixtureDir = "../dashboard-ui/fixtures/replay";
+const fixtures = (await import("node:fs")).readdirSync(fixtureDir).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(join(fixtureDir, f), "utf8")));
 // The command the home page shows is named once in src/content/install.ts; read it from there
 // so this check cannot drift from the page (it did, when the install became `npx reviewstage`).
 const installCommand = readFileSync("src/content/install.ts", "utf8").match(/installCommand = "([^"]+)"/)?.[1] ?? "npx reviewstage";
@@ -122,9 +132,36 @@ try {
     const doc = await (await fetch(BASE + path)).text();
     const dt = decode(doc.match(/<title>([^<]*)<\/title>/)?.[1] ?? "");
     const h1 = decode(doc.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? "");
+    const docs = /<nav[^>]*aria-label="Main"/.test(doc); // a Starlight page has the docs sidebar
     const label = decode(doc.match(/aria-current="page"[^>]*>\s*<span[^>]*>([\s\S]*?)<\/span>/)?.[1] ?? "");
-    const labelOk = label.length > 0 && (label === h1 || label.length < h1.length);
-    check(dt === `${h1} | ReviewStage` && labelOk, `${path} <title> "${dt}" = h1 + suffix; sidebar "${label}"`);
+    const labelOk = !docs || (label.length > 0 && (label === h1 || label.length < h1.length));
+    check(dt === `${h1} | ReviewStage` && labelOk, `${path} <title> "${dt}" = h1 + suffix${docs ? `; sidebar "${label}"` : " (marketing page)"}`);
+  }
+  // Lane 4: the replay is in place with its CSP, the host page embeds it, and every fixture has
+  // its page with the parts the design names.
+  const shell = await fetch(BASE + "/try/app/");
+  const shellHtml = shell.ok ? await shell.text() : "";
+  check(shell.status === 200 && /Content-Security-Policy/.test(shellHtml) && /connect-src 'none'/.test(shellHtml) && /id=root/.test(shellHtml), `/try/app/ → ${shell.status}, the replay shell with connect-src 'none'`);
+  for (const f of ["replay.js", "replay.css", "theme-boot.js"]) {
+    const r = await fetch(BASE + "/try/app/" + f);
+    check(r.status === 200 && (r.headers.get("content-type") ?? "").includes(f.endsWith(".css") ? "css" : "javascript"), `/try/app/${f} → ${r.status} ${r.headers.get("content-type")}`);
+  }
+  const tryHtml = await (await fetch(BASE + "/try/")).text();
+  check(/<iframe[^>]*data-replay-frame[^>]*src="\/try\/app\/\?example=/.test(tryHtml) && /data-testid="example-disclosure"/.test(tryHtml), "/try/ embeds /try/app/ and carries the disclosure");
+  check(!sitemap.includes("/try/") && fixtures.every((fx) => sitemap.includes(`/examples/${fx.slug}/`)), `sitemap lists every /examples/<slug>/ (${fixtures.length}) and not /try/`);
+  const indexHtml = await (await fetch(BASE + "/examples/")).text();
+  check(fixtures.every((fx) => indexHtml.includes(`data-slug="${fx.slug}"`)), `/examples/ lists ${fixtures.length} examples`);
+  for (const fx of fixtures) {
+    const r = await fetch(BASE + `/examples/${fx.slug}/`);
+    const doc = r.ok ? await r.text() : "";
+    const findings = (doc.match(/data-testid="example-finding"/g) ?? []).length;
+    const decisions = [...doc.matchAll(/data-decision="(\w+)"/g)].map((m) => m[1]);
+    const posted = (doc.match(/data-testid="example-posted"/g) ?? []).length;
+    const parts = ['data-testid="verdict"', 'data-testid="example-disclosure"', 'data-testid="example-review"', 'data-testid="example-try"', 'class="diff', "How to verify", "Evidence and confidence"];
+    const missing = parts.filter((n) => !doc.includes(n));
+    const kept = fx.decisions.filter((d) => d.action !== "drop").length;
+    check(r.status === 200 && findings === fx.review.comments.length && decisions.join(",") === "keep,drop,edit" && posted === kept && missing.length === 0,
+      `/examples/${fx.slug}/ → ${r.status}: ${findings} findings (${decisions.join("/")}), ${posted} posted of ${kept} kept${missing.length ? ", missing " + missing.join(", ") : ""}`);
   }
   for (const needle of [ 'property="og:image:width" content="1280"', 'property="og:image:height" content="640"', 'rel="icon" href="/favicon.ico"', 'rel="apple-touch-icon"', 'sizes="192x192"', 'sizes="512x512"', 'property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:url"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"', 'name="twitter:image"', 'name="theme-color" media="(prefers-color-scheme: light)"', 'name="theme-color" media="(prefers-color-scheme: dark)"', 'name="description"']) {
     check(head.includes(needle), `head has ${needle}`);

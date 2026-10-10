@@ -1,0 +1,57 @@
+---
+/* The live replay: the shipped PR page (built by dashboard-ui/scripts/build-replay.mjs into
+ * public/try/app/) over a stored review, embedded here with the site's chrome around it. The
+ * frame carries its own Content-Security-Policy, so nothing inside it can reach anywhere. */
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+import Disclosure from "../../components/examples/Disclosure.astro";
+import { button } from "../../components/marketing/variants";
+import { withBase } from "../../content/site-links";
+import { examples } from "../../content/examples";
+
+const H1 = "Try a review, no install";
+const title = `${H1} | ReviewStage`;
+const description = "Keep, edit and drop the findings of a stored review in the real ReviewStage page, in your browser. Nothing is sent anywhere; see what would post, then run it on your own PR.";
+const first = examples[0];
+---
+<MarketingLayout {title} {description}>
+  <section class="home-section pb-6!" aria-labelledby="try-title">
+    <div class="container-page grid gap-4">
+      <nav aria-label="Breadcrumb" class="text-sm text-muted-foreground"><a href={withBase("/")} class="text-muted-foreground hover:text-foreground">Home</a> / <a href={withBase("/examples/")} class="text-muted-foreground hover:text-foreground">Examples</a> / <span class="text-foreground">Try it</span></nav>
+      <h1 id="try-title" class="section-title">{H1}</h1>
+      <p class="m-0 max-w-[64ch] text-base text-muted-foreground">This is the real review page, running on a review that was done once and stored. Tick what to keep, edit a comment, drop one, then press Post to see exactly what would reach GitHub — and what would not.</p>
+      <Disclosure />
+      <nav aria-label="Example" class="flex flex-wrap gap-2" data-testid="try-switcher">
+        {examples.map((fx, i) => (
+          <a class={button({ variant: "secondary", size: "sm" }, "h-11 bg-card hover:bg-accent data-[current]:bg-accent data-[current]:text-primary")} href={withBase(`/try/?example=${fx.slug}`)} data-example={fx.slug} data-current={i === 0 ? "" : undefined} aria-current={i === 0 ? "page" : undefined}>{fx.repo}#{fx.pr}</a>
+        ))}
+      </nav>
+    </div>
+  </section>
+  <section class="container-page pb-[var(--section-pad)]" aria-label="The review page">
+    <iframe
+      data-replay-frame
+      src={withBase(`/try/app/?example=${first.slug}`)}
+      title="ReviewStage review page — precomputed example"
+      class="block h-[max(640px,calc(100dvh-var(--nav-height)-2rem))] w-full rounded-xl bg-card"
+      loading="eager"
+    ></iframe>
+    <p class="mb-0 mt-3 text-sm text-muted-foreground">Prefer to read? <a href={withBase("/examples/")}>Every example as a page</a>, with the diff, the evidence and the reviewer's reasons.</p>
+  </section>
+  <script>
+    import { exposeEvents } from "@app/replay/events";
+    exposeEvents();
+    // ?example=<slug> picks the stored review; the frame and the switcher follow it.
+    const slug = new URLSearchParams(location.search).get("example");
+    const frame = document.querySelector<HTMLIFrameElement>("[data-replay-frame]");
+    const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-testid=try-switcher] a")];
+    const known = links.find((a) => a.dataset.example === slug);
+    if (frame && known && slug) {
+      frame.src = frame.src.replace(/example=[^&]*/, `example=${encodeURIComponent(slug)}`);
+      for (const a of links) {
+        const cur = a === known;
+        a.toggleAttribute("data-current", cur);
+        if (cur) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+      }
+    }
+  </script>
+</MarketingLayout>

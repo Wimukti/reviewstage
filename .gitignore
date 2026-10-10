@@ -28,3 +28,7 @@ desktop/node_modules/
 desktop/server/
 desktop/*.tgz
 docs/launch/partners.csv
+
+# lane 4: the public replay build and its copy inside the site
+dashboard-ui/replay-dist/
+website/public/try/

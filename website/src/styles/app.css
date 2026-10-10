@@ -15,6 +15,8 @@
    StatusBadge, RepoPill), so its classes have to be in this build's output too. */
 @source "../../../dashboard-ui/src/components/ui";
 @source "../../../dashboard-ui/src/ui.tsx";
+/* The example pages (lane 4) render the PR page's Verdict server-side. */
+@source "../../../dashboard-ui/src/ReviewParts.tsx";
 @custom-variant dark (&:is(:root:not([data-theme="light"]) *));
 
 @import "./tokens.css";

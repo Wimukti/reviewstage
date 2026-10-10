@@ -1,0 +1,105 @@
+{
+  "slug": "rate-limit-tenant",
+  "repo": "lumen-labs/gateway",
+  "pr": "207",
+  "title": "Add a token-bucket rate limiter to the public API",
+  "author": "mateo-r",
+  "head": "4b7e1c09a2d5",
+  "additions": 94,
+  "deletions": 3,
+  "changedFiles": 3,
+  "language": "Python 3.12 · asyncio service",
+  "headline": "A bucket that never refills, a race that cannot happen in asyncio, and a Retry-After nit worth saying better.",
+  "me": { "login": "sam", "name": "Sam", "personal": true, "dry_run": true },
+  "usage": { "model": "claude-sonnet-4-5", "inputTokens": 39770, "outputTokens": 3312, "cacheReadTokens": 24400, "realTokens": 18682, "costUsd": 0.18, "durationMs": 161000 },
+  "effort": { "label": "Standard", "hint": "The default depth: reads the diff and the files it touches." },
+  "files": [
+    {
+      "filename": "gateway/limits.py",
+      "status": "added",
+      "patch": "@@ -0,0 +1,38 @@\n+import time\n+from dataclasses import dataclass\n+\n+\n+@dataclass\n+class Bucket:\n+    tokens: float\n+    last: float\n+\n+\n+class TokenBucket:\n+    \"\"\"Per-key token bucket: `capacity` burst, refilled at `rate` tokens per second.\"\"\"\n+\n+    def __init__(self, capacity: int, rate: float) -> None:\n+        self.capacity = capacity\n+        self.rate = rate\n+        self._buckets: dict[str, Bucket] = {}\n+\n+    def take(self, key: str) -> bool:\n+        b = self._buckets.setdefault(key, Bucket(self.capacity, time.monotonic()))\n+        now = time.monotonic()\n+        b.last = now\n+        b.tokens = min(self.capacity, b.tokens + (now - b.last) * self.rate)\n+        if b.tokens < 1:\n+            return False\n+        b.tokens -= 1\n+        return True\n+\n+    def retry_after(self, key: str) -> float:\n+        b = self._buckets.get(key)\n+        if b is None or b.tokens >= 1:\n+            return 0.0\n+        return (1 - b.tokens) / self.rate\n"
+    },
+    {
+      "filename": "gateway/middleware.py",
+      "status": "modified",
+      "patch": "@@ -1,8 +1,22 @@\n from starlette.middleware.base import BaseHTTPMiddleware\n from starlette.responses import JSONResponse\n \n+from .limits import TokenBucket\n+from .settings import settings\n+\n+limiter = TokenBucket(capacity=settings.rate_burst, rate=settings.rate_per_second)\n+\n+\n+class RateLimitMiddleware(BaseHTTPMiddleware):\n+    async def dispatch(self, request, call_next):\n+        key = request.headers.get(\"x-api-key\", request.client.host)\n+        if not limiter.take(key):\n+            return JSONResponse({\"error\": \"rate limited\"}, status_code=429)\n+        return await call_next(request)\n+\n \n class RequestIdMiddleware(BaseHTTPMiddleware):\n     async def dispatch(self, request, call_next):\n"
+    },
+    {
+      "filename": "tests/test_limits.py",
+      "status": "added",
+      "patch": "@@ -0,0 +1,21 @@\n+from gateway.limits import TokenBucket\n+\n+\n+def test_burst_is_allowed_then_denied():\n+    tb = TokenBucket(capacity=3, rate=1.0)\n+    assert [tb.take(\"k\") for _ in range(4)] == [True, True, True, False]\n+\n+\n+def test_keys_are_independent():\n+    tb = TokenBucket(capacity=1, rate=1.0)\n+    assert tb.take(\"a\")\n+    assert tb.take(\"b\")\n+    assert not tb.take(\"a\")\n"
+    }
+  ],
+  "review": {
+    "event": "COMMENT",
+    "summary": "Adds a per-key token bucket and wires it in front of every public route as Starlette middleware, keyed on the API key with the client IP as a fallback. The structure is clean and the tests cover the burst and the key isolation. One real defect: the refill math reads the timestamp it has just overwritten, so a bucket never refills — after `capacity` requests a key is locked out until the process restarts. Neither test can see it because neither advances the clock.",
+    "keyPoints": [
+      "The bucket never refills: `last` is overwritten before the elapsed time is computed.",
+      "No lock around the bucket update — check whether this can interleave.",
+      "A 429 without `Retry-After` leaves clients guessing."
+    ],
+    "explainer": "Every request to the public API now passes through a rate limiter. Each API key gets a bucket of `rate_burst` tokens; a request takes one token, and tokens come back at `rate_per_second`. When the bucket is empty the request is answered with 429 instead of reaching the route.",
+    "analysis": "Checked: the middleware ordering (the limiter runs before request-id assignment, which is fine — a 429 does not need an id); the fallback to client IP for unauthenticated calls; `retry_after()` is defined but nothing calls it yet. Dropped: a style note about the dataclass field order; a question about `settings.rate_burst` defaults (they are in settings.py, outside this diff, and read sensibly).",
+    "comments": [
+      {
+        "path": "gateway/limits.py",
+        "line": 22,
+        "severity": "should-fix",
+        "confidence": "high",
+        "title": "The bucket never refills — `last` is overwritten before the elapsed time is read",
+        "impact": "After `capacity` requests a key is rate-limited forever (until the process restarts). Every steady client hits a wall a few seconds after deploy.",
+        "how_to_verify": "Build `TokenBucket(capacity=1, rate=100.0)`, call `take(\"k\")` twice with `time.sleep(0.1)` between them: the second call returns False and should return True.",
+        "body": "Line 22 sets `b.last = now`, then line 23 computes the refill as `(now - b.last) * self.rate` — which is now always `0`. So tokens are only ever consumed, never restored, and once a key spends its burst it is locked out for the life of the process. Compute the elapsed time first, then stamp `last`. The existing tests cannot catch this because neither one advances the clock; a test with a fake `monotonic` would.",
+        "suggestion": "now = time.monotonic()\nelapsed = now - b.last\nb.last = now\nb.tokens = min(self.capacity, b.tokens + elapsed * self.rate)",
+        "reply_to": null,
+        "teach": "keep"
+      },
+      {
+        "path": "gateway/limits.py",
+        "line": 24,
+        "severity": "should-fix",
+        "confidence": "medium",
+        "title": "Check-then-decrement is not atomic — two concurrent requests can both pass with one token left",
+        "impact": "Under load the limiter admits more requests than the configured burst, so the protection is weaker exactly when it is needed.",
+        "how_to_verify": "Fire 50 concurrent requests at a key with capacity 1 and count the 200s.",
+        "body": "`take()` reads `b.tokens`, compares it to 1, and then decrements — three steps with no lock. Two requests arriving together can both observe `tokens == 1`, both pass the check, and the bucket goes to `-1`. Wrap the read-check-decrement in a `threading.Lock` (or an `asyncio.Lock` per key) so the admission decision is atomic.",
+        "suggestion": "",
+        "reply_to": null,
+        "teach": "drop"
+      },
+      {
+        "path": "gateway/middleware.py",
+        "line": 13,
+        "severity": "nit",
+        "confidence": "high",
+        "title": "429 without a Retry-After header",
+        "impact": "Well-behaved clients cannot tell how long to back off, so they either hammer the endpoint or wait far longer than needed.",
+        "how_to_verify": "Exhaust a key and inspect the 429 response headers.",
+        "body": "A 429 with no `Retry-After`. Sloppy — clients have no idea when to come back, and you already wrote `retry_after()` so there is no excuse for not using it.",
+        "suggestion": "",
+        "reply_to": null,
+        "teach": "edit"
+      }
+    ]
+  },
+  "decisions": [
+    {
+      "action": "keep",
+      "reason": "Reproduced in a REPL in under a minute: the second `take()` after a sleep returns False. The suggested reorder is exactly right and the note about the tests not advancing the clock is the useful part. Posted as written."
+    },
+    {
+      "action": "drop",
+      "reason": "The reasoning would hold for a threaded server, but this gateway is asyncio on a single event loop and `take()` contains no `await`, so it runs to completion before any other request can touch the dict. A lock here would be dead weight. A convincing finding — which is why a person has to check it."
+    },
+    {
+      "action": "edit",
+      "reason": "Right call, wrong tone — \"sloppy\" and \"no excuse\" are not a review, they are a mood. Kept the fact that `retry_after()` already exists and turned it into the concrete suggestion.",
+      "edited_body": "Could the 429 carry a `Retry-After` header? `limiter.retry_after(key)` already computes the value, so it is one line: `JSONResponse(..., headers={\"Retry-After\": str(math.ceil(limiter.retry_after(key)))})`. Clients that honour it stop hammering the endpoint while they are limited."
+    }
+  ],
+  "explain": {
+    "0": "Think of a bucket that is meant to slowly refill with water. This code checks how long it has been since the last refill — but it resets the clock first and then checks, so the answer is always \"zero seconds\". The bucket is drained once and never fills up again.",
+    "1": "The reviewer worried that two requests arriving at the same instant could both grab the last token. That happens in programs where work runs on several threads at once. This server does one thing at a time between pauses, and this piece of code has no pause in it, so the two requests cannot overlap.",
+    "2": "When the API says \"too many requests\", it can also say \"try again in 3 seconds\". Right now it does not, so clients guess. The code to compute the number is already there; it just is not sent."
+  }
+}

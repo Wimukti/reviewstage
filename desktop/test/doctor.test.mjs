@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOCTOR_FLAGS, doctorArgs, doctorEnv, electronPath, runDoctor } from "../doctor.js";
@@ -86,6 +87,9 @@ test("`reviewstage --doctor --json` against a fixture ROOT: valid JSON, no GITHU
     t.skip("server/ not assembled — run `node scripts/prepack.mjs` first");
     return;
   }
+  // pnpm does not run electron's postinstall, so on a fresh CI box the binary is not on disk
+  // until something requires the package once (the Electron smoke test does the same).
+  try { createRequire(import.meta.url)("electron"); } catch { /* reported by env.electron below */ }
   const root = mkdtempSync(join(tmpdir(), "rs-doctor-cli-"));
   chmodSync(root, 0o700);
   mkdirSync(join(root, "state"));

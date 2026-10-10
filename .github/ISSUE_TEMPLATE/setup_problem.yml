@@ -1,0 +1,45 @@
+name: Setup problem
+description: The install, sign-in, Claude connection or the first review will not come up
+title: "setup: "
+labels: [setup]
+body:
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: Paste the full output of `npx reviewstage --doctor` (desktop) or `bin/doctor.sh` (Docker or source). Nothing in it should contain a secret, but check.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: stuck
+    attributes:
+      label: Where you are stuck
+      description: Which step failed and what you saw — the wizard step, the banner text or the terminal line.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15.6 / Ubuntu 24.04 / Windows 11 with WSL"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: "`node -v`"
+      placeholder: "v24.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: How you are installing
+      options:
+        - Desktop app (npx reviewstage)
+        - Docker (team server)
+        - From source
+    validations:
+      required: true

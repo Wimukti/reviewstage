@@ -1,0 +1,24 @@
+name: Feature request
+description: Something ReviewStage should do, or do differently
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today? Describe the situation before the solution — a reviewer's workflow, a team's constraint, a class of PR the review misses.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What you would like to happen. ReviewStage never posts to GitHub without a human click, never posts as a bot and never requests changes — if the proposal bends one of those, say why.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other ways to get the same outcome and why they fall short — including editing the team skill or adding a `RISK_PATHS` rule, which cover more than they look like they do.

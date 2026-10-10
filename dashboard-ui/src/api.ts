@@ -268,6 +268,12 @@ export interface Finding {
   title: string;
   impact: string;
   structured: boolean;
+  // The run's own confidence in the finding; null when the run never stated one (older runs,
+  // custom skills). `low` above is the same signal, kept for older servers and the maybe tray.
+  confidence?: "high" | "medium" | "low" | null;
+  // One imperative line on how to confirm the finding in under two minutes; "" when the run
+  // gave none, and the card then shows no row for it. Not posted to GitHub.
+  howToVerify?: string;
   criticalPath?: string; // the profile glob this finding concerns, "" when none
   // Tri-state. true: GitHub will take an inline comment on this line. false: the line is
   // outside the PR's diff, so the finding goes into the review body instead. null/undefined:

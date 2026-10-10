@@ -59,6 +59,8 @@ Each finding is a card:
 
 - **Checkbox** — selected for posting.
 - **Severity** — `blocker`, `should-fix`, `nit`, `question`. Rendered from a field, so the body never repeats it.
+- **Confidence** — `high`, `medium` or `low confidence`, the run's own estimate, beside the severity. Low-confidence findings also sit in a collapsed *maybe* tray. A run that never stated one (an older run, a custom skill) shows no badge.
+- **Claim, why it matters, how to verify** — the plain-language headline, one sentence on who is affected and what breaks for them, and one imperative line (`Run …`, `Open …`, `Call … with …`) on how to confirm the finding is real in under two minutes without reading the PR. Each row is omitted when the run did not supply it. The verify line is for you, the human gate; it is not posted to GitHub.
 - **`file:line`** — in the new version of the file. Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)). Anchorability is a tri-state: when the check genuinely could not run — a failed `gh pr diff`, a binary file, a file past GitHub's size cutoff — the page says so and retries, rather than reporting every finding as pointing at lines the PR does not change.
 - **Reply vs New** — when an existing thread on the PR already covers this, the finding is marked as a reply and opens with an acknowledgement, so it reads as a continuation rather than a re-raise.
 - **Agreement** — `✓ N independent` when other reviewers' runs with a different configuration raised it too; `only your run` otherwise.

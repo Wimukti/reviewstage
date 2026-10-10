@@ -21,6 +21,7 @@ import {
   ExternalLink,
   FileCode2,
   GraduationCap,
+  ListChecks,
   Loader2,
   Pencil,
   Route,
@@ -49,6 +50,11 @@ export interface FindingView {
   title?: string;
   impact?: string;
   structured?: boolean;
+  // The verification contract (p0-proof/lane3-verify.md); both absent on older servers and in
+  // reviews from before it, and the card then omits them. A string, not the union api.ts
+  // narrows to, because the stage fixture is plain JSON.
+  confidence?: string | null;
+  howToVerify?: string;
   thread?: string | null;
   criticalPath?: string;
   // Tri-state: true inline, false into the review body, null/undefined genuinely unknown.
@@ -199,6 +205,36 @@ export function ExplainBody({ x }: { x: ReturnType<typeof useExplain> }) {
   );
 }
 
+// The verification contract (p0-proof/lane3-verify.md): every card states the run's confidence
+// and, when the run gave one, a single line on how to confirm the finding. Both are omitted
+// outright when absent — an older run or a custom skill renders exactly the card it always did.
+export function ConfidenceBadge({ confidence }: { confidence?: FindingView["confidence"] }) {
+  if (!confidence) return null;
+  return (
+    <StatusBadge
+      tone="graphite"
+      icon={null}
+      title="How sure the run is that this finding is real"
+      data-testid="confidence"
+      data-confidence={confidence}
+      className="text-[11px] font-normal"
+    >
+      {confidence} confidence
+    </StatusBadge>
+  );
+}
+
+export function HowToVerify({ text, className }: { text?: string; className?: string }) {
+  if (!text) return null;
+  return (
+    <p className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-muted-foreground", className)} data-testid="how-to-verify">
+      <ListChecks aria-hidden="true" className="relative top-[2px] size-3.5 shrink-0" />
+      <span className="shrink-0 font-mono text-xs font-medium uppercase tracking-wide">How to verify</span>
+      <span className="min-w-0">{text}</span>
+    </p>
+  );
+}
+
 export function FindingCard({ f, checked, onToggle, disabled, explain, editor, teach }: FindingCardProps) {
   const x = useExplain(explain);
   const { expOpen, setExpOpen, runExplain } = x;
@@ -234,6 +270,7 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
           className="size-[18px] max-[899px]:size-5"
         />
         <StatusBadge kind={f.severity} />
+        <ConfidenceBadge confidence={f.confidence} />
         {place === "summary" && (
           <StatusBadge tone="graphite" icon={ExternalLink} title={OFFDIFF_HINT} data-testid="placement">
             In summary
@@ -250,11 +287,12 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
       <div className="flex flex-col gap-2 px-4 pb-3 pl-[18px]">
         {f.structured && <div className="text-sm font-medium leading-snug">{f.title}</div>}
         {f.structured && f.impact && (
-          <p className="m-0 max-w-[72ch] text-sm leading-relaxed text-muted-foreground">
+          <p className="m-0 max-w-[72ch] text-sm leading-relaxed text-muted-foreground" data-testid="why-it-matters">
             <span className="mr-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Why it matters</span>
             {f.impact}
           </p>
         )}
+        <HowToVerify text={f.howToVerify} className="max-w-[72ch] text-sm" />
         {(f.criticalPath || f.agreement) && (
           <div className="flex flex-wrap gap-1.5">
             {f.criticalPath && (

@@ -27,3 +27,4 @@ dashboard-ui/e2e/.launch-video/
 desktop/node_modules/
 desktop/server/
 desktop/*.tgz
+docs/launch/partners.csv

@@ -12,10 +12,10 @@ import Compare from "../components/home/Compare.astro";
 import Start from "../components/home/Start.astro";
 import Faq from "../components/home/Faq.astro";
 import FinalCall from "../components/home/FinalCall.astro";
+import { categorySentence, homeTitle } from "../content/brand";
 
-const title = "ReviewStage — AI drafts your PR review, you post it as yourself";
-const description =
-  "Claude drafts your PR review from the real diff, on your own plan. You keep what's worth saying and post it as yourself. Nothing posts until you click.";
+const title = homeTitle;
+const description = categorySentence;
 ---
 <MarketingLayout {title} {description}>
   <Hero />

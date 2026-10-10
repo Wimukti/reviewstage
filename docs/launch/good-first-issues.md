@@ -1,4 +1,4 @@
-# Good first issues (drafts — open each as an issue with label `good first issue`)
+# Good first issues (opened 10/10/26 as Wimukti/reviewstage#19–#30, label `good first issue` + an area label)
 
 Each has a file, the expected behaviour and the test that proves it. Keep the body to what is
 here; link the contributing guide.

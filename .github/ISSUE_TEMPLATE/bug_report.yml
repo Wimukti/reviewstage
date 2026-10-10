@@ -1,0 +1,69 @@
+name: Bug report
+description: Something that used to work, or should work, does not
+title: "fix: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Redact tokens, hostnames and PR titles you would not want public before pasting anything.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The wrong behaviour, in a sentence or two.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: How ReviewStage is installed
+      options:
+        - Desktop app (npx reviewstage)
+        - Docker (team server)
+        - From source
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ReviewStage version
+      description: "Desktop: the running version shown in Settings → Desktop app. Docker and source: the image tag or `git rev-parse --short HEAD`."
+      placeholder: "1.0.1"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15.6 / Ubuntu 24.04 / …"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Desktop app: paste the relevant lines from `~/.reviewstage/server.log` (the server's output from the last launch) and `~/.reviewstage/desktop.log` (the app's own output). Docker: `docker compose logs app`. A review run also leaves `agent.log` and `status` under `~/.reviewstage/state/<pr>/users/<login>/`.
+      render: shell
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Screenshots, a minimal `review.json` that triggers it, or the PR shape (file count, diff size).

@@ -1,6 +1,8 @@
 ---
-title: Security model
+title: "Security model: what ReviewStage can and cannot do"
 description: What is stored, how it is protected, what a token can do, and what is not defended against.
+sidebar:
+  label: Security model
 ---
 
 Read this before you set `DRY_RUN=0` on any server that is reachable from outside your own machine.

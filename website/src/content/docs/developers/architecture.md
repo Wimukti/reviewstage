@@ -1,7 +1,8 @@
 ---
-title: Architecture
+title: ReviewStage architecture
 description: The pieces, where state lives, and the design decisions worth defending.
 sidebar:
+  label: Architecture
   order: 1
 ---
 

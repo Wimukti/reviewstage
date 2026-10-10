@@ -1,0 +1,24 @@
+name: Documentation
+description: A page on reviewstage.dev or in the repository is wrong, unclear or missing something
+title: "docs: "
+labels: [documentation]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page URL
+      placeholder: "https://reviewstage.dev/start/install/"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+      description: Quote the sentence if it is wrong; describe what you were looking for if it is missing.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested wording
+      description: Optional. A pull request is welcome too — every docs page has an "Edit page" link.

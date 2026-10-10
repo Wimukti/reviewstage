@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Wimukti/reviewstage/security/advisories/new
+    about: Open a private security advisory (Security → Advisories → Report a vulnerability) rather than a public issue, so a fix can ship before the details do. See docs/SECURITY.md.
+  - name: Question
+    url: https://github.com/Wimukti/reviewstage/discussions
+    about: Ask how something works, or whether ReviewStage fits your team, in Discussions.

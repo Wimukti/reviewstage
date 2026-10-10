@@ -107,3 +107,40 @@ Exit conditions as in the document: 20 real reviews with no unknown install fail
 ## 6. Shipping now (lane `seo-discovery`)
 
 robots.txt · complete JSON-LD · category title and H1 · documentation titles · sitemap lastmod · npm keywords and description · ten topics · YAML issue forms · good-first-issues opened · Discussions on · README first sentence · alt-text audit · verify harness extended. Everything else above is a lane each, in the order of the table.
+
+## 7. Correction after the second document (10/10/26)
+
+A reassessment of this assessment arrived the same day. Checked the same way; three of its four
+corrections stand, and two of mine were wrong.
+
+| Its claim | Verified | Verdict |
+| --- | --- | --- |
+| **Rename before the launch, not after 30 days** | We have 0 stars, one user (the maintainer), a 5-day-old domain and package. Search Console will show nothing useful in 30 days at that traffic. Migration cost only grows from here. | **Conceded.** My "measure for 30 days" was a sunk-cost argument dressed as a data argument. Rename before the public launch. |
+| **Vouch is not clean** | `mitchellh/vouch`: 5,119 ★, created 02/05/26, "a community trust management system based on explicit vouches", GitHub integration, built against low-quality AI contributions. | **Conceded.** I checked namespaces, not meaning. Withdrawn. |
+| **Plannotator is a direct adjacency** | `backnotprop/plannotator`: 9,306 ★, "annotate and review coding agent plans and code diffs … send feedback to agents", supports Claude Code, Codex, Copilot, Gemini, Kiro, OpenCode. | **True.** It is the "why not just…" answer we must beat, together with `/code-review --comment`. Add it to the compare table and the FAQ. |
+| **A 404 robots.txt does not block crawling** | Google treats a 404 as allow-all. | True, and never claimed otherwise here; robots is housekeeping that advertises the sitemap. |
+| **"Bot on every PR" and "nothing else leaves" are overstatements** | Our Compare, Contrast and FAQ said exactly that. Claude Code Review has a manual mode; `/code-review` posts only when invoked; and update checks, push services and the tunnel do leave the machine. | **True. Fixed in this commit** — precise wording in all three places and the launch kit. |
+| **North star = weekly reviewers who post ≥ 1 curated review**, not review count | One person posting ten reviews should not look like ten retained users. | **Adopted.** |
+| **P0 order: telemetry + drop reasons + verification contract + first-run value + diagnostics before incremental re-review** | Same list as §3, reordered toward proof. | **Adopted.** `--doctor` exists; it gains the Claude-auth and GitHub-auth checks. |
+| JetBrains Research (10/06/26): reviewing AI-generated multi-file changes "is not a diffing problem, but a trust-calibration problem" | Article verified. | Adopt the framing for the finding card: risk and confidence at the segment where attention is spent. |
+
+### The name, second pass
+
+Single thesis words are gone: finalsay, lastword, byline, winnow, gavel, yourcall, ratify, redpen,
+secondlook — every one taken on .dev/.app and GitHub. Clean on `.dev`, `.app`, GitHub and npm
+as of 10/10/26 (semantic collisions still to be checked for the top picks):
+
+| Candidate | Says | Reservation |
+| --- | --- | --- |
+| **KeepDrop** | the interaction itself: keep what's worth saying, drop the rest — also the phone gesture and the learnings loop ("learns what you drop") | unusual as a brand; two verbs |
+| **DiffKeeper** | a human keeps only the findings worth raising | "keeper" reads a little like a vault/backup tool |
+| **PeerLayer** | human judgment layered over AI output (the category sentence) | abstract; "HumanLayer" (11.7k ★) exists, so the "-layer" pattern is crowded |
+| PR Attest (`prattest`) | a human attests the review is worth posting | formal; hard to say aloud |
+| ReviewVerdict / JudgeCall / SignedReview / HumanSign | judgment / signature | generic or legal in tone |
+
+Recommendation: **KeepDrop**, pending the semantic-collision check and a trademark search by the
+maintainer. Keep "AI wrote the PR. You still have to review it." and the category sentence as is;
+"Stage your review" retires. Migration order: domain → npm `keepdrop` with `reviewstage` left as a
+one-line shim that prints the new command and forwards → GitHub rename (redirects follow) → site
+redirects for a year → "ReviewStage is now KeepDrop" in README, package output and metadata for six
+months → re-record the launch video end card (`pnpm launch-video`) and the voice-over's one word.

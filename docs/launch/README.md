@@ -77,11 +77,11 @@ link after the command is the site.
 
 ## One sentence each, for the questions you will get
 
-- **Why not Claude Code Review / CodeRabbit / Copilot review?** They post as a bot on every PR;
+- **Why not Claude Code Review / CodeRabbit / Copilot review?** They deliver AI-written feedback straight into the PR under the tool's identity;
   this drafts privately and you post as yourself, only when you choose.
 - **What does it cost?** Your existing Claude plan. Nothing else; no API key, no server bill
   for the desktop app.
 - **What leaves my machine?** The diff, to Anthropic, through Claude Code on your account, and
-  the review you choose to post, to GitHub. Nothing else.
+  the review you choose to post, to GitHub. Also GitHub for sign-in, npm for update checks, push services and the Cloudflare tunnel if you turn the phone on. No telemetry.
 - **Can it auto-approve?** No — not as an option, not behind a flag. Approve is your click.
 - **Windows?** Docker install under WSL2 today; native is on the roadmap.

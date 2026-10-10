@@ -25,7 +25,6 @@ Routes
 import base64
 import calendar
 import contextlib
-import fcntl
 import hmac
 import html
 import json
@@ -61,6 +60,7 @@ import rs_rollup
 import rs_settings
 import rs_stack
 import rs_state
+import rs_users
 import rs_webhook
 
 BRAND = "ReviewStage"                    # product name shown beside the logo (see rs_assets)
@@ -309,56 +309,23 @@ def webhooks_status():
 
 
 # --- users ---------------------------------------------------------------------------------
-# users.json: {login: {pat_enc | gh_token_enc(+gh_exp, gh_refresh_enc), slack_id, discord_id,
-# admin, name, added, devices: {sha256: {id, name, created, last_seen}}}. Tokens are
-# AES-encrypted with a key
-# derived from RS_SECRET — derived, not stored, so rotating the secret also invalidates
-# every stored PAT, which is the right outcome if it was rotated because it leaked. The
-# shell scripts only ever read login + slack_id; they never see a PAT.
+# users.json and the at-rest encryption of the tokens it holds live in rs_users (so the doctor
+# and the device prune can read who signed in without importing this module). The wrappers
+# below bind them to THIS process's SECRET and USERS path — read at call time, so a rotated
+# secret after a restart (and the tests that simulate one) sees the new key.
+PBKDF2_ITERS = rs_users.PBKDF2_ITERS
+PBKDF2_ITERS_LEGACY = rs_users.PBKDF2_ITERS_LEGACY
+
+
 def _users_key():
-    return sha256(f"{SECRET}:users".encode()).hexdigest()
-
-
-# PBKDF2 rounds for the at-rest encryption below. OpenSSL's built-in default is 10,000, which
-# is two orders of magnitude short of anything current; 600,000 matches OWASP's PBKDF2-SHA256
-# guidance. Ciphertext written before this change was derived at the old default, so dec()
-# falls back to it once — nobody has to re-paste a token to read this release.
-PBKDF2_ITERS = 600_000
-PBKDF2_ITERS_LEGACY = 10_000
+    return rs_users.users_key(SECRET)
 
 
 def _openssl(mode, data, iters):
-    """Fork openssl for one AES-256-CBC operation. The key goes down a pipe on fd 3, not
-    through the child's environment, so it never appears in /proc/<pid>/environ."""
-    r_fd, w_fd = os.pipe()
-    try:
-        os.write(w_fd, (_users_key() + "\n").encode())
-    finally:
-        os.close(w_fd)
-    try:
-        # pass_fds keeps the pipe at the SAME descriptor number in the child, so that is the
-        # number openssl must read from. This used to say fd:3, which only holds while 3 happens
-        # to be free — inside the running server fd 3 is the listening socket, so openssl read
-        # its password from the server's own port, every encrypt and decrypt failed, and a
-        # completed GitHub sign-in crashed while storing its token.
-        # Bytes in, bytes out. With text=True, subprocess decoded stdout BEFORE this code saw
-        # the exit status, and a decrypt at the wrong iteration count can leave partial
-        # garbage on stdout — so the UnicodeDecodeError fired instead of the RuntimeError that
-        # dec() catches, and the legacy-iterations fallback never ran. That is how tokens
-        # written before PBKDF2_ITERS was raised became unreadable on OpenSSL 3.5.
-        r = subprocess.run(["openssl", "enc", "-aes-256-cbc", "-pbkdf2",
-                            "-iter", str(iters), "-salt", "-a", "-A",
-                            mode, "-pass", f"fd:{r_fd}"], input=data.encode(),
-                           capture_output=True, pass_fds=(r_fd,))
-    finally:
-        os.close(r_fd)
-    if r.returncode != 0:
-        err = r.stderr.decode("utf-8", "replace") if r.stderr else "openssl failed"
-        raise RuntimeError(err.strip()[:200])
-    try:
-        return r.stdout.decode("utf-8").strip()
-    except UnicodeDecodeError as e:
-        raise RuntimeError("openssl produced undecodable output") from e
+    """One AES-256-CBC operation via rs_users.openssl: the key goes down a pipe kept at the
+    same descriptor number in the child (pass_fds; the literal fd:3 broke once fd 3 was the
+    listening socket), never through the child's environment."""
+    return rs_users.openssl(mode, data, iters, _users_key())
 
 
 def enc(plain):
@@ -393,50 +360,20 @@ def dec(cipher):
         return _openssl("-d", cipher, PBKDF2_ITERS_LEGACY)
 
 
-# users.json has TWO writers: this process, and `rs_devices.py prune`, which pr-watch.sh runs
-# nightly and which does its own full read-modify-write. The in-process lock below keeps two
-# requests from losing each other's update; the fcntl lock on the sibling .lock file keeps the
-# prune from rolling back a sign-in that landed inside its window (the prune takes the same
-# lock). The lock is on a sibling file, not users.json, because both writers replace users.json
-# by rename — a lock held on its inode would be orphaned by the first swap.
 _users_lock = threading.Lock()
 
 
-@contextlib.contextmanager
-def _users_file_lock():
-    lock = Path(rs_dev.lock_path(USERS))
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock, "a+") as lf:
-        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
-        try:
-            os.chmod(lock, 0o600)
-        except OSError:
-            pass
-        yield
-
-
 def load_users():
-    if not USERS.exists():
-        return {}
-    try:
-        return json.loads(USERS.read_text()) or {}
-    except json.JSONDecodeError:
-        return {}
+    return rs_users.load_users(USERS)
 
 
 def save_users(users):
-    tmp = USERS.with_suffix(".tmp")
-    tmp.write_text(json.dumps(users, indent=1))
-    os.chmod(tmp, 0o600)
-    tmp.replace(USERS)
+    rs_users.save_users(users, USERS)
 
 
 def modify_users(fn):
     """Serialized read-modify-write of users.json. fn(users) mutates the dict in place."""
-    with _users_lock, _users_file_lock():
-        users = load_users()
-        fn(users)
-        save_users(users)
+    rs_users.modify_users(fn, USERS, lock=_users_lock)
 
 
 # --- the per-user credential epoch ------------------------------------------------------------

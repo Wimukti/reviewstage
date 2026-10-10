@@ -25,6 +25,17 @@ test("the Electron path is the package's default export, or null when it is miss
   assert.equal(electronPath(() => "/apps/Electron"), "/apps/Electron");
   assert.equal(electronPath(() => { throw new Error("Cannot find module 'electron'"); }), null);
   assert.equal(electronPath(() => ({ not: "a path" })), null);
+  // A real require resolves the package and reads path.txt without running electron's index.js
+  // (which downloads and prints when the binary is missing).
+  const fake = mkdtempSync(join(tmpdir(), "rs-electron-"));
+  mkdirSync(join(fake, "electron", "dist", "Electron.app", "Contents", "MacOS"), { recursive: true });
+  writeFileSync(join(fake, "electron", "package.json"), "{}");
+  writeFileSync(join(fake, "electron", "path.txt"), "Electron.app/Contents/MacOS/Electron\n");
+  const resolving = () => { throw new Error("index.js must not run"); };
+  resolving.resolve = () => join(fake, "electron", "package.json");
+  assert.equal(electronPath(resolving), null, "path.txt names a binary that is not on disk yet");
+  writeFileSync(join(fake, "electron", "dist", "Electron.app", "Contents", "MacOS", "Electron"), "");
+  assert.equal(electronPath(resolving), join(fake, "electron", "dist", "Electron.app", "Contents", "MacOS", "Electron"));
 });
 
 test("the doctor environment: ROOT, tools first on PATH, personal mode, the launcher's runtime facts", () => {

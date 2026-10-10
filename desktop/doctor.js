@@ -3,8 +3,9 @@
 // module only tells them what the launcher knows — which node ran it, where the Electron
 // binary is, that this is a desktop install — and forwards the flags.
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const DOCTOR_FLAGS = ["--json", "--live", "--strict"];
 
@@ -18,6 +19,15 @@ export function doctorArgs(argv) {
  *  install) — the doctor reports that as env.electron FAIL rather than this crashing. */
 export function electronPath(require) {
   try {
+    // Never `require("electron")` here: its index.js downloads a missing binary and prints
+    // "Downloading Electron binary..." to stdout, which would corrupt `--doctor --json`. Read
+    // the package's path.txt instead and report what is actually on disk.
+    if (typeof require.resolve === "function") {
+      const dir = dirname(require.resolve("electron/package.json"));
+      const rel = readFileSync(join(dir, "path.txt"), "utf8").trim();
+      const bin = join(dir, "dist", rel);
+      return rel && existsSync(bin) ? bin : null;
+    }
     const p = require("electron");
     return typeof p === "string" && p ? p : null;
   } catch {

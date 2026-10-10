@@ -1,7 +1,8 @@
 ---
-title: Team mode
+title: Self-host ReviewStage for a team
 description: Reference for a shared server — the poller, many repositories, per-reviewer identity, independent reviews, webhooks and owner notes.
 sidebar:
+  label: Team mode
   order: 7
 ---
 

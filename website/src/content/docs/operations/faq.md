@@ -1,5 +1,5 @@
 ---
-title: FAQ
+title: ReviewStage FAQ
 description: Short answers on the phone tunnel, why its address changes, the app in the menu bar, updates, switching accounts, adding repositories, the dry run and Windows.
 sidebar:
   order: 2

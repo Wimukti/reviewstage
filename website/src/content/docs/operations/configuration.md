@@ -1,5 +1,5 @@
 ---
-title: Configuration
+title: Configure ReviewStage
 description: Every setting the code actually reads, one line each.
 sidebar:
   order: 1

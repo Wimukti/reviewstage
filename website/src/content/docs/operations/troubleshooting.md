@@ -35,6 +35,38 @@ curl -s localhost:8899/health                  # -> ok
 cat ~/.reviewstage/state/<owner>__<name>/<pr>/users/<login>/agent.log
 ```
 
+## Everyday commands — desktop app
+
+```bash
+npx reviewstage --doctor                       # full diagnostics, no window
+npx reviewstage --doctor --json                # the same checks as one JSON document
+npx reviewstage --doctor --live                # also try the stored GitHub and Claude tokens
+npx reviewstage --doctor --strict              # exit 2 when anything only warned
+cat ~/.reviewstage/server.log                  # the bundled server's output (fresh each launch)
+cat ~/.reviewstage/desktop.log                 # the app's own output when it runs detached
+```
+
+## The doctor
+
+`bin/doctor.sh` (reached as `docker compose exec app doctor` or `npx reviewstage --doctor`) prints one `PASS` / `WARN` / `FAIL` line per check and writes nothing. It exits **0** when every check passed, **1** when any check failed, and **2** when nothing failed but something warned and you passed `--strict`. `--json` prints `{"checks":[{"id","status","text"}],"fails","warns"}` instead of lines, with the same exit code, for scripts and bug reports.
+
+It knows which kind of install it is looking at. A **desktop install** (`npx reviewstage`, `RS_PERSONAL=1`, or a `desktop.json` in `ROOT`) has no service token by design — each signed-in person's own GitHub token polls and posts — so `GITHUB_PAT` is never required there, and the header reads `ReviewStage doctor — desktop install at <ROOT>`. A **team install** keeps the service-token checks: `GITHUB_PAT` present, able to see every repository in `REPOS`.
+
+The checks beyond the tools and resources, with their `--json` ids:
+
+| id | what it looks at | result |
+| --- | --- | --- |
+| `github.auth` | `users.json`: who has signed in, the client that issued each token (`device`, `oauth`, `pat`), when it expires | expired and not refreshable **FAIL** · expired but refreshable, or expiring within 24 h **WARN** |
+| `claude.auth` | who has connected Claude and whether the token is still good | nobody **WARN** · expired with no refresh token **FAIL** · expired with one **WARN** |
+| `perms.root`, `perms.file` | `ROOT` is `700`; `.env`, `users.json`, `settings.json`, `desktop.json`, `push_vapid.json` are `600` | anything looser **WARN**, naming the file |
+| `port.free` | `/health` on the port the app recorded in `desktop.json` (else `RS_PORT`, else a loopback `PUBLIC_URL`, else 8899) | desktop app not running **WARN** · team server not answering **FAIL** · something else on the port **FAIL** |
+| `env.node`, `env.electron`, `env.os`, `env.chromium_sandbox` | the runtime the launcher ran on: node ≥ 20, the Electron binary, macOS/Linux, the Linux sandbox helper | old node or missing Electron **FAIL** · Windows or no sandbox helper **WARN** |
+| `tools.cloudflared` / `tools.tailscale` | only when phone access is on: the tunnel binary it uses | missing **FAIL** |
+| `callback.public_url` | phone access on, app running, `PUBLIC_URL` still loopback | **WARN** |
+| `callback.device`, `callback.claude` | `--live` only: a HEAD to GitHub's device-flow page and Claude's authorize page | unreachable **FAIL** (proxy or firewall) |
+
+Without `--live` the doctor makes no network call beyond loopback and never decrypts a token: it reads presence and expiry off `users.json` and prints nothing else. With `--live` it decrypts each stored token with `RS_SECRET`, hands it to `gh api user` / `claude -p` through that child's environment only, and reports accept or reject. Tokens never appear in the output in either mode.
+
 ## "I changed .env and nothing happened"
 
 The dashboard reads `.env` **once, at startup**. `docker compose up -d` (or `sudo systemctl restart reviewstage`) after every edit, especially `DRY_RUN`. This is the single most common cause of "why isn't it working".

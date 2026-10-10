@@ -565,3 +565,52 @@ class ApproveStalenessAndIdempotency(PostCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --- the verification contract reaches the client (p0-proof lane 3) ---------------------------
+class FindingContractInThePayload(PostCase):
+    """_review_data sends `confidence` and `howToVerify` for every finding, reads `why_it_matters`
+    as `impact`, and gives an older review (none of those fields) nulls and empty strings rather
+    than refusing to render it. The review on disk is read through load_review, as the page does."""
+
+    def payload(self, rev):
+        self.write_review(rev)
+        h = self.handler()
+        loaded = self.srv.load_review(REPO, PR, USER)
+        return h._review_data(REPO, PR, USER, loaded, {})["findings"]
+
+    def test_new_fields_are_sent_and_the_synonym_is_read_as_impact(self):
+        fs = self.payload({"event": "COMMENT", "summary": "s", "comments": [
+            {"severity": "should-fix", "path": "app/pay.py", "line": 12, "body": "b",
+             "title": "Charged twice", "why_it_matters": "A customer pays twice.",
+             "how_to_verify": "Run pytest -k double_charge; it fails.", "confidence": "high"}]})
+        self.assertEqual(fs[0]["confidence"], "high")
+        self.assertEqual(fs[0]["howToVerify"], "Run pytest -k double_charge; it fails.")
+        self.assertEqual(fs[0]["impact"], "A customer pays twice.")
+        self.assertTrue(fs[0]["structured"])
+        self.assertFalse(fs[0]["low"])
+
+    def test_an_older_review_renders_with_nulls_not_a_refusal(self):
+        fs = self.payload(REVIEW)                       # body-only findings, the pre-contract shape
+        self.assertEqual(len(fs), 2)
+        for f in fs:
+            self.assertIsNone(f["confidence"])
+            self.assertEqual(f["howToVerify"], "")
+            self.assertEqual(f["impact"], "")
+            self.assertFalse(f["structured"])
+        self.assertEqual(fs[0]["title"], "This double-charges.")   # the fallback title still works
+
+    def test_low_confidence_still_drives_the_maybe_tray_and_the_review_key_is_unchanged(self):
+        rev = {"event": "COMMENT", "summary": "s", "comments": [
+            {"severity": "Nit", "path": "a.py", "line": 1, "body": "b", "confidence": "LOW",
+             "how_to_verify": "one\ntwo"}]}
+        fs = self.payload(rev)
+        self.assertTrue(fs[0]["low"])
+        self.assertEqual(fs[0]["confidence"], "low")
+        self.assertEqual(fs[0]["severity"], "nit")
+        self.assertEqual(fs[0]["howToVerify"], "")     # multi-line is dropped, not rendered
+        # The key the page echoes back is computed from the same normalised reading the post
+        # path loads, so folding "Nit" to "nit" cannot 409 a legitimate post.
+        loaded = self.srv.load_review(REPO, PR, USER)
+        self.assertEqual(self.srv.review_key(loaded, HEAD_A),
+                         self.srv.review_key(self.srv.load_review(REPO, PR, USER), HEAD_A))

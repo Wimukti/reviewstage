@@ -111,6 +111,8 @@ def main():
             {"path": "app/models/Product.php", "line": 42, "severity": "should-fix",
              "title": "A product with no vendor can crash the lead-time badge",
              "impact": "A shopper viewing such a product sees the card fail instead of loading.",
+             "how_to_verify": "Open a product whose vendor is null; the badge throws instead "
+                              "of rendering.",
              "body": "Guard against a null vendor before reading its lead time.",
              "reply_to": None, "suggestion": "if ($vendor === null) return null;",
              "confidence": "high"},
@@ -129,6 +131,8 @@ def main():
             {"path": "api/limits.py", "line": 18, "severity": "blocker",
              "title": "Two tenants share one rate-limit bucket",
              "impact": "A busy tenant can lock a quiet tenant out of lead times entirely.",
+             "how_to_verify": "Call GET /lead-times 60 times with two tenants' keys; the second "
+                              "tenant is throttled too.",
              "body": "Key the bucket on (tenant, api_key), not api_key alone.",
              "reply_to": None, "suggestion": "key = f\"{tenant}:{api_key}\"",
              "confidence": "high"}]}))

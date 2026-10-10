@@ -103,6 +103,12 @@ table, serialise the same decisions into `./review.json` and write nothing else 
     "path":     "<repo-relative path>",
     "line":     <line number in the NEW version of the file>,
     "severity": "blocker" | "should-fix" | "nit" | "question",
+    "title":    "<one plain-language headline a junior engineer understands at a glance>",
+    "impact":   "<ONE sentence: who is affected and what actually breaks for them>",
+    "how_to_verify": "<ONE imperative line, under 160 characters, telling the reviewer how to
+                  confirm this finding is real in under two minutes — a command to run, a page
+                  to open, an input to try; never 'review the code'>",
+    "confidence": "high" | "medium" | "low",
     "body":     "<the exact GitHub-formatted comment, same quality bar as a Step 6 table cell:
                   backticked symbols, fenced code, ```suggestion blocks where the replacement
                   is unambiguous>",
@@ -111,6 +117,12 @@ table, serialise the same decisions into `./review.json` and write nothing else 
 }
 ````
 
+- `title`, `impact` and `how_to_verify` are what the reviewer reads on the card to decide
+  whether to post the comment without opening the PR. `how_to_verify` starts with a verb
+  (`Run …`, `Open …`, `Call … with …`) and is one line; a multi-line value is discarded. The
+  dashboard accepts `why_it_matters` as a synonym of `impact`. `confidence` is shown on every
+  card and sorts low-confidence findings into a collapsed "maybe" tray — state it honestly
+  rather than dropping a borderline point.
 - `reply_to` is Step 6's Reply-vs-New decision. Non-null means an existing thread already
   covers this file/line/topic — open the body with a short acknowledgement (`Agreed —`,
   `Checked —`) so it reads as a continuation. Getting this wrong is the single most annoying

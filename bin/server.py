@@ -57,6 +57,7 @@ import rs_personal
 import rs_push
 import rs_profile
 import rs_review_body as RB
+import rs_review_schema
 import rs_rollup
 import rs_settings
 import rs_stack
@@ -3654,6 +3655,10 @@ def normalize_review(rev):
     """
     if not isinstance(rev, dict):
         return rev
+    # The finding contract (rs_review_schema): vocabularies folded, `why_it_matters` read as
+    # `impact`, a multi-line `how_to_verify` dropped, fields an older run never wrote set to
+    # None. Here, at the one load point, so render, post and explain all index the same list.
+    rev, _ = rs_review_schema.normalize(rev)
     for c in rev.get("comments") or []:
         if isinstance(c, dict):
             c["line"] = rs_diff.norm_line(c.get("line"))
@@ -4619,6 +4624,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _review_data(self, repo, pr, user, rev, appr):
         ev = rev.get("event", "COMMENT")
+        # `rev` came through load_review, so every finding already has one reading of severity,
+        # confidence, impact and how_to_verify (rs_review_schema) — the same reading the post
+        # and explain paths sort and index by.
         comments = sorted(rev.get("comments", []),
                           key=lambda c: SEV_ORDER.get(c.get("severity"), 9))
         cs = sev_counts(comments)
@@ -4656,6 +4664,8 @@ class Handler(BaseHTTPRequestHandler):
                              "thread": (c["reply_to"] if c.get("reply_to") else None),
                              "body": c.get("body", ""), "suggestion": c.get("suggestion", "") or "",
                              "low": c.get("confidence") == "low",
+                             "confidence": c.get("confidence"),
+                             "howToVerify": c.get("how_to_verify") or "",
                              "title": c.get("title") or self._fallback_title(c),
                              "impact": (c.get("impact") or "").strip(),
                              "criticalPath": (c.get("critical_path") or "").strip(),

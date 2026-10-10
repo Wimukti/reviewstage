@@ -244,12 +244,18 @@ affected and what actually breaks for them (an end user, an operator, a partner)
 consequence, not the code mechanism\", \"body\":
 \"the detailed technical explanation and the concrete failing scenario, in markdown — this is the
 comment posted to GitHub, so write it for the PR author\", \"reply_to\":null, \"suggestion\":null,
-\"confidence\":\"high|medium|low\", \"critical_path\":null}]}. The title and impact are shown to a reviewer skimming the
-dashboard so they can understand and sign off on each finding WITHOUT reading the whole PR — keep
-them jargon-free and self-contained; the body stays the full technical comment.
-Set \"confidence\" to how sure you are the finding is real and worth raising — low-confidence
-findings are shown to the reviewer in a separate collapsed \"maybe\" tray, so use it honestly
-rather than dropping a borderline point. \"critical_path\" is optional: set it to the exact glob
+\"confidence\":\"high|medium|low\", \"how_to_verify\":\"ONE imperative line telling the reviewer
+how to confirm this finding is real in under two minutes — a command to run, a page to open, an
+input to try; never 'review the code'\", \"critical_path\":null}]}. The title, impact and
+how_to_verify are shown to a reviewer skimming the dashboard so they can understand, check and
+sign off on each finding WITHOUT reading the whole PR — keep them jargon-free and self-contained;
+the body stays the full technical comment. (\"why_it_matters\" is accepted as a synonym of
+\"impact\".) Set \"confidence\" to how sure you are the finding is real and worth raising — it is
+shown on every card, and low-confidence findings are shown to the reviewer in a separate
+collapsed \"maybe\" tray, so use it honestly rather than dropping a borderline point.
+\"how_to_verify\" is one line under 160 characters starting with a verb (Run …, Open …, Call …
+with …) and concrete enough to do without reading the PR; a multi-line value is discarded.
+\"critical_path\" is optional: set it to the exact glob
 from the 'Critical paths for this repository' section when the finding concerns one of those
 paths, else leave it null. When a finding has a concrete,
 correct fix that replaces the SINGLE line you set in \"line\", put the exact replacement line
@@ -335,6 +341,12 @@ jq -e 'if type == "object" then (.comments |= (. // []))
        | if (.comments | type) == "array" then . else empty end
        else empty end' "$wt/review.json" > "$DIR/review.json.tmp" 2>/dev/null \
   || fail "review.json is not a review object with a comments array (see $DIR/agent.log)"
+[ -s "$DIR/review.json.tmp" ] || fail "could not re-encode review.json (disk full?)"
+# One reading of every finding (rs_review_schema.py): vocabularies folded, `why_it_matters`
+# mapped to `impact`, a multi-line `how_to_verify` dropped. Warnings go to agent.log; it never
+# fails the run and imports nothing that could reach GitHub.
+PYTHONPATH="$HERE" python3 "$HERE/rs_review_schema.py" "$DIR/review.json.tmp" 2>> "$DIR/agent.log" \
+  || echo "[review-schema] normalisation skipped (python3 failed)" >> "$DIR/agent.log"
 [ -s "$DIR/review.json.tmp" ] || fail "could not re-encode review.json (disk full?)"
 # Copy out before the worktree is removed — this is the artefact the dashboard renders.
 mv "$DIR/review.json.tmp" "$DIR/review.json" || fail "cannot write $DIR/review.json"

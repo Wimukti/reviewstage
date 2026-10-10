@@ -5,7 +5,10 @@
 // six-row comparison, six script-free FAQ disclosures, the hero command pill, the videos'
 // preload rules and the hero above a 390x844 fold, the demo lightbox loading only on open, 44px
 // tap targets and no sideways scroll at 390 (measured against visualViewport), the favicon and
-// social assets, and a Lighthouse performance score of 95 or better on the home page.
+// social assets, and a Lighthouse performance score of 95 or better on the home page. The
+// discovery contract (openspec/changes/go-to-tool, lane seo-discovery): robots.txt names the
+// sitemap, every sitemap entry carries <lastmod>, the SoftwareApplication JSON-LD is complete,
+// the title and the one <h1> carry the category, and each docs page's <title> is its heading.
 // Usage: node scripts/verify-site.mjs [outDir]
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -30,6 +33,8 @@ const pages = {
 // The command the home page shows is named once in src/content/install.ts; read it from there
 // so this check cannot drift from the page (it did, when the install became `npx reviewstage`).
 const installCommand = readFileSync("src/content/install.ts", "utf8").match(/installCommand = "([^"]+)"/)?.[1] ?? "npx reviewstage";
+const CATEGORY = "human review layer";
+const decode = (t) => t.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim();
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); console.log(`${ok ? "ok  " : "FAIL"} ${msg}`); };
 
@@ -87,7 +92,41 @@ try {
   const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>") + 7);
   const desc = head.match(/name="description" content="([^"]*)"/)?.[1] ?? "";
   check(desc.length > 0 && desc.length <= 155, `meta description is ${desc.length} chars (<= 155)`);
-  for (const needle of ["<title>ReviewStage — AI drafts your PR review, you post it as yourself</title>", 'property="og:image:width" content="1280"', 'property="og:image:height" content="640"', 'rel="icon" href="/favicon.ico"', 'rel="apple-touch-icon"', 'sizes="192x192"', 'sizes="512x512"', 'property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:url"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"', 'name="twitter:image"', 'name="theme-color" media="(prefers-color-scheme: light)"', 'name="theme-color" media="(prefers-color-scheme: dark)"', 'name="description"']) {
+  const title = head.match(/<title>([^<]*)<\/title>/)?.[1] ?? "";
+  check(title.includes(CATEGORY), `<title> carries the category: "${title}"`);
+  check(desc.includes(CATEGORY), `meta description carries the category`);
+  // The structured data Google reads for a software result: it must parse, and the
+  // SoftwareApplication node must carry the fields its rich-result guidance asks for.
+  const ldRaw = head.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? "";
+  let app = null;
+  try { const ld = JSON.parse(ldRaw); app = (ld["@graph"] ?? [ld]).find((n) => n["@type"] === "SoftwareApplication") ?? null; } catch {}
+  check(!!app, "JSON-LD parses and has a SoftwareApplication node");
+  if (app) {
+    const missing = [["name", app.name], ["offers.price", app.offers?.price], ["applicationCategory", app.applicationCategory], ["operatingSystem", app.operatingSystem], ["downloadUrl", app.downloadUrl], ["author", app.author?.name], ["softwareVersion", app.softwareVersion], ["video.embedUrl", app.video?.embedUrl]].filter(([, v]) => !v).map(([k]) => k);
+    check(missing.length === 0, `SoftwareApplication has name, offers.price, applicationCategory, operatingSystem, downloadUrl, author, softwareVersion, video${missing.length ? " (missing: " + missing.join(", ") + ")" : ""}`);
+    check(/^\d+\.\d+\.\d+/.test(app.softwareVersion ?? ""), `softwareVersion is a release number (${app.softwareVersion})`);
+  }
+  // robots.txt advertises the sitemap, and every entry in it says when the page last changed.
+  const robots = await fetch(BASE + "/robots.txt");
+  const robotsText = robots.ok ? await robots.text() : "";
+  check(robots.status === 200 && /^Sitemap: https:\/\/reviewstage\.dev\/sitemap-index\.xml$/m.test(robotsText) && /^User-agent: \*$/m.test(robotsText), `/robots.txt → ${robots.status}, names the sitemap index`);
+  const sitemap = await (await fetch(BASE + "/sitemap-0.xml")).text();
+  const entries = [...sitemap.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((m) => ({ loc: m[1].match(/<loc>([^<]+)</)?.[1] ?? "", lastmod: m[1].match(/<lastmod>([^<]+)</)?.[1] ?? "" }));
+  const noDate = entries.filter((e) => !/^\d{4}-\d{2}-\d{2}T/.test(e.lastmod));
+  check(entries.length >= 15 && noDate.length === 0, `sitemap-0.xml: ${entries.length} entries, every one with an ISO <lastmod>${noDate.length ? " (missing: " + noDate.map((e) => e.loc).join(", ") + ")" : ""}`);
+  // Every docs page: <title> is its heading plus the site suffix, and the sidebar names it with
+  // the heading itself or a deliberately shorter label (sidebar.label / the config's items).
+  for (const e of entries) {
+    const path = new URL(e.loc).pathname;
+    if (path === "/") continue;
+    const doc = await (await fetch(BASE + path)).text();
+    const dt = decode(doc.match(/<title>([^<]*)<\/title>/)?.[1] ?? "");
+    const h1 = decode(doc.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? "");
+    const label = decode(doc.match(/aria-current="page"[^>]*>\s*<span[^>]*>([\s\S]*?)<\/span>/)?.[1] ?? "");
+    const labelOk = label.length > 0 && (label === h1 || label.length < h1.length);
+    check(dt === `${h1} | ReviewStage` && labelOk, `${path} <title> "${dt}" = h1 + suffix; sidebar "${label}"`);
+  }
+  for (const needle of [ 'property="og:image:width" content="1280"', 'property="og:image:height" content="640"', 'rel="icon" href="/favicon.ico"', 'rel="apple-touch-icon"', 'sizes="192x192"', 'sizes="512x512"', 'property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:url"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"', 'name="twitter:image"', 'name="theme-color" media="(prefers-color-scheme: light)"', 'name="theme-color" media="(prefers-color-scheme: dark)"', 'name="description"']) {
     check(head.includes(needle), `head has ${needle}`);
   }
   // The legacy register is gone from the served markup: no hand-rolled button class, no legacy
@@ -137,6 +176,8 @@ try {
           const mono = await page.evaluate(() => [...document.querySelectorAll("main *")].filter((el) => el.childNodes.length && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && /Mono|monospace/i.test(getComputedStyle(el).fontFamily) && !el.closest("code, pre, kbd")).map((el) => el.tagName + "." + el.className));
           check(mono.length === 0, `${scheme} ${label}: monospace only inside code (${mono.length} stray: ${mono.slice(0, 3).join(", ")})`);
 
+          const h1s = await page.evaluate(() => [...document.querySelectorAll("h1")].map((h) => h.textContent.trim()));
+          check(h1s.length === 1 && h1s[0].toLowerCase().includes(CATEGORY), `${scheme} ${label}: exactly one h1, carrying the category ("${h1s.join('" / "')}")`);
           // landing-v2: the nine sections, in order, each opening with its statement.
           const words = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").trim().split(/\s+/).filter(Boolean).length);
           check(words <= 900, `${scheme} ${label}: home reads ${words} words (<= 900)`);

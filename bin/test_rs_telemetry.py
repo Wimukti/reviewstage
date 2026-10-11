@@ -447,5 +447,22 @@ class InstallCompletedFiresOnce(unittest.TestCase):
         self.assertEqual(sys.modules["rs_telemetry"].counters(), {})
 
 
+
+class DisproofCounter(Base):
+    """`disproof_run{verdict}` (trust-and-plain §2.1): the closed verdict list and nothing else."""
+
+    def test_the_four_verdicts_count_and_anything_else_is_refused(self):
+        for v in ("stands", "weakened", "refuted", "failed"):
+            self.assertTrue(self.T.bump("disproof_run", n=2, verdict=v), v)
+        self.assertFalse(self.T.bump("disproof_run", verdict="maybe"))
+        self.assertFalse(self.T.bump("disproof_run"))
+        self.assertFalse(self.T.bump("disproof_run", verdict="stands", finding="retry.ts:44"))
+        day = next(iter(self.T.counters().values()))
+        self.assertEqual(day["disproof_run|verdict=stands"], 2)
+        self.assertEqual(sorted(k for k in day if k.startswith("disproof_run")),
+                         ["disproof_run|verdict=failed", "disproof_run|verdict=refuted",
+                          "disproof_run|verdict=stands", "disproof_run|verdict=weakened"])
+        self.assertIsNone(self.T.parse_key("disproof_run|verdict=sure"))
+
 if __name__ == "__main__":
     unittest.main()

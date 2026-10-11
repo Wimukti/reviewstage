@@ -808,11 +808,18 @@ class PlainContractInThePayload(PostCase):
             self.assertEqual(f["actual"], "")
             self.assertEqual(f["where"]["path"], "app/pay.py")
         # Body-only findings: the blocker on line 12 is in the hunk (a pass, and no no_contrast
-        # for a pre-contract finding); the nit on line 30 is not (one flag). Both pre-selected.
+        # for a pre-contract finding) and stays pre-selected; the nit on line 30 is not in the
+        # hunk — an evidence WARN, so the badge says Maybe and it joins the tray (Part 2).
         self.assertEqual(data["findings"][0]["evidence"], {
             "status": "pass", "flags": [], "symbols": [], "line": "The cited lines are in this diff."})
         self.assertEqual(data["findings"][1]["evidence"]["flags"], ["lines_not_in_diff"])
-        self.assertTrue(all(f["preselect"] for f in data["findings"]))
+        self.assertTrue(data["findings"][0]["preselect"])
+        self.assertEqual(data["findings"][0]["badge"]["level"], "likely")
+        self.assertFalse(data["findings"][1]["preselect"])
+        self.assertEqual(data["findings"][1]["badge"]["level"], "maybe")
+        self.assertIsNone(data["disproof"])
+        for f in data["findings"]:
+            self.assertIsNone(f["checked"])
 
     def test_when_github_gives_no_diff_there_is_no_verdict_and_nothing_is_demoted(self):
         data = self.payload({"event": "COMMENT", "summary": "s", "comments": [
@@ -822,3 +829,112 @@ class PlainContractInThePayload(PostCase):
         self.assertIsNone(f["snippet"])
         self.assertTrue(f["preselect"])
         self.assertTrue(data["anchorsUnknown"])
+
+
+# --- the earned-confidence badge and the disproof verdict reach the client (Part 2) ----------
+class ConfidenceBadgeInThePayload(PlainContractInThePayload):
+    """_review_data sends `checked` and `badge` per finding and the review-level `disproof`; a
+    Maybe is folded into `low`/`preselect` with lane 1's demotion; the model's own confidence is
+    still sent (for "More") but is never the badge."""
+
+    def rev(self, **checked):
+        c = [{"severity": "blocker", "path": "app/pay.py", "line": 11, "end_line": 12,
+              "body": "b", "confidence": "high", "title": "`pay()` charges twice",
+              "what_to_check": "Open pay.py lines 11-12. Check that `charge` runs once.",
+              "expected": "One charge.", "actual": "Two charges."},
+             {"severity": "should-fix", "path": "app/pay.py", "line": 11, "body": "c",
+              "confidence": "high", "title": "`charge` has no retry cap",
+              "what_to_check": "Open pay.py line 11.", "expected": "x", "actual": "y"},
+             {"severity": "nit", "path": "app/pay.py", "line": 12, "body": "d",
+              "confidence": "medium", "title": "Name the `charge` amount"}]
+        for i, v in checked.items():
+            c[int(i)]["checked"] = v
+        return {"event": "COMMENT", "summary": "s", "comments": c,
+                "disproof": {"status": "done", "n": 2, "checked": 2, "duration_ms": 61000,
+                             "mode": "default"}}
+
+    def test_checked_likely_and_maybe_from_the_verdicts(self):
+        data = self.payload(self.rev(**{
+            "0": {"verdict": "stands", "reason": "No second charge path.", "at": 5},
+            "1": {"verdict": "refuted", "reason": "`MAX_RETRIES` caps it at pay.py:3.", "at": 5}}),
+            files=self.FILES)
+        a, b, c = data["findings"]
+        self.assertEqual(a["badge"]["level"], "checked")
+        self.assertEqual(a["badge"]["reason"], "Checked: the cited lines exist and mention "
+                                               "`pay`, `charge`, a second pass could not "
+                                               "disprove it.")
+        self.assertEqual(a["checked"], {"verdict": "stands", "reason": "No second charge path.",
+                                        "at": 5})
+        self.assertTrue(a["preselect"])
+        self.assertEqual(b["badge"]["level"], "maybe")
+        self.assertIn("a second pass refuted it: `MAX_RETRIES` caps it at pay.py:3.",
+                      b["badge"]["reason"])
+        self.assertTrue(b["low"])
+        self.assertFalse(b["preselect"])
+        self.assertEqual(b["confidence"], "high")             # still sent, never the badge
+        self.assertEqual(c["badge"]["level"], "likely")
+        self.assertEqual(c["badge"]["reason"], "Likely: the cited lines exist and mention "
+                                               "`charge`, no second pass for this severity.")
+        self.assertIsNone(c["checked"])
+        self.assertTrue(c["preselect"])
+        self.assertEqual(data["disproof"], {"status": "done", "n": 2, "checked": 2,
+                                            "durationMs": 61000, "mode": "default"})
+
+    def test_calibration_reaches_the_badge_only_from_twenty_decisions(self):
+        importlib.reload(self.srv.rs_learn)
+        L = self.srv.rs_learn
+        (self.d / "skill").write_text("global")
+
+        def decide(n, conf, keep, pr):
+            originals = [{"path": "a.py", "line": 3, "severity": "nit", "confidence": conf,
+                          "body": f"f{i}"} for i in range(n)]
+            form = {f"sel_{i}": ["1"] for i in range(keep)}
+            form.update({f"body_{i}": [f"f{i}"] for i in range(keep)})
+            L.record(REPO, pr, USER, originals, form, skill="global", key=f"{pr}{conf}")
+        decide(20, "high", 17, "91")                   # 85%
+        decide(20, "low", 4, "92")                     # 20%
+        rev = self.rev(**{"0": {"verdict": "stands", "reason": "r", "at": 1}})
+        rev["comments"][2]["confidence"] = "low"
+        data = self.payload(rev, files=self.FILES)
+        a, _, c = data["findings"]
+        self.assertEqual(a["badge"]["level"], "checked")
+        self.assertIn("reviewers kept 85.0% of findings like this here", a["badge"]["reason"])
+        self.assertEqual(a["badge"]["inputs"]["n"], 20)
+        self.assertEqual(c["badge"]["level"], "maybe")
+        self.assertIn("reviewers kept 20.0%", c["badge"]["reason"])
+        # Below the sample the bucket is not read at all.
+        decide(5, "medium", 0, "93")
+        data = self.payload(self.rev(), files=self.FILES)
+        self.assertEqual(data["findings"][2]["badge"]["level"], "likely")
+        self.assertNotIn("reviewers kept", data["findings"][2]["badge"]["reason"])
+
+    def test_the_learning_row_carries_the_evidence_and_confidence(self):
+        self.fake_github()
+        importlib.reload(self.srv.rs_learn)
+        h = self.handler()
+        form = h._post_form(REPO, PR, USER, {"selected": [0], "bodies": {}, "suggs": {},
+                                              "request_changes": False})
+        self.assertIn("Posted your review", h._post_result(REPO, PR, USER, form))
+        rows = {r["outcome"]: r for r in self.srv.rs_learn._read()}
+        self.assertEqual(rows["kept"]["evidence"], "pass")          # line 12 is in the hunk
+        self.assertEqual(rows["dropped"]["evidence"], "warn")       # line 30 is not
+        self.assertNotIn("confidence", rows["kept"])               # the run never stated one
+        cal = self.srv.rs_learn.calibration()
+        self.assertEqual(cal["byConfidence"][0]["n"], 2)
+        self.assertEqual({r["status"]: r["n"] for r in cal["byEvidence"]},
+                         {"pass": 1, "warn": 1, "unknown": 0})
+        api = h.api_learnings(USER)
+        self.assertEqual(api["calibration"]["decided"], 2)
+        self.assertIn("Not enough decisions", api["calibration"]["note"])
+
+    def test_the_run_form_states_the_estimate(self):
+        form = self.handler()._run_form_data(USER, {}, REPO, PR)
+        self.assertEqual(form["disproof"], {"secPerFinding": 40,
+                                            "defaults": ["blocker", "should-fix"]})
+
+    def test_the_cache_key_changes_only_for_check_all(self):
+        k = lambda d: self.srv.review_cache_key(USER, REPO, HEAD_A, "standard", "", "", d)  # noqa
+        self.assertEqual(k("default"), k(""))
+        self.assertEqual(k("default"), self.srv.review_cache_key(USER, REPO, HEAD_A, "standard",
+                                                                 "", ""))
+        self.assertNotEqual(k("all"), k("default"))

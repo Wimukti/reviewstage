@@ -167,7 +167,18 @@ def row_id(row):
     return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
-def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=None, dry=False):
+CONFIDENCES = ("high", "medium", "low")
+EVIDENCE_STATES = ("pass", "warn")
+CHECK_VERDICTS = ("stands", "weakened", "refuted")
+UNKNOWN = "unknown"                 # a row from before a signal was recorded
+# Calibration (trust-and-plain §2.2): a bucket is rated only from this many decisions, and the
+# model's confidence "separates" only when the high and low buckets are this far apart.
+CALIBRATION_MIN = 20
+SEPARATION_POINTS = 10
+
+
+def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=None, dry=False,
+           evidence=None):
     """Log the outcome of each original finding for one review the reviewer actually decided on.
 
     Call this AFTER the post succeeds, or from the dry-run branch with `dry=True` — never before
@@ -207,6 +218,17 @@ def record(repo, pr, user, originals_sorted, form, skill="global", key="", at=No
                "gist": _gist(ob), "outcome": outcome}
         if orig.get("critical_path"):
             row["critical_path"] = str(orig["critical_path"])[:200]
+        # The calibration signals (§2.2). Recorded only when known; an old row reads as unknown.
+        if orig.get("confidence") in CONFIDENCES:
+            row["confidence"] = orig["confidence"]
+        ev = evidence[i] if evidence and i < len(evidence) else None
+        if isinstance(ev, dict):
+            ev = ev.get("status")
+        if ev in EVIDENCE_STATES:
+            row["evidence"] = ev
+        chk = orig.get("checked") if isinstance(orig.get("checked"), dict) else None
+        if chk and chk.get("verdict") in CHECK_VERDICTS:
+            row["checked"] = chk["verdict"]
         # A reason only ever qualifies a drop; one sent for a kept finding is noise and ignored.
         reason = one(f"reason_{i}")
         if outcome == "dropped" and reason in REASONS:
@@ -274,6 +296,18 @@ def _apply_row(t, row, sign):
     if row.get("critical_path"):
         for path in (("criticalPath",), ("repoCriticalPath", repo or "-")):
             _tally_slot(t, path)[o] += sign
+    # Calibration buckets (§2.2): keep-rate per (skill, repo, self-reported confidence) and per
+    # evidence status. Additive keys: a tally written before them simply lacks them, and a row
+    # recorded before a signal existed lands in the `unknown` bucket.
+    conf = row.get("confidence") if row.get("confidence") in CONFIDENCES else UNKNOWN
+    ev = row.get("evidence") if row.get("evidence") in EVIDENCE_STATES else UNKNOWN
+    _tally_slot(t, ("calibration", "confidence",
+                    _cal_key(row.get("skill") or "global", repo or "-", conf)))[o] += sign
+    _tally_slot(t, ("calibration", "evidence", ev))[o] += sign
+
+
+def _cal_key(skill, repo, confidence):
+    return f"{skill}|{repo}|{confidence}"
 
 
 def _utc_daystart(ts):
@@ -287,7 +321,8 @@ def rebuild_totals(rows):
     predates the tally can do. Flagged `complete: false` so nothing claims it is all-time."""
     t = {"version": TOTALS_VERSION, "cap": CAP, "complete": False,
          "outcomes": _blank(), "criticalPath": _blank(), "dryDecisions": 0,
-         "repos": {}, "repoCriticalPath": {}, "skills": {}, "days": {}}
+         "repos": {}, "repoCriticalPath": {}, "skills": {}, "days": {},
+         "calibration": {"confidence": {}, "evidence": {}}}
     for r in rows:
         _apply_row(t, r, 1)
     return t
@@ -781,6 +816,85 @@ def reason_counts(skill=None):
     out = {r: int(why.get(r, 0)) for r in REASONS}
     out[UNSPECIFIED] = int(why.get(UNSPECIFIED, 0))
     return out
+
+
+def _bucket(d):
+    r = keep_rates(d)
+    return {"n": r["decided"], "keepRate": r["keepRate"], "ratable": r["decided"] >= CALIBRATION_MIN}
+
+
+def _separation(buckets):
+    """Whether the self-reported confidence separates for one set of buckets keyed by
+    confidence: True / False when both `high` and `low` are ratable, None when not enough is
+    known to say. `points` is high − low."""
+    hi, lo = buckets.get("high"), buckets.get("low")
+    if not (hi and lo and hi["ratable"] and lo["ratable"]):
+        return None, None
+    points = round(hi["keepRate"] - lo["keepRate"], 1)
+    return abs(points) >= SEPARATION_POINTS, points
+
+
+def calibration(skill=None, repo=None):
+    """What reviewers kept, by the model's self-reported confidence and by the evidence result
+    (trust-and-plain §2.2), all-time from the running tally.
+
+    `byConfidence` lists one row per (skill, repo, confidence), biggest first; `byEvidence`
+    one per status (`pass`, `warn`, `unknown`). `separates` is the verdict over the install's
+    combined high and low buckets, and `note` says it in one sentence when the buckets do not
+    separate or there is not enough data yet. Filter by skill and/or repo to read one pair."""
+    cal = (load_totals().get("calibration") or {})
+    rows, combined = [], {}
+    for key, d in (cal.get("confidence") or {}).items():
+        sk, rp, conf = (key.split("|", 2) + ["", ""])[:3]
+        if (skill and sk != skill) or (repo and rp != (repo or "").lower()):
+            continue
+        b = _bucket(d)
+        rows.append({"skill": sk, "repo": rp, "confidence": conf, **b})
+        agg = combined.setdefault(conf, _blank())
+        for o in agg:
+            agg[o] += d.get(o, 0)
+    rows.sort(key=lambda r: (-r["n"], r["skill"], r["repo"], CONFIDENCES.index(r["confidence"])
+                             if r["confidence"] in CONFIDENCES else 9))
+    overall = {conf: _bucket(d) for conf, d in combined.items()}
+    separates, points = _separation(overall)
+    total = sum(b["n"] for b in overall.values())
+    if separates is None:
+        note = (f"Not enough decisions yet to say whether the model's confidence means anything: "
+                f"each of its high and low buckets needs {CALIBRATION_MIN} posted decisions.")
+    elif not separates:
+        note = (f"The model's confidence does not separate here: reviewers kept "
+                f"{overall['high']['keepRate']:.1f}% of high-confidence findings and "
+                f"{overall['low']['keepRate']:.1f}% of low-confidence ones, {abs(points):.1f} "
+                f"points apart. The badge uses the evidence check and the second pass only.")
+    else:
+        note = ""
+    ev_rows = [{"status": st, **_bucket((cal.get("evidence") or {}).get(st) or _blank())}
+               for st in (*EVIDENCE_STATES, UNKNOWN)]
+    return {"minSample": CALIBRATION_MIN, "separationPoints": SEPARATION_POINTS,
+            "byConfidence": rows, "overall": [{"confidence": c, **overall[c]}
+                                              for c in (*CONFIDENCES, UNKNOWN) if c in overall],
+            "byEvidence": ev_rows, "decided": total, "separates": separates, "points": points,
+            "note": note}
+
+
+def calibration_for(skill, repo, confidence):
+    """The badge's calibration input for one finding: `{keepRate, n, usable}` for the (skill,
+    repo, confidence) bucket, or None when the tally has no such bucket. `usable` needs n ≥
+    CALIBRATION_MIN and the pair's high/low buckets not known to overlap (design §2.2: when the
+    buckets do not separate the badge falls back to evidence + disproof only)."""
+    cal = (load_totals().get("calibration") or {}).get("confidence") or {}
+    repo = (repo or "").lower() or "-"
+    skill = skill or "global"
+    conf = confidence if confidence in CONFIDENCES else UNKNOWN
+    d = cal.get(_cal_key(skill, repo, conf))
+    if not d:
+        return None
+    b = _bucket(d)
+    pair = {c: _bucket(cal[_cal_key(skill, repo, c)]) for c in CONFIDENCES
+            if _cal_key(skill, repo, c) in cal}
+    separates, _ = _separation(pair)
+    return {"keepRate": b["keepRate"], "n": b["n"],
+            "usable": bool(b["ratable"] and separates is not False)}
 
 
 # One definition of "keep rate" ships in this product: a finding was worth posting when the

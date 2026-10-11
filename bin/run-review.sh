@@ -397,6 +397,25 @@ plain_n=$(grep -c "\[review-schema\] .*plain:" "$DIR/agent.log" 2>/dev/null || t
 # Copy out before the worktree is removed — this is the artefact the dashboard renders.
 mv "$DIR/review.json.tmp" "$DIR/review.json" || fail "cannot write $DIR/review.json"
 
+# The disproof pass (trust-and-plain §2.1): a second run on the same account with the opposite
+# brief, while the worktree still holds the branch. RS_DISPROOF is `default` (blockers and
+# should-fixes), `all` (the "Check all findings" toggle) or `off`. It writes its verdicts into
+# review.json and never fails the review (bin/run-disproof.sh). The same write guard applies:
+# the PR is fingerprinted again once it returns.
+DISPROOF="${RS_DISPROOF:-default}"
+if [ "$DISPROOF" != off ]; then
+  status "second pass: checking the findings"
+  "$HERE/run-disproof.sh" "$REPO" "$PR" "$wt" "$DIR" "$DISPROOF" || true
+  gh_after=$(pr_write_fingerprint)
+  if [ -n "$gh_before" ] && [ -n "$gh_after" ] && [ "$gh_before" != "$gh_after" ]; then
+    printf 'reviews:comments:threads before=%s after=%s (disproof pass)\n' "$gh_before" "$gh_after" \
+      > "$DIR/security-violation" 2>/dev/null
+    echo "[$REPO#$PR] SECURITY: the disproof pass wrote to GitHub ($gh_before -> $gh_after)" >&2
+    fail "SECURITY: the disproof pass created a review or comment on the PR ($gh_before -> $gh_after). The review step must never write to GitHub — see $DIR/disproof.log"
+  fi
+  status "writing the findings"
+fi
+
 # Token usage + model, parsed from the stream-json log. Best-effort: if anything is missing or
 # unparseable we simply write no usage.json and the dashboard omits the usage line.
 usage_line=$(grep -a '"type":"result"' "$DIR/agent.log" | tail -1 || true)

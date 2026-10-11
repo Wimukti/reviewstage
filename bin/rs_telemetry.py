@@ -68,6 +68,9 @@ SCHEMA = {
     # Sentences and hedges the plain-language linter flagged in a finished review
     # (rs_review_schema, trust-and-plain §1.1): tells us whether the prompt is obeyed.
     "plain_warnings": {},
+    # The disproof pass (trust-and-plain §2.1): how many findings the second run held up,
+    # weakened or refuted, and how many it gave no usable answer for. Never which.
+    "disproof_run": {"verdict": ("stands", "weakened", "refuted", "failed")},
     "dismissal_reason": {"reason": SLUG},
     "post_attempted": {"dry": ("0", "1")},
     "post_succeeded": {"dry": ("0", "1")},

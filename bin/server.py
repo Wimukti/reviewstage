@@ -48,7 +48,9 @@ import rs_agree
 import rs_assets
 import rs_device_flow
 import rs_devices as rs_dev
+import rs_confidence
 import rs_diff
+import rs_disproof
 import rs_learn
 import rs_md
 import rs_paths as P
@@ -1615,7 +1617,7 @@ def effective_skill(login, repo=""):
 REVIEW_SCHEMA_VERSION = "rv1"
 
 
-def review_cache_key(login, repo, head, effort, focus, model):
+def review_cache_key(login, repo, head, effort, focus, model, disproof="default"):
     """Hash of everything that determines a review's output, PLUS the reviewer — the cache is
     per-user, so it only ever reuses YOUR own identical re-run on the same commit, never serves
     one reviewer's generation to another. Resolves the *skill text* (not its name), so editing a
@@ -1628,7 +1630,8 @@ def review_cache_key(login, repo, head, effort, focus, model):
                          sha256(skill_text.encode()).hexdigest(),
                          sha256(effort_depth(effort).encode()).hexdigest(),
                          sha256(json.dumps(rs_profile.load_profile(repo) or {},
-                                           sort_keys=True).encode()).hexdigest()])
+                                           sort_keys=True).encode()).hexdigest()]
+                        + ([disproof] if disproof not in ("", "default") else []))
     return sha256(blob.encode()).hexdigest()
 
 
@@ -4472,6 +4475,10 @@ class Handler(BaseHTTPRequestHandler):
                 "estimates": est,
                 "models": [{"key": k, "name": n, "sub": sub} for k, n, sub in MODELS],
                 "skillLabel": skill_label,
+                # The disproof pass (§2.1): what the default run checks and what the "Check all
+                # findings" toggle adds, per finding, so the helper text can say so.
+                "disproof": {"secPerFinding": rs_disproof.SEC_PER_FINDING,
+                             "defaults": list(rs_disproof.DEFAULT_SEVERITIES)},
                 "othersOnHead": (others_on_head(repo, pr, user) if pr else [])}
 
     def _tok(self, action, repo, pr, ttl=ACTION_TTL):
@@ -4550,9 +4557,9 @@ class Handler(BaseHTTPRequestHandler):
             reff = eff or "standard"
             out["reviewing"] = {
                 "phases": ["Fetching the PR", "Checking out the branch", "Reviewing the diff",
-                           "Writing the findings"],
+                           "Checking the findings", "Writing the findings"],
                 "cur": (0 if "fetch" in s else 1 if ("checking out" in s or "queued" in s)
-                        else 2 if "reviewing" in s else 3),
+                        else 2 if "reviewing" in s else 3 if "second pass" in s else 4),
                 "queued": "queued" in s, "effortLabel": EFFORT[reff][0],
                 "effortHint": EFFORT[reff][2], "focus": foc}
             return out
@@ -4639,6 +4646,16 @@ class Handler(BaseHTTPRequestHandler):
                               "why": r.get("why") or ""} for r in (g.get("read_plan") or [])],
                 "notCovered": list(g.get("not_covered") or [])}
 
+    @staticmethod
+    def _disproof_data(d):
+        """The disproof pass's record as the client reads it, or None for a review from before
+        the pass existed."""
+        if not isinstance(d, dict):
+            return None
+        return {"status": d.get("status") or "done", "n": int(d.get("n") or 0),
+                "checked": int(d.get("checked") or 0),
+                "durationMs": int(d.get("duration_ms") or 0), "mode": d.get("mode") or "default"}
+
     def _review_data(self, repo, pr, user, rev, appr):
         ev = rev.get("event", "COMMENT")
         # `rev` came through load_review, so every finding already has one reading of severity,
@@ -4674,8 +4691,19 @@ class Handler(BaseHTTPRequestHandler):
         # whatever confidence the model reported. `None` when GitHub would not give the diff.
         patches = anchors.patches if anchors is not None else None
         evidence = [rs_evidence.annotate(c, patches) for c in shown]
+        # The three-level badge (rs_confidence, Part 2): evidence, the disproof verdict stored
+        # with the finding, and the calibration bucket for this skill + repo + self-reported
+        # confidence (rs_learn, counted only from 20 decisions). A Maybe joins the tray.
+        skill_f = upath(repo, pr, user, "skill")
+        run_skill = skill_f.read_text().strip() if skill_f.exists() else "global"
+        disproof = rev.get("disproof")
+        badges = [rs_confidence.badge(
+            ev, c.get("checked"),
+            rs_learn.calibration_for(run_skill, repo, c.get("confidence")), disproof)
+            for c, (ev, _) in zip(shown, evidence)]
         maybe = [c.get("confidence") == "low" or rs_evidence.demoted(ev)
-                 for c, (ev, _) in zip(shown, evidence)]
+                 or rs_confidence.is_maybe(b)
+                 for c, (ev, _), b in zip(shown, evidence, badges)]
         preselectable = [i for i, is_maybe in enumerate(maybe) if not is_maybe]
         preselect = set(preselectable[:PRESELECT_CAP]) if len(preselectable) > PRESELECT_CAP \
             else set(preselectable)
@@ -4702,6 +4730,11 @@ class Handler(BaseHTTPRequestHandler):
                              "actual": c.get("actual") or "",
                              "snippet": snip,
                              "evidence": ev,
+                             # The disproof verdict (§2.1) and the earned-confidence badge
+                             # (Part 2 table). `checked` is null when the pass did not run
+                             # for this finding; the badge is always sent.
+                             "checked": c.get("checked"),
+                             "badge": badges[i],
                              "title": c.get("title") or self._fallback_title(c),
                              "impact": (c.get("impact") or "").strip(),
                              "criticalPath": (c.get("critical_path") or "").strip(),
@@ -4717,6 +4750,8 @@ class Handler(BaseHTTPRequestHandler):
             "event": ev, "summary": self._as_markdown(rev.get("summary")),
             # The reading guide (§1.2), already normalised at load; null for an older review.
             "guide": self._guide_data(rev.get("guide")),
+            # The disproof pass's own record: status, how many it checked, how long it took.
+            "disproof": self._disproof_data(rev.get("disproof")),
             "keyPoints": [str(x).strip() for x in (rev.get("keyPoints") or []) if str(x).strip()][:6],
             "explainer": self._as_markdown(rev.get("explainer")),
             "analysis": self._as_markdown(rev.get("analysis")),
@@ -5073,6 +5108,9 @@ class Handler(BaseHTTPRequestHandler):
         return {"counts": rs_learn.counts(), "repos": all_repos(),
                 # All-time drops by dismissal reason: every id, plus `unspecified`.
                 "reasons": rs_learn.reason_counts(),
+                # What reviewers kept, by the model's self-reported confidence and by the
+                # evidence result (trust-and-plain §2.2).
+                "calibration": rs_learn.calibration(),
                 # How many rows of each outcome a review actually reads back. The page states
                 # these numbers to the user; they are data, not something to hardcode.
                 "windows": rs_learn.windows(),
@@ -5514,7 +5552,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_json({"error": err}, 403)
             started = self._spawn_review(repo, pr, user, str(body.get("effort") or ""),
                                          str(body.get("focus") or ""),
-                                         str(body.get("model") or ""))
+                                         str(body.get("model") or ""),
+                                         "all" if body.get("checkAll") else "default")
             # started is False when a previous run still holds the per-PR lock (e.g. a stop that
             # could not be confirmed). Surface it so the UI doesn't look like a silent no-op.
             return self.api_json({"ok": True, "started": started})
@@ -5975,7 +6014,7 @@ class Handler(BaseHTTPRequestHandler):
     # seam in the instruction block the note is pasted into.
     FOCUS_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
-    def _spawn_review(self, repo, pr, user, effort="", focus="", model=""):
+    def _spawn_review(self, repo, pr, user, effort="", focus="", model="", disproof=""):
         """Queue one review (no redirect). Returns True if it actually spawned, False if a review
         was already running for that PR. Shared by start_review and the stack runner."""
         pr = str(pr)
@@ -6007,9 +6046,11 @@ class Handler(BaseHTTPRequestHandler):
             # yet, and a second spawn now would overwrite its status/effort/pid markers.
             if run_alive(repo, pr, user):
                 return False
-            return self._start_review_locked(repo, pr, user, d, meta, eff, focus, mdl, head)
+            return self._start_review_locked(repo, pr, user, d, meta, eff, focus, mdl, head,
+                                             rs_disproof.mode_of(disproof))
 
-    def _start_review_locked(self, repo, pr, user, d, meta, eff, focus, mdl, head):
+    def _start_review_locked(self, repo, pr, user, d, meta, eff, focus, mdl, head,
+                             disproof="default"):
         """The body of _spawn_review, run with this (repo, pr, user) held."""
         tally("review_started", effort=eff)
         # The prior run is read into memory now and written to history/ only once the
@@ -6018,7 +6059,7 @@ class Handler(BaseHTTPRequestHandler):
         # Phase 1 — reuse YOUR own identical re-run on this commit: 0 tokens, no LLM call.
         # With no head there is no "this commit": the key would be identical before and after a
         # force-push and would serve a cached review of a commit that no longer exists. Run.
-        key = review_cache_key(user, repo, head, eff, focus, mdl)
+        key = review_cache_key(user, repo, head, eff, focus, mdl, disproof)
         cf = d / "cache" / f"{key}.json"
         cached = None
         if head and cf.exists():
@@ -6064,6 +6105,9 @@ class Handler(BaseHTTPRequestHandler):
         env["RS_FOCUS"] = focus
         env["RS_MODEL"] = mdl
         env["RS_SKILL_CHOICE"] = choice
+        # The disproof pass (§2.1): `default` checks blockers and should-fixes, `all` every
+        # finding — the per-run "Check all findings" toggle.
+        env["RS_DISPROOF"] = disproof
         # Stack context: if this PR is stacked on other open PRs, its diff is only its own changes.
         # Tell the agent the siblings exist so it doesn't flag setup a lower PR provides.
         try:
@@ -6442,7 +6486,16 @@ class Handler(BaseHTTPRequestHandler):
         rate and can trip the rule-suggestion threshold off one bad afternoon. `run_key` makes a
         retry REPLACE its predecessor instead of appending.
         """
-        rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key, dry=dry)
+        # The evidence status per finding, for the calibration readout (§2.2): the same check
+        # the render ran. Best effort — no diff means no status, never a failed post.
+        try:
+            anchors, _ = pr_anchors(repo, pr, pr_head(repo, pr))
+            patches = anchors.patches if anchors is not None else None
+            evidence = [rs_evidence.check(c, patches) for c in originals]
+        except Exception:  # noqa: BLE001 — a signal never breaks a post
+            evidence = None
+        rs_learn.record(repo, pr, user, originals, form, skill=skill, key=run_key, dry=dry,
+                        evidence=evidence)
         # Telemetry counts the same decisions — how many kept, edited, dropped, and the dropped
         # ones' reason slugs when the client sent any (`reason_i`, lane 2) — never the text.
         try:

@@ -65,6 +65,9 @@ SCHEMA = {
     "findings_kept": {},
     "findings_edited": {},
     "findings_dropped": {},
+    # Sentences and hedges the plain-language linter flagged in a finished review
+    # (rs_review_schema, trust-and-plain §1.1): tells us whether the prompt is obeyed.
+    "plain_warnings": {},
     "dismissal_reason": {"reason": SLUG},
     "post_attempted": {"dry": ("0", "1")},
     "post_succeeded": {"dry": ("0", "1")},

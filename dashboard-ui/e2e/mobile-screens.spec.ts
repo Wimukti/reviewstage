@@ -75,7 +75,7 @@ test.describe("the queue on a phone", () => {
     await expect(page.getByTestId("queue-row")).toHaveCount(2);
     await page.keyboard.press("Escape");
     await expect(bar).toBeHidden();
-    await expect(page.getByTestId("queue-row")).toHaveCount(5); // the query went with it
+    await expect(page.getByTestId("queue-row")).toHaveCount(6); // the query went with it
     await page.getByRole("button", { name: "Search or open a PR" }).click();
     await field.fill(`#${PR}`);
     await page.getByRole("button", { name: "Cancel" }).click();
@@ -126,7 +126,7 @@ test.describe("the queue on a phone", () => {
     await expect(page.getByTestId("queue-row")).toHaveCount(1);
     await expect(row(page, PR3)).toBeVisible();
     await page.getByRole("button", { name: `Remove filter: ${REPO2}` }).click();
-    await expect(page.getByTestId("queue-row")).toHaveCount(5);
+    await expect(page.getByTestId("queue-row")).toHaveCount(6);
     await expect(page.getByTestId("filter-dot")).toBeVisible(); // the sort is still set
     await page.getByRole("button", { name: "Remove filter: Oldest" }).click();
     await expect(page).not.toHaveURL(/sort=/);
@@ -323,6 +323,35 @@ test.describe("the PR page on a phone", () => {
     await expect(page.getByTestId("verdict")).toBeVisible();
   });
 
+  test("the Reading guide is the first card, collapses, and a row scrolls to the card for that hunk", async ({ page }) => {
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    const guide = page.getByTestId("reading-guide");
+    await expect(guide).toBeVisible();
+    const first = page.getByTestId("finding").first();
+    expect((await guide.boundingBox())!.y).toBeLessThan((await first.boundingBox())!.y);
+    await expect(guide.getByTestId("guide-risk")).toHaveText("can break");
+    await expect(guide.getByTestId("guide-row")).toHaveCount(2);
+    // 44 px targets: the toggle and every row.
+    expect((await guide.getByTestId("guide-toggle").boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect((await guide.getByTestId("guide-row").nth(0).getByRole("button").boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await guide.getByTestId("guide-toggle").click();
+    await expect(guide).toHaveAttribute("data-open", "0");
+    await expect(guide.getByTestId("guide-does")).toHaveCount(0);
+    await guide.getByTestId("guide-toggle").click();
+    await guide.getByTestId("guide-row").nth(1).getByRole("button").click();
+    const badge = page.getByTestId("finding").nth(1);
+    await expect
+      .poll(async () => {
+        const b = (await badge.boundingBox())!;
+        return b.y >= 0 && b.y + 60 <= page.viewportSize()!.height;
+      })
+      .toBe(true);
+    // No sideways scroll with the snippet in the card.
+    const { sw, iw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
+    expect(sw).toBeLessThanOrEqual(iw);
+  });
+
   test("swipe right keeps, swipe left drops: the pill counts the same set the checkboxes tick", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await settled(page);
@@ -425,12 +454,26 @@ test.describe("the PR page on a phone", () => {
     await settled(page);
     const card = page.getByTestId("finding").first();
     await expect(card.getByTestId("finding-detail")).toHaveCount(0);
-    // Closed, the card already carries the verification contract: confidence in the head,
-    // why it matters and how to verify under the claim. The nit has no verify line, so no row.
+    // Closed, the card already carries the whole §1.3 contract: confidence in the head, then
+    // where (with the cited lines), what to check, expected/actual, why it matters and the
+    // evidence line. The nit has none of the new rows and its evidence warns (file not in diff).
     await expect(card.getByTestId("confidence")).toHaveText("high confidence");
+    await expect(card.getByTestId("finding-path")).toContainText("app/models/Product.php:42");
+    await expect(card.getByTestId("diff-snippet").locator("[data-cited]")).toHaveCount(1);
+    await expect(card.getByTestId("what-to-check")).toContainText("Check that `$vendor` is null-guarded");
+    await expect(card.getByTestId("expected")).toContainText("shows no badge");
+    await expect(card.getByTestId("actual")).toContainText("throws on a null vendor");
     await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
-    await expect(card.getByTestId("how-to-verify")).toContainText("Open a product whose vendor is null");
-    await expect(page.getByTestId("finding").nth(1).getByTestId("how-to-verify")).toHaveCount(0);
+    await expect(card.getByTestId("evidence")).toHaveAttribute("data-status", "pass");
+    await expect(card.getByTestId("how-to-verify")).toHaveCount(0);
+    const ys = await Promise.all(
+      ["finding-title", "finding-path", "what-to-check", "contrast", "why-it-matters", "evidence"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
+    );
+    for (let i = 1; i < ys.length; i++) expect(ys[i], `row ${i} is below row ${i - 1}`).toBeGreaterThan(ys[i - 1]);
+    const nit = page.getByTestId("finding").nth(1);
+    await expect(nit.getByTestId("how-to-verify")).toHaveCount(0);
+    await expect(nit.getByTestId("what-to-check")).toHaveCount(0);
+    await expect(nit.getByTestId("evidence")).toHaveAttribute("data-status", "warn");
     await card.getByTestId("finding-expand").click();
     await expect(card.getByTestId("finding-detail")).toBeVisible();
     await card.getByRole("button", { name: "Edit" }).click();

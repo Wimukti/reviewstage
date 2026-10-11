@@ -720,3 +720,105 @@ class SituationalReasonsAreNotProposed(PostCase):
         self.assertIn("read the surrounding code", prompt)
         L = self.seed("")
         self.assertNotIn("said why", self.srv._house_prompt(L.clusters("dropped")[0], []))
+
+
+# --- where / what to check / evidence / reading guide reach the client (trust-and-plain Part 1) --
+class PlainContractInThePayload(PostCase):
+    """_review_data sends `where`, `whatToCheck`, `expected`, `actual`, the inline `snippet`, the
+    `evidence` verdict and the review-level `guide`; the evidence check runs here, once, against
+    the same files payload the anchor check reads, and two flags demote a finding out of the
+    pre-selection and into the maybe tray (`low`) whatever its confidence. An older review gets
+    nulls and empty strings and renders as before."""
+
+    PATCH = ("@@ -10,3 +10,5 @@\n def pay(amount):\n+    if amount < 0:\n+        raise ValueError\n"
+             "     charge(amount)\n     charge(amount)\n")
+    FILES = [{"filename": "app/pay.py", "status": "modified", "patch": PATCH}]
+
+    def payload(self, rev, files=None):
+        self.write_review(rev)
+        self.srv._ANCHOR_CACHE.clear()
+        if files is not None:
+            self.srv.fetch_pr_files = lambda repo, pr, with_pr=False: (files, None)
+        h = self.handler()
+        loaded = self.srv.load_review(REPO, PR, USER)
+        return h._review_data(REPO, PR, USER, loaded, {})
+
+    def test_new_fields_snippet_and_a_passing_evidence_line_are_sent(self):
+        data = self.payload({"event": "COMMENT", "summary": "s",
+                             "guide": {"does": "Guards pay() against a negative amount.",
+                                       "why": "A refund went out twice.", "risk": "can break",
+                                       "read_plan": [{"path": "app/pay.py", "lines": "10-14",
+                                                      "why": "The guard is here."}],
+                                       "not_covered": ["tests"]},
+                             "comments": [
+                                 {"severity": "blocker", "path": "app/pay.py", "line": 11,
+                                  "end_line": 12, "body": "b", "confidence": "high",
+                                  "title": "`pay()` charges twice",
+                                  "what_to_check": "Open pay.py lines 11-12. Check that `charge` runs once.",
+                                  "expected": "One charge.", "actual": "Two charges."}]},
+                            files=self.FILES)
+        f = data["findings"][0]
+        self.assertEqual(f["where"], {"path": "app/pay.py", "start": 11, "end": 12})
+        self.assertEqual(f["whatToCheck"], "Open pay.py lines 11-12. Check that `charge` runs once.")
+        self.assertEqual(f["expected"], "One charge.")
+        self.assertEqual(f["actual"], "Two charges.")
+        self.assertEqual(f["evidence"]["status"], "pass")
+        self.assertEqual(f["evidence"]["flags"], [])
+        self.assertIn("mention `pay`", f["evidence"]["line"])
+        self.assertTrue(f["preselect"])
+        self.assertFalse(f["low"])
+        self.assertTrue(any(r["cited"] and r["n"] == 11 for r in f["snippet"]["lines"]))
+        self.assertEqual(data["guide"], {
+            "does": "Guards pay() against a negative amount.", "why": "A refund went out twice.",
+            "risk": "can break",
+            "readPlan": [{"path": "app/pay.py", "lines": "10-14", "why": "The guard is here."}],
+            "notCovered": ["tests"]})
+
+    def test_two_evidence_flags_demote_a_high_confidence_finding_to_the_maybe_tray(self):
+        data = self.payload({"event": "COMMENT", "summary": "s", "comments": [
+            {"severity": "blocker", "path": "app/other.py", "line": 3, "body": "b",
+             "confidence": "high", "title": "Wrong", "expected": "x"},      # path + no_contrast
+            {"severity": "nit", "path": "app/pay.py", "line": 11, "body": "c",
+             "confidence": "high", "title": "`charge` twice"}]}, files=self.FILES)
+        bad, good = data["findings"]
+        self.assertEqual(bad["evidence"]["flags"], ["path_not_in_diff", "no_contrast"])
+        self.assertTrue(bad["low"])
+        self.assertFalse(bad["preselect"])
+        self.assertEqual(bad["confidence"], "high")           # the self-report is still sent
+        self.assertIsNone(bad["snippet"])
+        self.assertEqual(good["evidence"]["flags"], [])
+        self.assertTrue(good["preselect"])
+
+    def test_one_flag_warns_but_keeps_the_finding_pre_selected(self):
+        data = self.payload({"event": "COMMENT", "summary": "s", "comments": [
+            {"severity": "should-fix", "path": "tests/test_pay.py", "line": 3, "body": "b",
+             "confidence": "high", "title": "The test asserts the old total"}]}, files=self.FILES)
+        f = data["findings"][0]
+        self.assertEqual(f["evidence"]["flags"], ["path_not_in_diff"])
+        self.assertEqual(f["evidence"]["status"], "warn")
+        self.assertTrue(f["preselect"])
+        self.assertFalse(f["low"])
+
+    def test_an_older_review_gets_nulls_and_no_guide(self):
+        data = self.payload(REVIEW, files=self.FILES)
+        self.assertIsNone(data["guide"])
+        for f in data["findings"]:
+            self.assertEqual(f["whatToCheck"], "")
+            self.assertEqual(f["expected"], "")
+            self.assertEqual(f["actual"], "")
+            self.assertEqual(f["where"]["path"], "app/pay.py")
+        # Body-only findings: the blocker on line 12 is in the hunk (a pass, and no no_contrast
+        # for a pre-contract finding); the nit on line 30 is not (one flag). Both pre-selected.
+        self.assertEqual(data["findings"][0]["evidence"], {
+            "status": "pass", "flags": [], "symbols": [], "line": "The cited lines are in this diff."})
+        self.assertEqual(data["findings"][1]["evidence"]["flags"], ["lines_not_in_diff"])
+        self.assertTrue(all(f["preselect"] for f in data["findings"]))
+
+    def test_when_github_gives_no_diff_there_is_no_verdict_and_nothing_is_demoted(self):
+        data = self.payload({"event": "COMMENT", "summary": "s", "comments": [
+            {"severity": "blocker", "path": "x.py", "line": 1, "body": "b", "confidence": "high"}]})
+        f = data["findings"][0]                               # the real gh fails in this harness
+        self.assertIsNone(f["evidence"])
+        self.assertIsNone(f["snippet"])
+        self.assertTrue(f["preselect"])
+        self.assertTrue(data["anchorsUnknown"])

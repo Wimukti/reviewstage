@@ -141,13 +141,22 @@ title of the review you just ran.
 `run-review.sh` creates a git worktree off the PR's head, then runs headless Claude Code with
 `--allowedTools "Bash Read Glob Grep Write"` and an effort-dependent timeout (12 / 25 / 40
 minutes), pointing it at the chosen skill plus an explicit output contract: no bottom table,
-no GitHub writes, just a `review.json` with `event`, `summary`, `keyPoints`, `explainer`,
-`analysis`, and a `comments` array carrying `path`, `line`, `severity`, `title`, `impact`,
-`how_to_verify`, `body`, `reply_to`, `suggestion` and `confidence`. After the shape check the
-script runs `rs_review_schema.py` over the file: vocabularies are folded, `why_it_matters` is
-accepted for `impact`, a multi-line `how_to_verify` is dropped, and fields an older run never
-wrote are `null` — it warns into `agent.log` and never fails a run. The server applies the same
-normaliser when it renders, so a review on disk from before a field existed renders identically.
+no GitHub writes, just a `review.json` with `event`, `summary`, a `guide` block (`does`, `why`,
+`risk`, `read_plan`, `not_covered` — the reading guide), `keyPoints`, `explainer`, `analysis`,
+and a `comments` array carrying `path`, `line`, `end_line`, `severity`, `title`, `impact`,
+`what_to_check`, `expected`, `actual`, `how_to_verify`, `body`, `reply_to`, `suggestion` and
+`confidence`. After the shape check the script runs `rs_review_schema.py` over the file:
+vocabularies are folded, `why_it_matters` is accepted for `impact`, a multi-line
+`how_to_verify` is dropped, `where = {path, start, end}` is derived from `path:line`, an
+object-valued `summary` is moved to `guide`, every string is linted against the writing rules
+(sentence limits, hedges — `plain:` warnings, counted into the `plain_warnings` telemetry
+counter), and fields an older run never wrote are `null` — it warns into `agent.log` and never
+fails a run. The server applies the same normaliser when it renders, so a review on disk from
+before a field existed renders identically. At render the server also runs `rs_evidence.py`
+over each finding against the PR's own patches (the same files payload the anchor check reads):
+file in diff, lines in a hunk, a backticked symbol present, a blocker with both `expected` and
+`actual`; the verdict and the 8–12 cited diff lines ride with the finding, and two failed checks
+demote it to the maybe tray.
 
 The agent is launched through `agent_env` (`lib-common.sh`), which strips every GitHub, Slack,
 webhook and HMAC credential from the environment and points `GH_CONFIG_DIR` at an empty

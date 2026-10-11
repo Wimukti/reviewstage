@@ -66,11 +66,23 @@ test.describe("the replay on a desktop", () => {
     await expect(page.getByTestId("replay")).toHaveAttribute("data-example", "webhook-retry");
     expect(await counters(page)).toMatchObject({ replay_started: 1, first_decision: 0, replay_completed: 0 });
 
-    // Three findings, every one pre-ticked (none is low confidence).
+    // The Reading guide first (trust-and-plain §1.2), computed from the fixture with no server.
+    const guide = page.getByTestId("reading-guide");
+    await expect(guide).toBeVisible();
+    await expect(guide.getByTestId("guide-risk")).toHaveText("can break");
+    await expect(guide.getByTestId("guide-row")).toHaveCount(3);
+    await expect(guide.getByTestId("guide-row").first()).toContainText("src/webhooks/deliver.ts:17-29");
+    // Three findings, every one pre-ticked (none is low confidence, every evidence check passes).
     const cards = page.locator(".finding");
     await expect(cards).toHaveCount(3);
     for (let i = 0; i < 3; i++) await expect(cards.nth(i).getByTestId("finding-select")).toBeChecked();
     await expect(cards.nth(0)).toContainText("Every non-2xx is retried");
+    // The §1.3 rows and the evidence line, from the fixture's own hunks.
+    await expect(cards.nth(0).getByTestId("diff-snippet").locator("[data-cited]")).toContainText("if (res.ok) return;");
+    await expect(cards.nth(0).getByTestId("what-to-check")).toContainText("Open deliver.ts line 25.");
+    await expect(cards.nth(0).getByTestId("expected")).toContainText("A 404 stops after one request.");
+    await expect(cards.nth(0).getByTestId("evidence")).toHaveAttribute("data-status", "pass");
+    await expect(cards.nth(0).getByTestId("evidence")).toContainText("mention `res`, `ok`");
 
     // Drop the second (the plausible-but-wrong one).
     await cards.nth(1).getByTestId("finding-select").uncheck();
@@ -153,6 +165,8 @@ test.describe("the replay on a phone", () => {
     const { sw, iw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
     expect(sw).toBeLessThanOrEqual(iw);
 
+    // The Reading guide is the first card on the phone.
+    expect((await page.getByTestId("reading-guide").boundingBox())!.y).toBeLessThan((await page.locator("[data-testid=finding]").first().boundingBox())!.y);
     const pill = page.getByTestId("post-pill");
     await expect(pill).toBeVisible();
     await expect(page.getByTestId("post-pill-count")).toHaveText("3 kept");
@@ -167,7 +181,7 @@ test.describe("the replay on a phone", () => {
     const preview = page.getByTestId("replay-post-preview");
     await expect(preview).toBeVisible();
     await expect(preview.getByTestId("replay-post-comment")).toHaveCount(2);
-    await expect(preview).toContainText("src/catalog/service.ts:20");
+    await expect(preview).toContainText("src/catalog/service.ts:18");
     expect(net.api()).toBe(0);
     expect(net.offenders()).toEqual([]);
     expect(net.foreignResponses()).toEqual([]);

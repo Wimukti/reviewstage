@@ -95,16 +95,34 @@ table, serialise the same decisions into `./review.json` and write nothing else 
 ````json
 {
   "event": "COMMENT" | "REQUEST_CHANGES",
-  "summary":   "<Step 5 verdict, 2-4 sentences: is it safe to merge, and the MINIMUM change set>",
+  "summary":   "<Step 5 verdict, 1-2 sentences: is it safe to merge, and the MINIMUM change set>",
+  "guide": {
+    "does":  "<ONE sentence: what this PR changes, for a reader who has not opened it>",
+    "why":   "<ONE sentence from the PR body or linked issue, or null if the PR does not say>",
+    "risk":  "breaks" | "can break" | "safe-looking" | "unclear",
+    "read_plan": [
+      {"path": "src/billing/retry.ts", "lines": "40-72",
+       "why": "The retry loop changed. Everything else depends on it."},
+      {"path": "src/billing/retry.test.ts", "lines": "1-60",
+       "why": "The tests show which cases the author thought about."}
+    ],
+    "not_covered": ["generated files", "lockfile"]
+  },
   "explainer": "<Step 2, markdown: what the PR does in terms a junior engineer would follow>",
   "analysis":  "<Steps 3-5, markdown: findings reasoning, what you checked and what you
                  dropped after falsifying it, then the file-by-file change list>",
   "comments": [{
     "path":     "<repo-relative path>",
-    "line":     <line number in the NEW version of the file>,
+    "line":     <FIRST line of the cited range, in the NEW version of the file>,
+    "end_line": <LAST line of the cited range; omit for a single line>,
     "severity": "blocker" | "should-fix" | "nit" | "question",
-    "title":    "<one plain-language headline a junior engineer understands at a glance>",
+    "title":    "<one plain-language headline a junior engineer understands at a glance; the
+                  one symbol it is about may sit in backticks>",
     "impact":   "<ONE sentence: who is affected and what actually breaks for them>",
+    "what_to_check": "<ONE imperative sentence, max 20 words: where to look and what to confirm.
+                  'Open retry.ts lines 44-51. Check that `attempts` resets after a success.'>",
+    "expected": "<ONE short line: what the code should do>",
+    "actual":   "<ONE short line: what it does instead>",
     "how_to_verify": "<ONE imperative line, under 160 characters, telling the reviewer how to
                   confirm this finding is real in under two minutes — a command to run, a page
                   to open, an input to try; never 'review the code'>",
@@ -117,12 +135,42 @@ table, serialise the same decisions into `./review.json` and write nothing else 
 }
 ````
 
-- `title`, `impact` and `how_to_verify` are what the reviewer reads on the card to decide
-  whether to post the comment without opening the PR. `how_to_verify` starts with a verb
-  (`Run …`, `Open …`, `Call … with …`) and is one line; a multi-line value is discarded. The
-  dashboard accepts `why_it_matters` as a synonym of `impact`. `confidence` is shown on every
-  card and sorts low-confidence findings into a collapsed "maybe" tray — state it honestly
-  rather than dropping a borderline point.
+### Write like this
+
+Every string the dashboard shows — `title`, `impact`, `what_to_check`, `expected`, `actual`,
+`how_to_verify`, the `guide` — follows Simplified Technical English. The dashboard lints them
+and counts violations; the reader is a reviewer who has **not** read the diff.
+
+- **One sentence, one idea.** Max **20 words** per sentence for instructions (`what_to_check`,
+  `how_to_verify`); **25** for descriptions (everything else).
+- **Active voice, present tense.** Imperative for instructions: "Open … Check that …".
+- **Name the thing, not the abstraction:** "the `retry()` loop", not "the retry logic
+  implementation". No noun strings longer than three words.
+- **No hedges** ("might possibly", "it seems", "perhaps"), **no filler** ("it should be noted"),
+  **no jargon the diff itself does not use.**
+- **Severity words are fixed:** *breaks*, *can break*, *wrong*, *slow*, *unclear*, *style*.
+- Every `title` must be understandable alone.
+
+| Before | After |
+| --- | --- |
+| The retry logic implementation might possibly fail to reset the attempt counter under certain conditions | The `retry()` loop never resets `attempts` after a success |
+| It should be noted that the handler could potentially swallow exceptions | The `onError` handler swallows every exception |
+| Verify the behaviour of the caching layer | Call GET /lead-times twice. Check that the second call hits the cache |
+| Users may experience degraded performance in some scenarios | Every product page waits one extra second |
+| Consider whether the null case is handled appropriately | A product with no vendor crashes the badge |
+| This is the textbook mistake — every retry guide covers it | No jitter: every failed delivery retries at the same moment |
+
+- `title`, `impact`, `what_to_check`, `expected` and `actual` are what the reviewer reads on the
+  card to decide whether to post the comment without opening the PR. The card shows the cited
+  diff lines (`line`..`end_line`) inline, then checks that the file and lines are in the PR's
+  diff and that a backticked symbol from `title` or `what_to_check` appears in them; a finding
+  that fails two of those checks is not pre-selected. A blocker must carry both `expected` and
+  `actual`. `how_to_verify` starts with a verb (`Run …`, `Open …`, `Call … with …`) and is one
+  line; a multi-line value is discarded. The dashboard accepts `why_it_matters` as a synonym of
+  `impact`. `confidence` is shown on every card and sorts low-confidence findings into a
+  collapsed "maybe" tray — state it honestly rather than dropping a borderline point.
+- `guide` is the first card the reviewer sees: `read_plan` lists the 2–5 hunks to read, in
+  order, each with ONE sentence on why; `not_covered` names what you did not review.
 - `reply_to` is Step 6's Reply-vs-New decision. Non-null means an existing thread already
   covers this file/line/topic — open the body with a short acknowledgement (`Agreed —`,
   `Checked —`) so it reads as a continuation. Getting this wrong is the single most annoying

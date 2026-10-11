@@ -39,7 +39,7 @@ import { api, REASON_LABELS, type Finding, type PrData, type QueueRow, type Reas
 import { useSwipe } from "./gestures";
 import { NavBarAction, useNavBar } from "./nav";
 import { prUrl } from "./pr";
-import { ConfidenceBadge, ExplainBody, HowToVerify, OFFDIFF_HINT, placementOf, ReasonChips, UNKNOWN_HINT, useExplain } from "./ReviewParts";
+import { ConfidenceBadge, Contrast, DiffSnippet, EvidenceLine, ExplainBody, HowToVerify, locOf, OFFDIFF_HINT, placementOf, ReasonChips, UNKNOWN_HINT, useExplain, WhatToCheck } from "./ReviewParts";
 import { goBack, Link } from "./router";
 import { StatusBadge, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
@@ -215,10 +215,13 @@ export function PhoneFindingCard({
     onLeft: onDrop,
     disabled,
   });
-  const loc = `${f.path}:${f.line}`;
+  const loc = locOf(f);
   const place = placementOf(f);
   const sev = wordOf(f.severity);
   const title = f.structured ? f.title : f.body.split("\n")[0];
+  // The §1.3 "what to check" row: the new sentence, else the older verify line; when both exist
+  // the verify line sits in the expanded detail.
+  const verifyUnderMore = !!(f.whatToCheck && f.howToVerify);
   useEffect(() => {
     if (!copied) return;
     const t = window.setTimeout(() => setCopied(false), 1500);
@@ -290,6 +293,7 @@ export function PhoneFindingCard({
       <Card
         {...sw.bind}
         data-testid="finding"
+        data-finding={f.i}
         data-staged={kept ? "1" : undefined}
         style={sw.dx ? { transform: `translateX(${sw.dx}px)` } : undefined}
         className={cn(
@@ -387,14 +391,26 @@ export function PhoneFindingCard({
           onClick={() => setOpen((v) => !v)}
           className="flex flex-col gap-1 px-4 pb-3 pl-[18px] text-left"
         >
-          <span className={cn("text-base font-medium leading-snug text-foreground", !open && "line-clamp-3")}>{title}</span>
+          {/* §1.3 order: title · where (+ cited lines) · what to check · expected/actual · why ·
+              evidence — all in the closed card, so the swipe decision needs no expanding. */}
+          <span className={cn("text-base font-medium leading-snug text-foreground", !open && "line-clamp-3")} data-testid="finding-title">{title}</span>
+          <span className="flex min-w-0 max-w-full items-center gap-1 text-[13px] text-muted-foreground" data-testid="finding-path">
+            <span className="font-mono text-[11px] font-medium uppercase tracking-wide">Where</span>
+            <span className="truncate select-all">{loc}</span>
+            {copied && <span className="shrink-0 text-green">· Copied</span>}
+          </span>
+          <DiffSnippet snippet={f.snippet} className="w-full text-[11px]" />
+          {f.whatToCheck ? (
+            <WhatToCheck text={f.whatToCheck} className="text-[14px]" />
+          ) : (
+            <HowToVerify text={f.howToVerify} className="text-[14px]" />
+          )}
+          <Contrast expected={f.expected} actual={f.actual} className="text-[14px]" />
           {f.structured && f.impact && (
             <span className="text-[14px] leading-snug text-muted-foreground" data-testid="why-it-matters">{f.impact}</span>
           )}
-          <HowToVerify text={f.howToVerify} className="text-[14px]" />
-          <span className="flex min-w-0 max-w-full items-center gap-1 text-[13px] text-muted-foreground" data-testid="finding-path">
-            <span className="truncate select-all">{loc}</span>
-            {copied && <span className="shrink-0 text-green">· Copied</span>}
+          <EvidenceLine evidence={f.evidence} className="text-[13px]" />
+          <span className="flex w-full items-center justify-end text-[13px] text-muted-foreground">
             <ChevronRight aria-hidden="true" className={cn("ml-auto size-4 shrink-0 transition-transform", open && "rotate-90")} />
           </span>
         </button>
@@ -433,6 +449,7 @@ export function PhoneFindingCard({
             </div>
             <ExplainBody x={x} />
             {showTeach && teach && teach.panel(() => setTaught(true))}
+            {verifyUnderMore && <HowToVerify text={f.howToVerify} className="text-[14px]" />}
             {showEdit && editor}
           </div>
         )}

@@ -3,7 +3,7 @@
 // condition is a word on one status line and the page never stacks banners; an unknown PR keeps
 // its frame; the keyboard reaches the bar with the ring showing.
 import { expect, test, type Page } from "@playwright/test";
-import { PR, PR3, REPO, REPO2, USER, patchJson } from "./fixture";
+import { PR, PR3, PR6, REPO, REPO2, USER, patchJson } from "./fixture";
 
 const enc = (r: string) => encodeURIComponent(r);
 const prPath = (repo: string, num: string) => `/pr?repo=${enc(repo)}&pr=${num}`;
@@ -158,33 +158,57 @@ test.describe("the status line", () => {
     await expect(btns.nth(2)).toHaveAttribute("aria-selected", "true");
   });
 
-  test("the finding card: severity and path in the head, Explain as a disclosure, one verb for the comment", async ({ page }) => {
+  test("the finding card: severity in the head, the §1.3 rows in order, Explain as a disclosure, one verb for the comment", async ({ page }) => {
     await page.goto(prPath(REPO, PR));
     await settled(page);
     const card = page.locator(".finding").first();
-    // Head row: checkbox, severity badge, the path — no placement chip on an inline finding.
+    // Head row: checkbox, severity badge, confidence — no path (it is the Where row now), no
+    // placement chip on an inline finding.
     const head = card.locator(".fhead");
     await expect(head.getByTestId("status-badge")).toHaveCount(1);
     await expect(head.getByTestId("status-badge")).toHaveText("Should fix");
     await expect(head.getByTestId("placement")).toHaveCount(0);
-    // The path is whole, in sans, and offers a copy.
-    const path = head.getByTestId("finding-path");
+    await expect(head.getByTestId("finding-path")).toHaveCount(0);
+    await expect(head.getByTestId("confidence")).toHaveText("high confidence");
+    // The Where row: the path whole, in sans, with a copy button, and the cited diff lines
+    // under it with the changed line highlighted and the cited line marked.
+    const where = card.getByTestId("where");
+    const path = where.getByTestId("finding-path");
     await expect(path).toHaveText("app/models/Product.php:42");
     expect(await path.evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/mono/i);
     await expect(card.getByRole("button", { name: /copy app\/models/i })).toBeVisible();
-    // The verification contract: confidence beside the severity, then claim · why it matters ·
-    // how to verify in that order. The second card's run gave no verify line, so it has no row.
-    await expect(head.getByTestId("confidence")).toHaveText("high confidence");
+    const snippet = where.getByTestId("diff-snippet");
+    await expect(snippet).toBeVisible();
+    await expect(snippet.locator("[data-kind=add]")).toHaveCount(1);
+    await expect(snippet.locator("[data-kind=add]")).toContainText("$leadTime = $vendor->leadTime();");
+    await expect(snippet.locator("[data-cited]")).toHaveCount(1);
+    expect(await snippet.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/mono/i);
+    // trust-and-plain §1.3, top to bottom: title · where · what to check · expected/actual ·
+    // why it matters · evidence. The older verify line sits under "Edit comment" when the run
+    // also gave a what_to_check.
+    await expect(card.getByTestId("what-to-check")).toContainText("What to check");
+    await expect(card.getByTestId("what-to-check")).toContainText("Check that `$vendor` is null-guarded");
+    await expect(card.getByTestId("expected")).toHaveText("A product with no vendor shows no badge.");
+    await expect(card.getByTestId("actual")).toHaveText("The badge throws on a null vendor.");
     await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
-    await expect(card.getByTestId("how-to-verify")).toContainText("How to verify");
-    await expect(card.getByTestId("how-to-verify")).toContainText("Open a product whose vendor is null");
-    const whyBox = (await card.getByTestId("why-it-matters").boundingBox())!;
-    const verifyBox = (await card.getByTestId("how-to-verify").boundingBox())!;
-    expect(verifyBox.y).toBeGreaterThan(whyBox.y);
+    await expect(card.getByTestId("evidence")).toHaveAttribute("data-status", "pass");
+    await expect(card.getByTestId("evidence")).toContainText("The cited lines are in this diff and mention `vendor`, `leadTime`.");
+    await expect(card.getByTestId("how-to-verify")).toHaveCount(0);
+    const ys = await Promise.all(
+      ["finding-title", "where", "what-to-check", "contrast", "why-it-matters", "evidence"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
+    );
+    for (let i = 1; i < ys.length; i++) expect(ys[i], `row ${i} is below row ${i - 1}`).toBeGreaterThan(ys[i - 1]);
+    // The second card's run gave neither a what_to_check nor a verify line, so it has no such
+    // row; its file is not in the diff, so the evidence line warns and no snippet is cut.
     const second = page.locator(".finding").nth(1);
     await expect(second.getByTestId("confidence")).toHaveText("medium confidence");
     await expect(second.getByTestId("how-to-verify")).toHaveCount(0);
+    await expect(second.getByTestId("what-to-check")).toHaveCount(0);
     await expect(second).not.toContainText("How to verify");
+    await expect(second.getByTestId("evidence")).toHaveAttribute("data-status", "warn");
+    await expect(second.getByTestId("evidence")).toContainText("`src/javascripts/Badge.tsx` is not a file this PR changes.");
+    await expect(second.getByTestId("diff-snippet")).toHaveCount(0);
+    await expect(second.getByTestId("finding-select")).toBeChecked(); // one flag: still staged
     // Explain opens and closes again.
     const explain = card.getByTestId("explain");
     await expect(explain).toHaveText("Explain simply");
@@ -200,6 +224,93 @@ test.describe("the status line", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(toggle).toHaveText("Edit comment");
     await expect(card.getByTestId("finding-body")).toBeVisible();
+    // The verify line lives under "More" (the comment disclosure) once a what_to_check exists.
+    await expect(card.getByTestId("how-to-verify")).toContainText("Open a product whose vendor is null");
+  });
+});
+
+// trust-and-plain Part 1: the Reading guide above the findings and the evidence check on each.
+test.describe("the reading guide and the evidence check", () => {
+  test.use({ viewport: { width: 1280, height: 640 } });
+
+  test("the Reading guide sits above the findings, open by default, collapses to a header, and a row scrolls to the card that renders that hunk", async ({ page }) => {
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    const guide = page.getByTestId("reading-guide");
+    await expect(guide).toBeVisible();
+    await expect(guide).toHaveAttribute("data-open", "1");
+    expect((await guide.boundingBox())!.y).toBeLessThan((await page.locator(".finding").first().boundingBox())!.y);
+    expect((await guide.boundingBox())!.y).toBeGreaterThan((await page.getByTestId("verdict").boundingBox())!.y);
+    await expect(guide.getByTestId("guide-risk")).toHaveText("can break");
+    await expect(guide.getByTestId("guide-does")).toContainText("Shows a lead-time badge on every product card.");
+    await expect(guide.getByTestId("guide-why")).toContainText("Shoppers asked how long a product takes to arrive.");
+    const rows = guide.getByTestId("guide-row");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("app/models/Product.php:40-43");
+    await expect(rows.nth(0)).toContainText("A null vendor is the risk.");
+    await expect(guide.getByTestId("guide-not-covered")).toContainText("lockfile · generated snapshots");
+    // Collapse: the header and the risk word stay, the body goes, a one-line peek appears.
+    await guide.getByTestId("guide-toggle").click();
+    await expect(guide).toHaveAttribute("data-open", "0");
+    await expect(guide.getByTestId("guide-does")).toHaveCount(0);
+    await expect(guide.getByTestId("guide-risk")).toBeVisible();
+    await expect(guide.getByTestId("guide-peek")).toContainText("Shows a lead-time badge");
+    await guide.getByTestId("guide-toggle").click();
+    await expect(guide).toHaveAttribute("data-open", "1");
+    // A row goes to the hunk: the card for that file is scrolled into view (its snippet is the
+    // hunk). Scroll away first so the jump is observable.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await rows.nth(1).getByRole("button").click();
+    const badge = page.locator(".finding").nth(1);
+    await expect(badge).toHaveAttribute("data-finding", "1");
+    await expect
+      .poll(async () => {
+        const b = (await badge.boundingBox())!;
+        const vh = page.viewportSize()!.height;
+        return b.y >= 0 && b.y + Math.min(b.height, 80) <= vh;
+      })
+      .toBe(true);
+  });
+
+  test("the evidence check: one plain line per card, a warning keeps a single-flag finding staged, two flags send it to the maybe tray", async ({ page }) => {
+    await page.goto(prPath(REPO, PR6));
+    await settled(page);
+    // Five cards in the list — blockers, then should-fixes, then the nit — and one in the tray.
+    const cards = page.locator("[data-testid=post-panel] .finding");
+    await expect(cards).toHaveCount(5);
+    const expectEvidence = async (i: number, status: string, flags: string | null, text: string) => {
+      const ev = cards.nth(i).getByTestId("evidence");
+      await expect(ev).toHaveAttribute("data-status", status);
+      if (flags) await expect(ev).toHaveAttribute("data-flags", flags);
+      else expect(await ev.getAttribute("data-flags")).toBeNull();
+      await expect(ev).toContainText(text);
+    };
+    await expectEvidence(0, "pass", null, "The cited lines are in this diff and mention `sleep`.");
+    await expectEvidence(1, "warn", "no_contrast", "A blocker needs both Expected and Actual.");
+    await expectEvidence(2, "warn", "path_not_in_diff", "`app/sync/SyncJob.php` is not a file this PR changes.");
+    await expectEvidence(3, "warn", "lines_not_in_diff", "Lines 80 are not in this PR's changes to `Retry.php`.");
+    await expectEvidence(4, "warn", "symbol_not_found", "`maxAttempts` does not appear in the cited lines.");
+    // One flag never unticks a finding: all five are staged.
+    for (let i = 0; i < 5; i++) await expect(cards.nth(i).getByTestId("finding-select")).toBeChecked();
+    await expect(page.getByTestId("commit-bar")).toContainText("5");
+    // The clean card cites a range: the Where row reads path:start-end and the snippet marks
+    // both cited lines, with the added lines highlighted.
+    const clean = cards.nth(0);
+    await expect(clean.getByTestId("finding-path")).toHaveText("app/sync/Retry.php:26-27");
+    await expect(clean.getByTestId("diff-snippet").locator("[data-cited]")).toHaveCount(2);
+    await expect(clean.getByTestId("diff-snippet").locator("[data-cited]").first()).toContainText("if ($attempts > 5) throw $e;");
+    expect(await clean.getByTestId("diff-snippet").locator("[data-kind=add]").count()).toBeGreaterThanOrEqual(7);
+    // Two flags: the finding is in the maybe tray, unticked, although the model said high.
+    const maybe = page.getByTestId("maybe");
+    await expect(maybe).toContainText("1 lower-confidence finding");
+    await maybe.getByRole("button").first().click();
+    const demoted = maybe.locator(".finding");
+    await expect(demoted).toHaveCount(1);
+    await expect(demoted.getByTestId("evidence")).toHaveAttribute("data-flags", "path_not_in_diff no_contrast");
+    await expect(demoted.getByTestId("confidence")).toHaveText("high confidence");
+    await expect(demoted.getByTestId("finding-select")).not.toBeChecked();
+    // The guide on this PR names the risk word "breaks".
+    await expect(page.getByTestId("guide-risk")).toHaveText("breaks");
   });
 });
 
@@ -351,9 +462,8 @@ test.describe("dismissal reasons", () => {
     await expect(box).not.toBeChecked();
     const row = nit.getByTestId("reason-row");
     await expect(row).toBeVisible();
-    // Tab order: checkbox → the head's copy-path button → the chips, left to right.
-    await page.keyboard.press("Tab");
-    await expect(nit.locator(".fhead").getByRole("button")).toBeFocused();
+    // Tab order: checkbox → the chips, left to right (the copy-path button now sits in the
+    // Where row under the title, after the chip row).
     await page.keyboard.press("Tab");
     await expect(row.getByTestId("reason-chip").first()).toBeFocused();
     await page.keyboard.press("Tab");

@@ -239,38 +239,71 @@ $STACK"
 CONTRACT="Do NOT print a table and do NOT post anything to GitHub. Write your findings to
 ./review.json as a single JSON object: {\"event\":\"COMMENT\",
 \"summary\":\"the bottom line in 1-2 SHORT sentences — the verdict and why, NOT a wall of text\",
+\"guide\":{\"does\":\"ONE sentence: what this PR changes, for a reader who has not opened it\",
+\"why\":\"ONE sentence from the PR body or linked issue, or null if the PR does not say\",
+\"risk\":\"breaks|can break|safe-looking|unclear\",
+\"read_plan\":[{\"path\":\"src/billing/retry.ts\",\"lines\":\"40-72\",\"why\":\"The retry loop
+changed. Everything else depends on it.\"}],
+\"not_covered\":[\"generated files\",\"lockfile\"]},
 \"keyPoints\":[\"3 to 5 very short scannable bullets: the most important things a reviewer should
 know about this PR, each ONE plain sentence in everyday language, no jargon or symbol names\"],
 \"explainer\":\"what this PR does, as 3 to 6 SHORT markdown bullet points (each a '- ' line, one
 plain sentence) — NOT a paragraph\",
 \"analysis\":\"what you verified and what you deliberately skipped, as terse markdown bullets — keep
 it tight, no long prose\", \"comments\":[{
-\"path\":\"file\", \"line\":123, \"severity\":\"blocker|should-fix|nit|question\", \"title\":
-\"a short plain-language headline a JUNIOR engineer would understand at a glance — no jargon, no
-symbol names, say what is wrong in everyday words\", \"impact\":\"ONE plain sentence: who is
+\"path\":\"file\", \"line\":123, \"end_line\":130, \"severity\":\"blocker|should-fix|nit|question\", \"title\":
+\"a short plain-language headline a JUNIOR engineer would understand at a glance — no jargon,
+say what is wrong in everyday words; the one symbol it is about may sit in backticks\",
+\"impact\":\"ONE plain sentence: who is
 affected and what actually breaks for them (an end user, an operator, a partner) — the real-world
-consequence, not the code mechanism\", \"body\":
+consequence, not the code mechanism\", \"what_to_check\":\"ONE imperative sentence, max 20 words:
+where to look and what to confirm, e.g. Open retry.ts lines 44-51. Check that \`attempts\` resets
+after a success.\", \"expected\":\"ONE short line: what the code should do\", \"actual\":\"ONE short
+line: what it does instead\", \"body\":
 \"the detailed technical explanation and the concrete failing scenario, in markdown — this is the
 comment posted to GitHub, so write it for the PR author\", \"reply_to\":null, \"suggestion\":null,
 \"confidence\":\"high|medium|low\", \"how_to_verify\":\"ONE imperative line telling the reviewer
 how to confirm this finding is real in under two minutes — a command to run, a page to open, an
-input to try; never 'review the code'\", \"critical_path\":null}]}. The title, impact and
-how_to_verify are shown to a reviewer skimming the dashboard so they can understand, check and
-sign off on each finding WITHOUT reading the whole PR — keep them jargon-free and self-contained;
-the body stays the full technical comment. (\"why_it_matters\" is accepted as a synonym of
-\"impact\".) Set \"confidence\" to how sure you are the finding is real and worth raising — it is
-shown on every card, and low-confidence findings are shown to the reviewer in a separate
-collapsed \"maybe\" tray, so use it honestly rather than dropping a borderline point.
-\"how_to_verify\" is one line under 160 characters starting with a verb (Run …, Open …, Call …
-with …) and concrete enough to do without reading the PR; a multi-line value is discarded.
-\"critical_path\" is optional: set it to the exact glob
-from the 'Critical paths for this repository' section when the finding concerns one of those
-paths, else leave it null. When a finding has a concrete,
-correct fix that replaces the SINGLE line you set in \"line\", put the exact replacement line
-(matching its indentation) in \"suggestion\" — the reviewer can post it as a one-click GitHub
-suggestion. Only when confident and single-line; otherwise leave \"suggestion\" null. A human skims summary/keyPoints/explainer/analysis in a dashboard — write them SHORT and
-scannable (point form, plain language), not long prose — then selects, edits and posts individual
-comments. Keep findings few and high-confidence.${LEARN}"
+input to try; never 'review the code'\", \"critical_path\":null}]}.
+
+WRITE LIKE THIS (Simplified Technical English; the dashboard lints every string and counts
+violations): one sentence, one idea. Max 20 words per sentence for instructions (what_to_check,
+how_to_verify), 25 for descriptions (title, impact, expected, actual, guide, read_plan.why).
+Active voice, present tense; imperative for instructions ('Open … Check that …'). Name the thing,
+not the abstraction: 'the \`retry()\` loop', not 'the retry logic implementation'. No noun
+strings longer than three words. No hedges ('might possibly', 'it seems', 'perhaps'), no filler
+('it should be noted'). No jargon the diff itself does not use. Severity words are fixed: breaks,
+can break, wrong, slow, unclear, style. The reader has NOT read the diff: every title must stand
+alone. Before → after: 'The retry logic implementation might possibly fail to reset the attempt
+counter under certain conditions' → 'The \`retry()\` loop never resets \`attempts\` after a
+success'. 'It should be noted that the handler could potentially swallow exceptions' → 'The
+\`onError\` handler swallows every exception'. 'Verify the behaviour of the caching layer' →
+'Call GET /lead-times twice. Check that the second call hits the cache'. 'Users may experience
+degraded performance in some scenarios' → 'Every product page waits one extra second'.
+
+The title, impact, what_to_check, expected and actual are shown to a reviewer skimming the
+dashboard so they can understand, check and sign off on each finding WITHOUT reading the whole PR
+— keep them jargon-free and self-contained; the body stays the full technical comment.
+(\"why_it_matters\" is accepted as a synonym of \"impact\".) \"line\" is the FIRST line of the
+cited range and \"end_line\" the last (omit it for a single line); the dashboard shows those diff
+lines inline, checks that the file and lines are in this PR's diff and that a backticked symbol
+from the title or what_to_check appears in them, and a finding that fails two of those checks is
+not pre-selected. A blocker must carry both \"expected\" and \"actual\". Set \"confidence\" to how
+sure you are the finding is real and worth raising — it is shown on every card, and
+low-confidence findings are shown to the reviewer in a separate collapsed \"maybe\" tray, so use it
+honestly rather than dropping a borderline point. \"how_to_verify\" is one line under 160
+characters starting with a verb (Run …, Open …, Call … with …) and concrete enough to do without
+reading the PR; a multi-line value is discarded. \"guide\" is the reading plan the reviewer sees
+first: \"read_plan\" lists the 2-5 hunks to read, in order, each with ONE sentence on why, and
+\"not_covered\" names what you did not review. \"critical_path\" is optional: set it to the exact
+glob from the 'Critical paths for this repository' section when the finding concerns one of those
+paths, else leave it null. When a finding has a concrete, correct fix that replaces the SINGLE
+line you set in \"line\", put the exact replacement line (matching its indentation) in
+\"suggestion\" — the reviewer can post it as a one-click GitHub suggestion. Only when confident
+and single-line; otherwise leave \"suggestion\" null. A human skims
+summary/keyPoints/explainer/analysis in a dashboard — write them SHORT and scannable (point form,
+plain language), not long prose — then selects, edits and posts individual comments. Keep
+findings few and high-confidence.${LEARN}"
 
 if [ -s "$REPO_SKILL" ]; then
   echo "repo:$(repo_slug "$REPO")" > "$DIR/skill"; APPROACH="$(skill_body "$REPO_SKILL")"
@@ -355,6 +388,11 @@ jq -e 'if type == "object" then (.comments |= (. // []))
 # fails the run and imports nothing that could reach GitHub.
 PYTHONPATH="$HERE" python3 "$HERE/rs_review_schema.py" "$DIR/review.json.tmp" 2>> "$DIR/agent.log" \
   || echo "[review-schema] normalisation skipped (python3 failed)" >> "$DIR/agent.log"
+# The writing rules (trust-and-plain §1.1): every sentence over the limit and every hedge is a
+# `plain:` warning in agent.log; the count is a local counter so we can see whether the prompt
+# is obeyed. Never fails the run.
+plain_n=$(grep -c "\[review-schema\] .*plain:" "$DIR/agent.log" 2>/dev/null || true)
+[ "${plain_n:-0}" -gt 0 ] 2>/dev/null && tally plain_warnings --n "$plain_n"
 [ -s "$DIR/review.json.tmp" ] || fail "could not re-encode review.json (disk full?)"
 # Copy out before the worktree is removed — this is the artefact the dashboard renders.
 mv "$DIR/review.json.tmp" "$DIR/review.json" || fail "cannot write $DIR/review.json"

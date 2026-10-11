@@ -38,7 +38,8 @@ A run whose process has died no longer sits on `reviewing` for ever: the state i
 
 ## The result
 
-- **Assessment.** Two to four sentences: is it safe to merge, and the minimum change set. Shown to you only; never becomes a GitHub state.
+- **Assessment.** One or two sentences: is it safe to merge, and the minimum change set. Shown to you only; never becomes a GitHub state.
+- **Reading guide.** A card above the findings: *what this PR does*, *why* (from the PR body, or nothing if it does not say), a fixed **risk word** — `breaks`, `can break`, `safe-looking`, `unclear` — *read in this order* (two to five hunks, each with one sentence on why; click a row and the page scrolls to the card that shows that hunk, or opens the PR's Files tab when no finding cites it) and *not reviewed* (what the run skipped). Open on first view, collapses to its header. On the phone it is the first card. A run from before the guide existed shows no card.
 - **What this PR does.** A junior-engineer-level explainer.
 - **Analysis.** What was checked, what was dropped after being falsified, the file-by-file change list.
 - **Findings.** See below.
@@ -55,13 +56,36 @@ A run whose process has died no longer sits on `reviewing` for ever: the state i
 
 ## Findings
 
-Each finding is a card:
+Each finding is a card. The rows are always in this order, and a row the run did not supply is omitted rather than labelled empty:
 
-- **Checkbox** — selected for posting.
-- **Severity** — `blocker`, `should-fix`, `nit`, `question`. Rendered from a field, so the body never repeats it.
-- **Confidence** — `high`, `medium` or `low confidence`, the run's own estimate, beside the severity. Low-confidence findings also sit in a collapsed *maybe* tray. A run that never stated one (an older run, a custom skill) shows no badge.
-- **Claim, why it matters, how to verify** — the plain-language headline, one sentence on who is affected and what breaks for them, and one imperative line (`Run …`, `Open …`, `Call … with …`) on how to confirm the finding is real in under two minutes without reading the PR. Each row is omitted when the run did not supply it. The verify line is for you, the human gate; it is not posted to GitHub.
-- **`file:line`** — in the new version of the file. Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)). Anchorability is a tri-state: when the check genuinely could not run — a failed `gh pr diff`, a binary file, a file past GitHub's size cutoff — the page says so and retries, rather than reporting every finding as pointing at lines the PR does not change.
+1. **Title** with the **severity** (`blocker`, `should-fix`, `nit`, `question` — rendered from a field, so the body never repeats it) and the **confidence** (`high`, `medium` or `low confidence`, the run's own estimate; low-confidence findings also sit in a collapsed *maybe* tray; a run that never stated one shows no badge).
+2. **Where** — `file:line` or `file:start-end` in the new version of the file, with a copy button, and under it the **cited diff lines**: 8–12 lines of the hunk, changed lines highlighted, the cited lines marked. You read the evidence without opening the diff.
+3. **What to check** — one imperative sentence: where to look and what to confirm ("Open retry.ts lines 44–51. Check that `attempts` resets after a success."). Older runs show their **how to verify** line here instead; when a run gave both, the verify line sits under *Edit comment*.
+4. **Expected / Actual** — two short lines: what the code should do, what it does instead.
+5. **Why it matters** — one sentence on who is affected and what breaks for them.
+6. **Evidence** — the result of the local check described below.
+
+Everything else — the full comment that posts to GitHub, the model's explanation — is under *Edit comment* and *Explain simply*.
+
+- **Reply vs New**, **Agreement**, **Body** and **Explain simply** are described below.
+- Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)). Anchorability is a tri-state: when the check genuinely could not run — a failed `gh pr diff`, a binary file, a file past GitHub's size cutoff — the page says so and retries, rather than reporting every finding as pointing at lines the PR does not change.
+
+### How to read a finding
+
+Start at the title: it is written so that it makes sense without the diff. Then look at **Where** — the cited lines are right there, with the change highlighted. **What to check** tells you the one thing to confirm in them; **Expected / Actual** tells you what you should see and what the run says you will see. If those two lines match what the code does, the finding is real; **Why it matters** tells you whether it is worth a comment.
+
+The **Evidence** line is a check the dashboard runs itself, locally, with no model, against the PR's own diff:
+
+| It checks that | If not |
+| --- | --- |
+| the cited file is one this PR changes | *`path` is not a file this PR changes.* |
+| the cited lines fall inside a hunk of that file | *Lines 44–51 are not in this PR's changes to `retry.ts`.* |
+| a name quoted in backticks in the title or what-to-check appears in the cited lines | *`attempts` does not appear in the cited lines.* |
+| a `blocker` carries both Expected and Actual | *A blocker needs both Expected and Actual.* |
+
+When everything holds the line reads *Evidence: the cited lines are in this diff and mention `attempts`*. One failed check is a warning on the card and nothing more — a finding about a file outside the diff (a test that now asserts the wrong thing) is legitimate, only un-checkable here. **Two failed checks un-tick the finding and sort it into the *maybe* tray, whatever confidence the model reported.** The verdict is computed once, on the server, when the page loads, so what you see is what decided the pre-selection.
+
+Every string on the card is written to a fixed set of rules (one sentence, one idea; at most 20 words for an instruction, 25 for a description; no hedges; the thing named, not the abstraction). The run is told the rules and the dashboard lints the output; a sentence that breaks them is still shown, and the count of such sentences is one of the local counters in *Settings → Privacy*.
 - **Reply vs New** — when an existing thread on the PR already covers this, the finding is marked as a reply and opens with an acknowledgement, so it reads as a continuation rather than a re-raise.
 - **Agreement** — `✓ N independent` when other reviewers' runs with a different configuration raised it too; `only your run` otherwise.
 - **Body** — editable, with a markdown preview. GitHub-flavoured: backticked symbols, fenced code, and optionally a **suggestion** (an exact one-line replacement that becomes a ```` ```suggestion ```` block the author can apply in one click).

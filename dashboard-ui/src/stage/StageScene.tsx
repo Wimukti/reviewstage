@@ -10,7 +10,7 @@
 // `playKey` to replay.
 import { useEffect, useMemo, useState } from "react";
 import fixture from "./fixture.json";
-import { CommitBar, FindingCard, KeyPoints, StatusLineView, Verdict } from "../ReviewParts";
+import { CommitBar, FindingCard, KeyPoints, StatusLineView, Verdict, type FindingView } from "../ReviewParts";
 import { PageHeader, RepoPill, StatusBadge, toneOf, wordOf } from "../ui";
 import { StageProgress } from "./StageProgress";
 import { Button } from "@/components/ui/button";
@@ -101,7 +101,8 @@ export function StageScene({
         {visible.map((f) => (
           <FindingCard
             key={f.i}
-            f={{ ...f, structured: true }}
+            // fixture.json is plain JSON: its snippet kinds and evidence status are strings.
+            f={{ ...f, structured: true } as FindingView}
             checked={posted ? false : !!staged[f.i]}
             disabled={posted}
             onToggle={() => setManual((m) => ({ ...m, [f.i]: !staged[f.i] }))}

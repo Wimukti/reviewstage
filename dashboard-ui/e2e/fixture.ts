@@ -32,6 +32,10 @@ export const PR2 = "38850"; // in REPO — dedicated archive-test target — no 
 export const PR3 = "7"; // in REPO2
 export const PR4 = "38851"; // in REPO — a review of this one is permanently "in flight"
 export const PR5 = "38852"; // in REPO — merged on GitHub, posted here: the dead-PR row
+// The evidence-check matrix (trust-and-plain §1.4): one finding per flag, a clean one, and one
+// with two flags. Not in queue.json (meta.json only), so "To review" is unchanged; as a reviewed
+// PR it does appear under "All" (six rows there, not five).
+export const PR6 = "38853"; // in REPO
 // The stack: PR (#38849) is the parent of PR2 (#38850). PR3 lives in REPO2, whose fake gh
 // answers nothing, so it is the un-stacked case.
 // The timestamp of the one earlier profile version the fixture ships for REPO.
@@ -266,12 +270,121 @@ export function buildFixture() {
     }),
   );
 
+  // The evidence matrix PR. Its fake-gh files answer carries one hunk of app/sync/Retry.php
+  // (new-side lines 20–30); every finding below is placed against it on purpose.
+  write(
+    join(FIXTURE, "state", slug(REPO), PR6, "meta.json"),
+    JSON.stringify({
+      number: Number(PR6),
+      title: "Retry the nightly sync with a backoff",
+      url: `https://github.com/${REPO}/pull/${PR6}`,
+      additions: 11,
+      deletions: 1,
+      changedFiles: 1,
+      author: "teammate",
+      head: "0ddba11c0ffe",
+      createdAt: "2026-05-09T10:00:00Z",
+      updatedAt: "2026-05-10T10:00:00Z",
+      state: "open",
+      merged: false,
+    }),
+  );
+  write(join(FIXTURE, "state", slug(REPO), PR6, "status"), "done");
+  write(
+    join(FIXTURE, "state", slug(REPO), PR6, "review.json"),
+    JSON.stringify({
+      event: "COMMENT",
+      summary: "Adds a retry loop around the nightly sync. One blocker on the backoff.",
+      guide: {
+        does: "Wraps the nightly sync in a retry loop with a growing delay.",
+        why: "The nightly sync failed on one 502 and never ran again.",
+        risk: "breaks",
+        read_plan: [
+          { path: "app/sync/Retry.php", lines: "22-28", why: "The loop and its delay. Everything else depends on it." },
+        ],
+        not_covered: ["the sync job that calls it"],
+      },
+      keyPoints: ["The backoff has no cap.", "The attempt counter is never read."],
+      explainer: "",
+      analysis: "",
+      comments: [
+        {
+          // Clean: the file and lines are in the diff and the cited lines mention `sleep`.
+          path: "app/sync/Retry.php", line: 26, end_line: 27, severity: "blocker", confidence: "high",
+          title: "The `sleep` backoff grows without a cap",
+          impact: "After five failures the sync sleeps for over a minute and the job times out.",
+          what_to_check: "Open Retry.php lines 26-27. Check that `sleep` is capped.",
+          expected: "The delay stops growing at 30 seconds.",
+          actual: "The delay doubles on every attempt with no ceiling.",
+          how_to_verify: "Fail the sync six times in a row and time the gaps between attempts.",
+          body: "`sleep(2 ** $attempts)` has no ceiling.", reply_to: null, suggestion: "",
+        },
+        {
+          // path_not_in_diff — one flag: a warning, still pre-selected.
+          path: "app/sync/SyncJob.php", line: 10, severity: "should-fix", confidence: "high",
+          title: "The job still catches the exception the retry now throws",
+          impact: "A sync that fails five times is logged as a success.",
+          what_to_check: "Open SyncJob.php line 10. Check what happens to the thrown exception.",
+          expected: "The job fails loudly.", actual: "The job swallows it and reports success.",
+          body: "SyncJob.php catches Throwable around run().", reply_to: null, suggestion: "",
+        },
+        {
+          // lines_not_in_diff — the file is in the PR, line 80 is not in its hunk.
+          path: "app/sync/Retry.php", line: 80, severity: "should-fix", confidence: "medium",
+          title: "The constructor still takes an unused timeout",
+          impact: "Callers pass a value that does nothing.",
+          what_to_check: "Open Retry.php line 80. Check whether the timeout is read anywhere.",
+          expected: "The parameter is removed or used.", actual: "It is stored and never read.",
+          body: "Unused constructor parameter.", reply_to: null, suggestion: "",
+        },
+        {
+          // symbol_not_found — the quoted name is not in the cited lines.
+          path: "app/sync/Retry.php", line: 22, severity: "nit", confidence: "high",
+          title: "`maxAttempts` is never read",
+          impact: "The limit cannot be configured.",
+          what_to_check: "Open Retry.php line 22. Check whether `maxAttempts` replaces the literal 5.",
+          expected: "The loop reads a named limit.", actual: "The loop compares against a literal 5.",
+          body: "Use a named constant.", reply_to: null, suggestion: "",
+        },
+        {
+          // no_contrast — a blocker in the new shape without expected/actual.
+          path: "app/sync/Retry.php", line: 24, severity: "blocker", confidence: "medium",
+          title: "A non-retryable error is retried",
+          impact: "A bad credential is retried five times before anyone hears about it.",
+          what_to_check: "Open Retry.php line 24. Check which exceptions the catch lets through.",
+          body: "catch (Throwable) retries everything.", reply_to: null, suggestion: "",
+        },
+        {
+          // Two flags (path_not_in_diff + no_contrast): not pre-selected, in the maybe tray,
+          // whatever the model's confidence said.
+          path: "app/sync/Nope.php", line: 3, severity: "blocker", confidence: "high",
+          title: "Nope.php is never loaded",
+          impact: "Nothing.",
+          what_to_check: "Open Nope.php line 3. Check the autoloader.",
+          body: "A file the PR does not touch.", reply_to: null, suggestion: "",
+        },
+      ],
+    }),
+  );
+
   write(join(FIXTURE, "state", slug(REPO), PR, "status"), "done");
   write(
     join(FIXTURE, "state", slug(REPO), PR, "review.json"),
     JSON.stringify({
       event: "COMMENT",
       summary: "Adds a lead-time badge to product cards. Logic is sound; two small things.",
+      // The reading guide (trust-and-plain §1.2): what, why, risk, the hunks in order, what was
+      // not reviewed. Badge.tsx is not in the fake diff, so its row has no card to jump to.
+      guide: {
+        does: "Shows a lead-time badge on every product card.",
+        why: "Shoppers asked how long a product takes to arrive.",
+        risk: "can break",
+        read_plan: [
+          { path: "app/models/Product.php", lines: "40-43", why: "The badge reads the vendor here. A null vendor is the risk." },
+          { path: "src/javascripts/Badge.tsx", lines: "1-30", why: "The component that renders the badge." },
+        ],
+        not_covered: ["lockfile", "generated snapshots"],
+      },
       keyPoints: [
         "The badge logic is sound — no blockers.",
         "Guard a null vendor before reading its lead time.",
@@ -287,6 +400,11 @@ export function buildFixture() {
           title: "A product with no vendor can crash the lead-time badge",
           impact: "A shopper viewing such a product would see the card fail instead of loading.",
           how_to_verify: "Open a product whose vendor is null; the badge throws instead of rendering.",
+          // Where / what to check / expected / actual (§1.3). `$vendor` and `leadTime` are in the
+          // cited line, so the evidence check passes and names them.
+          what_to_check: "Open Product.php line 42. Check that `$vendor` is null-guarded before `leadTime()`.",
+          expected: "A product with no vendor shows no badge.",
+          actual: "The badge throws on a null vendor.",
           confidence: "high",
           body: "Guard against a null vendor before reading its lead time.",
           reply_to: null,
@@ -562,6 +680,31 @@ export function buildFixture() {
       },
     ],
   ];
+  // PR6's one file: new-side lines 20–30 of app/sync/Retry.php.
+  const files6 = [
+    [
+      {
+        filename: "app/sync/Retry.php",
+        status: "modified",
+        patch: [
+          "@@ -20,6 +20,16 @@ class Retry",
+          "     public function run(callable $op): void",
+          "     {",
+          "-        $op();",
+          "+        $attempts = 0;",
+          "+        while (true) {",
+          "+            try { $op(); return; }",
+          "+            catch (Throwable $e) { $attempts++; }",
+          "+            if ($attempts > 5) throw $e;",
+          "+            sleep(2 ** $attempts);",
+          "+        }",
+          "     }",
+          " }",
+          "",
+        ].join("\n"),
+      },
+    ],
+  ];
   // The open PRs of REPO, as `gh pr list --json number,title,baseRefName,headRefName,url`
   // answers them: #38849 (main <- lead-time-badge) is the parent of #38850. REPO2 answers
   // nothing, so its PRs are the un-stacked case.
@@ -580,6 +723,10 @@ export function buildFixture() {
       `  *"pulls/${PR}/files"*) cat <<'RSJSON'`,
       JSON.stringify(files),
       "RSJSON",
+      "  exit 0;;",
+      `  *"pulls/${PR6}/files"*) cat <<'RSJSON6'`,
+      JSON.stringify(files6),
+      "RSJSON6",
       "  exit 0;;",
       `  *"pr list"*"--repo ${REPO}"*baseRefName*) cat <<'RSSTACK'`,
       JSON.stringify(openPrs),

@@ -172,3 +172,43 @@ class TheFindingContract(unittest.TestCase):
     def test_both_ask_for_confidence(self):
         for src in (self.CONTRACT_SRC, self.SKILL_SRC):
             self.assertRegex(src, r'confidence.{0,8}high.{0,6}medium.{0,6}low')
+
+
+class ThePlainLanguageContract(unittest.TestCase):
+    """trust-and-plain §1.1–1.3: both the job script's CONTRACT and the bundled skill ask for the
+    reading guide, the where / what-to-check / expected / actual fields, and carry the writing
+    rules with the limits a reviewer can hold the output to."""
+    CONTRACT_SRC = (HERE / "run-review.sh").read_text()
+    SKILL_SRC = (HERE.parent / "skills" / "pr-review" / "SKILL.md").read_text()
+
+    def test_both_ask_for_the_reading_guide(self):
+        for src in (self.CONTRACT_SRC, self.SKILL_SRC):
+            plain = src.replace("\\", "")
+            for field in ('"guide"', '"does"', '"why"', '"risk"', '"read_plan"', '"not_covered"'):
+                self.assertIn(field, plain)
+            self.assertRegex(plain, r"breaks.{0,8}can break.{0,8}safe-looking.{0,8}unclear")
+
+    def test_both_ask_for_what_to_check_expected_actual_and_a_line_range(self):
+        for src in (self.CONTRACT_SRC, self.SKILL_SRC):
+            plain = src.replace("\\", "")
+            for field in ('"what_to_check"', '"expected"', '"actual"', '"end_line"'):
+                self.assertIn(field, plain)
+            self.assertRegex(plain, r"what_to_check.{0,60}ONE imperative sentence, max 20 words")
+
+    def test_both_carry_the_writing_rules_with_the_limits_and_examples(self):
+        for src in (self.CONTRACT_SRC, self.SKILL_SRC):
+            low = src.lower()
+            self.assertIn("20 words", low)
+            self.assertIn("25", low)
+            self.assertIn("active voice", low)
+            self.assertIn("might possibly", low)
+            self.assertIn("it should be noted", low)
+            self.assertIn("the retry logic implementation", low)   # a before → after pair
+            self.assertIn("`retry()` loop", src.replace("\\", ""))
+            self.assertRegex(src, r"(?s)breaks.{0,5}can break.{0,5}wrong.{0,5}slow.{0,5}unclear.{0,5}style")
+
+    def test_the_contract_explains_the_evidence_check_and_the_blocker_rule(self):
+        for src in (self.CONTRACT_SRC, self.SKILL_SRC):
+            plain = src.replace("\\", "")
+            self.assertIn("not pre-selected", plain)
+            self.assertRegex(plain, r'blocker must carry both "?`?expected"?`?\s+and\s+"?`?actual')

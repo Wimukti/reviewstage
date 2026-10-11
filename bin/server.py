@@ -56,6 +56,7 @@ import rs_personal
 import rs_push
 import rs_profile
 import rs_review_body as RB
+import rs_evidence
 import rs_review_schema
 import rs_rollup
 import rs_settings
@@ -4627,6 +4628,17 @@ class Handler(BaseHTTPRequestHandler):
         loc = c.get("path", "?")
         return f"{loc}:{c.get('line')}" if c.get("line") not in (None, "?") else loc
 
+    @staticmethod
+    def _guide_data(g):
+        """The reading guide as the client reads it, or None."""
+        if not isinstance(g, dict):
+            return None
+        return {"does": g.get("does") or "", "why": g.get("why") or "",
+                "risk": g.get("risk"),
+                "readPlan": [{"path": r.get("path", ""), "lines": r.get("lines"),
+                              "why": r.get("why") or ""} for r in (g.get("read_plan") or [])],
+                "notCovered": list(g.get("not_covered") or [])}
+
     def _review_data(self, repo, pr, user, rev, appr):
         ev = rev.get("event", "COMMENT")
         # `rev` came through load_review, so every finding already has one reading of severity,
@@ -4656,11 +4668,20 @@ class Handler(BaseHTTPRequestHandler):
         # resolved once here rather than per finding.
         teach_target = suggestion_target({"repos": [repo]})
         taught_sigs = rs_learn.promoted_signatures()
-        preselectable = [i for i, c in enumerate(shown) if c.get("confidence") != "low"]
+        # The deterministic evidence check (rs_evidence, trust-and-plain §1.4) against the same
+        # files payload the anchor check read. Done here, once, so the "maybe" tray decision the
+        # page shows is the one the pre-selection used: two or more flags demote a finding
+        # whatever confidence the model reported. `None` when GitHub would not give the diff.
+        patches = anchors.patches if anchors is not None else None
+        evidence = [rs_evidence.annotate(c, patches) for c in shown]
+        maybe = [c.get("confidence") == "low" or rs_evidence.demoted(ev)
+                 for c, (ev, _) in zip(shown, evidence)]
+        preselectable = [i for i, is_maybe in enumerate(maybe) if not is_maybe]
         preselect = set(preselectable[:PRESELECT_CAP]) if len(preselectable) > PRESELECT_CAP \
             else set(preselectable)
         findings = []
         for i, c in enumerate(shown):
+            ev, snip = evidence[i]
             findings.append({"i": i, "severity": c.get("severity", "nit"),
                              "sevLabel": SEV_LABEL.get(c.get("severity", "nit"),
                                                        c.get("severity", "nit")),
@@ -4668,9 +4689,19 @@ class Handler(BaseHTTPRequestHandler):
                              "line": rs_diff.norm_line(c.get("line")) or c.get("line", "?"),
                              "thread": (c["reply_to"] if c.get("reply_to") else None),
                              "body": c.get("body", ""), "suggestion": c.get("suggestion", "") or "",
-                             "low": c.get("confidence") == "low",
+                             # `low` is the "maybe" tray signal older clients read; it now also
+                             # carries the evidence demotion so one decision drives the tray.
+                             "low": maybe[i],
                              "confidence": c.get("confidence"),
                              "howToVerify": c.get("how_to_verify") or "",
+                             # Where / what to check / expected / actual (§1.3), the cited diff
+                             # lines, and the evidence verdict (§1.4). Null or "" when absent.
+                             "where": c.get("where"),
+                             "whatToCheck": c.get("what_to_check") or "",
+                             "expected": c.get("expected") or "",
+                             "actual": c.get("actual") or "",
+                             "snippet": snip,
+                             "evidence": ev,
                              "title": c.get("title") or self._fallback_title(c),
                              "impact": (c.get("impact") or "").strip(),
                              "criticalPath": (c.get("critical_path") or "").strip(),
@@ -4684,6 +4715,8 @@ class Handler(BaseHTTPRequestHandler):
         key = review_key(rev, head)
         data = {
             "event": ev, "summary": self._as_markdown(rev.get("summary")),
+            # The reading guide (§1.2), already normalised at load; null for an older review.
+            "guide": self._guide_data(rev.get("guide")),
             "keyPoints": [str(x).strip() for x in (rev.get("keyPoints") or []) if str(x).strip()][:6],
             "explainer": self._as_markdown(rev.get("explainer")),
             "analysis": self._as_markdown(rev.get("analysis")),

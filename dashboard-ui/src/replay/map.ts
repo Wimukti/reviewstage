@@ -3,8 +3,9 @@
 // envelope `api_pr` builds), so the replay hands the untouched PR page exactly what the real
 // server would. src/replay.test.ts asserts parity against src/stage/fixture.json, which is
 // generated from the real server's fixture.
-import type { Finding, Me, PrData, QueueData, ReviewData, SevChip } from "../api";
-import type { FixtureComment, FixtureFile, ReplayFixture } from "./types";
+import type { Finding, GuideData, Me, PrData, QueueData, ReviewData, SevChip, Where } from "../api";
+import { annotate, demoted, patchesOf } from "../evidence";
+import type { FixtureComment, FixtureFile, FixtureGuide, ReplayFixture } from "./types";
 
 export const SEV_ORDER: Record<string, number> = { blocker: 0, "should-fix": 1, nit: 2, question: 3 };
 export const SEV_LABEL: Record<string, string> = {
@@ -85,9 +86,36 @@ export function linesInDiff(files: FixtureFile[]): Map<string, Set<number>> {
 export const anchorable = (files: FixtureFile[], c: FixtureComment): boolean =>
   linesInDiff(files).get(c.path)?.has(Number(c.line)) ?? false;
 
-export function mapFindings(comments: FixtureComment[], where: (c: FixtureComment) => boolean | null): Finding[] {
+/** rs_review_schema.normalize_where: path:line, widened by end_line; null without a line. */
+export function whereOf(c: FixtureComment): Where | null {
+  const start = Number(c.line);
+  if (!c.path || !Number.isInteger(start) || start <= 0) return null;
+  const end = c.end_line && c.end_line > start ? c.end_line : start;
+  return { path: c.path, start, end };
+}
+
+/** rs_review_schema.normalize_guide → server._guide_data, for the fixture's `guide`. */
+export function guideOf(g: FixtureGuide | undefined): GuideData | null {
+  if (!g || typeof g !== "object") return null;
+  const out: GuideData = {
+    does: (g.does || "").trim(),
+    why: (g.why || "").trim(),
+    risk: g.risk ?? null,
+    readPlan: (g.read_plan ?? []).filter((r) => r && r.path).map((r) => ({ path: r.path, lines: r.lines ?? null, why: (r.why || "").trim() })),
+    notCovered: (g.not_covered ?? []).map((x) => String(x).trim()).filter(Boolean),
+  };
+  if (!out.does && !out.why && !out.risk && !out.readPlan.length && !out.notCovered.length) return null;
+  return out;
+}
+
+// `files` is the fixture's diff; `where` answers anchorability as the server's Anchors would.
+export function mapFindings(comments: FixtureComment[], where: (c: FixtureComment) => boolean | null, files: FixtureFile[] | null = null): Finding[] {
   const shown = sortComments(comments);
-  const preselectable = shown.map((c, i) => (c.confidence !== "low" ? i : -1)).filter((i) => i >= 0);
+  const patches = files ? patchesOf(files) : null;
+  const evidence = shown.map((c) => annotate({ ...c, where: whereOf(c) }, patches));
+  // The server's maybe-tray decision (§1.4): low confidence, or two or more evidence flags.
+  const maybe = shown.map((c, i) => c.confidence === "low" || demoted(evidence[i].evidence));
+  const preselectable = maybe.map((m, i) => (m ? -1 : i)).filter((i) => i >= 0);
   const preselect = new Set(preselectable.length > PRESELECT_CAP ? preselectable.slice(0, PRESELECT_CAP) : preselectable);
   return shown.map((c, i) => ({
     i,
@@ -98,9 +126,17 @@ export function mapFindings(comments: FixtureComment[], where: (c: FixtureCommen
     thread: c.reply_to ? c.reply_to : null,
     body: c.body || "",
     suggestion: c.suggestion || "",
-    low: c.confidence === "low",
+    low: maybe[i],
+    confidence: c.confidence ?? null,
+    howToVerify: c.how_to_verify ?? "",
     title: c.title || fallbackTitle(c),
     impact: (c.impact || "").trim(),
+    where: whereOf(c),
+    whatToCheck: (c.what_to_check || "").trim(),
+    expected: (c.expected || "").trim(),
+    actual: (c.actual || "").trim(),
+    snippet: evidence[i].snippet,
+    evidence: evidence[i].evidence,
     criticalPath: (c.critical_path || "").trim(),
     structured: !!((c.title || "").trim() && (c.impact || "").trim()),
     agreement: null,
@@ -131,11 +167,12 @@ export function reviewData(fx: ReplayFixture, dryRun: boolean): ReviewData {
     reviewKey: `${fx.head}:replay`,
     event: rev.event || "COMMENT",
     summary: asMarkdown(rev.summary),
+    guide: guideOf(rev.guide),
     keyPoints: (rev.keyPoints ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 6),
     explainer: asMarkdown(rev.explainer),
     analysis: asMarkdown(rev.analysis),
     chips: chipsOf(sorted),
-    findings: mapFindings(rev.comments, (c) => anchorable(fx.files, c)),
+    findings: mapFindings(rev.comments, (c) => anchorable(fx.files, c), fx.files),
     count: sorted.length,
     posted: false,
     postLabel: "Post selected" + (dryRun ? " (dry run)" : " to GitHub"),

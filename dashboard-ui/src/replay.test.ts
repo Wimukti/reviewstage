@@ -22,6 +22,9 @@ const E2E_COMMENTS: FixtureComment[] = [
     path: "app/models/Product.php", line: 42, severity: "should-fix",
     title: "A product with no vendor can crash the lead-time badge",
     impact: "A shopper viewing such a product would see the card fail instead of loading.",
+    what_to_check: "Open Product.php line 42. Check that `$vendor` is null-guarded before `leadTime()`.",
+    expected: "A product with no vendor shows no badge.",
+    actual: "The badge throws on a null vendor.",
     body: "Guard against a null vendor before reading its lead time.",
     reply_to: null, suggestion: "if ($vendor === null) return null;",
   },
@@ -37,13 +40,39 @@ const E2E_FILES = [{
 }];
 
 test("map.ts renders the e2e fixture exactly as the server did (src/stage/fixture.json)", () => {
-  const ours = mapFindings(E2E_COMMENTS, (c) => anchorable(E2E_FILES, c));
-  const keys = ["i", "severity", "path", "line", "title", "impact", "body", "suggestion", "anchorable"] as const;
+  const ours = mapFindings(E2E_COMMENTS, (c) => anchorable(E2E_FILES, c), E2E_FILES);
+  // `where`, `whatToCheck`, `expected`, `actual`, `snippet` and `evidence` are the Python
+  // module's own output in the stage fixture (trust-and-plain §1.3–1.4), so this is also the
+  // parity check on the evidence port.
+  const keys = ["i", "severity", "path", "line", "title", "impact", "body", "suggestion", "anchorable", "where", "whatToCheck", "expected", "actual", "snippet", "evidence"] as const;
   const pick = (f: Record<string, unknown>) => Object.fromEntries(keys.map((k) => [k, f[k]]));
   assert.deepEqual(ours.map((f) => pick(f as unknown as Record<string, unknown>)), stage.review.findings.map((f) => pick(f)));
   assert.equal(ours[0].sevLabel, "should fix");
   assert.equal(ours[0].structured, true);
   assert.equal(ours[0].preselect, true);
+  // Badge.tsx is not in the diff: one flag, a warning on the card, still pre-selected.
+  assert.deepEqual(ours[1].evidence?.flags, ["path_not_in_diff"]);
+  assert.equal(ours[1].preselect, true);
+  assert.deepEqual(reviewData({ ...FIXTURES[0], review: { ...FIXTURES[0].review, guide: { does: "x", read_plan: [{ path: "a" }] } } }, true).guide, {
+    does: "x", why: "", risk: null, readPlan: [{ path: "a", lines: null, why: "" }], notCovered: [],
+  });
+  assert.equal(reviewData({ ...FIXTURES[0], review: { ...FIXTURES[0].review, guide: undefined } }, true).guide, null);
+});
+
+test("map.ts: two evidence flags put a finding in the maybe tray whatever its confidence", () => {
+  const out = mapFindings(
+    [
+      { path: "nope.ts", line: 1, severity: "blocker", body: "b", confidence: "high", title: "t", what_to_check: "Open it." },
+      { path: "app/models/Product.php", line: 42, severity: "nit", body: "c", confidence: "high" },
+    ],
+    () => true,
+    E2E_FILES,
+  );
+  assert.deepEqual(out[0].evidence?.flags, ["path_not_in_diff", "no_contrast"]);
+  assert.equal(out[0].low, true);
+  assert.equal(out[0].preselect, false);
+  assert.equal(out[1].low, false);
+  assert.equal(out[1].preselect, true);
 });
 
 test("map.ts: severity sort is stable, titles fall back, low confidence is not pre-ticked", () => {
@@ -83,10 +112,20 @@ test("every shipped fixture carries exactly the three teaching findings and matc
     assert.deepEqual(fx.review.comments.map((c) => c.teach), ["keep", "drop", "edit"], fx.slug);
     assert.deepEqual(fx.decisions.map((d) => d.action), ["keep", "drop", "edit"], fx.slug);
     assert.ok(fx.decisions[2].edited_body && fx.decisions[2].edited_body !== fx.review.comments[2].body, `${fx.slug}: the edit changes the body`);
+    // The reading guide (§1.2) on every example, and the §1.3 rows on every finding; every
+    // finding passes the evidence check, so all three stay pre-ticked in the replay.
+    const g = fx.review.guide!;
+    assert.ok(g.does && g.why && g.risk && (g.read_plan?.length ?? 0) >= 2 && (g.not_covered?.length ?? 0) >= 1, `${fx.slug}: guide`);
+    const mapped = mapFindings(fx.review.comments, (c) => anchorable(fx.files, c), fx.files);
     for (const [i, c] of fx.review.comments.entries()) {
       assert.ok(fx.explain[String(i)], `${fx.slug}: explain[${i}]`);
       assert.ok(c.how_to_verify, `${fx.slug}: how_to_verify[${i}]`);
+      assert.ok(c.what_to_check && c.expected && c.actual, `${fx.slug}: what_to_check/expected/actual[${i}]`);
       assert.equal(anchorable(fx.files, c), true, `${fx.slug}: finding ${i} is on a diff line`);
+    }
+    for (const f of mapped) {
+      assert.equal(f.evidence?.status, "pass", `${fx.slug}: ${f.path}:${f.line} ${f.evidence?.line}`);
+      assert.ok(f.snippet && f.snippet.lines.length >= 3, `${fx.slug}: snippet for ${f.path}:${f.line}`);
     }
     const pr = prData(fx);
     assert.equal(pr.review?.count, 3);

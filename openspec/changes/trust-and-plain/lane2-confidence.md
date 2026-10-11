@@ -195,7 +195,13 @@ answers the second brief and a fake `gh` that would record any write.
 
 ## Gates (10/11/26)
 
-See the branch report; counts are recorded in the commit message of the gate commit.
+| Suite | Result |
+| --- | --- |
+| Python `python3 -m unittest discover -s bin -p 'test_*.py'` | 806 tests OK |
+| `bash -n bin/run-review.sh bin/run-disproof.sh` | clean |
+| Dashboard `pnpm typecheck && pnpm test && pnpm build` | clean · 148 pass, 0 fail · built |
+| Dashboard `RS_E2E_PORT=4482 pnpm test:browser` | 333 passed, 0 failed, 1 flaky (the known `sw-upgrade` "tab moves onto next release") |
+| Website `pnpm build && pnpm check && pnpm verify` | build OK · 0 errors, 0 warnings, 0 hints · all checks passed |
 
 ## Out of scope, left open
 

@@ -119,7 +119,7 @@ reach on both HN and Reddit; Tuesday to Thursday mornings US time have the most.
 | Tue 10/13, 13:00 ET (22:30) | **X thread** + **LinkedIn** | `x-thread.md`, `linkedin.md` | Vertical cut, native upload. Tag @AnthropicAI and @claudeai once, in the last X post. |
 | Wed 10/14, 09:00 ET (18:30) | **r/selfhosted** | `reddit-selfhosted.md` | Leads with where the data goes. |
 | Thu 10/15, 09:00 ET (18:30) | **r/opensource** | `reddit-opensource.md` | Leads with the design decision and the help wanted. |
-| Thu 10/15 | **dev.to article** | not written yet | The story and how the gate is enforced. Link it from replies, not as a new Reddit post. |
+| Thu 10/15 | **dev.to article** | `article.md` | The story and how the gate is enforced. Link it from replies, not as a new Reddit post. |
 | Fri 10/16, 09:00 ET (18:30) | **r/ExperiencedDevs** | `reddit-experienceddevs.md` | A discussion. No link in the body. |
 | 10/27/26 or later | **awesome-claude-code** | `awesome-lists.md` | Their rule: the resource is at least 14 days old with active development, or has 100+ stars; a human submits through the web form. |
 | about 11/12/26 | "One month later" post (site + HN) | | Numbers, what changed from feedback, what is next. |

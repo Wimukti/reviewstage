@@ -2,6 +2,8 @@
 
 **Stage your PR review. Post it as yourself.**
 
+ReviewStage is the human review layer for AI-written pull requests. Claude drafts the review privately; you verify, edit and post it as yourself.
+
 ```bash
 npx reviewstage
 ```
@@ -17,7 +19,7 @@ findings worth posting, and post them under your own GitHub name. Nothing posts 
 
 This package is the desktop app. It carries the ReviewStage server with it, runs it on a free
 local port, and fetches the two command-line tools the server needs (`gh`, `jq`) once, pinned by
-version and SHA-256, into `~/.reviewstage/bin`. Everything stays on your machine.
+version and SHA-256, into `~/.reviewstage/bin`. The server and its state stay on your machine; the diff goes to Anthropic through Claude Code on your account, and what you post goes to GitHub with your token.
 
 ## You need
 

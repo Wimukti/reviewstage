@@ -5,11 +5,11 @@ import { ChevronDown } from "lucide-react";
 import { withBase } from "../../content/site-links";
 const faq = [
   { q: "What does it cost?", a: "Your existing Claude plan. No API key, no per-review bill, and no server bill for the desktop app." },
-  { q: "What leaves my machine?", a: "The diff and the files it touches go to Anthropic through Claude Code on your account; what you post goes to GitHub with your token. Beyond that: GitHub for sign-in and reading the PR, npm for update checks, Apple's and Google's push services if you turn phone notifications on (never the finding text), and Cloudflare's tunnel while phone access is on. No analytics, no telemetry, nothing to us." },
+  { q: "What leaves my machine?", a: "The diff and the files it touches go to Anthropic through Claude Code on your account; what you post goes to GitHub with your token. Beyond that: GitHub for sign-in and reading the PR, npm for update checks, Apple's and Google's push services if you turn phone notifications on (never the finding text), and Cloudflare's tunnel while phone access is on. Usage counters stay on your disk unless you consent and an endpoint is configured; none ships." },
   { q: "Can it approve on its own?", a: "No — not as an option, not behind a flag. Approve is your click." },
   { q: "Does it work with my repositories?", a: "GitHub only: any repository you can review, public or private, as many as you like." },
   { q: "Does it run on Windows?", a: "The Docker install runs under WSL2 today; a native app is on the roadmap." },
-  { q: "How is this different from Claude Code Review, CodeRabbit or Copilot review?", a: "They deliver AI-written feedback straight into the pull request, under the tool's identity, on whatever trigger you configure. This keeps the draft private first: you decide what is correct, worth saying and worthy of your name, then post it as yourself." },
+  { q: "How is this different from Claude Code Review, CodeRabbit or Copilot review?", a: "Most AI review products deliver AI-written feedback directly into the pull request. ReviewStage keeps the draft private first. The reviewer decides what is correct, worth saying, and worthy of their name." },
 ];
 ---
 <section id="faq" class="home-section" aria-labelledby="faq-title">

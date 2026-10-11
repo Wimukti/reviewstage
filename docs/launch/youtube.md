@@ -1,11 +1,11 @@
 # YouTube upload
 
-**File:** `~/Desktop/reviewstage-launch/reviewstage-launch-final.mp4` (H.264, 67.7 s, voiced).
-Captions are burned in, so skip the subtitle upload: `captions.srt` in the same folder was timed
-to the 90-second cut and does not match this edit.
+**File:** `~/Desktop/reviewstage-launch/reviewstage-launch-final-v2.mp4` (H.264, 67.7 s, voiced;
+the 1.2.2 UI on every screen, same voice track as `reviewstage-launch-final.mp4`). Captions are
+not burned into this file, so upload `video/captions.srt` (timed to this edit) as the subtitle track.
 
 **Visibility:** Public (Unlisted works too, but Public lets YouTube search find it).
-**Thumbnail:** `~/Desktop/reviewstage-launch/reviewstage-launch-thumbnail.png`
+**Thumbnail:** `~/Desktop/reviewstage-launch/reviewstage-launch-thumbnail-v2.png`
 **Category:** Science & Technology · **Language:** English
 
 **Title** (66 chars; 70 or fewer shows in full):

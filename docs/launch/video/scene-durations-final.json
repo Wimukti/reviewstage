@@ -1,0 +1,21 @@
+{
+  "_comment": "Per-scene durations of reviewstage-launch-final.mp4 (the voiced 67.7 s cut): 0 to 18 s as the 90.5 s cut, the rest at 1.4588x. v: the 35.5 s vertical cut.",
+  "a": {
+    "hook": 4.2,
+    "terminal": 5.301,
+    "wizard": 9.39,
+    "queue": 3.991,
+    "review": 12.53,
+    "post": 8.776,
+    "settings": 4.705,
+    "phone": 11.583,
+    "skills": 4.381,
+    "end": 4.943
+  },
+  "v": {
+    "hook": 5.6,
+    "terminal": 6.0,
+    "phone": 16.79,
+    "end": 7.8
+  }
+}

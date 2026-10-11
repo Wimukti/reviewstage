@@ -10,6 +10,12 @@
 //
 //   RS_E2E_PORT=9005 RS_VIDEO_OUT=~/Desktop/reviewstage-launch pnpm launch-video
 //
+// Re-cutting to a voiced edit: `--match <json>` takes per-scene durations ({ a: { hook: 4.2, … },
+// v: { … } }, or one flat map for the 16:9 cut) and makes every scene exactly that long, speeding a
+// take up when it runs longer and holding its last frame when it runs shorter, so the scene
+// starts land where an existing voice track expects them. `--suffix -v2` names the outputs
+// `*-v2.*`. docs/launch/video/scene-durations-final.json is the voiced 67.7 s final's table.
+//
 // Everything on screen comes from the offline e2e fixtures through the same machinery as
 // demos.ts (pointer overlay, staged review run, stubbed /api/post and Claude connect), so no
 // real repository, person or review appears. The cards (hook, terminal, end) and every overlay
@@ -28,6 +34,17 @@ import { FIXTURE, PORT, PR, PR4, REPO, USER, patchJson, sessionCookie } from "./
 import { buildPersonalFixture, PERSONAL_FIXTURE, PERSONAL_ORIGIN, PERSONAL_PORT, PERSONAL_USER } from "./personal-fixture";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const ARGS = process.argv.slice(2);
+const argValue = (flag: string) => { const i = ARGS.indexOf(flag); return i >= 0 ? ARGS[i + 1] : undefined; };
+const SUFFIX = argValue("--suffix") || "";
+type Match = { a?: Record<string, number>; v?: Record<string, number> };
+const MATCH: Match | undefined = (() => {
+  const raw = argValue("--match");
+  if (!raw) return undefined;
+  const parsed = JSON.parse(existsSync(raw) ? readFileSync(raw, "utf8") : raw) as Record<string, unknown>;
+  return parsed.a || parsed.v ? (parsed as Match) : { a: parsed as Record<string, number> };
+})();
+const outName = (name: string) => name.replace(/(\.[a-z0-9]+)$/, `${SUFFIX}$1`);
 const TMP = join(HERE, ".launch-video");
 const OUT = process.env.RS_VIDEO_OUT || join(TMP, "out");
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -255,8 +272,9 @@ async function recordWizard(browser: Browser) {
       claude = true;
       return route.fulfill({ json: { connected: true, bannerHtml: "<div class='banner ok'><span>✓</span><div>Connected — reviews run on your Claude account.</div></div>" } });
     });
-    // The in-process poller runs as soon as repositories are picked; the fixture has none, so say so.
-    await patchJson(page, "**/api/me", () => (claude ? { claude_connected: true, poller_ran: true } : {}));
+    // The in-process poller runs as soon as repositories are picked; the fixture has none, so say
+    // so. The telemetry question is already answered, so the wizard stays three steps long.
+    await patchJson(page, "**/api/me", () => ({ telemetry_decided: true, ...(claude ? { claude_connected: true, poller_ran: true } : {}) }));
     await page.goto(`${PERSONAL_ORIGIN}/welcome`);
     await page.getByLabel("GitHub personal access token").waitFor();
     await sleep(400);
@@ -519,6 +537,10 @@ async function deskStill(browser: Browser) {
   await bring(page, page.locator(".finding").first(), 260);
   await sleep(500);
   await page.screenshot({ path: join(TMP, "still-pr.png") });
+  // The thumbnail's frame: the reading guide at the top of the crop, the Checked card under it.
+  await bring(page, page.getByText("Reading guide", { exact: true }), CROP.y + 26);
+  await sleep(500);
+  await page.screenshot({ path: join(TMP, "still-thumb.png") });
   await ctx.close();
 }
 
@@ -633,12 +655,13 @@ function pngSize(file: string) {
   return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
 }
 
-// The thumbnail's PR frame: the main column of the "2 staged" still (CSS px of the 1280×720
-// take), findings down to the sticky commit bar, scaled to fit beside the hook line.
+// The thumbnail's PR frame: the main column of the #38849 still (CSS px of the 1280×720 take),
+// the reading guide and the Checked card down to the sticky commit bar, scaled to fit beside the
+// hook line.
 const CROP = { x: 232, y: 196, cw: 928, ch: 524, s: 600 / 928, w: 600, h: Math.round(524 * 600 / 928), left: 632, topT: 168, topS: 136 };
 
 async function thumbnails(browser: Browser) {
-  const shot = fileUrl(join(TMP, "still-staged.png"));
+  const shot = fileUrl(join(TMP, "still-thumb.png"));
   const make = (name: string, social: boolean) => htmlPage(name, `<div class="stage"></div>
     <div class="txt">
       <div class="brand">${logo(social ? 44 : 40)}<span>ReviewStage</span></div>
@@ -661,8 +684,8 @@ async function thumbnails(browser: Browser) {
     .cmd span { color: var(--green); margin-right: 6px; }
     .shot { z-index: 1; }`);
   mkdirSync(OUT, { recursive: true });
-  await still(browser, make("thumb", false), join(OUT, "reviewstage-launch-thumbnail.png"), { width: 1280, height: 720 });
-  await still(browser, make("social", true), join(OUT, "github-social-preview.png"), { width: 1280, height: 640 });
+  await still(browser, make("thumb", false), join(OUT, outName("reviewstage-launch-thumbnail.png")), { width: 1280, height: 720 });
+  await still(browser, make("social", true), join(OUT, outName("github-social-preview.png")), { width: 1280, height: 640 });
 }
 
 // ---- composition ---------------------------------------------------------------------------------
@@ -676,6 +699,7 @@ type Scene = {
   to?: string; // mark it ends at (the end of the take when omitted)
   speed?: number;
   min?: number; // hold the last frame to at least this long
+  match?: number; // exactly this long: sped up if the take is longer, the last frame held if shorter
   overlays?: (s: Cut) => Overlay[];
 };
 type Cut = { ss: number; to: number; speed: number; dur: number; at: (mark: string) => number };
@@ -686,6 +710,10 @@ function cut(s: Scene): Cut {
   const ss = from === "start" ? m.start + 0.2 : m[from] - X / 2;
   const to = s.to ? m[s.to] + X / 2 : s.clip.end - 0.2;
   if (Number.isNaN(ss) || Number.isNaN(to)) throw new Error(`${s.id}: unknown mark`);
+  if (s.match) {
+    const speed = Math.max(1, (to - ss) / s.match);
+    return { ss, to, speed, dur: s.match, at: (k: string) => (m[k] - ss) / speed };
+  }
   const speed = s.speed || 1;
   const natural = (to - ss) / speed;
   const dur = Math.max(natural, s.min || 0);
@@ -834,12 +862,13 @@ function writeVoiceover(tl: Timeline, total: number, file: string) {
     const n = words(v.line);
     all += n;
     const rate = n / (end - s.start);
-    if (rate > 2.6) throw new Error(`voice-over line for ${s.id} runs ${rate.toFixed(2)} words/s`);
+    if (rate > 2.6 && !MATCH) throw new Error(`voice-over line for ${s.id} runs ${rate.toFixed(2)} words/s`);
+    if (rate > 2.6) console.warn(`warning: voice-over line for ${s.id} runs ${rate.toFixed(2)} words/s on the matched cut`);
     rows.push(`| ${i + 1} | ${Math.round(s.start)}–${Math.round(end)} s | ${v.action} | “${v.line}” | ${n} · ${rate.toFixed(1)}/s |`);
   });
   writeFileSync(file, `# ReviewStage launch video: voice-over script
 
-Timed to \`reviewstage-launch-1080p-clean.mp4\` (${fmt(total)} s, 30 fps). Times are where each scene
+Timed to \`${outName("reviewstage-launch-1080p-clean.mp4")}\` (${fmt(total)} s, 30 fps). Times are where each scene
 starts and ends on the clean cut; start speaking about a quarter second after the cut and finish
 before the next one. Every line stays at or under 2.6 words per second, so there is room to breathe.
 
@@ -942,7 +971,8 @@ async function main() {
       const x1 = W_H.w - tw - 28;
       return [{ png: toastPng, x: `if(lt(t,${a}),W,${x1}+(W-${x1})*pow(1-min(1,(t-${a})/0.45),3))`, y: "26", t0: a, t1: c.dur, fadeIn: 0.15 }];
     };
-    const scenes: Scene[] = [
+    const matched = (list: Scene[], m?: Record<string, number>) => list.map((s) => (m?.[s.id] ? { ...s, match: m[s.id] } : s));
+    const scenes: Scene[] = matched([
       { id: "hook", kind: "card", clip: hook, min: 4.1 },
       { id: "terminal", kind: "card", clip: term, min: 5.2 },
       { id: "wizard", kind: "window", clip: wizard, speed: 1.75 },
@@ -953,7 +983,7 @@ async function main() {
       { id: "phone", kind: "phone", clip: phone },
       { id: "skills", kind: "window", clip: skills },
       { id: "end", kind: "card", clip: end, min: 7.0 },
-    ];
+    ], MATCH?.a);
     const cuts = scenes.map(cut);
     const parts: string[] = [];
     for (const [i, s] of scenes.entries()) {
@@ -989,20 +1019,20 @@ async function main() {
     for (const c of capsA) for (const l of c.lines) if (l.split(/\s+/).length > 6) throw new Error(`caption line over 6 words: ${l}`);
     const pngsA = await captionPngs(stills, capsA, "h", W_H.w);
     console.log("composing the 16:9 cuts…");
-    const fileA = join(OUT, "reviewstage-launch-1080p.mp4");
-    const fileB = join(OUT, "reviewstage-launch-1080p-clean.mp4");
+    const fileA = join(OUT, outName("reviewstage-launch-1080p.mp4"));
+    const fileB = join(OUT, outName("reviewstage-launch-1080p-clean.mp4"));
     const totalA = finalCut(parts, cuts.map((c) => c.dur), capsA.map((c, i) => ({ png: pngsA[i], c })), (h) => CAP_BOTTOM_H - h, fileA);
     finalCut(parts, cuts.map((c) => c.dur), [], () => 0, fileB);
-    writeSrt(capsA, join(OUT, "captions.srt"));
-    writeVoiceover(tl, totalA, join(OUT, "voiceover-script.md"));
+    writeSrt(capsA, join(OUT, outName("captions.srt")));
+    writeVoiceover(tl, totalA, join(OUT, outName("voiceover-script.md")));
 
     // ---- C: the vertical cut
-    const scenesV: Scene[] = [
+    const scenesV: Scene[] = matched([
       { id: "hook", kind: "card", clip: hookV, min: 5.5 },
       { id: "terminal", kind: "card", clip: termV, min: 5.9 },
       { id: "phone", kind: "phone", clip: phone },
       { id: "end", kind: "card", clip: endV, min: 7.7 },
-    ];
+    ], MATCH?.v);
     const cutsV = scenesV.map(cut);
     const partsV: string[] = [];
     for (const [i, s] of scenesV.entries()) {
@@ -1026,7 +1056,7 @@ async function main() {
     ];
     const pngsV = await captionPngs(stills, capsV, "v", W_V.w);
     console.log("composing the vertical cut…");
-    const fileC = join(OUT, "reviewstage-launch-vertical.mp4");
+    const fileC = join(OUT, outName("reviewstage-launch-vertical.mp4"));
     const totalV = finalCut(partsV, cutsV.map((c) => c.dur), capsV.map((c, i) => ({ png: pngsV[i], c })), () => CAP_TOP_V, fileC);
 
     // ---- report
@@ -1039,10 +1069,10 @@ async function main() {
     }
     if (mb(fileA) > MAX_MB) throw new Error(`A is over ${MAX_MB} MB`);
     console.log(`A total ${fmt(totalA)} s; vertical ${fmt(totalV)} s`);
-    if (totalA < 85 || totalA > 95) console.warn(`warning: A runs ${fmt(totalA)} s (target 85–95)`);
-    if (totalV < 35 || totalV > 45) console.warn(`warning: the vertical cut runs ${fmt(totalV)} s (target 35–45)`);
+    if (!MATCH && (totalA < 85 || totalA > 95)) console.warn(`warning: A runs ${fmt(totalA)} s (target 85–95)`);
+    if (!MATCH && (totalV < 35 || totalV > 45)) console.warn(`warning: the vertical cut runs ${fmt(totalV)} s (target 35–45)`);
     console.log("scene starts (A):", tl.map((s) => `${s.id} ${fmt(s.start)}`).join(" · "));
-    for (const f of ["reviewstage-launch-thumbnail.png", "github-social-preview.png"]) {
+    for (const f of ["reviewstage-launch-thumbnail.png", "github-social-preview.png"].map(outName)) {
       const s = pngSize(join(OUT, f));
       console.log(`${f}: ${s.w}×${s.h} · ${fmt(statSync(join(OUT, f)).size / 1024)} KB`);
     }

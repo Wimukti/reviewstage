@@ -62,18 +62,72 @@ export function demoFixture() {
   users[USER].claude_token_enc = "demo-fixture-not-a-token";
   writeFileSync(join(FIXTURE, "users.json"), JSON.stringify(users));
   rmSync(join(FIXTURE, "state", slug(REPO), PR4, "users", USER), { recursive: true, force: true });
-  // The fake gh answers the files API for PR4 too, with hunks that cover the three findings'
-  // lines, so they anchor inline the way a real review's do.
-  const plus = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `+line ${from + i}`).join("\n");
+  // The fake gh answers the files API for PR4 too, with real-looking hunks that cover the three
+  // findings' lines, so they anchor inline and the cited lines under "Where" read as code.
+  const vendorSync = [
+    "@@ -85,1 +85,20 @@ class VendorSync",
+    "     public function run(): void",
+    "+    {",
+    "+        $attempt = 0;",
+    "+        $maxRetries = $this->maxRetries ?? 1;",
+    "+        $this->loadConfig();",
+    "+        while (true) {",
+    "+            try {",
+    "+                $this->client->sync($this->vendor);",
+    "+                return;",
+    "+            } catch (BadGatewayException $e) {",
+    "+                $attempt++;",
+    "+                if ($attempt > $maxRetries) {",
+    "+                    throw $e;",
+    "+                }",
+    "+                $delay = Backoff::delay($attempt);",
+    "+                usleep($delay * 1000);",
+    "+            }",
+    "+            $this->log->info('retrying vendor sync', ['attempt' => (string) $attempt]);",
+    "+        }",
+    "+    }",
+    "",
+  ].join("\n");
+  const backoff = [
+    "@@ -29,1 +29,5 @@ final class Backoff",
+    "     public static function delay(int $attempt): int",
+    "+    {",
+    "+        return min(30000, 250 * (2 ** $attempt));",
+    "+    }",
+    "+",
+    "",
+  ].join("\n");
   const files = [
-    { filename: "app/sync/VendorSync.php", status: "modified", patch: `@@ -85,2 +85,20 @@\n ctx\n${plus(86, 104)}\n` },
-    { filename: "app/sync/Backoff.php", status: "modified", patch: `@@ -29,1 +29,5 @@\n ctx\n${plus(30, 33)}\n` },
+    { filename: "app/sync/VendorSync.php", status: "modified", patch: vendorSync },
+    { filename: "app/sync/Backoff.php", status: "modified", patch: backoff },
   ];
   const gh = join(FIXTURE, "fakebin", "gh");
   writeFileSync(gh, readFileSync(gh, "utf8").replace(
     "esac",
     [`  *"pulls/${PR4}/files"*) cat <<'RSDEMO'`, JSON.stringify([files]), "RSDEMO", "  exit 0;;", "esac"].join("\n"),
   ));
+  prettyProductHunk();
+}
+
+// The e2e fixture's hunk for the lead-time PR is placeholder text ("ctx", "ctx2"), which the
+// specs assert on. The recordings and the site's screenshots show the cited lines, so they get
+// the same hunk written as the code it stands for: line 42 still reads `$vendor->leadTime()`.
+export const PRODUCT_HUNK_E2E = "@@ -40,3 +40,4 @@\n ctx\n+$leadTime = $vendor->leadTime();\n ctx2\n ctx3\n";
+export const PRODUCT_HUNK = [
+  "@@ -40,3 +40,5 @@ class Product",
+  "     public function leadTimeBadge(): ?string",
+  "     {",
+  "+        $leadTime = $vendor->leadTime();",
+  "+        return $leadTime ? \"{$leadTime} days\" : null;",
+  "     }",
+  "",
+].join("\n");
+export function prettyProductHunk() {
+  const gh = join(FIXTURE, "fakebin", "gh");
+  const text = readFileSync(gh, "utf8");
+  const before = JSON.stringify(PRODUCT_HUNK_E2E), after = JSON.stringify(PRODUCT_HUNK);
+  if (!text.includes(before)) throw new Error("the fixture's Product.php hunk moved; update PRODUCT_HUNK_E2E");
+  writeFileSync(gh, text.replace(before, after));
 }
 
 export async function healthy(origin: string, ms = 30_000) {
@@ -114,6 +168,16 @@ export async function startServer(root: string, port: number, extra: Record<stri
 export const PR4_REVIEW = {
   event: "COMMENT",
   summary: "Retries the vendor sync on a 502 with exponential back-off. Two things to fix before merge.",
+  guide: {
+    does: "Retries the vendor sync on a 502 with an exponential back-off.",
+    why: "One bad gateway from the vendor stopped the nightly sync for the whole night.",
+    risk: "can break",
+    read_plan: [
+      { path: "app/sync/VendorSync.php", lines: "86-104", why: "The retry loop. The cap and the counter live here." },
+      { path: "app/sync/Backoff.php", lines: "30-33", why: "The delay between attempts." },
+    ],
+    not_covered: ["the vendor client itself"],
+  },
   keyPoints: [
     "The back-off is sound, but the cap is read before the config loads.",
     "A 502 storm is retried without jitter, so every client hammers the vendor at once.",
@@ -121,33 +185,49 @@ export const PR4_REVIEW = {
   ],
   explainer: "A COMMENT review — nothing here blocks the merge by itself.",
   analysis: "",
+  disproof: { status: "done", n: 2, checked: 2, duration_ms: 68000, mode: "default" },
   comments: [
     {
       path: "app/sync/VendorSync.php",
       line: 88,
+      end_line: 89,
       severity: "should-fix",
+      confidence: "high",
       title: "The retry cap is read before the config is loaded",
-      impact: "Every sync falls back to the default of one retry, so the new behaviour never kicks in.",
-      body: "Move the `maxRetries` read inside `run()` so it sees the loaded config.",
+      what_to_check: "Open VendorSync.php lines 88-89. Check that `maxRetries` is read after `loadConfig()`.",
+      expected: "The configured cap applies to the first sync.",
+      actual: "Every sync falls back to the default of one retry.",
+      impact: "The new behaviour never kicks in: one 502 still fails the sync.",
+      body: "Move the `maxRetries` read below `loadConfig()` so it sees the loaded config.",
       reply_to: null,
       suggestion: "",
+      checked: { verdict: "stands", reason: "Nothing else sets `maxRetries` before `run()`; the default stays in force.", at: 1778000600 },
     },
     {
       path: "app/sync/Backoff.php",
       line: 31,
       severity: "should-fix",
+      confidence: "high",
       title: "No jitter on the back-off",
-      impact: "After a vendor outage every client retries on the same schedule and the vendor sees the storm again.",
+      what_to_check: "Open Backoff.php line 31. Check whether `$attempt` alone decides the delay.",
+      expected: "Each client waits a slightly different time.",
+      actual: "Every client retries on the same schedule.",
+      impact: "After a vendor outage the vendor sees the whole fleet again at the same instant.",
       body: "Add ±20% jitter to each delay; the standard library's `random_int` is enough here.",
       reply_to: null,
-      suggestion: "$delay = (int) ($delay * (0.8 + random_int(0, 40) / 100));",
+      suggestion: "return (int) (min(30000, 250 * (2 ** $attempt)) * (0.8 + random_int(0, 40) / 100));",
+      checked: { verdict: "weakened", reason: "The HTTP client adds its own jitter in RetryMiddleware, so the schedules already differ.", at: 1778000600 },
     },
     {
       path: "app/sync/VendorSync.php",
       line: 102,
       severity: "nit",
+      confidence: "medium",
       title: "The retry counter is logged as a string",
-      impact: "Style only — the log line still reads correctly.",
+      what_to_check: "Open VendorSync.php line 102. Check the type of `attempt` in the log context.",
+      expected: "The counter is logged as an integer.",
+      actual: "It is cast to a string first.",
+      impact: "Style only. The log line still reads correctly.",
       body: "Pass the integer; the logger formats it.",
       reply_to: null,
       suggestion: "",
@@ -382,7 +462,6 @@ const review: Demo = {
   gifWidth: 960,
   cookies: () => [sessionCookie()],
   run: async (page, _ctx, cue) => {
-    await unticked(page);
     await stubPost(page, 2, 0);
     await page.route("**/api/review", async (route) => {
       writeRun("fetching the PR");
@@ -393,39 +472,47 @@ const review: Demo = {
     await page.locator('[data-slot="skeleton"]').first().waitFor({ state: "detached", timeout: 15_000 }).catch(() => {});
     await sleep(400);
     cue.mark();
-    await sleep(900);
+    await sleep(700);
     // Paste a PR URL into the queue's one field and open it.
     const field = page.locator("#qsearch");
     await click(page, field, 200);
-    await field.pressSequentially(`https://github.com/${REPO}/pull/${PR4}`, { delay: 26 });
+    await field.pressSequentially(`https://github.com/${REPO}/pull/${PR4}`, { delay: 18 });
     await page.getByTestId("open-pr").waitFor();
-    await sleep(500);
+    await sleep(400);
     await field.press("Enter");
     await settled(page);
     await page.getByTestId("run-form").waitFor();
-    await sleep(HOLD);
+    await sleep(1000);
     // Start the review. The "run" is staged on disk while the page polls the real server.
     await click(page, page.getByTestId("run-form").getByRole("button", { name: /^(run|start) review/i }), 200);
     await page.getByTestId("progress-panel").waitFor();
     const stage = (async () => {
-      await sleep(1500); writeRun("checking out the branch");
-      await sleep(1800); writeRun("drafting findings from the diff");
-      await sleep(2200); writeRun("done", PR4_REVIEW);
+      await sleep(800); writeRun("checking out the branch");
+      await sleep(900); writeRun("drafting findings from the diff");
+      await sleep(1000); writeRun("done", PR4_REVIEW);
     })();
     await page.locator(".finding").first().waitFor({ timeout: 25_000 });
     await stage;
+    // The reading guide sits above the findings; hold on it, then walk down to the cards.
+    await page.getByTestId("reading-guide").waitFor();
     await sleep(300);
     cue.poster();
     await sleep(HOLD);
-    // Tick two of the three findings, then post them.
-    const ticks = page.locator(".finding").getByTestId("finding-select");
-    await click(page, ticks.nth(0));
-    await click(page, ticks.nth(1));
+    const cards = page.locator(".finding");
+    await scroll(page, (await cards.nth(0).boundingBox())!.y - 24);
+    await sleep(900);
+    await scroll(page, (await cards.nth(1).boundingBox())!.y - 24);
+    await sleep(500);
+    // Drop the second finding (the pass weakened it) and say why with a chip.
+    await click(page, cards.nth(1).getByTestId("finding-select"), 500);
+    await click(page, cards.nth(1).getByTestId("reason-chip").filter({ hasText: "Already handled" }), 300);
+    await cards.nth(1).getByTestId("reason-picked").waitFor();
     await page.getByTestId("commit-bar").getByText("2 staged").waitFor();
-    await sleep(400);
+    await sleep(1000);
+    // Post the two that stand.
     await click(page, page.getByTestId("commit-bar").getByRole("button", { name: /post selected/i }), 300);
     await page.getByTestId("commit-posted").waitFor();
-    await sleep(1800);
+    await sleep(1500);
   },
 };
 
@@ -466,7 +553,7 @@ const phone: Demo = {
     await sleep(HOLD - 400);
     await click(page, page.getByTestId("post-confirm"), 300);
     await page.getByTestId("post-success").waitFor();
-    await page.getByTestId("post-next").waitFor().catch(() => {});
+    await page.getByTestId("post-next").waitFor({ timeout: 1500 }).catch(() => {});
     await sleep(2400);
   },
 };

@@ -3,7 +3,7 @@
 // composed crops of the real dashboard running against the offline e2e fixture — no real
 // repository, user or review ever appears in them.
 //
-//   hero      the PR page end to end: assessment, finding cards, sticky commit bar
+//   hero      the PR page end to end: assessment, reading guide, finding cards, sticky commit bar
 //   gate      the Approve panel and the commit bar — the posting gate
 //   staging   one finding card close up
 //   run       the run form: effort, model, focus, Start
@@ -24,6 +24,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { prettyProductHunk } from "./demos";
 import { buildFixture, FIXTURE, PR, PR2, PR4, REPO, SECRET, USER, sessionCookie } from "./fixture";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,7 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 const enc = encodeURIComponent;
 const slug = (repo: string) => repo.replace("/", "__");
 const W = 1440;
+const HERO_H = 1360;
 
 /** A QA guide with all three tiers, so the shot shows what the page is for. */
 const QA_GUIDE = [
@@ -89,6 +91,8 @@ function fixtureForShots() {
   // PR2's guide is a deliberate failure case in the e2e fixture. Give the shot a good one.
   writeFileSync(join(FIXTURE, "state", slug(REPO), PR2, "qa.md"), QA_GUIDE);
   writeFileSync(join(FIXTURE, "state", slug(REPO), PR2, "qa.status"), "done");
+  // The cited lines under "Where" read as code, not the specs' placeholder hunk.
+  prettyProductHunk();
 }
 
 async function up() {
@@ -142,11 +146,12 @@ type Shot = {
 
 const SHOTS: Shot[] = [
   {
-    // The whole page, sidebar included: assessment, both finding cards, the sticky bar.
+    // The whole page, sidebar included: assessment, the reading guide, both finding cards
+    // (one Checked, one Likely) and the sticky bar, all above the fold.
     name: "hero",
     path: `/pr?repo=${enc(REPO)}&pr=${PR}`,
-    height: 965,
-    shoot: (p) => p.screenshot({ clip: { x: 0, y: 0, width: W, height: 965 } }),
+    height: HERO_H,
+    shoot: (p) => p.screenshot({ clip: { x: 0, y: 0, width: W, height: HERO_H } }),
   },
   {
     // A viewport taller than the page, so the sticky bar sits where it belongs in the flow

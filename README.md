@@ -22,11 +22,11 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="website/src/assets/screenshots/hero-dark.png">
-  <img alt="The ReviewStage PR page for acme/widgets #38849: the agent's assessment, “1 thing to fix before merge” with three bullet points, above two finding cards, each with a ticked checkbox, a severity word, the file and line it points at, and a one-line why-it-matters. A sticky bar at the foot reads “2 staged” and carries a single Post selected to GitHub button." src="website/src/assets/screenshots/hero-light.png">
+  <img alt="The ReviewStage PR page for acme/widgets #38849. Under the assessment, 1 thing to fix before merge, a reading guide card says what the PR does, why, the risk, and which files to read in which order. Below it two finding cards: a Should fix marked Checked, with the file and line, the cited lines of code, what to check, expected and actual behavior, why it matters, and the evidence line; and a Nit marked Likely. A sticky bar at the foot reads 2 staged and carries a single Post selected to GitHub button." src="website/src/assets/screenshots/hero-light.png">
 </picture>
 
 <p align="center">
-  <a href="docs/demos/review.mp4"><img alt="A 20-second recording of a review: a PR URL is pasted into the queue's search field and opened, Run review is clicked, the four phases tick through, three findings appear with their file and line, two are ticked and the sticky bar reads 2 staged, Post selected to GitHub is clicked and the bar switches to Posted as acme-dev." src="docs/demos/review.gif" width="960"></a>
+  <a href="docs/demos/review.mp4"><img alt="A 20 second recording of a review: a PR URL is pasted into the queue and opened, Run review is clicked, the phases tick through, the reading guide and three findings appear with their Checked and Likely badges, one finding is unticked and marked Already handled with a chip, the sticky bar reads 2 staged, Post selected to GitHub is clicked and the bar switches to Posted as acme-dev." src="docs/demos/review.gif" width="960"></a>
 </p>
 
 <p align="center"><a href="https://youtu.be/yYMtQK-sVyg"><strong>Watch the 70-second demo, with voice</strong></a></p>

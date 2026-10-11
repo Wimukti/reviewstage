@@ -65,13 +65,13 @@ app-shaped window.
 
 `npx reviewstage` gets a phone onto the same install without Tailscale or a reverse proxy.
 **Enable phone access** (in the app menu on macOS, the File menu elsewhere, and the dock menu)
-starts a bundled Cloudflare quick tunnel — `cloudflared`, pinned by version and SHA-256 in
-`desktop/tools.json` like `gh` and `jq` — and shows a QR code as soon as the
+starts a bundled Cloudflare quick tunnel: `cloudflared`, pinned by version and SHA-256 in
+`desktop/tools.json` like `gh` and `jq`, and shows a QR code as soon as the
 `https://*.trycloudflare.com` address exists; whether the edge answers `/health` yet is shown
 as a status under it. The QR encodes a **pairing URL**: the app mints a single-use code
 (`POST /api/pair`, loopback and session required, valid 30 minutes) for the person signed in on
 the Mac, and `GET /pair/<code>` on the phone sets that person's session cookie and redirects
-to the queue — no second GitHub login. An expired code lands on the login page with a line
+to the queue: no second GitHub login. An expired code lands on the login page with a line
 saying to reopen **Show phone access code…** on the Mac. Then Share → Add to Home Screen and
 turn on notifications in Settings: HTTPS is real, so the service worker, the home-screen install
 and web push all work as on any other origin.
@@ -79,7 +79,7 @@ and web push all work as on any other origin.
 The tunnel lives as long as the app does: `cloudflared` reconnects on its own after a dropped
 connection or sleep and the address does not change. If the `cloudflared` child exits while
 phone access is on, the app restarts it once with a new address, mints a new code, updates the
-phone window and shows a system notification ("Phone address changed — rescan the code"); a
+phone window and shows a system notification ("Phone address changed: rescan the code"); a
 second exit within 5 minutes stops it and the menu shows phone access as disabled. The app
 tells the server the public address (`POST /api/public-url`) so notification links open on the
 phone, and resets it to loopback when you disable phone access or quit, which is also when the
@@ -159,7 +159,7 @@ keep in the keychain behind biometrics. Hence **device tokens**.
    Revoking deletes the hash; the next call from that device gets `401` and the app returns to
    step 1.
 
-**Server changes** (implemented — `bin/rs_devices.py`, `bearer_user()` and the `/api/devices*`
+**Server changes** (implemented: `bin/rs_devices.py`, `bearer_user()` and the `/api/devices*`
 handlers in `bin/server.py`; deviations from the original spec are listed after the list):
 
 - `bearer_user(headers) -> login | None` in the auth layer next to `session_user()`: read
@@ -168,19 +168,19 @@ handlers in `bin/server.py`; deviations from the original spec are listed after 
   to keep `users.json` writes rare). `api_get` / `api_post` call
   `session_user(h) or bearer_user(h)`. HMAC action tokens are unchanged: the app fetches them
   from the same `/api/pr` payload the web does.
-- `POST /api/device-token` — session-cookie auth only (a bearer may not mint another bearer).
+- `POST /api/device-token`: session-cookie auth only (a bearer may not mint another bearer).
   Body `{ "name": str }`. Response `{ "token": str, "id": str, "created": int }`. Token is
   32 random bytes, base64url; storage is
   `users[login]["devices"] = { sha256_hex: { "id", "name", "created", "last_seen" } }`.
   Cap at 10 devices per user; oldest is evicted with a warning in the response.
-- `GET /api/devices` — list for the signed-in user: `[{ id, name, created, last_seen,
+- `GET /api/devices`: list for the signed-in user: `[{ id, name, created, last_seen,
   current: bool }]` (never the hash or token).
-- `POST /api/devices/revoke` — `{ "id": str }`, cookie or bearer auth; a device may revoke
+- `POST /api/devices/revoke` with `{ "id": str }`, cookie or bearer auth; a device may revoke
   itself. Signing out on the web (`/logout`) does not revoke devices; a "Sign out everywhere"
   button in Settings revokes all.
 - Token lifetime: **180 days since last use**, sliding; the poller's nightly pass drops expired
   hashes. Tokens are never logged; `users.json` stays `chmod 600` as today.
-- `/login?device=1` — the existing login page with one extra step after success: call
+- `/login?device=1`: the existing login page with one extra step after success: call
   `POST /api/device-token` and redirect to `reviewstage://auth?...`. The page must show the
   server URL and the GitHub login it is about to bind, so a phished user sees the mismatch.
 - Threat notes: a stolen device token is as powerful as a stolen session cookie (post and
@@ -227,7 +227,7 @@ PWA (web push); the FCM/APNs leg for a Capacitor wrapper is still roadmap.
 - **Keys.** `$ROOT/push_vapid.json` (0600), generated on first use, or pinned with
   `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY`; `VAPID_SUBJECT` is the contact claim.
 - **Subscriptions.** `$ROOT/push_subs.json` (0600, fcntl-locked like `users.json`): one row per
-  browser per user — `{login, endpoint, keys, device, added, ua}`. A `404`/`410` from the push
+  browser per user: `{login, endpoint, keys, device, added, ua}`. A `404`/`410` from the push
   service removes the row. Ten per user; the oldest is evicted.
 - **Routes** (session cookie or bearer device token): `GET /api/push/key`,
   `POST /api/push/subscribe` `{subscription, device}`, `POST /api/push/unsubscribe`
@@ -236,7 +236,7 @@ PWA (web push); the FCM/APNs leg for a Capacitor wrapper is still roadmap.
 - **Client.** `dashboard-ui/src/push.ts` (`isSupported`, `permission`, `subscribe`,
   `unsubscribe`, `usePush`) and the `PushDevices` panel; `public/sw.js` gained `push` and
   `notificationclick` handlers (the caching policy is unchanged).
-- **Payload.** `{title, body, url, tag}` — the title, the PR title and a URL. Never the finding
+- **Payload.** `{title, body, url, tag}`: the title, the PR title and a URL. Never the finding
   text: it goes through a third-party relay.
 - **iOS caveat.** Web push only reaches the home-screen PWA; the native wrapper is the way to
   reach every iPhone user. The panel shows an install hint on iOS Safari until then.
@@ -245,10 +245,10 @@ PWA (web push); the FCM/APNs leg for a Capacitor wrapper is still roadmap.
 
 | Phase | Items | Status | Effort |
 | --- | --- | --- | --- |
-| **1 — PWA** | Manifest, icons, root-scoped service worker, offline page, `mobile.css`, e2e checks | **Shipped** in this change | Done; ongoing cost nil |
-| **2a — Device tokens** | `bearer_user`, `/api/device-token`, `/api/devices`, `/api/devices/revoke`, `/device` pairing page, Settings → Devices | **Shipped** | Done |
-| **2b — Push** | `push` notify backend, web push (VAPID) for the PWA, per-device subscriptions, Settings panel | **Shipped** (web push); FCM/APNs waits for the wrapper | Done |
-| **2c — Capacitor apps** | Wrapper, in-app-browser sign-in, biometrics, deep links, multi-server picker, store listings | Roadmap (P2) | 2–3 weeks + store review |
+| **1: PWA** | Manifest, icons, root-scoped service worker, offline page, `mobile.css`, e2e checks | **Shipped** in this change | Done; ongoing cost nil |
+| **2a: Device tokens** | `bearer_user`, `/api/device-token`, `/api/devices`, `/api/devices/revoke`, `/device` pairing page, Settings → Devices | **Shipped** | Done |
+| **2b: Push** | `push` notify backend, web push (VAPID) for the PWA, per-device subscriptions, Settings panel | **Shipped** (web push); FCM/APNs waits for the wrapper | Done |
+| **2c: Capacitor apps** | Wrapper, in-app-browser sign-in, biometrics, deep links, multi-server picker, store listings | Roadmap (P2) | 2 to 3 weeks + store review |
 
 The order was deliberate: device tokens unblock both push registration and the wrapper, and are
 useful on their own (a CLI or a second browser could use one). Push before the wrapper, because

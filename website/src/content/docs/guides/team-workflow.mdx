@@ -8,7 +8,7 @@ sidebar:
 
 import Demo from '../../../components/marketing/Demo.astro';
 
-You get a drafted review waiting for each reviewer whenever GitHub requests their review, and a comment on the PR that is theirs to post. Your team's process — who reviews, what branch protection requires, where the conversation happens — does not change. One click starts it:
+You get a drafted review waiting for each reviewer whenever GitHub requests their review, and a comment on the PR that is theirs to post. Your team's process, who reviews, what branch protection requires, where the conversation happens, does not change. One click starts it:
 
 ```bash
 docker compose --profile team up -d
@@ -35,7 +35,7 @@ docker compose --profile team up -d
 
 - **Slack, Discord or any webhook.** A card when your review is requested and another when the drafted review is ready; cards mention the reviewer and open the PR page. Point them at a private channel: the review-ready card carries the agent's summary, which can quote code. Set-up in [Notifications](/guides/notifications/).
 - **Phone.** Each reviewer can install the dashboard on their phone and turn on push for it; the queue, the findings and the Post button are the same app at phone width.
-- **Insights.** Reviews, keep rate, agreement between reviewers, cycle time — across the team and per repository.
+- **Insights.** Reviews, keep rate, agreement between reviewers, cycle time: across the team and per repository.
 
 ## One install, many repositories
 
@@ -45,7 +45,7 @@ List them in `REPOS`, or set `REPO_ALLOW_ORG=acme` to accept any repository unde
 
 Three sentences are enough:
 
-> When GitHub asks for your review, a drafted review is waiting for you in ReviewStage; run it when you want one. Tick what is worth posting, edit anything, and post — it goes out as a normal comment from you. Approving is still your own click, as it is today.
+> When GitHub asks for your review, a drafted review is waiting for you in ReviewStage; run it when you want one. Tick what is worth posting, edit anything, and post: it goes out as a normal comment from you. Approving is still your own click, as it is today.
 
 ## What it deliberately does not do
 

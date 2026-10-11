@@ -241,10 +241,10 @@ function SkillEditor({
           onChange={setText}
           placeholder={
             isGlobal
-              ? "The shared reviewing approach — edit it right here."
+              ? "The shared reviewing approach: edit it right here."
               : isRepo
-                ? `A reviewing approach just for ${repoName} — leave blank to use the team default.`
-                : "Paste your pr-review SKILL.md here — or leave blank to use the team default."
+                ? `A reviewing approach just for ${repoName}: leave blank to use the team default.`
+                : "Paste your pr-review SKILL.md here, or leave blank to use the team default."
           }
         />
         <div className={cn(ROW, "mt-3")}>
@@ -498,7 +498,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
       // an error.
       else if (r.started === false && r.state === "running")
         onBanner(
-          `<div class='banner warn'><div>Already profiling this repository — that click did not start a second build.</div></div>`
+          `<div class='banner warn'><div>Already profiling this repository: that click did not start a second build.</div></div>`
         );
       else if (r.started === false && r.reason)
         onBanner(`<div class='banner err'><div>Not started: ${r.reason}.</div></div>`);
@@ -542,7 +542,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
           <Loader2 aria-hidden="true" className="size-4 animate-spin text-amber motion-reduce:animate-none" />
           <span>
             {d.running.queued
-              ? "Queued — waiting for another job to finish"
+              ? "Queued: waiting for another job to finish"
               : `${d.running.phases[d.running.cur]} (${d.running.cur + 1}/${d.running.phases.length})`}
           </span>
           <Button variant="secondary" size="sm" type="button" disabled={busy} onClick={() => act(() => api.profileStop(repo, d.token))}>
@@ -599,7 +599,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
           {st.unmatchedPaths > 0 && (
             <>
               {st.unmatchedPaths.toLocaleString("en-US")} of {st.criticalPaths.toLocaleString("en-US")} critical
-              path(s) no longer match anything in the tree — those are dead weight in every review of this repo
+              path(s) no longer match anything in the tree: those are dead weight in every review of this repo
               until it is re-profiled or edited.
             </>
           )}
@@ -608,7 +608,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
       {unchecked && (
         <Banner kind="warn" data-testid="profile-unvalidated">
           <b>These paths were never checked against the repository.</b> The profile was saved with no clone of{" "}
-          <code>{repo}</code> on this box, so nothing confirmed the globs match real files — and reviews are
+          <code>{repo}</code> on this box, so nothing confirmed the globs match real files, and reviews are
           handed it as fact.
           {meta?.validated_note ? <> ({meta.validated_note})</> : null}
         </Banner>
@@ -699,7 +699,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
           {viewing?.json && (
             <div className="mt-3" data-testid="profile-version-view">
               <div className="mb-1 text-xs font-medium text-muted-foreground">
-                Version from {new Date((viewing.ts ?? 0) * 1000).toLocaleString("en-US")} — read only
+                Version from {new Date((viewing.ts ?? 0) * 1000).toLocaleString("en-US")}: read only
               </div>
               <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs">{viewing.md}</pre>
               <Button type="button" variant="ghost" size="sm" onClick={() => setViewing(null)}>
@@ -729,7 +729,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
                 ? "Re-profile this repo"
                 : "Profile this repo"}
         </Button>
-        {!d.connected && <span className={hint}>Runs on your Claude account — connect it in Integrations first.</span>}
+        {!d.connected && <span className={hint}>Runs on your Claude account: connect it in Integrations first.</span>}
       </div>
       {d.last && d.last.dropped.length > 0 && (
         <div className={cn(hint, "mt-2 flex flex-wrap items-center gap-1.5")}>
@@ -769,7 +769,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
             }}
           />
           <p className={cn(hint, "mt-2")}>
-            Edit the markdown and save — it is parsed back into the profile reviews read. The previous version is
+            Edit the markdown and save: it is parsed back into the profile reviews read. The previous version is
             kept.{" "}
             {d.canValidate === false ? (
               <b data-testid="profile-cannot-validate">
@@ -783,7 +783,7 @@ function RepoProfile({ repo, onBanner }: { repo: string; onBanner: (b: string) =
           <div className={cn(ROW, "mt-3")}>
             <Button variant={confirmEmpty ? "destructive" : "default"} type="submit" disabled={busy || md === d.md}>
               <Save aria-hidden="true" />
-              {confirmEmpty ? "Save anyway — a section will be emptied" : "Save profile"}
+              {confirmEmpty ? "Save anyway, a section will be emptied" : "Save profile"}
             </Button>
           </div>
         </form>
@@ -872,7 +872,7 @@ function Suggestion({
           ) : (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`rule-${s.signature}`} className="text-xs text-muted-foreground">
-                The rule that will be added — edit it before you accept
+                The rule that will be added: edit it before you accept
               </Label>
               <Textarea
                 id={`rule-${s.signature}`}
@@ -898,7 +898,7 @@ function Suggestion({
             ) : null}
             <div className={cn(ROW, "mt-3")}>
               {/* Drafting spends the acting user's Claude quota, so it happens on a click and
-                  never on a page load — this page used to burn two model calls per render. */}
+                  never on a page load: this page used to burn two model calls per render. */}
               {s.connected ? (
                 <>
                   <Button
@@ -944,7 +944,7 @@ function Suggestion({
                     {f.path}
                     {f.line ? `:${f.line}` : ""}
                   </Badge>
-                  <span>— {f.gist}</span>
+                  <span>, {f.gist}</span>
                 </li>
               ))}
             </ul>
@@ -964,7 +964,7 @@ function Suggestion({
                 onClick={() => act("accept")}
               >
                 <Check aria-hidden="true" />
-                Accept — add to {s.targetLabel}
+                Accept: add to {s.targetLabel}
               </Button>
               <Button variant="ghost" type="button" disabled={busy} onClick={() => act("dismiss")}>
                 Dismiss

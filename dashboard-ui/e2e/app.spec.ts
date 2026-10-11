@@ -279,7 +279,7 @@ test.describe("signed in", () => {
 
     await retry.click(); // 1st click → started:true, the card shows Profiling
     await expect(card.getByTestId("profile-head")).toContainText(/profiling/i);
-    await expect(card.getByTestId("profile-status")).toContainText(/queued — waiting for another job/i);
+    await expect(card.getByTestId("profile-status")).toContainText(/queued: waiting for another job/i);
     // The poll comes back with the stale failed verdict; Retry is enabled again (the live bug's
     // pre-condition — the server no longer produces this, but the UI must survive it).
     await expect(retry).toHaveText(/retry/i, { timeout: 15_000 });
@@ -289,7 +289,7 @@ test.describe("signed in", () => {
     await expect.poll(() => runs.length).toBe(2);
     await expect(card.getByTestId("profile-head")).toContainText(/profiling/i);
     await expect(card.getByTestId("profile-head")).not.toContainText(/failed/i);
-    await expect(card.getByTestId("profile-status")).toContainText(/queued — waiting for another job/i);
+    await expect(card.getByTestId("profile-status")).toContainText(/queued: waiting for another job/i);
     await expect(card.getByTestId("profile-error")).toHaveCount(0);
     await expect(page.locator(".banner.err")).toHaveCount(0);
     await expect(page.getByText(/already profiling this repository/i)).toBeVisible();

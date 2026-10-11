@@ -175,7 +175,7 @@ function Verdict_() {
     <>
       <Verdict
         tone={fix ? "amber" : "green"}
-        text={fix ? `${fix} thing${fix > 1 ? "s" : ""} to fix before merge` : "Looks good — nothing to fix"}
+        text={fix ? `${fix} thing${fix > 1 ? "s" : ""} to fix before merge` : "Looks good, nothing to fix"}
         chips={fix ? [{ kind: "should-fix", n: fix }, { kind: "nit", n: fixture.review.findings.length - fix }] : []}
       />
       <KeyPoints points={fixture.review.keyPoints} />
@@ -186,7 +186,7 @@ function Verdict_() {
 function Approved() {
   return (
     <div className="mt-3">
-      <StatusBadge kind="approved">Approved by {fixture.user} · LGTM — no blockers</StatusBadge>
+      <StatusBadge kind="approved">Approved by {fixture.user} · LGTM: no blockers</StatusBadge>
     </div>
   );
 }

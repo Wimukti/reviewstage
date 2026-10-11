@@ -34,7 +34,7 @@ function RunningLine({ label, status }: { label?: string; status: string }) {
         {label}
       </StatusBadge>
       <span className="text-amber">{status}</span>
-      <span className="text-muted-foreground">— open to watch</span>
+      <span className="text-muted-foreground">, open to watch</span>
     </div>
   );
 }
@@ -58,8 +58,8 @@ function RowState({ row, status }: { row: QueueRow; status: string }) {
           data-testid="no-approve"
           title={
             row.merged
-              ? "This PR is merged — GitHub will not take an approval on it."
-              : "This PR is closed — an approval on it would not be actionable."
+              ? "This PR is merged. GitHub will not take an approval on it."
+              : "This PR is closed: an approval on it would not be actionable."
           }
         >
           can't approve
@@ -279,7 +279,7 @@ function DeskQueue({ me, views, base = "/", title = "Your review queue" }: { me:
       )}
       {!data.slackOk && (
         <Banner kind="warn">
-          No Slack member ID yet — review requests won't ping you.{" "}
+          No Slack member ID yet: review requests won't ping you.{" "}
           <Link to="/integrations">Add it in Integrations.</Link>
         </Banner>
       )}
@@ -418,7 +418,7 @@ function DeskQueue({ me, views, base = "/", title = "Your review queue" }: { me:
                       <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-green" />
                     )}
                     <span>
-                      Pick the repositories to watch — <Link to="/repos">Repositories</Link>.
+                      Pick the repositories to watch: <Link to="/repos">Repositories</Link>.
                     </span>
                   </li>
                 )}
@@ -429,7 +429,7 @@ function DeskQueue({ me, views, base = "/", title = "Your review queue" }: { me:
                     <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-green" />
                   )}
                   <span>
-                    Connect your Claude account — <Link to="/integrations">Integrations</Link>. Reviews run on
+                    Connect your Claude account: <Link to="/integrations">Integrations</Link>. Reviews run on
                     it; nothing runs without it.
                   </span>
                 </li>
@@ -440,7 +440,7 @@ function DeskQueue({ me, views, base = "/", title = "Your review queue" }: { me:
                     <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-green" />
                   )}
                   <span>
-                    Let the poller run once so it can find the PRs that name you as a reviewer —{" "}
+                    Let the poller run once so it can find the PRs that name you as a reviewer, {" "}
                     <Link to="/settings">Settings</Link>.
                   </span>
                 </li>

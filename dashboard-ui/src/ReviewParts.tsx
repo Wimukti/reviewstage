@@ -261,7 +261,7 @@ export function useExplain(explain?: () => Promise<ReactNode>) {
     try {
       setExp(await explain());
     } catch {
-      setExpErr("Couldn't explain this one — try again.");
+      setExpErr("Couldn't explain this one: try again.");
     } finally {
       setExpLoading(false);
     }
@@ -381,9 +381,9 @@ export function CheckedLine({ checked, className }: { checked?: Checked | null; 
     >
       <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", VERDICT_TONE[checked.verdict])} />
       <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", VERDICT_TONE[checked.verdict])}>
-        Checked: {checked.verdict}{" "}
+        Checked: {checked.verdict}
       </span>
-      {checked.reason && <span className="min-w-0">— {checked.reason}</span>}
+      {checked.reason && <span className="min-w-0">. {checked.reason}</span>}
     </p>
   );
 }
@@ -599,7 +599,7 @@ export function ReadingGuide({ guide, defaultOpen = true, onOpenChange, onJump, 
                         <span className="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}.</span>
                         <span className="min-w-0 flex-1">
                           <span className="font-medium [overflow-wrap:anywhere]" data-testid="guide-row-loc">{loc}</span>
-                          {r.why && <span className="text-muted-foreground"> — {r.why}</span>}
+                          {r.why && <span className="text-muted-foreground">: {r.why}</span>}
                         </span>
                       </>
                     );
@@ -916,7 +916,7 @@ export function CommitBar({
           <>
             <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground" data-testid="commit-posted">
               <StatusBadge kind="posted">Posted as {postedAs}</StatusBadge>
-              {postedNow && dryRun && <span>· dry run — nothing reached GitHub</span>}
+              {postedNow && dryRun && <span>· dry run: nothing reached GitHub</span>}
               {!dryRun && ghUrl && (
                 <a href={ghUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1">
                   · View on GitHub <ExternalLink aria-hidden="true" className="size-3" />
@@ -948,10 +948,10 @@ export function CommitBar({
                   )}
                 </>
               )}
-              <span>· {requestChanges ? "requests changes — can block the PR until updated" : "posts as plain comments"}</span>
+              <span>· {requestChanges ? "requests changes: can block the PR until updated" : "posts as plain comments"}</span>
               {overCap && (
                 <b className="text-foreground" data-testid="over-cap">
-                  · over the {maxPerPost} per-post limit — untick some
+                  · over the {maxPerPost} per-post limit: untick some
                 </b>
               )}
             </span>
@@ -974,7 +974,7 @@ export function CommitBar({
                 aria-busy={busy}
                 title={
                   stale
-                    ? "Reload the page — this review has been replaced"
+                    ? "Reload the page: this review has been replaced"
                     : overCap
                       ? `GitHub takes a review all-or-nothing; post at most ${maxPerPost} at a time`
                       : ""

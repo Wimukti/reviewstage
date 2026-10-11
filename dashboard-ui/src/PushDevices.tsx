@@ -72,7 +72,7 @@ export function PushDevices() {
     : p.serverEnabled === false
       ? "Push is switched off on this server (RS_PUSH=0, or Python has no `cryptography`)."
       : p.permission === "denied"
-        ? "Notifications are blocked for this site — allow them in the browser's site settings."
+        ? "Notifications are blocked for this site: allow them in the browser's site settings."
         : "";
 
   return (
@@ -102,7 +102,7 @@ export function PushDevices() {
       <div className="flex flex-col gap-3 py-4">
         {p.iosNeedsInstall && (
           <p className="m-0 rounded-md border border-dashed px-3 py-2 text-xs leading-relaxed text-muted-foreground" data-testid="ios-hint">
-            Add to Home Screen first — Safari only delivers push to installed apps. Tap Share, then
+            Add to Home Screen first. Safari only delivers push to installed apps. Tap Share, then
             “Add to Home Screen”, and open ReviewStage from there.
           </p>
         )}

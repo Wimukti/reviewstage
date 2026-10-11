@@ -200,7 +200,7 @@ function SaveBar({
         {state === "saved" ? (
           <span className="flex items-center gap-2 text-sm" role="status" data-testid="settings-saved">
             <Check aria-hidden="true" className="size-4 text-green" />
-            Saved — the poller picks it up on its next cycle.
+            Saved. The poller picks it up on its next cycle.
           </span>
         ) : (
           <>
@@ -313,7 +313,7 @@ function webhookInstructions(url: string): string {
     "Content type: application/json",
     "Secret: the value of GITHUB_WEBHOOK_SECRET in the server's .env",
     `Events: "Let me select individual events" → tick ${WEBHOOK_EVENTS}`,
-    "Save. GitHub sends a ping — 'Last ping' below updates within a few seconds.",
+    "Save. GitHub sends a ping. 'Last ping' below updates within a few seconds.",
   ].join("\n");
 }
 
@@ -343,7 +343,7 @@ function WebhooksSection({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds:
           label="Status"
           hint={
             wh.active
-              ? "A verified event arrived within two poll intervals — GitHub is reaching this server."
+              ? "A verified event arrived within two poll intervals. GitHub is reaching this server."
               : wh.configured
                 ? `No event in the last ${2 * minutes} minutes. The poller is keeping the queue fresh; add the hook on GitHub (or check its Recent Deliveries) to go instant.`
                 : "GITHUB_WEBHOOK_SECRET is not set in .env, so the endpoint answers 503 and the poller does all the work."
@@ -403,7 +403,7 @@ function WebhooksSection({ wh, pollSeconds }: { wh: WebhooksStatus; pollSeconds:
         </Collapsible>
         {wh.active && (
           <p className={cn(NOTE, "m-0 py-4 text-green")}>
-            Webhooks are doing the work now — you can lower the poll interval or turn polling off
+            Webhooks are doing the work now: you can lower the poll interval or turn polling off
             in the Poller section. Polling stays on until you change it; it is the safety net for a
             missed delivery.
           </p>
@@ -428,12 +428,12 @@ const BACKEND_META: Record<NotifyBackend, { name: string; sub: string; envKey: (
   },
   generic: {
     name: "Generic webhook",
-    sub: "Raw JSON POST, HMAC-signed — Teams, Zapier, n8n, your own endpoint.",
+    sub: "Raw JSON POST, HMAC-signed. Teams, Zapier, n8n, your own endpoint.",
     envKey: (e) => e.webhook_url,
     envLabel: "WEBHOOK_URL (+ WEBHOOK_SECRET)",
   },
   none: {
-    name: "None — the dashboard is the inbox",
+    name: "None: the dashboard is the inbox",
     sub: "Nothing is sent anywhere; open the queue yourself.",
     envKey: () => true,
     envLabel: "",
@@ -519,7 +519,7 @@ export function Devices({ me }: { me: Me }) {
             {err && <Banner kind="err">{err}</Banner>}
             {minted && (
               <Banner kind="warn" icon="key" role="status">
-                <b>Token for “{minted.name}” — copy it now.</b> It is shown once and cannot be
+                <b>Token for “{minted.name}”: copy it now.</b> It is shown once and cannot be
                 recovered; the server keeps only a hash. Anyone holding it can act as you until you
                 revoke it here.
                 <pre className="my-2 select-all whitespace-pre-wrap font-mono text-xs [overflow-wrap:anywhere]" data-testid="device-token">{minted.token}</pre>
@@ -581,7 +581,7 @@ export function Devices({ me }: { me: Me }) {
               type="text"
               className="min-w-[200px] flex-1"
               maxLength={60}
-              placeholder="Name it — “CLI on laptop”, “iPhone”…"
+              placeholder="Name it. “CLI on laptop”, “iPhone”…"
               aria-label="New device name"
               value={name}
               disabled={busy || viaBearer}
@@ -599,8 +599,8 @@ export function Devices({ me }: { me: Me }) {
                 onClick={() => {
                   if (
                     window.confirm(
-                      "Sign out everywhere? Every device token AND every browser session — " +
-                        "including this one, on every machine — stops working. You stay signed in " +
+                      "Sign out everywhere? Every device token AND every browser session, " +
+                        "including this one, on every machine, stops working. You stay signed in " +
                         "here; everywhere else has to sign in again.",
                     )
                   ) {
@@ -615,7 +615,7 @@ export function Devices({ me }: { me: Me }) {
           </div>
           {viaBearer && (
             <p className={cn(NOTE, "mb-0 mt-2")}>
-              You are signed in with a device token. Creating another one needs a browser session —
+              You are signed in with a device token. Creating another one needs a browser session:
               open Settings on the web.
             </p>
           )}

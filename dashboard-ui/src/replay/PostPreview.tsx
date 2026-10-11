@@ -52,7 +52,7 @@ export function PostPreview() {
         <SheetHeader className="px-4 pb-2 pt-4 text-left">
           <SheetTitle className="m-0 font-display text-xl tracking-tight">What would be posted</SheetTitle>
           <SheetDescription className="text-[15px]">
-            <b className="text-foreground">Precomputed example — nothing was sent.</b> On your own PR this is the
+            <b className="text-foreground">Precomputed example: nothing was sent.</b> On your own PR this is the
             moment the review goes to GitHub, under your name.
           </SheetDescription>
         </SheetHeader>
@@ -69,7 +69,7 @@ export function PostPreview() {
               </span>
             </p>
             {post.comments.length === 0 ? (
-              <p className="m-0 text-sm text-muted-foreground">Nothing kept — the review would carry the summary alone.</p>
+              <p className="m-0 text-sm text-muted-foreground">Nothing kept: the review would carry the summary alone.</p>
             ) : (
               <ol className="m-0 flex list-none flex-col gap-2 p-0">
                 {post.comments.map((c) => (

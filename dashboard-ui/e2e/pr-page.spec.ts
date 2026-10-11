@@ -199,7 +199,7 @@ test.describe("the status line", () => {
     // Part 2: the badge's reason line, then the second pass's own sentence, under Evidence.
     await expect(card.getByTestId("trust-line")).toContainText("the cited lines exist and mention `vendor`, `leadTime`, a second pass could not disprove it.");
     await expect(card.getByTestId("checked")).toHaveAttribute("data-verdict", "stands");
-    await expect(card.getByTestId("checked")).toContainText("Checked: stands — No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.");
+    await expect(card.getByTestId("checked")).toContainText("Checked: stands. No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.");
     await expect(card.getByTestId("how-to-verify")).toHaveCount(0);
     const ys = await Promise.all(
       ["finding-title", "where", "what-to-check", "contrast", "why-it-matters", "evidence", "trust-line", "checked"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
@@ -303,7 +303,7 @@ test.describe("the reading guide and the evidence check", () => {
     await expect(clean.getByTestId("trust")).toHaveText("Checked");
     await expect(clean.getByTestId("trust-line")).toHaveAttribute("data-level", "checked");
     await expect(clean.getByTestId("trust-line")).toContainText("the cited lines exist and mention `sleep`, a second pass could not disprove it.");
-    await expect(clean.getByTestId("checked")).toContainText("Checked: stands — No cap on `sleep` anywhere in Retry.php or its callers.");
+    await expect(clean.getByTestId("checked")).toContainText("Checked: stands. No cap on `sleep` anywhere in Retry.php or its callers.");
     const offDiff = cards.nth(1);
     await expect(offDiff.getByTestId("evidence")).toHaveAttribute("data-flags", "path_not_in_diff");
     await expect(offDiff.getByTestId("trust")).toHaveText("Likely");

@@ -8,8 +8,8 @@ ReviewStage is the human review layer for AI-written pull requests. Claude draft
 npx reviewstage
 ```
 
-A window opens and walks you through three steps — sign in with GitHub, connect your Claude
-account, pick the repositories you review — then shows your queue. Add or remove repositories
+A window opens and walks you through three steps: sign in with GitHub, connect your Claude
+account, pick the repositories you review: then shows your queue. Add or remove repositories
 any time from **Repositories** in the sidebar; **Switch GitHub account** is in the account ⋯
 menu. When someone requests your
 review, the dock badge ticks up; click the PR, run a review on your own Claude plan, tick the
@@ -24,9 +24,9 @@ version and SHA-256, into `~/.reviewstage/bin`. The server and its state stay on
 ## You need
 
 - **Node 20 or newer** (you have it if you installed Claude Code with npm).
-- **Claude Code** on your PATH — `npm install -g @anthropic-ai/claude-code`. Reviews run on
+- **Claude Code** on your PATH: `npm install -g @anthropic-ai/claude-code`. Reviews run on
   *your* Claude account; the app never fetches Claude Code for you.
-- **Git, Python 3, Bash, OpenSSL and curl** — present on every macOS (after
+- **Git, Python 3, Bash, OpenSSL and curl**: present on every macOS (after
   `xcode-select --install`) and on any Linux desktop.
 - macOS 12+ (Apple Silicon or Intel) or Linux x64/arm64. Windows is on the roadmap.
 
@@ -38,12 +38,12 @@ No Apple notarisation dialog: the app is Electron installed by npm, the same way
 `npx reviewstage` prints `ReviewStage is running. You can close this terminal.` and returns:
 closing the terminal leaves the app running (`--foreground` keeps it attached). A second
 `npx reviewstage` brings the open window forward. Closing the window keeps the app in the menu
-bar — **Open ReviewStage**, **Phone access: On/Off**, **Check for updates**, **Quit
-ReviewStage** — so phone access and notifications keep working. **Settings → Desktop app**
+bar (**Open ReviewStage**, **Phone access: On/Off**, **Check for updates**, **Quit
+ReviewStage**), so phone access and notifications keep working. **Settings → Desktop app**
 shows the running version and turns on **Open at login** (a LaunchAgent on macOS, an XDG
 autostart entry on Linux, running `npx -y reviewstage@latest` with the node you launched with).
 On its first run it also adds itself to `~/Applications` (macOS) or your app launcher (Linux),
-so after that Spotlight or Launchpad opens it — no terminal needed.
+so after that Spotlight or Launchpad opens it: no terminal needed.
 
 When a newer version is published, a banner says `ReviewStage <version> is available · Restart
 to update`; the restart installs it with `npx` and opens on the same data.
@@ -52,7 +52,7 @@ to update`; the restart installs it with `npx` and opens on the same data.
 
 **Settings → Your phone → Enable phone access** starts a Cloudflare quick tunnel to your laptop
 and shows a QR code on the card (the **ReviewStage** menu and the Dock menu have the same, in a
-window of its own). Scan it with the camera and the phone is signed in as you — no second GitHub
+window of its own). Scan it with the camera and the phone is signed in as you: no second GitHub
 login (the code is single-use and valid for 30 minutes; **New code** mints a new one). **Add to
 Home Screen**, open it from there, and turn on push from Settings: a review
 request on a watched repository notifies the phone, and the queue, the findings and the Post
@@ -78,10 +78,10 @@ add `DRY_RUN=1` to `.env` and relaunch.
 
 ## Problems
 
-- *"Claude Code is not installed"* — install it with the command above and relaunch.
-- *"This machine is missing …"* — on macOS run `xcode-select --install`; on Linux install the
+- *"Claude Code is not installed"*: install it with the command above and relaunch.
+- *"This machine is missing …"*: on macOS run `xcode-select --install`; on Linux install the
   named packages.
-- *A tool's checksum did not match* — the download is discarded and the app stops. Try again
+- *A tool's checksum did not match*: the download is discarded and the app stops. Try again
   later; if it persists, open an issue with the message.
 - `npx reviewstage --doctor` prints one PASS / WARN / FAIL line per check without opening a
   window; the server's output from the last launch is in `~/.reviewstage/server.log`, the app's

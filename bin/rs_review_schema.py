@@ -74,6 +74,10 @@ _TRAILING_HEDGE_RE = re.compile(
     r"[,;:\s(-]*\b(" + "|".join(re.escape(h) for h in sorted(HEDGES, key=len, reverse=True))
     + r")\b[)\s]*([.!?]?)\s*$", re.IGNORECASE)
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z`\"'(])")
+# Dashes as punctuation (the writing rules forbid them). An em or en dash is replaced with a
+# comma so none reaches the card; a spaced hyphen is only reported.
+_DASH_RE = re.compile(r"\s*[\u2014\u2013]\s*")
+_SPACED_HYPHEN_RE = re.compile(r"(?<=\S) - (?=\S)")
 _SPACES_RE = re.compile(r"[ \t]{2,}")
 
 
@@ -103,6 +107,18 @@ def plain(text):
     return out, stripped
 
 
+def undash(text):
+    """(text, n): every em or en dash replaced with ", " (surrounding spaces folded), and how
+    many were. A dash at the very start or end of the string is simply dropped with its spaces."""
+    n = len(_DASH_RE.findall(text))
+    if not n:
+        return text, 0
+    out = _DASH_RE.sub(", ", text)
+    out = re.sub(r"^, |, $", "", out)
+    out = _SPACES_RE.sub(" ", out).strip()
+    return out, n
+
+
 def sentences(text):
     """Sentences of a string, as the linter counts them."""
     return [t for t in _SENTENCE_RE.split(text.strip()) if t.strip()]
@@ -120,6 +136,11 @@ def lint_text(text, limit, label, warnings):
     text, stripped = plain(text)
     if stripped:
         warnings.append(f"{label}: plain: trailing hedge {stripped!r} removed")
+    text, dashes = undash(text)
+    if dashes:
+        warnings.append(f"{label}: plain: dash used as punctuation ({dashes} replaced with a comma)")
+    if _SPACED_HYPHEN_RE.search(text):
+        warnings.append(f"{label}: plain: spaced hyphen used as a dash")
     for sent in sentences(text):
         n = words(sent)
         if n > limit:

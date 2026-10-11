@@ -31,7 +31,7 @@ const E2E_COMMENTS: FixtureComment[] = [
   },
   {
     path: "src/javascripts/Badge.tsx", line: 10, severity: "nit",
-    title: "Use const instead of let", impact: "Style only — no effect on behavior.",
+    title: "Use const instead of let", impact: "Style only, no effect on behavior.",
     body: "Prefer `const` over `let` here.", reply_to: null, suggestion: "",
   },
 ];
@@ -105,7 +105,7 @@ test("map.ts: diff hunks give the anchorable lines", () => {
 
 test("map.ts: the approve message lists blockers and should-fixes", () => {
   assert.equal(defaultApproveMsg([{ path: "a", line: 1, severity: "nit", body: "b" }]), "LGTM 🚀");
-  assert.match(defaultApproveMsg(E2E_COMMENTS), /^LGTM — just handle these before merge:\n\n- `app\/models\/Product.php:42` — Guard against/);
+  assert.match(defaultApproveMsg(E2E_COMMENTS), /^LGTM\. Just handle these before merge:\n\n- `app\/models\/Product.php:42`: Guard against/);
 });
 
 test("every shipped fixture carries exactly the three teaching findings and matching decisions", () => {

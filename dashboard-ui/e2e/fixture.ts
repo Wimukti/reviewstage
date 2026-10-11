@@ -187,7 +187,7 @@ export function buildFixture() {
   // STARTUP_GRACE (90 s) — so the mtime is stamped an hour ahead and it stays "reviewing" for
   // the whole Playwright run instead of aging into "stalled" mid-suite.
   const running = join(FIXTURE, "state", slug(REPO), PR4, "users", USER, "status");
-  write(running, "reviewing the diff");
+  write(running, "drafting findings from the diff");
   const ahead = new Date(Date.now() + 3600_000);
   utimesSync(running, ahead, ahead);
 
@@ -426,7 +426,7 @@ export function buildFixture() {
           line: 10,
           severity: "nit",
           title: "Use const instead of let",
-          impact: "Style only — no effect on behavior.",
+          impact: "Style only, no effect on behavior.",
           confidence: "medium",
           body: "Prefer `const` over `let` here.",
           reply_to: null,

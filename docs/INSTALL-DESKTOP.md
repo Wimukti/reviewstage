@@ -1,8 +1,8 @@
 # Install: the desktop app (`npx reviewstage`)
 
 The one-person install. One command on a laptop, your phone over a QR code, no Docker, no `.env`
-to edit, no service token. The team install — one server, every reviewer signed in as
-themselves — is [INSTALL-DOCKER.md](INSTALL-DOCKER.md).
+to edit, no service token. The team install (one server, every reviewer signed in as
+themselves) is [INSTALL-DOCKER.md](INSTALL-DOCKER.md).
 
 ```bash
 npx reviewstage
@@ -19,8 +19,8 @@ npx reviewstage
 | **Git, Python 3, Bash, OpenSSL, curl** | The server is Python's standard library and bash. Every macOS has them after `xcode-select --install`; every Linux desktop has them. |
 | **macOS 12+ (Apple Silicon or Intel) or Linux x64/arm64** | Windows is a follow-up (the job scripts are bash; a WSL path is the likely shape). |
 
-There is no Gatekeeper warning. The app is Electron installed by npm — a Node package, not a
-downloaded `.app` — which is exactly how `npx @nervekit/desktop` and other npm-distributed
+There is no Gatekeeper warning. The app is Electron installed by npm: a Node package, not a
+downloaded `.app`, which is exactly how `npx @nervekit/desktop` and other npm-distributed
 desktop apps run, and why no Apple Developer account is involved.
 
 ## What happens on first launch
@@ -42,9 +42,9 @@ desktop apps run, and why no Apple Developer account is involved.
    github.com/login/device, or paste a fine-grained token), *Connect Claude* (the same
    `claude setup-token` flow as the team install, skippable for now), *Pick repositories* (a
    searchable list of the repositories you own, collaborate on or belong to through an
-   organisation; up to 50). Then one card, once: share usage counters (counts only; no names, repositories, paths or text) or keep them
+   organisation; up to 50). Then one card, once: optional usage counts (no names, repositories, paths, or text) or keep them
    local (the default; nothing is sent either way while no endpoint is configured, and none
-   ships — see the website's Security → Telemetry page). Then your queue.
+   ships: see the website's Security → Telemetry page). Then your queue.
 
 From then on the app polls GitHub itself for review requests on the repositories you picked,
 with your own signed-in token (kept encrypted at rest; never in `.env`). The dock badge shows
@@ -54,7 +54,7 @@ the count; a system notification fires when it rises.
 
 `npx reviewstage` prints `ReviewStage is running. You can close this terminal.` and gives the
 terminal back: the app runs on its own, and closing the terminal does not touch it (its output
-goes to `~/.reviewstage/desktop.log`). `npx reviewstage --foreground` keeps the old behaviour —
+goes to `~/.reviewstage/desktop.log`). `npx reviewstage --foreground` keeps the old behaviour:
 attached to the terminal, output on screen.
 
 - **One at a time.** Running `npx reviewstage` again while the app is open brings its window
@@ -62,8 +62,8 @@ attached to the terminal, output on screen.
 - **Closing the window** leaves the app in the menu bar (the system tray on Linux), so phone
   access and review notifications keep working; the Dock icon comes back when a window opens.
   The menu-bar icon has **Open ReviewStage**, **Phone access: On/Off**, **Check for updates**
-  (and **Update to <version>** when one is out) and **Quit ReviewStage**. Quitting — from that
-  menu, ⌘Q, or a `kill` — stops the tunnel and the server with it.
+  (and **Update to <version>** when one is out) and **Quit ReviewStage**. Quitting (from that
+  menu, ⌘Q, or a `kill`) stops the tunnel and the server with it.
 - **In your applications.** On its first run the app adds itself where launchers look:
   `~/Applications/ReviewStage.app` on macOS (Spotlight, Launchpad and Finder find it; it is a
   small signed bundle that runs `npx -y reviewstage@latest` with the node you launched with) and
@@ -72,7 +72,7 @@ attached to the terminal, output on screen.
 - **Open at login** (Settings → Desktop app, off by default) starts it in the menu bar when you
   log in. On macOS it writes `~/Library/LaunchAgents/dev.reviewstage.desktop.plist`, which runs
   the same `node` and its sibling `npx` you launched with (`npx -y reviewstage@latest`) with the
-  `PATH` your shell had when you turned it on — launchd's own `PATH` has neither nvm's node nor
+  `PATH` your shell had when you turned it on: launchd's own `PATH` has neither nvm's node nor
   Homebrew's Python. On Linux it writes `~/.config/autostart/reviewstage.desktop`. Turning it off
   deletes the file. If you later move node (an nvm upgrade), turn it off and on again.
 
@@ -106,17 +106,17 @@ In the app, **Settings → Your phone → Enable phone access** starts a
 [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
 to the local server and the section shows a QR code, with the `https://….trycloudflare.com`
 address under it (`/settings#phone` is its address; it is the section Settings opens on in the
-app). The same lives in the menu bar — **ReviewStage → Enable phone access…**, also
-in the Dock menu — which opens it in a window of its own. On the phone:
+app). The same lives in the menu bar. **ReviewStage → Enable phone access…**, also
+in the Dock menu, which opens it in a window of its own. On the phone:
 
 1. **Scan the code with the camera.** The phone is signed in as the person signed in on the
-   Mac — no second GitHub login. The QR carries a single-use code valid for 30 minutes; if it
+   Mac, no second GitHub login. The QR carries a single-use code valid for 30 minutes; if it
    has expired the login page says so and **New code** on the card (or **Show phone access
    code…** in the menu) mints a new one.
 2. Share → **Add to Home Screen**.
 3. Open it from the home screen; **Settings → Push → This device**.
 
-![The desktop app's phone window: a QR code, the tunnel address under it, and the line "Scanning signs you in as octocat. Code valid until 14:32 — reopen this window for a new one."](demos/phone-access.gif)
+![The desktop app's phone window: a QR code, the tunnel address under it, and the line "Scanning signs you in as octocat. Code valid until 14:32: reopen this window for a new one."](demos/phone-access.gif)
 
 A review request on a watched repository notifies the phone; the dashboard is the same app at
 phone width. Not signed in on the Mac yet? The QR then carries the plain address and the window
@@ -125,27 +125,27 @@ says to sign in on the Mac first.
 **How long the tunnel lasts.** As long as the app runs. `cloudflared` reconnects by itself after
 a dropped connection or sleep, and the address stays the same. Phone access is remembered
 (`~/.reviewstage/desktop.json`): if it was on when the app quit, it comes back on at the next
-launch — but with a **new address**, because a quick tunnel cannot keep a name. Once the new
+launch, but with a **new address**, because a quick tunnel cannot keep a name. Once the new
 address answers, every phone that turned on notifications gets one: **"Your Mac has a new
 address"**. Tapping it opens a single-use sign-in link on the new address (minted for that
 phone's own account, valid 12 hours) in the browser, signed in; add it to the Home Screen again
 from there. A phone that did not turn on notifications needs a new scan. If `cloudflared` crashes
 while phone access is on, the app restarts it once with a new address, mints a new code and
-shows a notification, "Phone address changed — rescan the code"; a second crash within 5 minutes
+shows a notification, "Phone address changed: rescan the code"; a second crash within 5 minutes
 stops it, the card and the menu show phone access as off and say why.
 
 **When the Mac is asleep or the app is closed**, the phone shows "Your Mac isn't reachable"
-with **Try again** — never an error code. The home-screen app retries every 15 seconds while it
+with **Try again**: never an error code. The home-screen app retries every 15 seconds while it
 is open, and comes back by itself when the Mac does.
 
 **A stable address with Tailscale (optional).** If [Tailscale](https://tailscale.com/download)
 is installed and signed in on the Mac (and on your phone), Settings → Your phone shows **Use
 Tailscale**. It serves the app with `tailscale serve --bg --https=443 http://127.0.0.1:<port>`
 at `https://<machine>.<tailnet>.ts.net`, which only your own devices can reach and which never
-changes — the home-screen app keeps working across restarts. Turning it off runs
+changes, the home-screen app keeps working across restarts. Turning it off runs
 `tailscale serve --https=443 off`. Without Tailscale the row is one line and a link.
 
-What to know: the address is public while the tunnel is up — anyone who has it reaches your
+What to know: the address is public while the tunnel is up; anyone who has it reaches your
 sign-in page and nothing more (every API call needs the session cookie; pair codes are
 single-use; action links are HMAC-signed and short-lived). **Turn off** on the card (or
 **Disable phone access** in the menu), or quitting the app, closes the tunnel. `cloudflared` is fetched like the other tools, pinned by
@@ -180,8 +180,8 @@ rehearse without posting, add `DRY_RUN=1` to `.env` and relaunch.
 npx reviewstage --doctor
 ```
 
-runs the server's own `doctor.sh` against this install — the fetched tools on PATH, the port the
-app chose — and prints one PASS / WARN / FAIL line per check without opening a window. In
+runs the server's own `doctor.sh` against this install (the fetched tools on PATH, the port the
+app chose) and prints one PASS / WARN / FAIL line per check without opening a window. In
 personal mode a missing `REPOS` is a WARN, not a FAIL, and `GITHUB_PAT` is not expected.
 
 ## Updating
@@ -192,7 +192,7 @@ available · Restart to update` (dismissible for that version), the menu-bar ico
 to <version>**, and Settings → Desktop app shows it next to the running version, with **Check
 now** and the time of the last check. **Restart to update** starts `npx -y
 reviewstage@<version>`, which waits for this instance to quit and opens on the same
-`~/.reviewstage` — phone access comes back on by itself. If the new version cannot be started,
+`~/.reviewstage`: phone access comes back on by itself. If the new version cannot be started,
 the banner says why and nothing quits.
 
 By hand, `npx reviewstage@latest` does the same. Your data in `~/.reviewstage` is untouched by
@@ -205,7 +205,7 @@ Chromium's setuid sandbox helper must be root-owned with mode 4755; a binary npm
 your home directory cannot be, and Ubuntu 24.04 also restricts the unprivileged-namespace
 fallback, so an npm-installed Electron app aborts at launch. The launcher checks the helper and,
 where it is unusable, starts the window with `--no-sandbox`. The window only ever shows the
-local server — external links open in your browser — so the renderer sandbox is not guarding
+local server, external links open in your browser, so the renderer sandbox is not guarding
 third-party content here. If you prefer it on, make the helper setuid once:
 `sudo chown root:root …/electron/dist/chrome-sandbox && sudo chmod 4755 …/chrome-sandbox`
 (the path is printed in the error you would otherwise see).

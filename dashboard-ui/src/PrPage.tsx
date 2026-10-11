@@ -132,7 +132,7 @@ function Reviewers({ data }: { data: ReviewersData }) {
     data.decision === "CHANGES_REQUESTED"
       ? "Changes requested must be addressed to merge."
       : data.decision === "APPROVED"
-      ? "Approved — ready to merge."
+      ? "Approved: ready to merge."
       : data.decision === "REVIEW_REQUIRED"
       ? "Review required before merge."
       : "";
@@ -175,7 +175,7 @@ function ClaudeGate({ action }: { action: string }) {
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">Connect your Claude account to {action}</div>
         <p className="mb-3 mt-0.5 max-w-[52ch] text-xs text-muted-foreground">
-          {action[0].toUpperCase() + action.slice(1)}s run on <b>your own</b> Claude subscription —
+          {action[0].toUpperCase() + action.slice(1)}s run on <b>your own</b> Claude subscription:
           nothing runs on anyone else's plan. Connect once and you're set.
         </p>
         <Button asChild>
@@ -292,7 +292,7 @@ function RunForm({
           if (r.started === false) {
             // A previous run still holds the per-PR lock (e.g. a stop that could not be confirmed).
             setErr(
-              "Couldn't start — a previous run may still be finishing or holding the lock. " +
+              "Couldn't start: a previous run may still be finishing or holding the lock. " +
                 "Try Stop, then start again in a moment.",
             );
             return;
@@ -318,7 +318,7 @@ function RunForm({
           <ul className="my-1 list-disc pl-5 text-xs text-muted-foreground">
             {others.map((o) => (
               <li key={o.login}>
-                <b className="text-foreground">{o.login}</b> — {o.effort}
+                <b className="text-foreground">{o.login}</b>: {o.effort}
                 {o.model ? ` · ${o.model}` : ""} · {o.skill}
                 {o.focus ? ` · focus: “${o.focus}”` : " · no focus"}
                 {o.when ? ` · ${o.when}` : ""}
@@ -326,7 +326,7 @@ function RunForm({
             ))}
           </ul>
           <p className="m-0 text-xs text-muted-foreground">
-            A second review adds the most when it checks something the first didn’t — add a focus
+            A second review adds the most when it checks something the first didn’t: add a focus
             below, or switch skills on the Skills page. Or run the same way to compare notes.{" "}
             <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => focusRef.current?.focus()}>
               Add a focus
@@ -354,7 +354,7 @@ function RunForm({
           <LevelSelect id="run-model" label="Model" value={model} onChange={setModel} levels={form.models} />
         </Field>
       )}
-      <Field htmlFor="run-focus" label="Focus — optional">
+      <Field htmlFor="run-focus" label="Focus: optional">
         <Textarea
           id="run-focus"
           ref={focusRef}
@@ -374,7 +374,7 @@ function RunForm({
             </Label>
             <p id="run-check-all-hint" className="m-0 max-w-[60ch] text-xs text-muted-foreground" data-testid="check-all-hint">
               A second pass tries to disprove each finding before you see it. It always runs on findings that
-              can break something; this runs it on every one — about {form.disproof.secPerFinding} s more per
+              can break something; this runs it on every one, about {form.disproof.secPerFinding} s more per
               finding, on your own account.
             </p>
           </div>
@@ -392,7 +392,7 @@ function RunForm({
       <p className="m-0 text-xs text-muted-foreground">
         {Object.values(form.estimates ?? {}).some((e) => e.source === "measured")
           ? "“Typically” times are medians of this install’s own runs; ranges are estimates. Both depend on the PR’s size, the model and your plan."
-          : "Times are estimates — they depend on the PR’s size, the model and your plan."}
+          : "Times are estimates: they depend on the PR’s size, the model and your plan."}
       </p>
     </form>
   );
@@ -476,12 +476,12 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
         {r.focus && <p className="m-0 text-xs text-muted-foreground">Focusing on: “{r.focus}”</p>}
         {r.phases[r.cur] === "Checking the findings" && (
           <p className="m-0 text-xs text-muted-foreground" data-testid="second-pass-note">
-            A second pass is trying to disprove the findings — the badge on each card comes from it.
+            A second pass is trying to disprove the findings: the badge on each card comes from it.
           </p>
         )}
         {r.queued && (
           <p className="m-0 text-xs text-muted-foreground">
-            Waiting for another review to finish first — one runs at a time on this box.
+            Waiting for another review to finish first: one runs at a time on this box.
           </p>
         )}
         <p className="m-0 text-xs text-muted-foreground">This page refreshes itself; {r.effortHint}.</p>
@@ -539,7 +539,7 @@ function TeachPanel({ f, pr, token, teach, onTaught }: {
       setRule(r.rule);
       setWhy(r.rationale || "");
     } catch (e) {
-      setErr(errMessage(e, "Could not draft a rule — try again."));
+      setErr(errMessage(e, "Could not draft a rule: try again."));
     } finally {
       setBusy("");
     }
@@ -553,7 +553,7 @@ function TeachPanel({ f, pr, token, teach, onTaught }: {
       setAdded(r.targetLabel);
       onTaught();
     } catch (e) {
-      setErr(errMessage(e, "Could not add the rule — try again."));
+      setErr(errMessage(e, "Could not add the rule: try again."));
     } finally {
       setBusy("");
     }
@@ -671,7 +671,7 @@ function FindingBody({ body, onBody, suggestion }:
       <MdEditor value={body} onChange={onBody} />
       {suggestion && (
         <div className="mt-2 overflow-hidden rounded-md bg-green/10">
-          <div className="px-3 py-1.5 text-xs text-green">Suggested change — the author can apply this in one click on GitHub</div>
+          <div className="px-3 py-1.5 text-xs text-green">Suggested change: the author can apply this in one click on GitHub</div>
           <pre className="m-0 rounded-none border-0 bg-transparent">
             <code>{suggestion}</code>
           </pre>
@@ -705,8 +705,8 @@ function verdict(rev: ReviewData) {
   if (rev.event === "REQUEST_CHANGES") return { tone: "red" as Tone, text: "Changes requested" };
   if (b) return { tone: "red" as Tone, text: `${b} blocker${b > 1 ? "s" : ""} to resolve before merge` };
   if (f) return { tone: "amber" as Tone, text: `${f} thing${f > 1 ? "s" : ""} to fix before merge` };
-  if (rev.count === 0) return { tone: "green" as Tone, text: "Looks good — nothing to fix" };
-  return { tone: "green" as Tone, text: "Looks good — comments only, nothing blocking" };
+  if (rev.count === 0) return { tone: "green" as Tone, text: "Looks good, nothing to fix" };
+  return { tone: "green" as Tone, text: "Looks good: comments only, nothing blocking" };
 }
 
 // Which review these findings came from. The server matches a post to its stored review by
@@ -833,7 +833,7 @@ function ReviewBody({
   // file (and overlaps the lines, when it says which) is where the hunk is already rendered, so
   // the row scrolls there. No card on that file → GitHub's Files tab for this PR.
   const jumpTo = (row: ReadPlanRow) => {
-    const range = row.lines ? row.lines.split(/[-–]/).map(Number) : null;
+    const range = row.lines ? row.lines.split(/[-—]/).map(Number) : null;
     const overlaps = (f: Finding) => {
       if (f.path !== row.path) return false;
       if (!range || !f.where) return true;
@@ -909,8 +909,8 @@ function ReviewBody({
   // instead of after it.
   const noApprove = data.canApprove === false;
   const noApproveWhy = data.merged
-    ? "This PR is merged — GitHub will not take an approval on it."
-    : "This PR is closed — an approval on it would not be actionable.";
+    ? "This PR is merged. GitHub will not take an approval on it."
+    : "This PR is closed: an approval on it would not be actionable.";
 
   // An action token lives 30 minutes and /api/pr only re-mints while a review runs, so reading a
   // long review and then clicking Post used to 403 into a dead button. Re-read the PR for a
@@ -1001,7 +1001,7 @@ function ReviewBody({
     },
     editor: (
       <>
-        {f.structured && <p className="m-0 text-xs text-muted-foreground">This is the comment posted to GitHub — edit if needed.</p>}
+        {f.structured && <p className="m-0 text-xs text-muted-foreground">This is the comment posted to GitHub: edit if needed.</p>}
         <FindingBody
           body={bodies[f.i] ?? ""}
           onBody={(v) => setBodies((b) => ({ ...b, [f.i]: v }))}
@@ -1055,7 +1055,7 @@ function ReviewBody({
   // to a write is the exception: it is the receipt for the click.
   const errorBanner = stale ? (
     <Banner kind="err" data-testid="rerun-refusal">
-      <b>This review was re-run — reload before posting.</b> The findings on the server are
+      <b>This review was re-run: reload before posting.</b> The findings on the server are
       not the ones on this page, so your ticks and edits no longer line up with them.
       Nothing was posted.{" "}
       <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => window.location.reload()}>
@@ -1080,7 +1080,7 @@ function ReviewBody({
           )}
           {rev.analysis && (
             <>
-              <h2>Reviewer's notes — what was checked, and what was dropped</h2>
+              <h2>Reviewer's notes: what was checked, and what was dropped</h2>
               <Md className="dbody p-0">{rev.analysis}</Md>
             </>
           )}
@@ -1116,16 +1116,16 @@ function ReviewBody({
               <b>The branch has moved since this review ran.</b> The verdict above was
               written against <code>{a.reviewedHead!.slice(0, 7)}</code>; GitHub is
               now at <code>{a.currentHead!.slice(0, 7)}</code>. Approving would
-              bless commits nobody here has read — re-run the review, or confirm below to
+              bless commits nobody here has read: re-run the review, or confirm below to
               approve the current commit anyway.
             </Banner>
           )}
           <div>
             {a.lgtm ? (
-              <StatusBadge kind="approved" className="whitespace-normal">LGTM — no blockers</StatusBadge>
+              <StatusBadge kind="approved" className="whitespace-normal">LGTM: no blockers</StatusBadge>
             ) : (
               <StatusBadge tone="amber" className="whitespace-normal text-left">
-                Not LGTM —{" "}
+                Not LGTM: {" "}
                 {a.blockers ? `${a.blockers} blocker(s)` : "the agent's assessment is REQUEST_CHANGES"}
                 . Approving anyway needs the confirmation below.
               </StatusBadge>
@@ -1134,7 +1134,7 @@ function ReviewBody({
           {/* Not a <form>, for the same reason as the post panel: Enter must never approve
               a PR. The acknowledgement that `required` used to enforce gates the button. */}
           <div data-testid="approve-panel" className="flex flex-col gap-3">
-            <Field htmlFor="approve-body" label="Approval comment — posted on the PR as a whole, then the PR is approved">
+            <Field htmlFor="approve-body" label="Approval comment: posted on the PR as a whole, then the PR is approved">
               <Textarea
                 id="approve-body"
                 rows={3}
@@ -1211,7 +1211,7 @@ function ReviewBody({
         <div data-testid="post-panel">
           {guide}
           {rev.count === 0 ? (
-            <p className="text-base text-muted-foreground">No findings — nothing to post.</p>
+            <p className="text-base text-muted-foreground">No findings: nothing to post.</p>
           ) : (
             <>
               {shown.map(renderFinding)}
@@ -1274,7 +1274,7 @@ function ReviewBody({
       <Verdict
         tone={v.tone}
         text={v.text}
-        about="The agent's read of this PR. Comments post as a plain review either way — nothing here blocks a merge unless you ask for changes."
+        about="The agent's read of this PR. Comments post as a plain review either way: nothing here blocks a merge unless you ask for changes."
         chips={rev.chips}
         testid="verdict"
       />
@@ -1289,7 +1289,7 @@ function ReviewBody({
           <b className="text-foreground">{rev.convergence.confirmed}</b> of {rev.convergence.total} finding(s) confirmed by
           independent reviews ({rev.convergence.rate}% agreement across {rev.convergence.nRuns}{" "}
           reviewers on this commit). A finding only counts as confirmed when a reviewer using a
-          different skill/model/effort raised it too — a signal to build on, not a score.
+          different skill/model/effort raised it too: a signal to build on, not a score.
         </p>
       )}
       {/* Deliberately not a <form>: browsers implicitly submit one on Enter, and these are
@@ -1300,7 +1300,7 @@ function ReviewBody({
             bar sat out of view until the first scroll. */}
         {guide}
         {rev.count === 0 ? (
-          <p className="text-sm text-muted-foreground">No findings — nothing to post.</p>
+          <p className="text-sm text-muted-foreground">No findings: nothing to post.</p>
         ) : (
           <>
             {shown.map(renderFinding)}
@@ -1309,7 +1309,7 @@ function ReviewBody({
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:text-foreground">
                     <ListFilter aria-hidden="true" />
-                    Maybe — {maybe.length} lower-confidence finding{maybe.length !== 1 ? "s" : ""} (unchecked)
+                    Maybe: {maybe.length} lower-confidence finding{maybe.length !== 1 ? "s" : ""} (unchecked)
                     <ChevronDown aria-hidden="true" className={cn("transition-transform", maybeOpen && "rotate-180")} />
                   </Button>
                 </CollapsibleTrigger>
@@ -1386,7 +1386,7 @@ function RerunBody({ data, onDone }: { data: PrData; onDone: () => void }) {
   return (
     <div id="rerun" className="flex flex-col gap-3">
       <p className="m-0 text-xs text-muted-foreground">
-        Run it again — a fresh effort level or a focus note. The current review is kept in history below.
+        Run it again: a fresh effort level or a focus note. The current review is kept in history below.
       </p>
       <RunForm
         pr={refOf(data)}
@@ -1520,7 +1520,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
       word: "Branch moved",
       testid: "status-head-moved",
       title:
-        `The branch has moved since this review ran — the verdict was written against ` +
+        `The branch has moved since this review ran: the verdict was written against ` +
         `${rev!.approve!.reviewedHead!.slice(0, 7)}, GitHub is now at ` +
         `${rev!.approve!.currentHead!.slice(0, 7)}. Approving needs the confirmation in Approve.`,
     });
@@ -1532,7 +1532,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
       icon: GitCommitHorizontal,
       word: "New commits since review",
       testid: "status-stale",
-      title: "The author pushed new commits since this review. The findings may be out of date — re-run.",
+      title: "The author pushed new commits since this review. The findings may be out of date: re-run.",
     });
   }
   if (!data.claudeConnected) {
@@ -1555,7 +1555,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
       testid: "anchors-unknown",
       title:
         "Where these comments will land could not be checked. GitHub would not say which lines " +
-        "this PR touches, so this is not a claim that the findings sit outside the diff — it is " +
+        "this PR touches, so this is not a claim that the findings sit outside the diff: it is " +
         "simply unknown. Each one goes inline if its line is in the diff, and into the review " +
         "body if it is not." +
         (rev.anchorError ? ` The check failed with: ${rev.anchorError}.` : ""),
@@ -1569,7 +1569,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
       word: `Showing ${rev.truncated.shown.toLocaleString("en-US")} of ${rev.truncated.total.toLocaleString("en-US")} findings`,
       testid: "truncated",
       title:
-        "This run produced more than one page — and one review — should carry, so the rest were " +
+        "This run produced more than one page, and one review, should carry, so the rest were " +
         "not rendered and cannot be posted from here. Re-run with a focus to narrow it.",
     });
   }
@@ -1593,7 +1593,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
       kind: "stopped",
       word: "Review stopped",
       title: data.stopped.halted
-        ? "No agent is running — Claude usage has halted. Start a new run below."
+        ? "No agent is running. Claude usage has halted. Start a new run below."
         : "A process may still be running. Start a new run below.",
     });
   }
@@ -1604,7 +1604,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
       kind: "dry",
       word: "Dry run",
       testid: "status-dry",
-      title: "Dry run — the buttons on this page do not write to GitHub.",
+      title: "Dry run: the buttons on this page do not write to GitHub.",
     });
   }
   if (data.canApprove === false) {
@@ -1640,7 +1640,7 @@ function statusItems(data: PrData, postedNow: boolean): StatusItem[] {
       tone: "graphite",
       icon: RefreshCw,
       word: "Reused earlier run",
-      title: "Reused your earlier run of this exact configuration on this commit — 0 new tokens.",
+      title: "Reused your earlier run of this exact configuration on this commit: 0 new tokens.",
     });
   }
   if (!data.awaiting) {
@@ -1834,7 +1834,7 @@ export function PrPage({ me }: { me: Me }) {
               {err}
             </p>
             <p className="mb-0 mt-2">
-              If this came from the queue, the queue and GitHub disagree about it — check the number
+              If this came from the queue, the queue and GitHub disagree about it: check the number
               and the repository.
             </p>
           </EmptyState>
@@ -1921,7 +1921,7 @@ export function PrPage({ me }: { me: Me }) {
             title="Review stopped"
             description={
               <>
-                {data.stopped.halted ? "No agent is running — Claude usage has halted." : "A process may still be running."}{" "}
+                {data.stopped.halted ? "No agent is running. Claude usage has halted." : "A process may still be running."}{" "}
                 Start a new run below.
               </>
             }
@@ -1963,7 +1963,7 @@ export function PrPage({ me }: { me: Me }) {
           ) : null}
           <RunCard
             title={dead ? "Review it anyway" : "Not reviewed here"}
-            description={dead ? "For the record — nothing here reaches the merge." : "No review has been run for this PR on this box."}
+            description={dead ? "For the record: nothing here reaches the merge." : "No review has been run for this PR on this box."}
           >
             {runForm("Run review")}
           </RunCard>

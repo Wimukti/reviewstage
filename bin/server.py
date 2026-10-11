@@ -1641,7 +1641,7 @@ def review_cache_key(login, repo, head, effort, focus, model, disproof="default"
 # Static time hints are honest ranges from real runs (a Standard pass on Opus over an 18-file
 # +2,450 PR took 3m 24s), not the run-review.sh timeouts — those are ceilings. Once an install
 # has ≥3 runs at a level, the run form shows that install's median instead (rs_rollup).
-EFFORT_TIME = {"quick": "2–5 min", "standard": "3–10 min", "deep": "8–25 min"}
+EFFORT_TIME = {"quick": "2 to 5 min", "standard": "3 to 10 min", "deep": "8 to 25 min"}
 EFFORT_SCOPE = {"quick": "diff only", "standard": "changed files", "deep": "whole-repo trace"}
 EFFORT = {
     "quick":    ("Quick",    f"diff only · {EFFORT_TIME['quick']}",
@@ -3573,7 +3573,7 @@ _RUNNING = {}                                   # login -> (computed_at, jobs)
 
 
 def status_phrase(s):
-    """The short phrase a running job shows in a list: "reviewing the diff", "queued".
+    """The short phrase a running job shows in a list: "drafting findings from the diff", "queued".
 
     The runners already write exactly that; only "queued" carries a trailing explanation.
     """
@@ -4556,10 +4556,10 @@ class Handler(BaseHTTPRequestHandler):
             s = up("status").read_text().strip().lower() if up("status").exists() else ""
             reff = eff or "standard"
             out["reviewing"] = {
-                "phases": ["Fetching the PR", "Checking out the branch", "Reviewing the diff",
+                "phases": ["Fetching the PR", "Checking out the branch", "Drafting findings from the diff",
                            "Checking the findings", "Writing the findings"],
                 "cur": (0 if "fetch" in s else 1 if ("checking out" in s or "queued" in s)
-                        else 2 if "reviewing" in s else 3 if "second pass" in s else 4),
+                        else 2 if ("drafting" in s or "reviewing" in s) else 3 if "second pass" in s else 4),
                 "queued": "queued" in s, "effortLabel": EFFORT[reff][0],
                 "effortHint": EFFORT[reff][2], "focus": foc}
             return out

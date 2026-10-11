@@ -250,7 +250,7 @@ export function Learnings({ me }: { me: Me }) {
             {dry.toLocaleString("en-US")} of these decisions were made while <code>DRY_RUN=1</code>.
           </b>{" "}
           Nothing was posted to GitHub, so they are in none of the keep rates here or on
-          Insights — but {me.brand} still reads them before every review, so they teach the
+          Insights, but {me.brand} still reads them before every review, so they teach the
           reviewer exactly as a live decision does. They are marked <b>dry run</b> below.
         </Banner>
       )}
@@ -347,7 +347,7 @@ export function Learnings({ me }: { me: Me }) {
                             kind="dry"
                             tone="graphite"
                             data-testid="dry-mark"
-                            title="Decided while DRY_RUN=1 — never posted to GitHub, and in no rate. It still teaches the reviewer."
+                            title="Decided while DRY_RUN=1: never posted to GitHub, and in no rate. It still teaches the reviewer."
                           >
                             Dry run
                           </StatusBadge>

@@ -234,7 +234,7 @@ export function CommandPalette({ me }: { me: Me }) {
           />
           <CommandList className="max-h-[min(56vh,460px)] p-1" data-testid="palette-list" aria-label="Results">
             <CommandEmpty className="px-4 py-6 text-sm text-muted-foreground">
-              No matches — paste a PR URL, owner/name#123, or a number to review it.
+              No matches: paste a PR URL, owner/name#123, or a number to review it.
             </CommandEmpty>
             {groups.map((g) => (
               <CommandGroup key={g.name} heading={g.name}>

@@ -32,9 +32,9 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 // Every submit handler in the app shares these: a rejection has to reach the reviewer as words,
 // never as a button stuck on "Starting…".
 
-export function errMessage(e: unknown, fallback = "That didn't work — try again."): string {
+export function errMessage(e: unknown, fallback = "That didn't work: try again."): string {
   if (e instanceof Unauthorized)
-    return "Your session has expired — reload the page and sign in again.";
+    return "Your session has expired: reload the page and sign in again.";
   if (e instanceof Error && e.message) return e.message;
   return fallback;
 }

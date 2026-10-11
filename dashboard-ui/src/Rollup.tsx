@@ -89,7 +89,7 @@ function BarChart({ points, color, partialLast }:
       <svg viewBox={`0 0 ${w} ${h}`} className="block h-[130px] w-full" preserveAspectRatio="none" role="img"
            aria-label="Reviews per day">
         <defs>
-          {/* Today's bar covers part of a day, so it is drawn hatched — otherwise every chart
+          {/* Today's bar covers part of a day, so it is drawn hatched: otherwise every chart
               ends on a dip that looks like a slowdown. */}
           <pattern id="rs-partial" width={5} height={5} patternUnits="userSpaceOnUse"
                    patternTransform="rotate(45)">
@@ -106,7 +106,7 @@ function BarChart({ points, color, partialLast }:
                   width={Math.max(1, bw * 0.7)} height={bh} rx={1.5}
                   fill={partial ? "url(#rs-partial)" : color}>
               <title>
-                {`${p.date}: ${p.reviews} review(s)${partial ? " — today so far (partial)" : ""}`}
+                {`${p.date}: ${p.reviews} review(s)${partial ? ": today so far (partial)" : ""}`}
               </title>
             </rect>
           );
@@ -359,23 +359,23 @@ export function Rollup() {
       </p>
       <ul className="text-muted-foreground [&_b]:text-foreground">
         <li>
-          <b>Kept as-is</b> — findings posted unchanged, as a share of every finding decided
+          <b>Kept as-is</b>: findings posted unchanged, as a share of every finding decided
           in the range ({num(period.decided)} decided; {allKeep.value}
           {allKeep.thin ? ", too few to rate," : ""} over the logged {num(allDecided)}).
         </li>
         <li>
-          <b>Worth posting</b> — kept or reworded, as a share of the {num(allDecided)} logged
+          <b>Worth posting</b>: kept or reworded, as a share of the {num(allDecided)} logged
           decisions: the share of findings worth posting at all. Kept as-is is stricter and reads lower.
         </li>
         <li>
-          <b>Critical-path keep</b> — kept as-is, over the {num(cpDecided)} findings on profiled
+          <b>Critical-path keep</b>: kept as-is, over the {num(cpDecided)} findings on profiled
           critical paths.
         </li>
         <li>
-          <b>Rules promoted</b> — repeated rejections accepted as team rules on the Skills page.
+          <b>Rules promoted</b>: repeated rejections accepted as team rules on the Skills page.
         </li>
         <li>
-          <b>Agreement</b> —{" "}
+          <b>Agreement</b>: {" "}
           {ag.pooled
             ? `pooled across every reviewed commit: confirmed and total findings are summed over ${num(ag.heads ?? 0)} commit(s), so a big PR counts for more than a small one.`
             : "the mean of per-PR rates across multi-reviewer PRs."}{" "}
@@ -384,7 +384,7 @@ export function Rollup() {
           mean broader coverage, not worse reviews.
         </li>
         <li>
-          <b>Cycle time</b> — median time {d.cycle.label ?? "from GitHub's review request to the post"}
+          <b>Cycle time</b>: median time {d.cycle.label ?? "from GitHub's review request to the post"}
           {d.cycle.n ? ` over ${num(d.cycle.n)} posted review(s)` : ""}; it includes however long
           the PR sat before anyone clicked Run, not just the run itself.
           {d.cycle.excluded
@@ -392,12 +392,12 @@ export function Rollup() {
             : ""}
         </li>
         <li>
-          <b>Too few to rate</b> — below {num(floor)} decided findings a percentage would swing
+          <b>Too few to rate</b>: below {num(floor)} decided findings a percentage would swing
           to 0.0% or 100.0% on the next one, so the sample is shown instead.
         </li>
         {dry > 0 && (
           <li>
-            <b>Dry run</b> — the {num(dry)} decision{dry === 1 ? "" : "s"} made while{" "}
+            <b>Dry run</b>: the {num(dry)} decision{dry === 1 ? "" : "s"} made while{" "}
             <code>DRY_RUN=1</code> {dry === 1 ? "is" : "are"} in no rate here because nothing was
             posted. Every review still weighs them; turn <code>DRY_RUN</code> off to start rating.
           </li>
@@ -427,7 +427,7 @@ export function Rollup() {
       {dry > 0 && (
         <Banner kind="info" icon="flask" data-testid="dry-banner">
           {num(dry)} decision{dry === 1 ? "" : "s"} made while <code>DRY_RUN=1</code> never reached
-          GitHub, so {dry === 1 ? "it is" : "they are"} outside every rate and chart here —{" "}
+          GitHub, so {dry === 1 ? "it is" : "they are"} outside every rate and chart here, {" "}
           <Link to="/learnings">Learnings</Link> lists them.
         </Banner>
       )}
@@ -550,7 +550,7 @@ export function Rollup() {
             <div className={NOTE}>
               {d.cycle.n
                 ? `Median over ${num(d.cycle.n)} posted review${d.cycle.n === 1 ? "" : "s"}.`
-                : "Needs requested-at data — captured from now on."}
+                : "Needs requested-at data: captured from now on."}
             </div>
           </Chart>
         </div>

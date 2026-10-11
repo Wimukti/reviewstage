@@ -36,7 +36,7 @@ const size = `+${fx.additions.toLocaleString("en-US")} −${fx.deletions.toLocal
         <p class="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" data-testid="example-meta"><span class="font-medium text-foreground">{fx.repo}</span><span>#{fx.pr}</span><span>·</span><span>by {fx.author}</span><span>·</span><span>{size}</span><span>·</span><span>{fx.language}</span></p>
         <Disclosure />
         <div class="flex flex-wrap gap-2">
-          <a class={button({}, "h-11")} href={withBase(tryUrl(fx.slug))} data-testid="example-try">Try it live — keep, drop and edit these yourself</a>
+          <a class={button({}, "h-11")} href={withBase(tryUrl(fx.slug))} data-testid="example-try">Try it live: keep, drop and edit these yourself</a>
         </div>
       </header>
 
@@ -79,7 +79,7 @@ const size = `+${fx.additions.toLocaleString("en-US")} −${fx.deletions.toLocal
                   <div class="rounded-lg bg-background px-4 py-3 text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2"><MdText text={f.comment.body} /></div>
                   {f.comment.suggestion && (
                     <div class="overflow-hidden rounded-lg bg-green/10">
-                      <div class="px-3 py-1.5 text-xs text-green">Suggested change — the author could apply this in one click on GitHub</div>
+                      <div class="px-3 py-1.5 text-xs text-green">Suggested change: the author could apply this in one click on GitHub</div>
                       <pre class="m-0 overflow-x-auto rounded-none bg-transparent p-3 text-xs"><code>{f.comment.suggestion}</code></pre>
                     </div>
                   )}
@@ -112,7 +112,7 @@ const size = `+${fx.additions.toLocaleString("en-US")} −${fx.deletions.toLocal
       </ol>
 
       <section class="grid min-w-0 gap-4 rounded-xl bg-card p-5 sm:p-6" aria-labelledby="posted-title" data-testid="example-review">
-        <h2 id="posted-title" class="m-0 text-base font-semibold">The review that posts — {posted.length} of {findings.length} comments, as one {rev.event === "REQUEST_CHANGES" ? "request for changes" : "comment review"}, under the reviewer's own name</h2>
+        <h2 id="posted-title" class="m-0 text-base font-semibold">The review that posts: {posted.length} of {findings.length} comments, as one {rev.event === "REQUEST_CHANGES" ? "request for changes" : "comment review"}, under the reviewer's own name</h2>
         <ol class="m-0 grid min-w-0 list-none gap-2 p-0">
           {posted.map((f) => (
             <li class="min-w-0 rounded-lg bg-background px-4 py-3" data-testid="example-posted">
@@ -127,7 +127,7 @@ const size = `+${fx.additions.toLocaleString("en-US")} −${fx.deletions.toLocal
 
       <section class="grid min-w-0 gap-4 rounded-xl bg-card p-5 sm:p-6" aria-labelledby="cta-title">
         <h2 id="cta-title" class="m-0 text-lg font-semibold">Run this on your PR</h2>
-        <p class="m-0 max-w-[60ch] text-sm text-muted-foreground">One command on your laptop. Your GitHub account, your Claude subscription, your call on every comment — nothing posts until you click.</p>
+        <p class="m-0 max-w-[60ch] text-sm text-muted-foreground">One command on your laptop. Your GitHub account, your Claude subscription, your call on every comment: nothing posts until you click.</p>
         <div class="flex flex-wrap items-center gap-3">
           <CommandPill class="w-fit" />
           <a class={button({ variant: "secondary" }, "h-11 bg-background hover:bg-accent")} href={withBase("/start/install/")}>Install guide</a>

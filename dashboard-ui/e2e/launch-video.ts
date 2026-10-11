@@ -360,7 +360,7 @@ async function recordDesk(browser: Browser) {
     await page.getByTestId("progress-panel").waitFor();
     const stage = (async () => {
       await sleep(2200); writeRun("checking out the branch");
-      await sleep(2600); writeRun("reviewing the diff");
+      await sleep(2600); writeRun("drafting findings from the diff");
       await sleep(3000); writeRun("done", PR4_REVIEW);
     })();
     await page.locator(".finding").first().waitFor({ timeout: 30_000 });

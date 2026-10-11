@@ -7,11 +7,11 @@ sidebar:
 
 Settings live in `.env` (Docker; mirrored into the data volume on every start) or `~/.reviewstage/.env` (from source; chmod 600). `config.example` lists the file's full shape, `.env.example` the Docker subset. The dashboard reads the file **once at startup**; restart after any change. The poller and the review runner re-read it on every run. The rows marked *process environment only* are not written to `.env` by either installer and are not read from it by the server.
 
-A handful of operational knobs can also be changed **live** from the dashboard's Settings page; those are stored in `settings.json` and take precedence over `.env` — see [Runtime settings](#runtime-settings) below.
+A handful of operational knobs can also be changed **live** from the dashboard's Settings page; those are stored in `settings.json` and take precedence over `.env`: see [Runtime settings](#runtime-settings) below.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `REPOS` | required (or `REPO`) | The GitHub repositories this instance reviews, as `owner/name`, comma-separated (quote the value if you separate with spaces — the file is sourced by bash). One install, many repositories. Each entry is validated as `owner/name` at startup. |
+| `REPOS` | required (or `REPO`) | The GitHub repositories this instance reviews, as `owner/name`, comma-separated (quote the value if you separate with spaces: the file is sourced by bash). One install, many repositories. Each entry is validated as `owner/name` at startup. |
 | `REPO` | empty | Single-entry alias for `REPOS`, kept for existing installs. If both are set the lists are unioned. |
 | `REPO_ALLOW_ORG` | empty | An org (or user) whose repositories are accepted on demand in addition to `REPOS`: the poller discovers them by searching each signed-in user's open review requests under that owner, and the base clone is made on the first review. The service token must be able to see the org. |
 | `GITHUB_PAT` | required | The service token: reads PR metadata and diffs, clones the repos, runs the poller's searches. Never posts; comments and approvals use each signed-in reviewer's own token. Fine-grained PAT scoped to the repos (or all repos under the owner when using `REPO_ALLOW_ORG`): Pull requests read/write, Contents read, Metadata read. |
@@ -21,8 +21,8 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `DRY_RUN` | `1` | `1`: the dashboard renders and the buttons work, but nothing is ever written to GitHub. Flip to `0` only after a dry run you have compared by hand, then restart. |
 | `SKIP_BOT_PRS` | `0` | `1` skips PRs opened by bots. Default off: AI-written PRs are where a skeptical review pays off most. Overridable in Settings. |
 | `RS_MAX_PR_AGE_DAYS` | `45` | The poller ignores review requests on PRs older than this many days. `0` disables the cutoff. Overridable in Settings. |
-| `MIN_FREE_MB` | `800` | Refuse to start a review below this much **available** RAM, in MB (read from `/proc/meminfo`; the check is skipped where that does not exist). The default means a 1 GB host cannot start a single review — give the machine 2 GB rather than lowering this. |
-| `MIN_FREE_DISK_MB` | `500` | Refuse to start a review, a QA guide or a profiling run below this much free disk on `ROOT`, in MB. A full volume used to look like a finished review with an empty result. The default is defined once, in `bin/lib-limits.sh`, and read by both the job scripts and `bin/doctor.sh` — a passing disk check in the doctor means the jobs will start. |
+| `MIN_FREE_MB` | `800` | Refuse to start a review below this much **available** RAM, in MB (read from `/proc/meminfo`; the check is skipped where that does not exist). The default means a 1 GB host cannot start a single review: give the machine 2 GB rather than lowering this. |
+| `MIN_FREE_DISK_MB` | `500` | Refuse to start a review, a QA guide or a profiling run below this much free disk on `ROOT`, in MB. A full volume used to look like a finished review with an empty result. The default is defined once, in `bin/lib-limits.sh`, and read by both the job scripts and `bin/doctor.sh`: a passing disk check in the doctor means the jobs will start. |
 | `RS_RETENTION_DAYS` | `30` | How long per-run `.log` files **and whole archived run snapshots** (`history/<ts>/`) are kept before the poller's once-a-day sweep deletes them. The newest five runs per PR per reviewer survive regardless of age. The sweep also truncates `watch.log` and `clone.log` once either passes 8 MiB, and never touches the live `review.json`, `posted.json` or `approved`. See [Retention](/operations/troubleshooting/#what-is-on-disk-and-what-is-safe-to-delete). |
 | `RS_QA_TIMEOUT` | derived from the diff | The QA-guide agent's wall-clock budget, as a `timeout` duration (`40m`). Unset, it is sized from the PR: `25m` at most 5 changed files and 200 additions, `40m` at most 40 files and 2,000 additions, `60m` above that. A run killed by the budget fails loudly rather than publishing a half-written guide. |
 | `RS_QA_SKILL` | `skills/pr-qa-guide/SKILL.md` next to `bin/` | Path to the QA-guide skill whose body is inlined into the QA prompt. The job refuses to start if the file is missing or empty. |
@@ -30,8 +30,8 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `RS_SEARCH_LIMIT` | `200` | Maximum rows the poller accepts from one repository's review-request search. A result that equals the limit is logged as possibly truncated. |
 | `RS_ORG_SEARCH_LIMIT` | `300` | The same ceiling for the org-wide search `REPO_ALLOW_ORG` turns on. |
 | `RS_MODEL` | empty | Overrides the model for a review started outside the dashboard, and for `bin/profile-repo.sh` (which defaults to `sonnet`). The dashboard sets the model per run from the run form, so this is a from-the-shell knob. |
-| `RS_HOST_PORT` | `8899` | Docker only. The host port Compose publishes the dashboard on, as `127.0.0.1:${RS_HOST_PORT}:8899`. Safe to set in `.env` — it is read only for the publish and is never passed into the container. |
-| `RS_PORT` | `8899` | The port the server binds. On Docker the container's port is **pinned to 8899** in `docker-compose.yml` because it is part of the image contract (`EXPOSE`, the healthcheck, the publish target), so an `RS_PORT` in `.env` does not move it — use `RS_HOST_PORT` to change where it is published. From source there is no second reader and `.env` is the right place. |
+| `RS_HOST_PORT` | `8899` | Docker only. The host port Compose publishes the dashboard on, as `127.0.0.1:${RS_HOST_PORT}:8899`. Safe to set in `.env`: it is read only for the publish and is never passed into the container. |
+| `RS_PORT` | `8899` | The port the server binds. On Docker the container's port is **pinned to 8899** in `docker-compose.yml` because it is part of the image contract (`EXPOSE`, the healthcheck, the publish target), so an `RS_PORT` in `.env` does not move it: use `RS_HOST_PORT` to change where it is published. From source there is no second reader and `.env` is the right place. |
 | `SLACK_WEBHOOK` | empty | A Slack incoming webhook for review-request cards and "review ready" pings. Send-only: a fresh message each time. Point it at a private channel; cards name PR titles and authors. |
 | `SLACK_BOT_TOKEN` | empty | With `SLACK_CHANNEL`, posts via `chat.postMessage` so the review-ready message threads under the review-request card. Takes precedence over the webhook. |
 | `SLACK_CHANNEL` | empty | Channel ID for the bot-token path. |
@@ -41,11 +41,11 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `GITHUB_WEBHOOK_SECRET` | empty | Enables `POST /webhooks/github`: every delivery's `X-Hub-Signature-256` is verified against it. Unset, the endpoint answers 503 and polling does all the work. See [GitHub webhooks](#github-webhooks). |
 | `NOTIFY_BACKENDS` | derived | Comma list of `slack`, `discord`, `generic`, `none`. Empty = whichever of the URLs above are set. Overridable in Settings. |
 | `GH_DEVICE_FLOW` | `1` | **Sign in with GitHub** via GitHub's device flow, on every install with nothing to register: the login page shows a short code to enter at github.com/login/device. `0` turns it off. See [GitHub sign-in](#github-sign-in). |
-| `RS_PERSONAL` | `0` (the desktop app writes `1`) | Personal mode, for one person on their own laptop: the server boots with no repository configured, the repositories chosen in the first-run wizard (`settings.json`) are unioned with `REPOS`, an in-process poller replaces the `pr-watch` service and runs every search with the signed-in user's own token, and the job scripts receive that token in their environment only — `GITHUB_PAT` is not needed. Team mode is untouched when it is unset. See [Install → Desktop app](/start/install/#desktop-app-one-person). |
-| `GH_DEVICE_CLIENT_ID` | `Ov23liHjtjxcPNwXC6Y5` | The OAuth App the device flow uses. The default is the project's shared **public** client ID (device flow has no secret and no callback; the token goes from GitHub straight to your server). Set your own app's ID to sign in under your identity — tick *Enable Device Flow* on it. |
+| `RS_PERSONAL` | `0` (the desktop app writes `1`) | Personal mode, for one person on their own laptop: the server boots with no repository configured, the repositories chosen in the first-run wizard (`settings.json`) are unioned with `REPOS`, an in-process poller replaces the `pr-watch` service and runs every search with the signed-in user's own token, and the job scripts receive that token in their environment only. `GITHUB_PAT` is not needed. Team mode is untouched when it is unset. See [Install → Desktop app](/start/install/#desktop-app-one-person). |
+| `GH_DEVICE_CLIENT_ID` | `Ov23liHjtjxcPNwXC6Y5` | The OAuth App the device flow uses. The default is the project's shared **public** client ID (device flow has no secret and no callback; the token goes from GitHub straight to your server). Set your own app's ID to sign in under your identity: tick *Enable Device Flow* on it. |
 | `GH_CLIENT_ID` | empty | Client ID of an OAuth App or GitHub App whose callback URL is `<PUBLIC_URL>/oauth/callback`. With it set, **Sign in with GitHub** goes through GitHub's redirect flow (one click, no code) instead of the device flow; empty, the device flow serves the same button. Restart after changing. See [GitHub sign-in](#github-sign-in). |
 | `GH_CLIENT_SECRET` | empty | The matching client secret. Both must be set for the redirect flow to be enabled. |
-| `GH_OAUTH_SCOPES` | empty | OAuth App: `repo` — the smallest classic scope that can comment on and approve a PR in a private repository (`public_repo` if every repo is public). OAuth Apps cannot request fine-grained permissions. GitHub App: leave empty; permissions come from the app. Tick *Expire user access tokens* on either and tokens last 8 hours, refreshed here automatically. |
+| `GH_OAUTH_SCOPES` | empty | OAuth App: `repo`: the smallest classic scope that can comment on and approve a PR in a private repository (`public_repo` if every repo is public). OAuth Apps cannot request fine-grained permissions. GitHub App: leave empty; permissions come from the app. Tick *Expire user access tokens* on either and tokens last 8 hours, refreshed here automatically. |
 | `RISK_PATHS` | empty | Comma-separated `label:pattern` rules; a rule matches when a changed file path equals the glob or contains the substring, and the review then shows a "Touches *label* paths" banner. Context only, never a gate. Example: `billing:src/billing/,auth:*/auth/*`. |
 | `RS_DISPROOF` | `default` (*process environment only*) | The second pass (disproof) mode for one `run-review.sh` run: `default` checks `blocker` and `should-fix` findings, `all` every finding, `off` none. The dashboard sets it per run from the **Check all findings** toggle on the run form; it is listed here for a direct invocation of the script. Not read from `.env`. |
 | `RISK_PATHS__<OWNER>__<NAME>` | unset | Per-repository override of `RISK_PATHS`. The key is the repo upper-cased with `/` → `__` and any other character outside `A-Z0-9_` → `_`: `acme/widgets-web` → `RISK_PATHS__ACME__WIDGETS_WEB`. When set (even empty) it replaces the global list for that repo. |
@@ -60,11 +60,11 @@ A handful of operational knobs can also be changed **live** from the dashboard's
 | `RS_SECRET` minimum length | 32 characters | Not a setting you can lower. The server prints a `FATAL` line and exits 1 when `RS_SECRET` is empty or shorter than 32 characters, because `HMAC(b"", …)` is a signature anyone can compute. `doctor` FAILs on the same rule. |
 | Container log size | 3 × 10 MB per service | Not an environment variable. `docker-compose.yml` caps the json-file driver for every service, so a container left running for months can no longer fill the disk with its own stdout. |
 | `CLAUDE_CODE_VERSION` | `latest` | Docker **build arg**, not a runtime setting. Pins `@anthropic-ai/claude-code` in the image: `docker compose build --build-arg CLAUDE_CODE_VERSION=1.2.3`. |
-| `POLL_INTERVAL` | `180` | Seconds between poller passes when Settings has not set `poll_interval_seconds`. Read from the process environment by `poller-loop.sh` (the Docker poller's loop, which does not source `.env`) and from `.env` by `pr-watch.sh`; the dashboard shows the `.env` value on the Settings page. Prefer the Settings page — it applies without a restart and governs both. |
+| `POLL_INTERVAL` | `180` | Seconds between poller passes when Settings has not set `poll_interval_seconds`. Read from the process environment by `poller-loop.sh` (the Docker poller's loop, which does not source `.env`) and from `.env` by `pr-watch.sh`; the dashboard shows the `.env` value on the Settings page. Prefer the Settings page: it applies without a restart and governs both. |
 | `RS_BIND` | `127.0.0.1` | Process environment only (the image sets `0.0.0.0`). Address the server binds. `0.0.0.0` inside a container; keep loopback with a reverse proxy in front otherwise. |
-| `RS_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` for any `http://` `PUBLIC_URL`, but the **server honours it only when `PUBLIC_URL` is unset or a genuine loopback host** — a real hostname served over plain http keeps `Secure` cookies and gets a log line saying so. |
+| `RS_COOKIE_SECURE` | `1` | Process environment only. `0` drops the `Secure` flag from the session cookie for a plain-http install. The Docker entrypoint sets it to `0` for any `http://` `PUBLIC_URL`, but the **server honours it only when `PUBLIC_URL` is unset or a genuine loopback host**: a real hostname served over plain http keeps `Secure` cookies and gets a log line saying so. |
 | `RS_TELEMETRY` | unset | `0` is the kill switch for product telemetry: nothing is ever sent and the consent switch in Settings → Privacy is locked off with that reason. Local counters still accrue (they never leave the box anyway). Any other value, or unset, leaves the decision to the admin setting, consent and the endpoint. See [Telemetry](/security/telemetry/). |
-| `RS_TELEMETRY_ENDPOINT` | **unset** | The `https://` address one daily summary of the telemetry counters is posted to when — and only when — the kill switch is off, the admin allows it and the install has consented. **No release sets this**, so in 1.0.x nothing is sent even with consent. Not `https://` = treated as unset. |
+| `RS_TELEMETRY_ENDPOINT` | **unset** | The `https://` address one daily summary of the telemetry counters is posted to when, and only when, the kill switch is off, the admin allows it and the install has consented. **No release sets this**, so in 1.0.x nothing is sent even with consent. Not `https://` = treated as unset. |
 | `ROOT` | `~/.reviewstage` | Process environment only. Base directory for `.env`, the base clones (`repos/<owner>__<name>`), worktrees, per-PR state (`state/<owner>__<name>/<pr>`), `users.json`, learnings and skills. Docker mounts the data volume here. |
 
 ## GitHub sign-in
@@ -75,7 +75,7 @@ Two kinds of app work:
 
 | | OAuth App | GitHub App |
 | --- | --- | --- |
-| Needs an org owner | No (unless the org restricts third-party apps) | Yes — installed on the org |
+| Needs an org owner | No (unless the org restricts third-party apps) | Yes: installed on the org |
 | `GH_OAUTH_SCOPES` | `repo` | empty |
 | Permissions | Classic scope: every repo the user can write to | *Pull requests: write*, *Contents: read* on the installed repos only |
 | Revocation | The user, at github.com/settings/applications | The user, or the org owner centrally |
@@ -85,12 +85,12 @@ Device tokens for phones and the CLI have no `.env` knob: they are per-user, cre
 
 ### One-click sign-in under your own OAuth App
 
-The login page's primary button uses GitHub's OAuth **device flow** with a shared public client ID (`Ov23liHjtjxcPNwXC6Y5`; public by design — device flow has no client secret and no callback URL). Click it, enter the short code at [github.com/login/device](https://github.com/login/device), authorise, and the page signs you in on its own. The token GitHub issues goes straight from GitHub to *your* server — the ReviewStage project never sees it — and is stored encrypted and used exactly like a pasted PAT, for the comments and approvals that person clicks, under their own name. Scope is `repo` because OAuth Apps cannot request fine-grained permissions ([Security → Signing in](/security/#signing-in)).
+The login page's primary button uses GitHub's OAuth **device flow** with a shared public client ID (`Ov23liHjtjxcPNwXC6Y5`; public by design, device flow has no client secret and no callback URL). Click it, enter the short code at [github.com/login/device](https://github.com/login/device), authorise, and the page signs you in on its own. The token GitHub issues goes straight from GitHub to *your* server, the ReviewStage project never sees it, and is stored encrypted and used exactly like a pasted PAT, for the comments and approvals that person clicks, under their own name. Scope is `repo` because OAuth Apps cannot request fine-grained permissions ([Security → Signing in](/security/#signing-in)).
 
 - `GH_DEVICE_FLOW=0` turns the device flow off (token sign-in only, or your own app below).
 - `GH_DEVICE_CLIENT_ID=<client id>` uses your own OAuth App for the device flow instead (tick *Enable Device Flow* on it); still no secret.
 
-*Use a personal access token instead* stays on the login page for air-gapped or policy-restricted organisations: *Create a fine-grained token* opens GitHub's token page — pick the repositories you review and grant **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read** (a classic token with the `repo` scope also works). Pick an expiry; 90 days is a good default.
+*Use a personal access token instead* stays on the login page for air-gapped or policy-restricted organisations: *Create a fine-grained token* opens GitHub's token page: pick the repositories you review and grant **Pull requests: Read and write**, **Contents: Read** and **Metadata: Read** (a classic token with the `repo` scope also works). Pick an expiry; 90 days is a good default.
 
 Teams that prefer GitHub's *Authorize* screen with a redirect back (no code to type), or want the consent screen to carry their own app's name, register an OAuth App and set `GH_CLIENT_ID` / `GH_CLIENT_SECRET`; when they are set the redirect flow takes priority over the device flow.
 
@@ -101,7 +101,7 @@ Teams that prefer GitHub's *Authorize* screen with a redirect back (no code to t
    | --- | --- |
    | Application name | `ReviewStage` (or your team's name for it) |
    | Homepage URL | your `PUBLIC_URL`, e.g. `https://reviews.example.com` |
-   | Authorization callback URL | **`<PUBLIC_URL>/oauth/callback`** — exact |
+   | Authorization callback URL | **`<PUBLIC_URL>/oauth/callback`**: exact |
    | Enable Device Flow | off |
 
 3. Register, then **Generate a new client secret** and copy both the *Client ID* and the secret (the secret is shown once).
@@ -123,7 +123,7 @@ A **GitHub App** works with the same two `.env` keys (leave `GH_OAUTH_SCOPES` em
 
 ## Runtime settings
 
-The dashboard's **Settings** page (Setup group; admin only — everyone else sees it read-only) writes `ROOT/settings.json`. The poller re-reads it every cycle and `pr-watch.sh` / `notify.sh` read it on every run, so a change applies within seconds and never needs a restart or an `.env` edit.
+The dashboard's **Settings** page (Setup group; admin only: everyone else sees it read-only) writes `ROOT/settings.json`. The poller re-reads it every cycle and `pr-watch.sh` / `notify.sh` read it on every run, so a change applies within seconds and never needs a restart or an `.env` edit.
 
 Precedence for every key it carries: **`settings.json` > `.env` > default**. Only keys present in the file override, so an install that never opened Settings behaves exactly as its `.env` says. Each row on the page shows where the current value comes from.
 
@@ -142,13 +142,13 @@ Precedence for every key it carries: **`settings.json` > `.env` > default**. Onl
 
 | Key | Type / range | Default | `.env` fallback | Effect |
 | --- | --- | --- | --- | --- |
-| `poller_enabled` | bool | `true` | — | `false` pauses `pr-watch.sh` (the poller service keeps running and logs that it is paused; a cron-driven `pr-watch.sh` exits at once). |
-| `poll_interval_seconds` | int, 60–3,600 | `180` | `POLL_INTERVAL` | Seconds between polls; the loop notices a new value within 15 s. |
+| `poller_enabled` | bool | `true` | none | `false` pauses `pr-watch.sh` (the poller service keeps running and logs that it is paused; a cron-driven `pr-watch.sh` exits at once). |
+| `poll_interval_seconds` | int, 60 to 3,600 | `180` | `POLL_INTERVAL` | Seconds between polls; the loop notices a new value within 15 s. |
 | `notify_backends` | list of `slack` / `discord` / `generic` / `none` | derived from configured URLs | `NOTIFY_BACKENDS` | Which backends `notify_card` posts to. `none` cannot be combined with others. |
-| `max_pr_age_days` | int, 0–3,650 | `45` | `RS_MAX_PR_AGE_DAYS` | Suppress cards for PRs opened more than this many days ago; `0` = no cutoff. |
+| `max_pr_age_days` | int, 0 to 3,650 | `45` | `RS_MAX_PR_AGE_DAYS` | Suppress cards for PRs opened more than this many days ago; `0` = no cutoff. |
 | `skip_bot_prs` | bool | `false` | `SKIP_BOT_PRS` | Skip bot-authored PRs entirely. |
-| `telemetry_enabled` | bool | `true` | — | The admin's server-wide telemetry switch (Settings → Privacy). `false` disables product telemetry for everyone on this server, whatever they consented to. `true` only *allows the question to be asked* — each install still needs consent and an endpoint before anything is sent. See [Telemetry](/security/telemetry/). |
-| `auto_profile` | object, repo slug (`owner__name`) → bool | `{}` | — | Re-profile that repository automatically when its file tree changes materially (checked by `pr-watch.sh` at most once a day; runs as the admin on the admin's connected Claude account, skipped with a log line otherwise). Set from the Skills page's **Repository profile** card, admin only. See [Repository profile](/guides/repo-profile/). |
+| `telemetry_enabled` | bool | `true` | none | The admin's server-wide telemetry switch (Settings → Privacy). `false` disables product telemetry for everyone on this server, whatever they consented to. `true` only *allows the question to be asked*, each install still needs consent and an endpoint before anything is sent. See [Telemetry](/security/telemetry/). |
+| `auto_profile` | object, repo slug (`owner__name`) → bool | `{}` | none | Re-profile that repository automatically when its file tree changes materially (checked by `pr-watch.sh` at most once a day; runs as the admin on the admin's connected Claude account, skipped with a log line otherwise). Set from the Skills page's **Repository profile** card, admin only. See [Repository profile](/guides/repo-profile/). |
 
 `DRY_RUN` is deliberately **not** a runtime setting: flipping GitHub writes on stays an `.env` edit plus a restart.
 
@@ -164,14 +164,14 @@ Polling finds a review request up to one interval late; a webhook delivers it wi
 
 What the receiver does with each event is listed in [Notifications → From GitHub webhooks](/guides/notifications/#from-github-webhooks). It ignores repositories outside `REPOS` / `REPO_ALLOW_ORG`, never starts a review, and responds `202` before doing any work. State lives in `ROOT/webhooks.json` (`last_event_at`, `last_event`, `last_ping`, `count`, `last_error`), which `/api/settings` exposes.
 
-Keep the poller on. When a webhook event arrived within `2 × poll_interval_seconds`, `pr-watch.sh` logs `webhooks active; poll is a safety net` and otherwise runs unchanged — it is the recovery path for a missed delivery. Once the light is green you can lower the interval or pause polling from the Poller card; nothing does that for you. GitHub must be able to reach the one path — `deploy/README.md` covers the Tailscale and Cloudflare Access cases.
+Keep the poller on. When a webhook event arrived within `2 × poll_interval_seconds`, `pr-watch.sh` logs `webhooks active; poll is a safety net` and otherwise runs unchanged, it is the recovery path for a missed delivery. Once the light is green you can lower the interval or pause polling from the Poller card; nothing does that for you. GitHub must be able to reach the one path: `deploy/README.md` covers the Tailscale and Cloudflare Access cases.
 
 ## Docker install details
 
 The short version is on [Install → Team](/start/install/#team-docker-compose). The rest of what the Docker install needs and offers:
 
-- **Memory.** A review refuses to start below `MIN_FREE_MB` — 800 MB *available*, not total — so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Inside a container the figure is read from the cgroup budget rather than the host's, so a small container on a large machine is measured honestly. Raise `MIN_FREE_MB` only if you know the host can take it.
-- **Disk.** About 3 GB for the image, plus room for one blobless clone per repository. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB` — 500 MB free on the data volume. The doctor reads the same floor, so a passing disk check means the jobs will start.
+- **Memory.** A review refuses to start below `MIN_FREE_MB`, 800 MB *available*, not total, so a 1 GB VPS cannot run a single review, and a 2 GB box should not be running much else. Inside a container the figure is read from the cgroup budget rather than the host's, so a small container on a large machine is measured honestly. Raise `MIN_FREE_MB` only if you know the host can take it.
+- **Disk.** About 3 GB for the image, plus room for one blobless clone per repository. A review, a QA guide or a profiling run refuses to start below `MIN_FREE_DISK_MB`: 500 MB free on the data volume. The doctor reads the same floor, so a passing disk check means the jobs will start.
 - **Network during the build.** The image fetches Debian packages, the GitHub CLI apt repository, Node 24 and the Claude Code CLI from npm. Behind a corporate proxy, export `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` and pass them to the build (`docker compose build --build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTPS_PROXY`), and configure the Docker daemon's own proxy so the base images can be pulled. At run time the container needs to reach `api.github.com`, `github.com` and Anthropic.
 - **Host port.** Set **`RS_HOST_PORT=9000`** in `.env` and `docker compose up -d`. That key is read only to interpolate the publish and is never passed into the container. `RS_PORT` is not the knob here: the container's listen port is pinned to 8899 in `docker-compose.yml`, because `EXPOSE`, the healthcheck and the publish target all name it.
 - **Profiles.** `docker compose --profile team up -d` adds the review-request poller and Slack/Discord cards ([Team mode](/guides/team-mode/)). `docker compose up -d demo` seeds sample runs so you can explore the UI before wiring anything.
@@ -179,9 +179,9 @@ The short version is on [Install → Team](/start/install/#team-docker-compose).
 
 ### The doctor
 
-`docker compose exec app doctor` (or `npx reviewstage --doctor` for the desktop app) prints one PASS / WARN / FAIL line per check: the `.env` it actually reads, the repositories in `REPOS`, whether the service token can see each of them (team installs only — a desktop install has no service token by design), whether `git`, `gh`, `claude`, `jq`, `flock`, `openssl`, `curl` and `python3` are on `PATH`, free disk and free RAM, the modes of `ROOT` and the files holding secrets, whether `/health` answers on the port the app actually chose, the installed skills, and who has signed in and connected Claude with when those tokens expire. It writes nothing and is safe to run at any time. `--json` gives the same list as one document, `--live` additionally tries the stored tokens against GitHub and Claude, `--strict` makes warnings exit 2; the full table of checks and exit codes is in [Troubleshooting](/operations/troubleshooting/#the-doctor).
+`docker compose exec app doctor` (or `npx reviewstage --doctor` for the desktop app) prints one PASS / WARN / FAIL line per check: the `.env` it actually reads, the repositories in `REPOS`, whether the service token can see each of them (team installs only: a desktop install has no service token by design), whether `git`, `gh`, `claude`, `jq`, `flock`, `openssl`, `curl` and `python3` are on `PATH`, free disk and free RAM, the modes of `ROOT` and the files holding secrets, whether `/health` answers on the port the app actually chose, the installed skills, and who has signed in and connected Claude with when those tokens expire. It writes nothing and is safe to run at any time. `--json` gives the same list as one document, `--live` additionally tries the stored tokens against GitHub and Claude, `--strict` makes warnings exit 2; the full table of checks and exit codes is in [Troubleshooting](/operations/troubleshooting/#the-doctor).
 
-Everything it checks lives in the container, so that is where it has to run. `bin/doctor.sh` from the repository gets there by itself: it spots the Compose project, re-execs inside the running `app` container and says so on its first line. If `app` is not up it warns that it is checking the host instead, which on a Docker install will FAIL no matter how healthy the install is — use `docker compose run --rm app doctor` then. It does not check Docker itself; `docker compose ps` is that check.
+Everything it checks lives in the container, so that is where it has to run. `bin/doctor.sh` from the repository gets there by itself: it spots the Compose project, re-execs inside the running `app` container and says so on its first line. If `app` is not up it warns that it is checking the host instead, which on a Docker install will FAIL no matter how healthy the install is: use `docker compose run --rm app doctor` then. It does not check Docker itself; `docker compose ps` is that check.
 
 ### Install the dashboard as an app
 
@@ -206,4 +206,4 @@ It is the same app as the tab; the sign-in and Claude connection carry over. Off
 
 ## Keeping this page honest
 
-Every key above was re-checked against the code for this release. If you add a setting, add the row in the same change — a key that is read by `bin/` and named nowhere here, or named here and read nowhere, is a bug in this page.
+Every key above was re-checked against the code for this release. If you add a setting, add the row in the same change: a key that is read by `bin/` and named nowhere here, or named here and read nowhere, is a bug in this page.

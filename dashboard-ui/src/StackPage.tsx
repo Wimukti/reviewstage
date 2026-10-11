@@ -86,7 +86,7 @@ export function StackPage() {
         keepOnPhone
         help={
           <>
-            These open PRs form a stack — each is based on the one above it. Tick the ones to review
+            These open PRs form a stack: each is based on the one above it. Tick the ones to review
             and start them from here; they queue one at a time on this box, skipping any already
             running.
           </>

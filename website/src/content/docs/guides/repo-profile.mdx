@@ -1,6 +1,6 @@
 ---
 title: Repository profile
-description: Profile a repository once so every review walks its critical paths — what is gathered, what the model sees, how to edit it, and what it costs.
+description: "Profile a repository once so every review walks its critical paths: what is gathered, what the model sees, how to edit it, and what it costs."
 sidebar:
   order: 3
 ---
@@ -8,7 +8,7 @@ sidebar:
 import Shot from "../../../components/marketing/Shot.astro";
 
 A **repository profile** is a short, checked list of the places in a codebase where a mistake
-hurts most — payments, auth, migrations, public contracts, the module everything imports — with
+hurts most, payments, auth, migrations, public contracts, the module everything imports, with
 the checks a reviewer must perform when a PR touches one. ReviewStage builds it once per
 repository and then feeds it into every review of that repository.
 
@@ -22,18 +22,18 @@ tests behind that path and to say what it checked.
 
 When a profile exists for the repository being reviewed, `run-review.sh`:
 
-- **Merges the profile's `risk_paths`** into the risk-area banners — the same `label:pattern`
+- **Merges the profile's `risk_paths`** into the risk-area banners: the same `label:pattern`
   rules as `RISK_PATHS`. An operator rule wins when both define a label.
 - **Appends a "Critical paths for this repository" section** to Standard and Deep prompts (never
-  Quick). It lists only the `critical_paths` whose glob matches a file in the PR's diff — at most
-  12, each `why` cut to 200 characters — with their `checks`, followed by the repository's
+  Quick). It lists only the `critical_paths` whose glob matches a file in the PR's diff, at most
+  12, each `why` cut to 200 characters, with their `checks`, followed by the repository's
   `review_rules` and `do_not_flag` list. The agent is instructed to explicitly verify each matched
   path is not broken and to set `critical_path` on any finding that concerns one.
 - **Surfaces it on the PR page.** A finding with `critical_path` carries a small *critical path*
   badge. Learnings rows keep the field, so **Insights** can show one more number: the kept rate
   of findings on critical paths.
 
-## What is gathered — no model involved
+## What is gathered: no model involved
 
 `bin/profile-repo.sh <owner/name>` first collects deterministic signals from the base clone with
 plain git, in well under a second on a small repository:
@@ -45,7 +45,7 @@ plain git, in well under a second on a small repository:
 | CODEOWNERS | The first 60 lines of `CODEOWNERS`, `.github/CODEOWNERS` or `docs/CODEOWNERS` |
 | CI configuration | Names of `.github/workflows/*`, `.circleci/config.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, … |
 | Churn | Top 40 files by commits touching them in the last 12 months (`git log --since=12.months --name-only`) |
-| In-degree | Top 40 files by how many other files import them, for the dominant language — relative imports for JS/TS, dotted modules for Python, class-name stems for PHP/Java/Kotlin/C#/Rust, best effort |
+| In-degree | Top 40 files by how many other files import them, for the dominant language: relative imports for JS/TS, dotted modules for Python, class-name stems for PHP/Java/Kotlin/C#/Rust, best effort |
 | Critical-looking directories | Any directory whose name is one of `auth`, `payment(s)`, `billing`, `migration(s)`, `schema`, `api`, `public`, `webhook(s)`, `crypto`, `permission(s)`, `admin`, `security`, `session`, … with its file count |
 
 `bin/profile-repo.sh <owner/name> --signals-only` prints exactly this JSON and exits without
@@ -57,7 +57,7 @@ months, TypeScript-dominant): the signals stage took **120 ms** inside Python an
 
 ## What the model sees
 
-One `claude -p` call — **Sonnet by default**, `RS_MODEL` overrides — receives the
+One `claude -p` call, **Sonnet by default**, `RS_MODEL` overrides, receives the
 `skills/repo-profile` skill, the signals JSON above, and a strict output contract:
 
 ```json
@@ -81,7 +81,7 @@ risk pattern containing `,` or `:` is discarded because those are the rule separ
 A glob is matched the way a person reads it: `*` stops at a `/` and only `**` spans
 directories. `fnmatch`'s `*` crosses separators, so `src/*.ts` used to match all four thousand
 files in a tree and every review was told the critical path was touched. A glob that matches
-more than half the repository is now rejected outright — that is "the repository", not a
+more than half the repository is now rejected outright: that is "the repository", not a
 critical path.
 
 Three limits on that sentence are worth knowing:
@@ -89,26 +89,26 @@ Three limits on that sentence are worth knowing:
 - **Validation needs a base clone, and says when it did not have one.** A profile *generated* by
   `bin/profile-repo.sh` always has one, so its globs are always checked. A profile **edited in
   the dashboard** is checked only when the base clone exists and `git ls-files` succeeds; when
-  it does not — a repository accepted through `REPO_ALLOW_ORG` that has never been reviewed, a
-  clone still in flight, a wedged checkout — the tree check is skipped and the profile records
-  `validated: false` with the reason. The card says *"Paths were not validated — there is no
+  it does not: a repository accepted through `REPO_ALLOW_ORG` that has never been reviewed, a
+  clone still in flight, a wedged checkout: the tree check is skipped and the profile records
+  `validated: false` with the reason. The card says *"Paths were not validated: there is no
   clone of this repository"* rather than presenting unchecked globs as ground truth. They are
   validated the next time the profile is saved with a clone present.
 - **Every list is bounded now.** `risk_paths`, `review_rules` and `do_not_flag` are capped at 20
-  entries each, `checks` at 8 per path, and `critical_paths` at **24** stored — a profile used
+  entries each, `checks` at 8 per path, and `critical_paths` at **24** stored: a profile used
   to accept fifty and quietly carry them. The cap is applied at validation, not silently at
   render time, and the number dropped is recorded. At most 12 *matched* paths reach any one
   review prompt, and that cap now keeps the paths the PR hits hardest and says how many it did
   not list, rather than truncating in the order the model happened to emit them.
 - **A summary-only profile is accepted.** The profile is refused only when the summary, the
   critical paths *and* the review rules are all empty. A reply that produced nothing but two
-  sentences of summary — every glob hallucinated and dropped — is saved, and the Skills page
+  sentences of summary, every glob hallucinated and dropped, is saved, and the Skills page
   shows the dropped globs. Check the dropped list after a run rather than assuming a saved
   profile is a useful one.
 
 An edit that **empties a section that was not empty** is a different case, and is refused unless
 you confirm it. The markdown round trip used to match headings by prefix, so renaming or
-deleting a heading yielded an empty list and saved cleanly — deleting the risk-paths section
+deleting a heading yielded an empty list and saved cleanly: deleting the risk-paths section
 made every risk rule disappear from future reviews with no warning. Headings are matched against
 the format's own set, unrecognised ones are reported back to you rather than swallowed, and the
 refusal carries per-section counts.
@@ -116,8 +116,8 @@ refusal carries per-section counts.
 ## Schema version, staleness and earlier versions
 
 `profile.json` carries a **`version`** field (currently `1`) and is shape-checked when it is
-read. A hand-edited or future-version file is surfaced as invalid — *"schema version … is newer
-than this build understands"* — instead of being read as a critical-paths section that is
+read. A hand-edited or future-version file is surfaced as invalid: *"schema version … is newer
+than this build understands"*: instead of being read as a critical-paths section that is
 silently empty for ever.
 
 **Staleness is computed, not just stored.** The head the profile was generated against used to
@@ -125,12 +125,12 @@ be recorded, returned, typed, and never compared to anything. The card now repor
 
 - whether the profile is stale at all;
 - **how many commits behind** the repository's current head it is;
-- **how many of its critical paths no longer match** any tracked file — which marks a profile
+- **how many of its critical paths no longer match** any tracked file: which marks a profile
   stale even when the head has not moved.
 
 **Earlier versions are readable and restorable.** Each save renames the previous `profile.json`
 to `profile.<ts>.json` beside it; the card counts them and they can be opened and restored.
-Nothing prunes them, so the count only grows — one small JSON file per edit.
+Nothing prunes them, so the count only grows: one small JSON file per edit.
 
 ### Cost and duration
 
@@ -147,7 +147,7 @@ Nothing prunes them, so the count only grows — one small JSON file per edit.
 ```
 $ROOT/profiles/<owner>__<name>/
   profile.json          the machine copy reviews read (schema version + generation metadata)
-  profile.md            the human copy — edited from the dashboard, parsed back into JSON
+  profile.md            the human copy: edited from the dashboard, parsed back into JSON
   profile.<ts>.json     every earlier version, kept when a new one is written
   signals.json          exactly what the model was shown
   status · pid · .lock · usage.json · agent.log · run.log
@@ -158,23 +158,23 @@ $ROOT/profiles/<owner>__<name>/
 The **Skills** page has a **Repository profile** section with one card per configured
 repository:
 
-- **Status** — never run · running, with the current phase (fetching the repository → gathering
+- **Status**: never run · running, with the current phase (fetching the repository → gathering
   signals → asking the model → validating paths) and a **Stop** button · or the last run's date,
   model and token count, and who edited it last, plus the staleness read above.
 - **Degraded signals are named.** A `git` call that times out or is OOM-killed no longer takes
   the run down or, worse, implies the repository has no churn: `_git` never raises, the churn
   scan streams a year of history through a counter instead of buffering it, and a `degraded`
   list travels with the signals so the card and the prompt can say which signal was skipped.
-- **Profile this repo** / **Re-profile this repo** — runs on **your** connected Claude account,
+- **Profile this repo** / **Re-profile this repo**: runs on **your** connected Claude account,
   exactly like a review; the button is disabled until you connect one in Integrations.
-- **Counts** — critical paths · risk paths · review rules · do-not-flag entries, and how many
+- **Counts**: critical paths · risk paths · review rules · do-not-flag entries, and how many
   earlier versions exist.
-- **The editor** — the same Preview / Edit markdown editor used for findings. Save parses the
+- **The editor**: the same Preview / Edit markdown editor used for findings. Save parses the
   markdown back into the profile (headings `## Summary`, `## Critical paths` with one `### glob`
   per path, `Why:` and `- check:` lines, `## Risk paths` as `- label: pattern`, `## Review rules`,
   `## Do not flag`), validates every path against the base clone's tree, keeps the previous
   version, and records who edited it. The next review of that repository picks it up.
-- **Re-profile automatically when the file tree changes materially** — admin only; see below.
+- **Re-profile automatically when the file tree changes materially**: admin only; see below.
 
 The API behind it: `GET /api/profile?repo=`, `POST /api/profile/run`, `POST /api/profile/stop`,
 `PUT /api/profile` (body `md` or `json` to save, or `auto_profile` to flip the checkbox). Run,
@@ -191,13 +191,13 @@ it **as the admin, on the admin's connected Claude account**; if the admin has n
 `auto-profile skipped … admin has no connected Claude account` and does nothing. The poller never
 handles a Claude token.
 
-The setting is stored in `settings.json` as `"auto_profile": {"<owner>__<name>": true}` — see
+The setting is stored in `settings.json` as `"auto_profile": {"<owner>__<name>": true}`: see
 [Configuration](/operations/configuration/#runtime-settings).
 
 ## Testing it without a model
 
-- `bin/profile-repo.sh <owner/name> --signals-only` — the deterministic stage, JSON on stdout.
-- `python3 -m unittest discover -s bin -p 'test_*.py'` — `bin/test_rs_profile.py` covers glob
+- `bin/profile-repo.sh <owner/name> --signals-only`: the deterministic stage, JSON on stdout.
+- `python3 -m unittest discover -s bin -p 'test_*.py'`: `bin/test_rs_profile.py` covers glob
   validation (hallucinated globs dropped, directory globs match files beneath), risk-rule
   merging, prompt assembly (cap of 12, `why` truncation, Quick gets nothing), the markdown
   round-trip, versioning, and the signals stage on a throwaway git repository with a canned

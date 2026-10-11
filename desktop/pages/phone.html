@@ -85,7 +85,7 @@
         el.hidden = false;
         if (p.pair) {
           const [t1, who, t2, when] = S.pairParts(p.pair.login, S.until(p.pair.exp));
-          el.replaceChildren(t1, Object.assign(document.createElement("b"), { textContent: who }), t2, Object.assign(document.createElement("b"), { textContent: when }), " — reopen this window for a new one.");
+          el.replaceChildren(t1, Object.assign(document.createElement("b"), { textContent: who }), t2, Object.assign(document.createElement("b"), { textContent: when }), ": reopen this window for a new one.");
         } else {
           el.textContent = S.signedOut;
         }

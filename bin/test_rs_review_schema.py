@@ -211,6 +211,21 @@ class PlainLanguageLinter(unittest.TestCase):
         self.assertIn("finding 0: what_to_check: plain: sentence has", w[0])
         self.assertIn(f"(limit {S.INSTRUCTION_WORDS})", w[0])
 
+    def test_an_em_dash_becomes_a_comma_and_warns(self):
+        rev, w = S.normalize({"comments": [{"title": "The loop never resets \u2014 attempts stay high",
+                                            "impact": "Slow pages\u2013every product waits"}]})
+        c = rev["comments"][0]
+        self.assertEqual(c["title"], "The loop never resets, attempts stay high")
+        self.assertEqual(c["impact"], "Slow pages, every product waits")
+        self.assertEqual(sorted(x.split(": plain: ")[1][:4] for x in w), ["dash", "dash"])
+        self.assertIn("finding 0: title: plain: dash used as punctuation (1 replaced with a comma)", w)
+        self.assertNotIn("\u2014", json.dumps(rev))
+
+    def test_a_spaced_hyphen_only_warns(self):
+        rev, w = S.normalize({"comments": [{"title": "Retry - never resets"}]})
+        self.assertEqual(rev["comments"][0]["title"], "Retry - never resets")
+        self.assertEqual(w, ["finding 0: title: plain: spaced hyphen used as a dash"])
+
     def test_a_description_gets_twenty_five_words_and_counts_per_sentence(self):
         twenty_two = " ".join(["word"] * 22) + "."
         rev, w = S.normalize({"comments": [{"title": twenty_two + " Short one."}]})

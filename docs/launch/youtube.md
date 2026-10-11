@@ -1,7 +1,7 @@
 # YouTube upload
 
 **File:** `~/Desktop/reviewstage-launch/reviewstage-launch-final.mp4` (H.264, 67.7 s, voice at
-−14 LUFS). Captions are burned in, so skip the subtitle upload — the `captions.srt` in the same
+−14 LUFS). Captions are burned in, so skip the subtitle upload: the `captions.srt` in the same
 folder was timed to the 90-second cut and no longer matches this edit.
 
 **Visibility:** Public (Unlisted works too, but Public lets YouTube search find it).
@@ -10,7 +10,7 @@ folder was timed to the 90-second cut and no longer matches this edit.
 
 **Title** (≤ 70 chars shows in full):
 
-ReviewStage — Claude drafts your PR review, you post it as yourself
+ReviewStage: Claude drafts your PR review, you post it as yourself
 
 **Description:**
 
@@ -28,9 +28,9 @@ Code (MIT): https://github.com/Wimukti/reviewstage
 • Your phone joins by scanning a QR code; push notifications for review requests
 • Swipe right to keep a finding, left to drop it, then Post
 • It learns what your team drops and proposes rules you approve
-• The review step has no GitHub write path — enforced, not promised
+• The review step has no GitHub write path: enforced, not promised
 
 **Tags:** code review, pull request, Claude, Claude Code, AI code review, GitHub, developer tools, open source
 
-**Uploaded 10/06/26:** https://youtu.be/yYMtQK-sVyg — wired into `show-hn.md`,
+**Uploaded 10/06/26:** https://youtu.be/yYMtQK-sVyg: wired into `show-hn.md`,
 `reddit-selfhosted.md`, the README and `DEMO_YOUTUBE_ID` in `website/src/content/site-links.ts`.

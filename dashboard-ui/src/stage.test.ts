@@ -80,5 +80,5 @@ test("StageQueueCard and StageProgress render from the fixture", () => {
   const p = renderToStaticMarkup(createElement(StageProgress, { cur: 2 }));
   assert.equal(count(p, 'data-state="done"'), 2);
   assert.equal(count(p, 'data-state="now"'), 1);
-  assert.match(p, /Reviewing the diff/);
+  assert.match(p, /Drafting findings from the diff/);
 });

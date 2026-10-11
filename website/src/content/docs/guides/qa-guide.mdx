@@ -15,11 +15,11 @@ The **QA guides** page builds a manual test guide for a PR: what to set up, what
 
 Enter a PR number on the QA page and click **Generate**. It needs your Claude account connected: the guide runs on your subscription, in its own worktree, and never writes to GitHub. Guides share the server's one-heavy-job-at-a-time lock with reviews, so it may show *waiting for another job to finish first*. You can **Stop** it.
 
-**A QA build is a full agent run and now says what it cost.** The model, the tokens and the duration are captured from the run and shown beside the guide, exactly as they are for a review — a guide that quietly burned an hour of someone's subscription used to leave no trace anywhere. The usage line is written before the completeness checks below, so a run that timed out still accounts for what it spent.
+**A QA build is a full agent run and now says what it cost.** The model, the tokens and the duration are captured from the run and shown beside the guide, exactly as they are for a review: a guide that quietly burned an hour of someone's subscription used to leave no trace anywhere. The usage line is written before the completeness checks below, so a run that timed out still accounts for what it spent.
 
-**The budget is sized from the diff.** At most 5 changed files and 200 additions gets 25 minutes; at most 40 files and 2,000 additions gets 40; anything larger gets 60. `RS_QA_TIMEOUT` overrides it. A guide is heavier than a Deep review — it reads the diff, the review history *and* the surrounding code, then writes a long document — and the old hardcoded 25 minutes truncated large PRs.
+**The budget is sized from the diff.** At most 5 changed files and 200 additions gets 25 minutes; at most 40 files and 2,000 additions gets 40; anything larger gets 60. `RS_QA_TIMEOUT` overrides it. A guide is heavier than a Deep review, it reads the diff, the review history *and* the surrounding code, then writes a long document, and the old hardcoded 25 minutes truncated large PRs.
 
-**A truncated guide is never published.** The agent's exit code is checked, a timeout fails with its own message, and the output must carry the end-of-guide marker, all three tier sections, at least one test case and the known-non-defects section before it is copied out. It used to be enough for the file to be non-empty, so a run killed at 60% arrived as *"Guide ready — hand it to QA"*. A failed build also sends the same notification card a failed review does, and its agent log is readable from the page.
+**A truncated guide is never published.** The agent's exit code is checked, a timeout fails with its own message, and the output must carry the end-of-guide marker, all three tier sections, at least one test case and the known-non-defects section before it is copied out. It used to be enough for the file to be non-empty, so a run killed at 60% arrived as *"Guide ready: hand it to QA"*. A failed build also sends the same notification card a failed review does, and its agent log is readable from the page.
 
 ## What it reads
 
@@ -37,27 +37,27 @@ The agent has no network and no `gh`, so everything in that list that lives on G
 A guide is assembled from these parts, in this order. Two of them appear only when the change
 calls for them:
 
-1. **Header** — the PR number, any ticket IDs, the scope or pilot audience, and a
+1. **Header**: the PR number, any ticket IDs, the scope or pilot audience, and a
    plain-language line saying what the change is.
-2. **Domain primer** — *only when understanding the feature needs a concept the tester does not
+2. **Domain primer**, *only when understanding the feature needs a concept the tester does not
    have* (a cut-off rule, a billing cycle, an inventory state machine), with a worked example.
    Most PRs do not get one.
-3. **What changes on screen** — stated plainly, including the case where nothing visibly
+3. **What changes on screen**: stated plainly, including the case where nothing visibly
    changes and the real evidence is a log line, an export or a database row.
-4. **Before you start** — flags, settings, test data, accounts, viewports; exact names, in
+4. **Before you start**: flags, settings, test data, accounts, viewports; exact names, in
    `code`.
-5. **How to run it** — *only when the change is not triggered by ordinary clicking*: a scheduled
+5. **How to run it**, *only when the change is not triggered by ordinary clicking*: a scheduled
    job, a queue worker, a webhook, an import.
-6. **P0 · Test these first** — failures that defeat the purpose of the change or silently
+6. **P0 · Test these first**: failures that defeat the purpose of the change or silently
    corrupt what the user sees, plus anything the PR's review history marked fragile.
-7. **P1 · Does the feature work** — the advertised behaviours.
-8. **P2 · Check nothing else broke** — each gate independently off, un-gated users see no
+7. **P1 · Does the feature work**: the advertised behaviours.
+8. **P2 · Check nothing else broke**: each gate independently off, un-gated users see no
    change, shared components unchanged elsewhere.
-9. **Surface matrix** — a table of every surface the change could plausibly appear on, including
+9. **Surface matrix**: a table of every surface the change could plausibly appear on, including
    the deliberate *must not appear* rows.
-10. **Known — please don't file these** — intentional limitations and out-of-scope surfaces,
+10. **Known, please don't file these**, intentional limitations and out-of-scope surfaces,
     sourced from the PR conversation.
-11. **Footer** — the one failure worth escalating immediately, and the branch head SHA the guide
+11. **Footer**: the one failure worth escalating immediately, and the branch head SHA the guide
     was checked against.
 
 Cases are numbered continuously across P0, P1 and P2 (1…N) so a bug report can say "test 7".
@@ -65,15 +65,15 @@ Every case is a `- [ ]` checkbox item carrying the data it needs, ordered steps,
 pass and fail.
 
 :::note[What the prompt guarantees, and what it leaves to the skill]
-The skill's body is now **inlined into the prompt** — it used to be named only, while
+The skill's body is now **inlined into the prompt**: it used to be named only, while
 `--allowedTools` did not include `Skill`, so the agent never saw a word of the method and
 improvised. On top of the method, `bin/run-qa.sh` states an explicit output contract naming
 items **1, 4, 5, 6, 7, 8, 9, 10 and 11**, including the continuous numbering across tiers and
 the branch-head line in the footer.
 
 What the contract does **not** name is the **domain primer** and **What changes on screen**
-(items 2 and 3). Both are in the skill and both are conditional there — most PRs do not get a
-primer — so treat them as the skill's judgement rather than a guarantee. Everything else is
+(items 2 and 3). Both are in the skill and both are conditional there, most PRs do not get a
+primer, so treat them as the skill's judgement rather than a guarantee. Everything else is
 checked before a guide is published: the three tier sections, at least one test case, the
 known-non-defects section and the end marker.
 :::

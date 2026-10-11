@@ -70,7 +70,7 @@ function useRunningLink() {
   const kind = one?.kind === "qa" ? "QA guide" : "review";
   return {
     to: one ? one.href : "/?tab=all&running=1",
-    title: one ? `${one.repo} #${one.num} — ${one.status}` : "Jump to what's running",
+    title: one ? `${one.repo} #${one.num}: ${one.status}` : "Jump to what's running",
     text: one ? `1 ${kind} running` : `${jobs.length} jobs running`,
   };
 }
@@ -111,7 +111,7 @@ export function LiveBadge({ me }: { me: Me }) {
   return (
     <StatusBadge
       kind={me.dry_run ? "dry" : "live"}
-      title={me.dry_run ? "Dry run — nothing posts to GitHub" : "Live"}
+      title={me.dry_run ? "Dry run: nothing posts to GitHub" : "Live"}
       className="w-fit shrink-0"
     />
   );

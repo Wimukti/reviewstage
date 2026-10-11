@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rs_learn  # noqa: E402
 import rs_rollup as R  # noqa: E402
 
-STATIC = {"quick": "2–5 min", "standard": "3–10 min", "deep": "8–25 min"}
+STATIC = {"quick": "2 to 5 min", "standard": "3 to 10 min", "deep": "8 to 25 min"}
 
 
 def run_dir(state, pr, login, effort, ms, hist=None):
@@ -54,7 +54,7 @@ class Estimates(unittest.TestCase):
         run_dir(self.state, 1, "ann", "standard", 204_264)
         run_dir(self.state, 2, "ann", "standard", 180_000)
         est = R.duration_estimates(self.state, STATIC)
-        self.assertEqual(est["standard"], {"label": "3–10 min", "source": "static", "samples": 2})
+        self.assertEqual(est["standard"], {"label": "3 to 10 min", "source": "static", "samples": 2})
 
     def test_median_once_three_samples(self):
         run_dir(self.state, 1, "ann", "standard", 204_264)      # 3m24s

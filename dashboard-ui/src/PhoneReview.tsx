@@ -86,11 +86,11 @@ export function PhonePrHeader({ data, postedNow }: { data: PrData; postedNow: bo
   const notice =
     rev && !rev.posted && !postedNow
       ? data.stale
-        ? "New commits since this review — the findings may be out of date. Re-run from ⋯ before posting."
+        ? "New commits since this review: the findings may be out of date. Re-run from ⋯ before posting."
         : headMoved
           ? "The branch has moved since this review ran. Approving needs a confirmation."
           : data.dryRun
-            ? "Dry run — posting records your picks, but nothing reaches GitHub."
+            ? "Dry run: posting records your picks, but nothing reaches GitHub."
             : ""
       : "";
   return (
@@ -392,7 +392,7 @@ export function PhoneFindingCard({
           className="flex flex-col gap-1 px-4 pb-3 pl-[18px] text-left"
         >
           {/* §1.3 order: title · where (+ cited lines) · what to check · expected/actual · why ·
-              evidence — all in the closed card, so the swipe decision needs no expanding. */}
+              evidence, all in the closed card, so the swipe decision needs no expanding. */}
           <span className={cn("text-base font-medium leading-snug text-foreground", !open && "line-clamp-3")} data-testid="finding-title">{title}</span>
           <span className="flex min-w-0 max-w-full items-center gap-1 text-[13px] text-muted-foreground" data-testid="finding-path">
             <span className="font-mono text-[11px] font-medium uppercase tracking-wide">Where</span>
@@ -613,7 +613,7 @@ export function PostSheet({
           </SheetTitle>
           <SheetDescription className="text-[15px]">
             {requestChanges
-              ? "As a review that requests changes — it can block the PR until the author updates it."
+              ? "As a review that requests changes: it can block the PR until the author updates it."
               : "As one review with plain comments. Nothing blocks the merge."}
           </SheetDescription>
         </SheetHeader>
@@ -625,7 +625,7 @@ export function PostSheet({
           </div>
           {overCap && (
             <p className="m-0 text-[14px] text-foreground" data-testid="over-cap">
-              Over the {maxPerPost} per-post limit — GitHub takes a review all-or-nothing. Keep fewer.
+              Over the {maxPerPost} per-post limit. GitHub takes a review all-or-nothing. Keep fewer.
             </p>
           )}
           <Label className="flex min-h-[52px] cursor-pointer items-center gap-3 rounded-xl bg-card px-4 text-[15px] font-normal">
@@ -639,7 +639,7 @@ export function PostSheet({
           </Label>
           {dryRun && (
             <p className="m-0 text-[14px] text-muted-foreground" data-testid="post-dry">
-              Dry run — this records your picks; nothing reaches GitHub.
+              Dry run: this records your picks; nothing reaches GitHub.
             </p>
           )}
           {error}
@@ -689,7 +689,7 @@ export function PostSuccess({ data, count, login, dryRun }: { data: PrData; coun
         {dryRun ? "Recorded" : "Posted"} {count} comment{count === 1 ? "" : "s"}
       </h2>
       <p className="m-0 max-w-[32ch] text-base text-muted-foreground">
-        {dryRun ? `Dry run as ${login} — nothing reached GitHub.` : `As ${login} on #${data.pr}.`}
+        {dryRun ? `Dry run as ${login}, nothing reached GitHub.` : `As ${login} on #${data.pr}.`}
       </p>
       <div className="mt-6 flex w-full flex-col gap-2">
         {next && (

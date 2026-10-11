@@ -33,7 +33,7 @@ test("the schema table names every shipped event class and the never-list", () =
   const html = renderToStaticMarkup(createElement(TelemetrySchema, { endpointSet: false }));
   for (const ev of SHIPPED) assert.match(html, new RegExp(ev), ev);
   for (const n of NEVER) assert.ok(html.includes(n.replace(/'/g, "&#x27;")), n);
-  assert.match(html, /No endpoint is configured on this server — nothing is sent either way/);
+  assert.match(html, /No endpoint is configured on this server: nothing is sent either way/);
   assert.equal(EVENT_ROWS.length, 12);
   const withEndpoint = renderToStaticMarkup(createElement(TelemetrySchema, { endpointSet: true }));
   assert.match(withEndpoint, /An endpoint is configured on this server/);
@@ -47,7 +47,7 @@ test("the consent card: two equal choices, Keep it local first and focused, the 
   assert.ok(local > 0 && share > local, "Keep it local is the first button");
   assert.match(html, /autofocus=""[^>]*data-testid="telemetry-keep-local"|data-testid="telemetry-keep-local"[^>]*autofocus/i);
   assert.match(html, />Keep it local</);
-  assert.match(html, />Share anonymous product events</);
+  assert.match(html, />Share usage counts</);
   // Both are the same variant: neither is the primary call to action.
   const variants = [...html.matchAll(/data-variant="([a-z]+)"[^>]*data-testid="telemetry-(keep-local|share)"/g)].map((m) => m[1]);
   assert.deepEqual(variants, ["outline", "outline"]);

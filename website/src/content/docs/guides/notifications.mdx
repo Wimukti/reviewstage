@@ -1,6 +1,6 @@
 ---
 title: Notifications
-description: Slack, Discord, a generic signed webhook, push to your phone, or none — which events fire and how to verify them.
+description: "Slack, Discord, a generic signed webhook, push to your phone, or none: which events fire and how to verify them."
 sidebar:
   order: 4
 ---
@@ -15,15 +15,15 @@ One notifier serves every backend: the scripts call `notify_card <kind> <payload
 
 ## Which backends fire
 
-`NOTIFY_BACKENDS` in `.env` is a comma list of `slack`, `discord`, `generic`, `none`. Leave it empty and the set is **derived from whichever URLs are configured** — an existing Slack-only install changes nothing. The admin can also switch backends live on the dashboard's **Settings** page (stored in `settings.json`, which wins over `.env`; see [Configuration → Runtime settings](/operations/configuration/#runtime-settings)).
+`NOTIFY_BACKENDS` in `.env` is a comma list of `slack`, `discord`, `generic`, `none`. Leave it empty and the set is **derived from whichever URLs are configured**: an existing Slack-only install changes nothing. The admin can also switch backends live on the dashboard's **Settings** page (stored in `settings.json`, which wins over `.env`; see [Configuration → Runtime settings](/operations/configuration/#runtime-settings)).
 
-A backend that fails — a dead URL, a 4xx from the provider — logs a `WARN` line in the poller or review log and nothing else. It never aborts the review that triggered it.
+A backend that fails, a dead URL, a 4xx from the provider, logs a `WARN` line in the poller or review log and nothing else. It never aborts the review that triggered it.
 
 ## Events
 
 | Kind | Fires when | Mentions |
 | --- | --- | --- |
-| `review_requested` | A new review request for a signed-in user — from a GitHub webhook the moment it happens, or from the poller on its next pass (once per PR per person; new commits never re-ping). Suppressed for PRs older than *max PR age* and, if enabled, for bot-authored PRs. | The requested reviewer |
+| `review_requested` | A new review request for a signed-in user, from a GitHub webhook the moment it happens, or from the poller on its next pass (once per PR per person; new commits never re-ping). Suppressed for PRs older than *max PR age* and, if enabled, for bot-authored PRs. | The requested reviewer |
 | `review_ready` | A review run you started finished; the card carries the verdict, the finding count and the agent's summary. Nothing has been posted to GitHub yet. | Only the person who started the run |
 | `review_stopped` | A run was force-stopped from the dashboard (with confirmation that the agent is gone), or failed to produce a review. | The person who stopped / started it |
 | `qa_ready` | A QA guide finished building. | The person who asked for it |
@@ -34,10 +34,10 @@ The colour bar and the header of a `review_ready` card come from the **verdict**
 
 | Verdict | When | Colour | Header |
 | --- | --- | --- | --- |
-| `blocked` | at least one `blocker` finding, or the agent asked for changes | red | 🔴 Not LGTM — 1 blocker · 3 findings |
-| `attention` | no blockers, at least one `should-fix` | amber | 🟡 Needs attention — 2 to fix · 2 findings |
-| `minor` | only nits / questions | blue | 🔵 Minor notes — 1 · 1 finding |
-| `lgtm` | no findings at all | green | 🟢 LGTM — nothing to fix · 0 findings |
+| `blocked` | at least one `blocker` finding, or the agent asked for changes | red | 🔴 Not LGTM: 1 blocker · 3 findings |
+| `attention` | no blockers, at least one `should-fix` | amber | 🟡 Needs attention: 2 to fix · 2 findings |
+| `minor` | only nits / questions | blue | 🔵 Minor notes: 1 · 1 finding |
+| `lgtm` | no findings at all | green | 🟢 LGTM: nothing to fix · 0 findings |
 
 `review_requested` and `qa_ready` cards are neutral (brand colour); `review_stopped` is red when the run failed and grey when someone stopped it. Slack paints the colour as the attachment bar, Discord as the embed's left border.
 
@@ -49,7 +49,7 @@ With `GITHUB_WEBHOOK_SECRET` set and a hook on the repository ([Configuration �
 | --- | --- | --- |
 | `pull_request` · `review_requested` | The PR joins the requested reviewer's *To review*; a **team** request is expanded and only signed-in members are added. | `review_requested`, unless that person was already told (same `seen` key as the poller) |
 | `pull_request` · `review_request_removed` | That reviewer's row disappears. | none |
-| `pull_request` · `synchronize` | The row's head SHA is refreshed, so an existing review shows the *stale* banner. | none — a push never re-pings |
+| `pull_request` · `synchronize` | The row's head SHA is refreshed, so an existing review shows the *stale* banner. | none, a push never re-pings |
 | `pull_request` · `closed` (or merged) | The PR leaves the queue; a review that was never posted is archived. Posted / approved rows stay as history. | none |
 | `pull_request_review` · `submitted` | A review the signed-in person submitted on GitHub itself moves their row to *Posted* (or *Approved*). | none |
 
@@ -102,7 +102,7 @@ For Microsoft Teams (via a workflow), Zapier, n8n, Make, or your own service. Ev
 | Header | Value |
 | --- | --- |
 | `X-ReviewStage-Event` | the `kind` |
-| `X-ReviewStage-Signature` | `sha256=<hex HMAC-SHA256 of the raw body, keyed with WEBHOOK_SECRET>` — only when the secret is set |
+| `X-ReviewStage-Signature` | `sha256=<hex HMAC-SHA256 of the raw body, keyed with WEBHOOK_SECRET>`, only when the secret is set |
 | `User-Agent` | `ReviewStage-Webhook/1` |
 
 ### Payload
@@ -136,7 +136,7 @@ For Microsoft Teams (via a workflow), Zapier, n8n, Make, or your own service. Ev
 | Kind | `extra` |
 | --- | --- |
 | `review_requested` | `additions`, `deletions`, `files` (numbers), `detail` (dashboard PR link), `board` (dashboard index link) |
-| `review_ready` | `verdict` (`lgtm`, `minor`, `attention` or `blocked` — see [the verdict](#the-verdict-on-a-review-ready-card)), `findings`, `blockers`, `should_fix` (numbers), `event` (`COMMENT` or `REQUEST_CHANGES` — how the review would be posted; kept for machines, not shown on cards), `summary`, `detail` |
+| `review_ready` | `verdict` (`lgtm`, `minor`, `attention` or `blocked`, see [the verdict](#the-verdict-on-a-review-ready-card)), `findings`, `blockers`, `should_fix` (numbers), `event` (`COMMENT` or `REQUEST_CHANGES`, how the review would be posted; kept for machines, not shown on cards), `summary`, `detail` |
 | `review_stopped` | `status` (`stopped` or `failed`), `message` (failed only), `job` (`Review` or `QA guide`), `confirmed` (the agent is verifiably gone), `runner` (whose Claude account it ran on), `text` (the Slack-formatted line) |
 | `qa_ready` | `detail` (dashboard QA link) |
 
@@ -147,7 +147,7 @@ The same schema is shown on the Integrations page under *Generic webhook → Sho
 Compute HMAC-SHA256 over the **raw request body** with your secret and compare it, constant-time, to the header value after `sha256=`.
 
 ```bash
-# shell — body saved to body.json, header value in $SIG
+# shell: body saved to body.json, header value in $SIG
 printf 'sha256=%s\n' "$(openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -r < body.json | cut -d' ' -f1)"
 [ "$SIG" = "sha256=…" ]   # compare
 ```
@@ -169,11 +169,11 @@ export function verify(rawBody, header, secret) {
 }
 ```
 
-Parse the JSON only after the signature checks out, and sign over the bytes you received — re-serialising first will change the digest.
+Parse the JSON only after the signature checks out, and sign over the bytes you received: re-serialising first will change the digest.
 
-## None — the dashboard is the inbox
+## None: the dashboard is the inbox
 
-Set `NOTIFY_BACKENDS=none` (or tick *None* in Settings, or configure no URLs at all). The poller still keeps the queue fresh; you open the dashboard and work the *To review* tab. Everything else — per-reviewer runs, posting, approval — is identical.
+Set `NOTIFY_BACKENDS=none` (or tick *None* in Settings, or configure no URLs at all). The poller still keeps the queue fresh; you open the dashboard and work the *To review* tab. Everything else, per-reviewer runs, posting, approval, is identical.
 
 ## Dedup, retries and suppression
 
@@ -189,32 +189,32 @@ The dashboard always reflects the live queue regardless of what was announced; a
 
 ## Limits the platforms impose
 
-- **Discord rejects an embed title over 256 characters**, and used to reject the whole card with a `400` visible only in a log line. Titles and descriptions are truncated by character — never mid-character — with an ellipsis.
+- **Discord rejects an embed title over 256 characters**, and used to reject the whole card with a `400` visible only in a log line. Titles and descriptions are truncated by character, never mid-character, with an ellipsis.
 - **Slack rejects a section whose text is empty**, so a review that produced no summary used to lose its entire card. That block is emitted only when there is something to put in it, and is clamped to Slack's 3,000-character limit.
 - **The Slack bot token is not passed on the command line.** It goes in on stdin, so it is not readable out of `ps` for the lifetime of the request.
 
 ## Privacy
 
-Cards carry PR titles, authors and diff sizes; the review-ready card carries the agent's summary, which can quote code. Use a **private channel** whose members can all already read the repository, and treat every webhook URL, bot token and `WEBHOOK_SECRET` as a secret. The generic payload includes each reviewer's Slack / Discord IDs — send it only to an endpoint you control or trust.
+Cards carry PR titles, authors and diff sizes; the review-ready card carries the agent's summary, which can quote code. Use a **private channel** whose members can all already read the repository, and treat every webhook URL, bot token and `WEBHOOK_SECRET` as a secret. The generic payload includes each reviewer's Slack / Discord IDs: send it only to an endpoint you control or trust.
 
 ## Phone and browser notifications
 
-ReviewStage is an installable app (see [Mobile](/developers/mobile/)), and it can tell you a review is waiting without Slack or Discord: **web push**, delivered to each browser or phone you turn it on from. A notification carries the title (`Review requested: owner/name#123`), the PR title and the review page to open. It never runs a review and never posts anything — tapping it opens the page, and everything from there is still your click.
+ReviewStage is an installable app (see [Mobile](/developers/mobile/)), and it can tell you a review is waiting without Slack or Discord: **web push**, delivered to each browser or phone you turn it on from. A notification carries the title (`Review requested: owner/name#123`), the PR title and the review page to open. It never runs a review and never posts anything: tapping it opens the page, and everything from there is still your click.
 
 ### Turning it on, per device
 
-1. Open the dashboard on the device — on a phone, **from the home-screen app** (below).
+1. Open the dashboard on the device, on a phone, **from the home-screen app** (below).
 2. **Settings → Notifications on this device** → turn the switch on, and allow notifications when the browser asks. The device is named from its browser (`iPhone · Safari`, `Android · Chrome`); the list below the switch shows every device you have turned on, with a remove button each.
 3. **Send a test** delivers *"This is what a review request looks like."* to all of your devices. If nothing arrives within a few seconds, see the checks below.
 
 Each person enables their own devices; nobody else's devices are visible or reachable. A review request pushes only to the devices of the reviewer it names, and a repeat for the same PR replaces the earlier notification rather than stacking (`tag`).
 
-**iPhone and iPad:** Safari delivers push **only to installed web apps** (iOS 16.4 or later). In a Safari tab the switch is replaced by the hint *"Add to Home Screen first"* — tap Share → **Add to Home Screen**, open ReviewStage from that icon, then turn notifications on there. Android Chrome and desktop browsers deliver to tabs and installed apps alike.
+**iPhone and iPad:** Safari delivers push **only to installed web apps** (iOS 16.4 or later). In a Safari tab the switch is replaced by the hint *"Add to Home Screen first"*: tap Share → **Add to Home Screen**, open ReviewStage from that icon, then turn notifications on there. Android Chrome and desktop browsers deliver to tabs and installed apps alike.
 
 ### What the server stores
 
 - `~/.reviewstage/push_vapid.json` (mode 600): the server's **VAPID key pair**, generated the first time anyone turns notifications on. The public half identifies this server to the push services; the private half signs each send.
-- `~/.reviewstage/push_subs.json` (mode 600): one row per device — your login, the push service endpoint the browser handed out, the browser's public key and auth secret, the device name, when it was added, and the browser's user agent. **No GitHub or Claude token is ever involved**, and the finding text never goes through a push: only the title, the PR title and a URL, encrypted end to end for that one browser (RFC 8291).
+- `~/.reviewstage/push_subs.json` (mode 600): one row per device: your login, the push service endpoint the browser handed out, the browser's public key and auth secret, the device name, when it was added, and the browser's user agent. **No GitHub or Claude token is ever involved**, and the finding text never goes through a push: only the title, the PR title and a URL, encrypted end to end for that one browser (RFC 8291).
 - A device whose push service answers `404` or `410` (the person revoked permission, cleared site data or uninstalled the app) is removed automatically on the next send.
 
 ### Knobs
@@ -225,18 +225,18 @@ All optional; see `config.example`.
 | --- | --- |
 | `RS_PUSH` | `1` (default) on; `0` switches push off everywhere without deleting anything. Restart after changing. |
 | `VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY` | Pin the pair instead of letting the server generate one (the base64url raw keys `npx web-push generate-vapid-keys` prints). Both or neither. |
-| `VAPID_SUBJECT` | The contact push services may use about the sender — a `mailto:` or `https://` URL. Defaults to `PUBLIC_URL` when it is https. |
+| `VAPID_SUBJECT` | The contact push services may use about the sender: a `mailto:` or `https://` URL. Defaults to `PUBLIC_URL` when it is https. |
 
 Push rides beside whatever `NOTIFY_BACKENDS` says: it fires for every reviewer who enabled it whenever a key pair exists, unless the list is `none` or `RS_PUSH=0`.
 
 ### Rotating the keys
 
-Changing the pair invalidates every subscription — browsers bind their subscription to the public key they were given. To rotate: stop the server, delete `push_vapid.json` (or set a new `VAPID_*` pair), start it, and ask everyone to turn notifications off and on again on each device. There is no silent migration; that is a property of the protocol, not of ReviewStage.
+Changing the pair invalidates every subscription: browsers bind their subscription to the public key they were given. To rotate: stop the server, delete `push_vapid.json` (or set a new `VAPID_*` pair), start it, and ask everyone to turn notifications off and on again on each device. There is no silent migration; that is a property of the protocol, not of ReviewStage.
 
 ### When nothing arrives
 
-- `bin/doctor.sh` (or `docker compose exec app doctor`) prints `PASS push: VAPID pair present` once anyone has enabled a device, `WARN push: no VAPID pair — notifications off` before that, and warns when the server's Python cannot import `cryptography` (the image installs it; a from-source install needs `pip install cryptography`).
-- The poller's log shows `WARN: push: <host>/…: answered 4xx` for a rejected send; `… is gone (410) — subscription removed` is a device that revoked permission.
+- `bin/doctor.sh` (or `docker compose exec app doctor`) prints `PASS push: VAPID pair present` once anyone has enabled a device, `WARN push: no VAPID pair: notifications off` before that, and warns when the server's Python cannot import `cryptography` (the image installs it; a from-source install needs `pip install cryptography`).
+- The poller's log shows `WARN: push: <host>/…: answered 4xx` for a rejected send; `… is gone (410): subscription removed` is a device that revoked permission.
 - On a phone, check the OS notification settings for the installed app, and that it was opened from the home screen at least once since installing.
 
 ## Email

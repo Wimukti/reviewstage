@@ -109,7 +109,7 @@ test("the matrix: pass, each flag alone, two flags demote, missing data never fl
 
   const lines = check(finding({ line: 120, where: { path: "src/webhooks/deliver.ts", start: 120, end: 124 } }), PATCHES)!;
   assert.deepEqual(lines.flags, ["lines_not_in_diff"]);
-  assert.equal(lines.line, "Lines 120–124 are not in this PR's changes to `deliver.ts`.");
+  assert.equal(lines.line, "Lines 120 to 124 are not in this PR's changes to `deliver.ts`.");
 
   const sym = check(finding({ title: "The `jitter` is missing", what_to_check: "Check `MAX_JITTER`." }), PATCHES)!;
   assert.deepEqual(sym.flags, ["symbol_not_found"]);

@@ -7,23 +7,23 @@ sidebar:
 
 Priorities, not promises. Open an issue to argue for reordering.
 
-## P0 — done
+## P0: done
 
-- Human-gated posting: no GitHub write path in the review step — every GitHub credential stripped from the agent's environment, an explicit tool deny list, and a before/after fingerprint that fails the run if anything reached the PR; `COMMENT`-only; approval as a separate click, refused when the branch has moved since the review.
+- Human-gated posting: no GitHub write path in the review step: every GitHub credential stripped from the agent's environment, an explicit tool deny list, and a before/after fingerprint that fails the run if anything reached the PR; `COMMENT`-only; approval as a separate click, refused when the branch has moved since the review.
 - Posting scoped to the review run rather than the pull request, so a second round posts after the author pushes.
 - Per-reviewer identity: each person's own GitHub token for posts and approvals; the service token is never used to write.
 - Per-reviewer independent runs in separate worktrees.
 - Run form: Quick / Standard / Deep effort, focus note, model choice; stop; re-run with full history; identical-run cache.
 - Findings as a staging area: tick, inline edit with preview, suggestion blocks, reply-vs-new, Explain simply, stale flag.
 - Diff-anchor validation and refusal on malformed GitHub responses.
-- Learnings loop, recorded once after a post reaches GitHub and keyed so a retry replaces; a never-truncated tally behind the capped detail log; repeated rejections clustered into proposed team rules. Skills page with the three tiers — per-repository override, personal skill, team default; quick-add rule; versioned team default with revision history; per-skill keep rate on one shared definition.
+- Learnings loop, recorded once after a post reaches GitHub and keyed so a retry replaces; a never-truncated tally behind the capped detail log; repeated rejections clustered into proposed team rules. Skills page with the three tiers: per-repository override, personal skill, team default; quick-add rule; versioned team default with revision history; per-skill keep rate on one shared definition.
 - Independence-weighted agreement across reviewers; convergence on the PR page.
 - Insights: reviews, tokens, keep rate, severity, by reviewer, by model, agreement, cycle time.
 - QA guide generation.
 - Stacked-PR review.
 - Multiple repositories per server: `REPOS` list or `REPO_ALLOW_ORG`, per-repo skills and risk paths, repo chips/filter, Insights across repositories.
 - Notifications: Slack via webhook or bot token, Discord embeds, generic signed webhook, or none; per-reviewer mentions; once-per-PR dedup written only after a confirmed send, with drafts and bot PRs suppressed and re-evaluated rather than marked seen.
-- Runtime settings page (poller on/off, interval, backends, PR filters) — `settings.json`, no restart.
+- Runtime settings page (poller on/off, interval, backends, PR filters): `settings.json`, no restart.
 - Per-user Claude account via the genuine `claude setup-token` flow; encrypted at rest.
 - GitHub OAuth App / GitHub App sign-in with server-side refresh; **Sign in with GitHub** is the primary login when configured and the OAuth token is the working token.
 - Device tokens: `POST /api/device-token` from a web session, bearer accepted on every `/api/*` route, Settings → Devices to list and revoke, 180-day sliding expiry, `/login?device=1` pairing page for mobile and CLI clients.
@@ -31,7 +31,7 @@ Priorities, not promises. Open an issue to argue for reordering.
 - Guided first-run tour; command palette.
 - Repository profile: deterministic signals + one Sonnet call name each repo's critical paths (validated against the tree); Standard/Deep reviews walk the ones a PR touches; editable, versioned and restorable, schema-versioned, with staleness reported against the current head; optional auto re-profile; kept rate on critical paths in Insights.
 
-## P1 — in flight
+## P1, in flight
 
 - **Settings page, continued.** Repositories and devices in the dashboard instead of `.env` edits (notifiers and the poller already live there).
 - **Confidence per finding.** The agent states how sure it is; the card shows it; learnings record whether confidence predicted keep rate.
@@ -39,7 +39,7 @@ Priorities, not promises. Open an issue to argue for reordering.
 - **Installable PWA.** Manifest, root-scoped service worker, offline page, phone-width layout. Shipped; see [Mobile](/developers/mobile/).
 - **Public keep rate.** An opt-in badge for a repository: "N% of assistant findings were posted unchanged over the last 90 days."
 
-## P2 — later
+## P2: later
 
 - **GitHub App as the default auth.** OAuth Apps can only ask for classic scopes, so today's sign-in token carries `repo`. A GitHub App is the path to **org-level install and narrower permissions**: user-to-server tokens with *Pull requests: write* and *Contents: read* on exactly the repositories an org owner installed it on, revocable by that owner. The server already accepts one (`GH_OAUTH_SCOPES` empty); what remains is the install flow, the per-installation repo list replacing `REPOS`, and docs that make it the first option rather than the second.
 - **Email and push notifications** for teams that do not live in chat. Push is a `notify` backend that sends to registered devices (web push with VAPID, then FCM/APNs through the Capacitor wrapper).

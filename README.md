@@ -22,7 +22,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="website/src/assets/screenshots/hero-dark.png">
-  <img alt="The ReviewStage PR page for acme/widgets #38849: the agent's assessment — “1 thing to fix before merge” with three bullet points — above two finding cards, each with a ticked checkbox, a severity word, the file and line it points at, and a one-line why-it-matters. A sticky bar at the foot reads “2 staged” and carries a single Post selected to GitHub button." src="website/src/assets/screenshots/hero-light.png">
+  <img alt="The ReviewStage PR page for acme/widgets #38849: the agent's assessment, “1 thing to fix before merge” with three bullet points, above two finding cards, each with a ticked checkbox, a severity word, the file and line it points at, and a one-line why-it-matters. A sticky bar at the foot reads “2 staged” and carries a single Post selected to GitHub button." src="website/src/assets/screenshots/hero-light.png">
 </picture>
 
 <p align="center">
@@ -32,7 +32,7 @@
 <p align="center"><a href="https://youtu.be/yYMtQK-sVyg"><strong>Watch the 70-second demo, with voice</strong></a></p>
 
 > [!NOTE]
-> ReviewStage 1.0. The gate — nothing reaches GitHub without a signed-in person clicking, under their own name — has held since the first version. From 1.0 the configuration keys and the install follow semantic versioning: anything that would break an existing install waits for a major version.
+> ReviewStage 1.0. The gate (nothing reaches GitHub without a signed-in person clicking, under their own name) has held since the first version. From 1.0 the configuration keys and the install follow semantic versioning: anything that would break an existing install waits for a major version.
 
 **ReviewStage is the human review layer for AI-written pull requests. Claude drafts the review privately; you verify, edit and post it as yourself.** It is open source and self-hosted, built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code): it drafts your review from the real diff, on your own Claude plan, and stages every finding privately in a dashboard. You tick the ones worth posting, edit any of them, and post them as a plain `COMMENT` review under your own GitHub account. Approval is a separate click. Nothing posts until you click.
 
@@ -50,12 +50,12 @@ Five facts hold at every size:
 npx reviewstage
 ```
 
-A window opens and walks you through three steps — **Continue with GitHub**, **Connect Claude**,
-**Pick repositories** — then shows your queue. You need Node 20+, Git and
+A window opens and walks you through three steps (**Continue with GitHub**, **Connect Claude**,
+**Pick repositories**), then shows your queue. You need Node 20+, Git and
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) on the machine; the app carries
 its own server and fetches the rest (`gh`, `jq`, `cloudflared`) once, pinned by checksum. No
 Docker, no `.env`, no service token, no Apple warning dialog. Reviews run on your own Claude
-plan, and posting is live from the first run — the Post button is the gate.
+plan, and posting is live from the first run: the Post button is the gate.
 
 - **Your phone.** From the app menu, **Enable phone access…** shows a QR code. Scan it and the
   phone is signed in as you (a single-use code, valid 30 minutes); add the dashboard to the home
@@ -73,17 +73,17 @@ Details: [docs/INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) · [FAQ](https://rev
 git clone https://github.com/Wimukti/reviewstage && cd reviewstage
 cp .env.example .env               # set REPOS and GITHUB_PAT (the service token)
 docker compose up -d
-bin/doctor.sh                      # diagnostics — re-execs inside the container
+bin/doctor.sh                      # diagnostics: re-execs inside the container
                                    # (or: docker compose exec app doctor)
                                    # (RS_HOST_PORT=9000 in .env moves the host port)
 ```
 
 One server, every reviewer signed in as themselves. You need Docker with Compose v2 and a host
-with **at least 2 GB of RAM** — a review refuses to start below `MIN_FREE_MB` (800 MB
+with **at least 2 GB of RAM**: a review refuses to start below `MIN_FREE_MB` (800 MB
 *available*), so a 1 GB VPS cannot run one. `GITHUB_PAT` is a fine-grained service token on the
 repositories in `REPOS` with **Pull requests: Read and write**, **Contents: Read** and
 **Metadata: Read**. It reads PR metadata and diffs, clones the repositories and runs the
-poller's searches; nothing in the review or service path ever writes to GitHub with it — every
+poller's searches; nothing in the review or service path ever writes to GitHub with it: every
 comment and approval uses the acting reviewer's own token. You also need about **500 MB free**
 on the data volume (`MIN_FREE_DISK_MB`); a job refuses to start below it rather than producing
 an empty review.
@@ -92,7 +92,7 @@ Before you point it at anyone else's pull request, read the
 [security model](https://reviewstage.dev/security/): what is stored, what each
 token can do, and what is deliberately not defended against.
 
-Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the box: GitHub's device flow with a shared public client ID — enter a short code at github.com/login/device, nothing to register; a fine-grained token also works), connect your Claude account, and paste a PR URL. Teams that want one-click redirect sign-in under their own app identity can still register an OAuth App (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`). `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://reviewstage.dev/start/first-review/).
+Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the box: GitHub's device flow with a shared public client ID; enter a short code at github.com/login/device, nothing to register; a fine-grained token also works), connect your Claude account, and paste a PR URL. Teams that want one-click redirect sign-in under their own app identity can still register an OAuth App (`GH_CLIENT_ID` / `GH_CLIENT_SECRET`). `DRY_RUN=1` is on by default: everything works except the final write to GitHub, so you can compare the output with your own reviews before letting it carry your name. Full walk-through: [Your first review](https://reviewstage.dev/start/first-review/).
 
 ## Why not an auto-review bot?
 
@@ -102,21 +102,21 @@ Most AI review products deliver AI-written feedback directly into the pull reque
 
 **Accountability has to sit with a person.** A wrong nit costs a reply; a wrong approval ships a bug. So ReviewStage never requests changes or approves on its own, and never blocks a merge. The agent's verdict is shown to you as an assessment. Posting and approving are two different buttons, and the agent can press neither: the script that runs the review has no GitHub write path at all.
 
-**It runs on your plan, so it runs when you click.** Each reviewer connects their own Claude account in the browser; a review is a real agent run against a real diff — a few minutes for a typical PR on Opus, longer for Deep — billed to whoever started it. That is why it is click-to-run rather than on every push, and why the run form asks for an effort level before it starts.
+**It runs on your plan, so it runs when you click.** Each reviewer connects their own Claude account in the browser; a review is a real agent run against a real diff, a few minutes for a typical PR on Opus, longer for Deep, billed to whoever started it. That is why it is click-to-run rather than on every push, and why the run form asks for an effort level before it starts.
 
 ## Highlights
 
 - **A staging area, not a comment stream.** Tick and untick findings, edit inline with a preview, attach GitHub suggestion blocks, ask for a plain-words explanation with how to verify. Re-run at another effort or focus; every earlier run is kept.
-- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from — and the review agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before/after count of the PR's reviews, comments and threads that fails the run if anything landed. A prompt-injected write attempt is a failed run, not a comment under your name. [What that does not cover](https://reviewstage.dev/security/#prompt-injection-from-hostile-diffs).
+- **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from, and the review agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before/after count of the PR's reviews, comments and threads that fails the run if anything landed. A prompt-injected write attempt is a failed run, not a comment under your name. [What that does not cover](https://reviewstage.dev/security/#prompt-injection-from-hostile-diffs).
 - **Findings you can check.** A reading guide on top of each review: what the PR does, how risky it looks, which hunks to read first. Every finding says where to look, what to check, expected versus actual, and why it matters. A local evidence check confirms the cited lines exist in the diff; a second Claude run tries to disprove each serious finding; together they earn the Checked, Likely or Maybe badge, never the model's own confidence alone.
 - **Effort, focus and model per run.** Quick, Standard or Deep (auto-suggested from the diff), a free-text focus note, and your plan's default model or Opus, Sonnet or Haiku. Tokens and model are shown per run.
 - **Profiles your repo once and makes every review walk its critical paths.** Deterministic signals (tree, churn, in-degree, CODEOWNERS, CI) plus one Sonnet call name the paths where a mistake hurts most, and every generated path is checked against the tree before it is kept. Standard and Deep reviews that touch one are told to verify callers, contracts, migrations and tests, and findings on it carry a badge. Editable in the dashboard; optional automatic re-profile when the tree changes.
-- **It learns what your team drops — and hardens it into rules.** Kept, reworded and dropped findings feed the next review of the repository, recorded once after the post actually reaches GitHub and keyed so a retry replaces rather than doubles. Drop the same complaint three times across different PRs and ReviewStage drafts it as a proposed team rule, with the evidence attached, for you to accept or dismiss with one click — nothing reaches a skill on its own. Skills are scored by how often their findings survive a human; the team default is versioned in a git repository on your server, with a revision history; add a rule in plain words.
+- **It learns what your team drops, and hardens it into rules.** Kept, reworded and dropped findings feed the next review of the repository, recorded once after the post actually reaches GitHub and keyed so a retry replaces rather than doubles. Drop the same complaint three times across different PRs and ReviewStage drafts it as a proposed team rule, with the evidence attached, for you to accept or dismiss with one click, nothing reaches a skill on its own. Skills are scored by how often their findings survive a human; the team default is versioned in a git repository on your server, with a revision history; add a rule in plain words.
 - **Independent reviews, weighted agreement.** Two reviewers on one PR get separate runs in separate worktrees; findings both raised with a different skill, model or effort are marked confirmed.
 - **One install, many repositories.** List them in `REPOS` or accept a whole org with `REPO_ALLOW_ORG`; per-repo skills and risk paths, a repo chip and filter on every queue row, Insights across repositories.
 - **From PR to QA guide.** A tester-ready P0/P1/P2 test plan built from the same diff and review threads.
-- **Slack, Discord or any webhook.** Cards for review requested, review ready, stopped and QA ready — Slack (webhook or threaded bot token), Discord embeds, or a signed JSON POST to Teams, Zapier, n8n or your own endpoint. Or none: the dashboard is the inbox. Switched live from the Settings page.
-- **Post a second round.** Posting is scoped to the review run, not the pull request: review, post, the author pushes, review again, post again. The same run cannot post twice, and approval knows which commit you read — a moved branch needs an explicit confirmation.
+- **Slack, Discord or any webhook.** Cards for review requested, review ready, stopped and QA ready. Slack (webhook or threaded bot token), Discord embeds, or a signed JSON POST to Teams, Zapier, n8n or your own endpoint. Or none: the dashboard is the inbox. Switched live from the Settings page.
+- **Post a second round.** Posting is scoped to the review run, not the pull request: review, post, the author pushes, review again, post again. The same run cannot post twice, and approval knows which commit you read: a moved branch needs an explicit confirmation.
 - **Safe by construction.** Diff-anchor validation so GitHub does not reject a whole review over one line; every action HMAC-signed and short-lived; tokens encrypted at rest; the server refuses to start without a real `RS_SECRET`; `DRY_RUN` on by default.
 
 ## Solo · Team · Company
@@ -138,15 +138,15 @@ Same gate at every size: nothing reaches GitHub without a signed-in person click
 docker compose --profile team up -d
 ```
 
-Adds the review-request poller and notification cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team — and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Cards go to Slack (incoming webhook or bot token with threaded replies), Discord, or any JSON webhook; the poller's interval and on/off switch live in the dashboard's Settings page. How it fits a team's existing review process — CODEOWNERS, branch protection, what to tell the team — is [Team workflow](https://reviewstage.dev/guides/team-workflow/); the reference is [Team mode](https://reviewstage.dev/guides/team-mode/).
+Adds the review-request poller and notification cards: within three minutes of someone requesting your review, you get a card that mentions you and opens the PR page. One server serves the whole team, and **one install reviews many repositories**: list them in `REPOS`, or set `REPO_ALLOW_ORG` to accept any repo under your org where someone gets a review request. Each person signs in once with their own GitHub token and Claude account. Reviews are independent per reviewer; posting and approval are always per person. Cards go to Slack (incoming webhook or bot token with threaded replies), Discord, or any JSON webhook; the poller's interval and on/off switch live in the dashboard's Settings page. How it fits a team's existing review process. CODEOWNERS, branch protection, what to tell the team: is [Team workflow](https://reviewstage.dev/guides/team-workflow/); the reference is [Team mode](https://reviewstage.dev/guides/team-mode/).
 
 ## Documentation
 
-- [What you get](https://reviewstage.dev/start/) — the one-minute model
-- [Install](https://reviewstage.dev/start/install/) — `npx reviewstage` on a laptop; Docker Compose or from source for a team
-- [Your first review](https://reviewstage.dev/start/first-review/) · [Team workflow](https://reviewstage.dev/guides/team-workflow/) — a numbered walk, and how it fits your team's process
+- [What you get](https://reviewstage.dev/start/): the one-minute model
+- [Install](https://reviewstage.dev/start/install/): `npx reviewstage` on a laptop; Docker Compose or from source for a team
+- [Your first review](https://reviewstage.dev/start/first-review/) · [Team workflow](https://reviewstage.dev/guides/team-workflow/): a numbered walk, and how it fits your team's process
 - [Reviewing a PR](https://reviewstage.dev/guides/reviewing/) · [Skills and learnings](https://reviewstage.dev/guides/skills-and-learnings/) · [QA guides](https://reviewstage.dev/guides/qa-guide/) · [Notifications](https://reviewstage.dev/guides/notifications/) · [Insights](https://reviewstage.dev/guides/insights/)
-- [Security model](https://reviewstage.dev/security/) — what is stored, token permissions, what is not defended against
+- [Security model](https://reviewstage.dev/security/): what is stored, token permissions, what is not defended against
 - [Configuration](https://reviewstage.dev/operations/configuration/) · [FAQ](https://reviewstage.dev/operations/faq/) · [Troubleshooting](https://reviewstage.dev/operations/troubleshooting/)
 - [Architecture](https://reviewstage.dev/developers/architecture/) · [Contributing](https://reviewstage.dev/developers/contributing/) · [Roadmap](https://reviewstage.dev/developers/roadmap/)
 

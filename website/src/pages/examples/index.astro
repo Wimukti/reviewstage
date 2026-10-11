@@ -9,7 +9,7 @@ import { withBase } from "../../content/site-links";
 import { EXAMPLES_H1, examples, review, tryUrl, verdictOf } from "../../content/examples";
 
 const title = `${EXAMPLES_H1} | ReviewStage`;
-const description = "Three real pull-request reviews, stored: a bug worth keeping, a plausible finding that was wrong, a valid one said badly. See what a reviewer kept, dropped and edited — then try it live.";
+const description = "Three real pull-request reviews, stored: a bug worth keeping, a plausible finding that was wrong, a valid one said badly. See what a reviewer kept, dropped and edited: then try it live.";
 ---
 <MarketingLayout {title} {description}>
   <section class="home-section" aria-labelledby="examples-title">
@@ -17,7 +17,7 @@ const description = "Three real pull-request reviews, stored: a bug worth keepin
       <nav aria-label="Breadcrumb" class="text-sm text-muted-foreground"><a href={withBase("/")} class="text-muted-foreground hover:text-foreground">Home</a> / <span class="text-foreground">Examples</span></nav>
       <div class="grid gap-4">
         <h1 id="examples-title" class="section-title">{EXAMPLES_H1}</h1>
-        <p class="m-0 max-w-[64ch] text-base text-muted-foreground">ReviewStage is the human review layer for AI-written pull requests: every review Claude drafts goes through a person before it posts. These three were run once on real pull requests and stored, so you can see the whole shape of it: the diff, what the agent found, how sure it was, and what the reviewer did with each finding.</p>
+        <p class="m-0 max-w-[64ch] text-base text-muted-foreground">ReviewStage is the human review layer for AI-written pull requests. Claude drafts privately. You decide what to edit, keep, and publish under your name. These three were run once on real pull requests and stored, so you can see the whole shape of it: the diff, what the agent found, how sure it was, and what the reviewer did with each finding.</p>
         <Disclosure />
       </div>
       <ol class="m-0 grid list-none gap-4 p-0 lg:grid-cols-3" data-testid="example-list">

@@ -138,7 +138,7 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
         {saveErr && <Banner kind="err" role="alert">{saveErr}</Banner>}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground" data-testid="repo-count" aria-live="polite">
-            {full ? `That's the most — ${MAX_REPOS} repositories.` : `${picked.length.toLocaleString("en-US")} selected`}
+            {full ? `That's the most: ${MAX_REPOS} repositories.` : `${picked.length.toLocaleString("en-US")} selected`}
           </span>
           <Button type="button" size="lg" onClick={() => void start()} disabled={!picked.length || saving} aria-busy={saving} data-testid="start-reviewing">
             {saving ? "Saving…" : `${cta} (${picked.length.toLocaleString("en-US")})`}

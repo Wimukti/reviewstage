@@ -111,3 +111,5 @@ jobs:
         with:
           scandir: ./bin
           severity: warning
+      - name: No dashes as punctuation in copy
+        run: bash scripts/no-dashes.sh

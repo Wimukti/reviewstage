@@ -2,7 +2,7 @@
 
 **Title** (≤ 80 chars):
 
-Show HN: ReviewStage – Claude drafts your PR review, you post it as yourself
+Show HN: ReviewStage, Claude drafts your PR review, you post it as yourself
 
 **Text** (first comment, posted immediately after submitting the link to https://github.com/Wimukti/reviewstage):
 
@@ -15,7 +15,7 @@ account, pick repositories. Review requests show up in a queue. Click one, it ru
 Claude Code review over the real diff on your own Claude plan, and stages the findings
 privately: tick the ones worth posting, edit any, drop the rest. Post goes out as a plain
 COMMENT review from your account. Approve is a separate button. The agent has no GitHub write
-path at all — every credential is stripped from its environment and a before/after check of
+path at all: every credential is stripped from its environment and a before/after check of
 the PR fails the run if anything landed.
 
 What it learns: what you drop or reword feeds the next review of that repo, and a complaint you
@@ -25,7 +25,7 @@ Phone: enable phone access, scan a QR code, you're signed in on the phone (same 
 own screen), add it to the home screen, turn on push. Review from the train.
 
 Self-hosted, MIT, Python stdlib + bash on the server, React on the front. Team install is Docker
-Compose on one box, every reviewer as themselves. It is Claude Code only, on purpose — it runs
+Compose on one box, every reviewer as themselves. It is Claude Code only, on purpose: it runs
 on your subscription, not an API key.
 
 Things I would like to hear about: whether the gate (nothing posts until a signed-in person

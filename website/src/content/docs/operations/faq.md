@@ -9,11 +9,11 @@ You get the answer to the questions the first week raises, in a paragraph each. 
 
 ## How long does the phone tunnel last?
 
-As long as the desktop app runs — and closing the terminal or the window no longer quits it; it lives in the menu bar until you choose **Quit ReviewStage**. **Settings → Your phone → Enable phone access** (or **Enable phone access…** in the app menu) starts a Cloudflare quick tunnel to your laptop; if your Wi-Fi drops or the laptop sleeps, `cloudflared` reconnects by itself and the address stays the same. Phone access is remembered: if it was on when the app quit, it comes back on at the next launch. If `cloudflared` itself crashes, the app restarts it once with a new address and shows a notification, "Phone address changed — rescan the code". A second crash within 5 minutes stops it; the card and the menu show phone access as off and say why.
+As long as the desktop app runs, and closing the terminal or the window no longer quits it; it lives in the menu bar until you choose **Quit ReviewStage**. **Settings → Your phone → Enable phone access** (or **Enable phone access…** in the app menu) starts a Cloudflare quick tunnel to your laptop; if your Wi-Fi drops or the laptop sleeps, `cloudflared` reconnects by itself and the address stays the same. Phone access is remembered: if it was on when the app quit, it comes back on at the next launch. If `cloudflared` itself crashes, the app restarts it once with a new address and shows a notification, "Phone address changed, rescan the code". A second crash within 5 minutes stops it; the card and the menu show phone access as off and say why.
 
 ## Why does the phone address change when I restart?
 
-Because a Cloudflare quick tunnel gets a new random name every time it starts, and there is no way to keep one without a Cloudflare account (a named tunnel; on the roadmap). So a permanent public address with no account is not possible. What the app does instead: once the new address answers, every phone that turned on notifications gets **"Your Mac has a new address"** — tap it and the new address opens in the browser, already signed in (a single-use link for that phone's own account, valid 12 hours); add it to the Home Screen again from there. If you want an address that never changes, install [Tailscale](https://tailscale.com/download) on the Mac and the phone and turn on **Use Tailscale** in Settings → Your phone: the app is then served at `https://<machine>.<tailnet>.ts.net`, reachable only by your own devices.
+Because a Cloudflare quick tunnel gets a new random name every time it starts, and there is no way to keep one without a Cloudflare account (a named tunnel; on the roadmap). So a permanent public address with no account is not possible. What the app does instead: once the new address answers, every phone that turned on notifications gets **"Your Mac has a new address"**: tap it and the new address opens in the browser, already signed in (a single-use link for that phone's own account, valid 12 hours); add it to the Home Screen again from there. If you want an address that never changes, install [Tailscale](https://tailscale.com/download) on the Mac and the phone and turn on **Use Tailscale** in Settings → Your phone: the app is then served at `https://<machine>.<tailnet>.ts.net`, reachable only by your own devices.
 
 ## My phone says "Your Mac isn't reachable"
 
@@ -21,7 +21,7 @@ The Mac is asleep, offline, or ReviewStage is not running on it. Wake the Mac or
 
 ## My phone shows an old address
 
-The tunnel changed since the phone last opened the app — you quit and relaunched, or the tunnel was restarted. Open the newest "Your Mac has a new address" notification if you have one. Otherwise, on the Mac, open **Settings → Your phone** (or **Show phone access code…** in the app menu) and scan the new code. Scanning signs the phone in as you; then **Add to Home Screen** again so the home-screen icon points at the new address, and turn **Settings → Push → This device** back on, since push is bound to the address.
+The tunnel changed since the phone last opened the app: you quit and relaunched, or the tunnel was restarted. Open the newest "Your Mac has a new address" notification if you have one. Otherwise, on the Mac, open **Settings → Your phone** (or **Show phone access code…** in the app menu) and scan the new code. Scanning signs the phone in as you; then **Add to Home Screen** again so the home-screen icon points at the new address, and turn **Settings → Push → This device** back on, since push is bound to the address.
 
 ## The login page says the phone code expired
 
@@ -37,7 +37,7 @@ On the desktop app, **Repositories** in the sidebar (also Settings → Repositor
 
 ## Is the dry run on?
 
-**Desktop app:** no. Posting is live from the first run, and the Post button is the gate — nothing reaches GitHub until you press it. To rehearse without posting, add `DRY_RUN=1` to `~/.reviewstage/.env` and relaunch. **Team install (Docker or from source):** yes, `DRY_RUN=1` ships on. Every button works, the payload it would have sent is saved for you to inspect, and nothing is written to GitHub until you set `DRY_RUN=0` and restart. It is deliberately not a runtime setting.
+**Desktop app:** no. Posting is live from the first run, and the Post button is the gate: nothing reaches GitHub until you press it. To rehearse without posting, add `DRY_RUN=1` to `~/.reviewstage/.env` and relaunch. **Team install (Docker or from source):** yes, `DRY_RUN=1` ships on. Every button works, the payload it would have sent is saved for you to inspect, and nothing is written to GitHub until you set `DRY_RUN=0` and restart. It is deliberately not a runtime setting.
 
 ## How do I update the desktop app?
 
@@ -51,7 +51,7 @@ Closing the window keeps ReviewStage in the menu bar. Quit from the menu-bar ico
 
 ## Does it phone home?
 
-Not in 1.0.x. ReviewStage keeps a few counters about itself on your machine — reviews started, findings kept or dropped, posts attempted — from a fixed list with no names, repositories, paths or text in it; **Settings → Privacy** shows them, exports them and clears them. They can only be sent if `RS_TELEMETRY=0` is not set, the admin has not switched telemetry off, you said yes (the wizard asks once; the default is **Keep it local**), *and* an endpoint is configured — and no release configures one, so today no counter is sent, whatever you answer. The only unprompted network call the desktop app makes is the update check against the npm registry every 6 hours. The full schema and the commitments for a future endpoint are in [Telemetry](/security/telemetry/).
+Not in 1.0.x. ReviewStage keeps a few counters about itself on your machine, reviews started, findings kept or dropped, posts attempted, from a fixed list with no names, repositories, paths or text in it; **Settings → Privacy** shows them, exports them and clears them. They can only be sent if `RS_TELEMETRY=0` is not set, the admin has not switched telemetry off, you said yes (the wizard asks once; the default is **Keep it local**), *and* an endpoint is configured, and no release configures one, so today no counter is sent, whatever you answer. The only unprompted network call the desktop app makes is the update check against the npm registry every 6 hours. The full schema and the commitments for a future endpoint are in [Telemetry](/security/telemetry/).
 
 ## Does it run on Windows?
 

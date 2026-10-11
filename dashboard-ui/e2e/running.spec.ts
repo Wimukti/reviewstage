@@ -12,7 +12,7 @@ test.describe("a running review stays visible", () => {
     // 1. The PR page reports the run in progress.
     await page.goto(prUrl(REPO, PR4));
     await expect(page.getByTestId("progress-panel")).toBeVisible();
-    await expect(page.getByTestId("progress-panel")).toContainText(/reviewing the diff/i);
+    await expect(page.getByTestId("progress-panel")).toContainText(/drafting findings from the diff/i);
 
     // 2. The running bar at the top of the viewport says so from any page — including this one.
     const pill = page.getByTestId("running-bar");
@@ -25,7 +25,7 @@ test.describe("a running review stays visible", () => {
     await expect(page.getByRole("heading", { name: /review queue/i })).toBeVisible();
     const row = page.getByTestId("queue-row").filter({ hasText: `#${PR4}` });
     await expect(row).toBeVisible();
-    await expect(row.getByTestId("row-running")).toContainText(/reviewing the diff/i);
+    await expect(row.getByTestId("row-running")).toContainText(/drafting findings from the diff/i);
     await expect(row.locator('[data-testid="status-badge"][data-live="true"] svg')).toBeVisible();
     await expect(row.getByTestId("status-badge")).toHaveText("Reviewing");
     await expect(pill).toBeVisible();
@@ -34,7 +34,7 @@ test.describe("a running review stays visible", () => {
     await row.getByTestId("row-link").click();
     await expect(page).toHaveURL(new RegExp(`pr=${PR4}`));
     await expect(page.getByTestId("progress-panel")).toBeVisible();
-    await expect(page.getByTestId("progress-panel")).toContainText(/reviewing the diff/i);
+    await expect(page.getByTestId("progress-panel")).toContainText(/drafting findings from the diff/i);
   });
 
   test("the running bar jumps straight to the running review", async ({ page }) => {

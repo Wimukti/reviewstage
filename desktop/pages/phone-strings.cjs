@@ -10,14 +10,14 @@
     opening: "Opening a tunnel…",
     off: "Phone access is off",
     steps: [
-      "Scan this with your phone's camera — you're signed in",
+      "Scan this with your phone's camera: you're signed in",
       "Share → Add to Home Screen",
       "Open it from the home screen; Settings → Push → this device",
     ],
     check: {
       ok: "Reachable from the internet.",
       checking: "Checking that the address is reachable… scan now; phones usually get there first.",
-      slow: "This Mac still can't reach the address itself. Try scanning anyway — if the phone can't open it either, turn phone access off and on for a new address.",
+      slow: "This Mac still can't reach the address itself. Try scanning anyway, if the phone can't open it either, turn phone access off and on for a new address.",
     },
     // [text, login, text, time]: the window bolds the two values, the card prints the sentence.
     pairParts: function (login, until) {

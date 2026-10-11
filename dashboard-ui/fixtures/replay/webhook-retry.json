@@ -53,9 +53,9 @@
   ],
   "review": {
     "event": "COMMENT",
-    "summary": "Replaces the single-shot webhook POST with a bounded retry loop and a new `backoffMs` helper. The shape is right — a cap on attempts, a timeout per request, tests for the retry and the give-up path. One correctness problem: the loop retries on every non-2xx status, including the 4xx replies that can never succeed, so a receiver that returns 404 costs five attempts and 31 s of worker time per event. Two smaller notes on the backoff itself.",
+    "summary": "Replaces the single-shot webhook POST with a bounded retry loop and a new `backoffMs` helper. The shape is right, a cap on attempts, a timeout per request, tests for the retry and the give-up path. One correctness problem: the loop retries on every non-2xx status, including the 4xx replies that can never succeed, so a receiver that returns 404 costs five attempts and 31 s of worker time per event. Two smaller notes on the backoff itself.",
     "keyPoints": [
-      "Retries 4xx responses that cannot succeed — each dead endpoint burns all five attempts.",
+      "Retries 4xx responses that cannot succeed, each dead endpoint burns all five attempts.",
       "Backoff grows 2× per attempt; check the cap holds for a long outage.",
       "No jitter: simultaneous failures retry in lockstep."
     ],
@@ -88,9 +88,9 @@
         "line": 28,
         "severity": "should-fix",
         "confidence": "medium",
-        "title": "Backoff is unbounded — a long outage produces multi-minute sleeps",
+        "title": "Backoff is unbounded, a long outage produces multi-minute sleeps",
         "impact": "During a receiver outage the delay doubles every attempt with no ceiling, so late attempts sleep for minutes and the worker's queue backs up behind them.",
-        "how_to_verify": "Fail every request and log `backoffMs(attempt)` for attempts 1–5.",
+        "how_to_verify": "Fail every request and log `backoffMs(attempt)` for attempts 1 to 5.",
         "body": "`backoffMs(attempt)` doubles on every attempt (`BASE_MS * 2 ** (attempt - 1)`) and nothing caps it, so a sustained outage turns the fifth attempt into a very long sleep. Clamp the delay to a maximum (30 s is typical) so a down receiver degrades to a steady retry rate instead of ever-longer pauses.",
         "suggestion": "",
         "reply_to": null,
@@ -112,7 +112,7 @@
         "title": "No jitter on the backoff",
         "impact": "When a receiver goes down, every in-flight delivery fails together and then retries at exactly the same moments, hammering it in waves as it comes back.",
         "how_to_verify": "Fail 50 deliveries at once and plot the retry timestamps: without jitter they land in five tight spikes.",
-        "body": "No jitter. This is the textbook mistake — every retry guide written in the last decade covers it. Add randomness to the delay or this will just DDoS the receiver in waves the moment it recovers.",
+        "body": "No jitter. This is the textbook mistake, every retry guide written in the last decade covers it. Add randomness to the delay or this will just DDoS the receiver in waves the moment it recovers.",
         "suggestion": "",
         "reply_to": null,
         "teach": "edit",
@@ -157,7 +157,7 @@
   "decisions": [
     {
       "action": "keep",
-      "reason": "Checked `deliver.ts:25` — `res.ok` is the only branch, so a 404 really does loop five times. The suggestion is a correct, minimal fix. Posted as written."
+      "reason": "Checked `deliver.ts:25`: `res.ok` is the only branch, so a 404 really does loop five times. The suggestion is a correct, minimal fix. Posted as written."
     },
     {
       "action": "drop",
@@ -165,13 +165,13 @@
     },
     {
       "action": "edit",
-      "reason": "The point stands — simultaneous failures retry in lockstep — but \"textbook mistake\" and \"DDoS\" are not how this team talks to each other. Kept the substance, said it plainly, and added the concrete range.",
+      "reason": "The point stands, simultaneous failures retry in lockstep, but \"textbook mistake\" and \"DDoS\" are not how this team talks to each other. Kept the substance, said it plainly, and added the concrete range.",
       "edited_body": "Consider adding jitter to the backoff (for example ±20% of the computed delay). When a receiver goes down, every in-flight delivery fails at the same moment and then retries at the same moments, so it comes back to a wave of requests. A little randomness spreads them out."
     }
   ],
   "explain": {
     "0": "Imagine mailing a letter to an address that no longer exists. The post office tells you \"no such address\" straight away. This code ignores that answer and tries to mail the same letter four more times, waiting longer each time, before giving up. The fix is to stop as soon as the answer is \"this will never work\" and only retry when the answer is \"try again later\".",
-    "1": "The reviewer thought the waiting time between tries could grow forever — a minute, then two, then four. It is a fair worry in general, but the helper that computes the wait caps it at 30 seconds, so this one does not apply here.",
+    "1": "The reviewer thought the waiting time between tries could grow forever, a minute, then two, then four. It is a fair worry in general, but the helper that computes the wait caps it at 30 seconds, so this one does not apply here.",
     "2": "If a thousand deliveries fail at the same second, they all retry at the same second, then the same second again. Adding a small random wobble to each wait spreads them out so the receiver gets a steady trickle instead of waves."
   }
 }

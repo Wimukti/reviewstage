@@ -1,6 +1,6 @@
 # X / Twitter thread
 
-Attach the vertical cut (`reviewstage-launch-vertical.mp4`, 35 s) to post 1 as a native upload.
+Attach the vertical cut (`reviewstage-launch-vertical-v2.mp4`, 35 s) to post 1 as a native upload.
 Each post is under 280 characters (counts below). Recommended slot: Tuesday 10/13/26, 13:00 US
 Eastern (22:30 Colombo). If posting today (Sunday 10/11/26), this thread and LinkedIn are the
 two channels that are safe to post from an account with no history.

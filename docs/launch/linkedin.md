@@ -1,6 +1,6 @@
 # LinkedIn
 
-Native upload of the vertical cut (`reviewstage-launch-vertical.mp4`, 35 s). LinkedIn rewards a
+Native upload of the vertical cut (`reviewstage-launch-vertical-v2.mp4`, 35 s). LinkedIn rewards a
 first line that stands alone and tends to show link posts to fewer people: put the links in the
 first comment. The post body is under 1,300 characters, so nothing sits behind "see more".
 Recommended slot: Tuesday 10/13/26, 13:00 US Eastern (22:30 Colombo); safe to post today

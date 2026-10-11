@@ -39,10 +39,10 @@ any post: `scripts/no-dashes.sh` from the repo root checks this folder and must 
 | Asset | File | Used by |
 | --- | --- | --- |
 | 68 s launch video, voiced, 1.2.2 UI, no burned captions | `reviewstage-launch-final-v2.mp4` + `video/captions.srt` | YouTube (ID `yYMtQK-sVyg`), the r/ClaudeAI native upload |
-| 68 s launch video, voiced, captions burned in, pre-1.2 UI | `reviewstage-launch-final.mp4` | superseded by the v2 file |
+| 68 s launch video, voiced, captions burned in, pre-1.2 UI | `reviewstage-launch-final-v2.mp4` | superseded by the v2 file |
 | 68 s cut, captions, no voice, 1.2.2 UI | `reviewstage-launch-1080p-v2.mp4` | muted autoplay embeds |
 | 68 s cut, no captions, no voice, 1.2.2 UI | `reviewstage-launch-1080p-clean-v2.mp4` + `video/scene-durations-final.json` | re-muxing the voice (`pnpm launch-video --match`) |
-| 90 s cuts, pre-1.2 UI | `reviewstage-launch-1080p.mp4`, `-clean.mp4` + `video/voiceover-script.md` | superseded |
+| 90 s cuts, pre-1.2 UI | `reviewstage-launch-1080p-v2.mp4`, `-clean.mp4` + `video/voiceover-script.md` | superseded |
 | 35 s vertical cut, 1.2.2 UI | `reviewstage-launch-vertical-v2.mp4` | X, LinkedIn, r/ClaudeCode, Shorts or Reels |
 | 20 s review GIF | `docs/demos/review.gif` (in the repo) | README, Reddit image posts |
 | YouTube thumbnail (reading guide + Checked card) | `reviewstage-launch-thumbnail-v2.png` | YouTube |

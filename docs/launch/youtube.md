@@ -1,7 +1,7 @@
 # YouTube upload
 
 **File:** `~/Desktop/reviewstage-launch/reviewstage-launch-final-v2.mp4` (H.264, 67.7 s, voiced;
-the 1.2.2 UI on every screen, same voice track as `reviewstage-launch-final.mp4`). Captions are
+the 1.2.2 UI on every screen, same voice track as `reviewstage-launch-final-v2.mp4`). Captions are
 not burned into this file, so upload `video/captions.srt` (timed to this edit) as the subtitle track.
 
 **Visibility:** Public (Unlisted works too, but Public lets YouTube search find it).

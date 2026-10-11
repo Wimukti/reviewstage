@@ -2,7 +2,7 @@
 
 The sub asks *Built with Claude* posts for: what you built, how you built it, a demo, and at
 least one prompt you used. Upload the voiced video natively as the post's media
-(`reviewstage-launch-final.mp4`, 68 s), then paste this text. Recommended slot: Tuesday
+(`reviewstage-launch-final-v2.mp4`, 68 s), then paste this text. Recommended slot: Tuesday
 10/13/26, 09:00 US Eastern (18:30 Colombo).
 
 **Title** (no emoji):
@@ -11,7 +11,7 @@ I built an open-source PR review app on Claude Code. Claude drafts the review in
 
 **Body:**
 
-*(video at the top: reviewstage-launch-final.mp4)*
+*(video at the top: reviewstage-launch-final-v2.mp4)*
 
 **TL;DR:** ReviewStage is the human review layer for AI-written pull requests. Claude drafts
 the review from the real diff on your own Claude plan. The draft stays private. You check each

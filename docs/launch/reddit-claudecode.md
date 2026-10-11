@@ -2,7 +2,7 @@
 
 A different text from r/ClaudeAI (same-body cross-posts read as spam). This crowd runs Claude
 Code all day, so lead with the mechanics. Upload the vertical cut
-(`reviewstage-launch-vertical.mp4`, 35 s) or `docs/demos/review.gif` natively. Recommended
+(`reviewstage-launch-vertical-v2.mp4`, 35 s) or `docs/demos/review.gif` natively. Recommended
 slot: Tuesday 10/13/26, 12:00 US Eastern (21:30 Colombo).
 
 **Title:**
@@ -11,7 +11,7 @@ Claude Code as a PR review drafter that cannot write to GitHub: private staging 
 
 **Body:**
 
-*(media: reviewstage-launch-vertical.mp4, or docs/demos/review.gif)*
+*(media: reviewstage-launch-vertical-v2.mp4, or docs/demos/review.gif)*
 
 I wanted Claude Code doing the first pass of my reviews without it ever touching GitHub on its
 own. ReviewStage is what came out of that. `npx reviewstage` opens a desktop app; review

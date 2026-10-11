@@ -38,23 +38,23 @@ const HERO_H = 1360;
 
 /** A QA guide with all three tiers, so the shot shows what the page is for. */
 const QA_GUIDE = [
-  "# QA guide — Cache vendor lead times",
+  "# QA guide: Cache vendor lead times",
   "",
   "Set up: a storefront account, one vendor with a lead time and one without.",
   "",
-  "## P0 — must pass",
+  "## P0: must pass",
   "",
   "1. Open a product card for a vendor **with** a lead time. The badge reads the vendor's own",
   "   figure. Pass: the number matches the vendor record. Fail: any other number.",
   "2. Open a product card for a vendor with **no** lead time. Pass: no badge at all.",
   "   Fail: an empty badge, a dash, or a crash.",
   "",
-  "## P1 — the feature",
+  "## P1: the feature",
   "",
   "3. Change a vendor's lead time, then reload the product card within a minute.",
   "   Pass: the card shows the new figure. Fail: the old one persists.",
   "",
-  "## P2 — regression",
+  "## P2: regression",
   "",
   "4. The checkout summary must not show a lead-time badge. Pass: absent. Fail: present.",
   "",
@@ -180,7 +180,7 @@ const SHOTS: Shot[] = [
     height: 1400,
     shoot: async (p) => {
       const focus = p.getByTestId("run-form").locator("textarea");
-      await focus.fill("Pay close attention to the retry back-off — a 502 storm must not hammer the vendor.");
+      await focus.fill("Pay close attention to the retry back-off. A 502 storm must not hammer the vendor.");
       await focus.blur();
       await p.waitForTimeout(200);
       return p.screenshot({ clip: await box(p, [p.getByTestId("run-form").locator('xpath=ancestor::*[@data-slot="card"][1]')], 18) });

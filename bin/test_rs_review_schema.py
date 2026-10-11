@@ -221,6 +221,33 @@ class PlainLanguageLinter(unittest.TestCase):
         self.assertIn("finding 0: title: plain: dash used as punctuation (1 replaced with a comma)", w)
         self.assertNotIn("\u2014", json.dumps(rev))
 
+    def test_review_level_strings_lose_their_dashes_too(self):
+        rev, w = S.normalize({
+            "summary": "Adds a badge \u2014 one thing to fix.",
+            "explainer": "A COMMENT review \u2014 nothing blocks the merge.",
+            "keyPoints": ["The badge logic is sound \u2014 no blockers.", "Guard the vendor."],
+            "guide": {"does": "Shows a badge \u2013 on every card.", "why": "Shoppers asked \u2014 often.",
+                      "risk": "can break",
+                      "read_plan": [{"path": "a.php", "lines": "1-2", "why": "The loop \u2014 read it first."}],
+                      "not_covered": ["lockfile \u2014 generated"]},
+            "comments": [{"title": "T", "checked": {"verdict": "stands",
+                                                    "reason": "No guard \u2014 anywhere.", "at": 1}}],
+        })
+        self.assertEqual(rev["summary"], "Adds a badge, one thing to fix.")
+        self.assertEqual(rev["explainer"], "A COMMENT review, nothing blocks the merge.")
+        self.assertEqual(rev["keyPoints"], ["The badge logic is sound, no blockers.", "Guard the vendor."])
+        g = rev["guide"]
+        self.assertEqual(g["does"], "Shows a badge, on every card.")
+        self.assertEqual(g["why"], "Shoppers asked, often.")
+        self.assertEqual(g["read_plan"][0]["why"], "The loop, read it first.")
+        self.assertEqual(g["not_covered"], ["lockfile, generated"])
+        self.assertEqual(rev["comments"][0]["checked"]["reason"], "No guard, anywhere.")
+        self.assertNotIn("\u2014", json.dumps(rev))
+        self.assertNotIn("\u2013", json.dumps(rev))
+        self.assertIn("keyPoints[0]: plain: dash used as punctuation (1 replaced with a comma)", w)
+        self.assertIn("guide: not_covered[0]: plain: dash used as punctuation (1 replaced with a comma)", w)
+        self.assertIn("finding 0: checked.reason: plain: dash used as punctuation (1 replaced with a comma)", w)
+
     def test_a_spaced_hyphen_only_warns(self):
         rev, w = S.normalize({"comments": [{"title": "Retry - never resets"}]})
         self.assertEqual(rev["comments"][0]["title"], "Retry - never resets")

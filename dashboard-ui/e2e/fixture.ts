@@ -393,11 +393,11 @@ export function buildFixture() {
         not_covered: ["lockfile", "generated snapshots"],
       },
       keyPoints: [
-        "The badge logic is sound — no blockers.",
+        "The badge logic is sound, no blockers.",
         "Guard a null vendor before reading its lead time.",
         "One nit: prefer const over let in the badge component.",
       ],
-      explainer: "A COMMENT review — nothing here blocks the merge.",
+      explainer: "A COMMENT review: nothing here blocks the merge.",
       analysis: "",
       // The disproof pass (Part 2) checked the one should-fix; the nit was not in the pass.
       disproof: { status: "done", n: 1, checked: 1, duration_ms: 41000, mode: "default" },

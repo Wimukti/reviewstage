@@ -346,8 +346,9 @@ export type BadgeLevel = "checked" | "likely" | "maybe";
 export interface Badge {
   level: BadgeLevel;
   label: string;
-  // "Checked: the lines exist, a second pass could not disprove it, reviewers kept 85.0% of
-  // findings like this here."
+  // The card's one verdict row, after the badge word: "Checked: Stands. No null guard on
+  // `$vendor` in Product.php. Reviewers kept 85.0% of findings like this here." It never
+  // restates the Evidence row.
   reason: string;
   inputs?: { evidence: "pass" | "warn" | "none"; disproof: CheckVerdict | null; keepRate: number | null; n: number | null };
 }

@@ -183,7 +183,7 @@ export const PR4_REVIEW = {
     "A 502 storm is retried without jitter, so every client hammers the vendor at once.",
     "One nit: the retry counter is logged as a string.",
   ],
-  explainer: "A COMMENT review — nothing here blocks the merge by itself.",
+  explainer: "A COMMENT review. Nothing here blocks the merge by itself.",
   analysis: "",
   disproof: { status: "done", n: 2, checked: 2, duration_ms: 68000, mode: "default" },
   comments: [
@@ -449,7 +449,7 @@ export async function unticked(page: Page) {
 }
 
 export const POSTED_BANNER = (inline: number, summary: number) =>
-  "<div class='banner ok'><span>✓</span><div>Posted your review as <code>" + USER + "</code> — " +
+  "<div class='banner ok'><span>✓</span><div>Posted your review as <code>" + USER + "</code>: " +
   (inline && summary ? `${inline} inline, ${summary} in the summary.` : `${inline} inline comments.`) + "</div></div>";
 
 export async function stubPost(page: Page, inline: number, summary: number) {
@@ -577,7 +577,7 @@ const wizard: Demo = {
       route.fulfill({ json: { bannerHtml: "", connected: false, authUrl: "https://claude.ai/oauth/authorize?demo=1" } }));
     await page.route("**/api/claude/code", (route) => {
       claude = true;
-      return route.fulfill({ json: { connected: true, bannerHtml: "<div class='banner ok'><span>✓</span><div>Connected — reviews run on your Claude account.</div></div>" } });
+      return route.fulfill({ json: { connected: true, bannerHtml: "<div class='banner ok'><span>✓</span><div>Connected. Reviews run on your Claude account.</div></div>" } });
     });
     await patchJson(page, "**/api/me", () => (claude ? { claude_connected: true } : {}));
 

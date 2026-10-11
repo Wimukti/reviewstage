@@ -75,7 +75,7 @@ const findings = review.comments.map((c, i) => ({
 }));
 
 const out = {
-  source: "dashboard-ui/e2e/fixture.ts — written by scripts/stage-fixture.mjs; do not edit",
+  source: "dashboard-ui/e2e/fixture.ts: written by scripts/stage-fixture.mjs; do not edit",
   repo: REPO,
   pr: PR,
   title: row.title,

@@ -123,9 +123,9 @@ test("every shipped fixture carries exactly the three teaching findings and matc
     // not in the pass — three different reason lines, every card still pre-ticked.
     assert.deepEqual(fx.review.comments.map((c) => c.checked?.verdict ?? null), ["stands", "weakened", null], fx.slug);
     assert.deepEqual(mapped.map((f) => f.badge?.level), ["checked", "likely", "likely"], fx.slug);
-    assert.match(mapped[0].badge!.reason, /^Checked: the cited lines exist and mention .*, a second pass could not disprove it\.$/, fx.slug);
-    assert.match(mapped[1].badge!.reason, /a second pass weakened it: /, fx.slug);
-    assert.match(mapped[2].badge!.reason, /no second pass for this severity\.$/, fx.slug);
+    assert.match(mapped[0].badge!.reason, /^Checked: Stands\. \S/, fx.slug);
+    assert.match(mapped[1].badge!.reason, /^Likely: Weakened\. \S/, fx.slug);
+    assert.equal(mapped[2].badge!.reason, "Likely: No second pass for this severity.", fx.slug);
     assert.ok(mapped.every((f) => f.preselect), fx.slug);
     assert.equal(fx.review.disproof?.n, 2, fx.slug);
     assert.equal(reviewData(fx, true).disproof?.durationMs, fx.review.disproof!.duration_ms, fx.slug);

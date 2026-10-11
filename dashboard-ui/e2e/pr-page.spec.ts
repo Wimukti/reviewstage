@@ -196,20 +196,20 @@ test.describe("the status line", () => {
     await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
     await expect(card.getByTestId("evidence")).toHaveAttribute("data-status", "pass");
     await expect(card.getByTestId("evidence")).toContainText("The cited lines are in this diff and mention `vendor`, `leadTime`.");
-    // Part 2: the badge's reason line, then the second pass's own sentence, under Evidence.
-    await expect(card.getByTestId("trust-line")).toContainText("the cited lines exist and mention `vendor`, `leadTime`, a second pass could not disprove it.");
-    await expect(card.getByTestId("checked")).toHaveAttribute("data-verdict", "stands");
-    await expect(card.getByTestId("checked")).toContainText("Checked: stands. No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.");
+    // Part 2: one verdict row under Evidence, labelled with the badge word; no second line.
+    await expect(card.getByTestId("trust-line")).toHaveAttribute("data-verdict", "stands");
+    await expect(card.getByTestId("trust-line")).toContainText("Stands. No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.");
+    await expect(card.getByTestId("checked")).toHaveCount(0);
     await expect(card.getByTestId("how-to-verify")).toHaveCount(0);
     const ys = await Promise.all(
-      ["finding-title", "where", "what-to-check", "contrast", "why-it-matters", "evidence", "trust-line", "checked"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
+      ["finding-title", "where", "what-to-check", "contrast", "why-it-matters", "evidence", "trust-line"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
     );
     for (let i = 1; i < ys.length; i++) expect(ys[i], `row ${i} is below row ${i - 1}`).toBeGreaterThan(ys[i - 1]);
     // The second card's run gave neither a what_to_check nor a verify line, so it has no such
     // row; its file is not in the diff, so the evidence line warns and no snippet is cut.
     const second = page.locator(".finding").nth(1);
     await expect(second.getByTestId("trust")).toHaveText("Likely");
-    await expect(second.getByTestId("trust-line")).toContainText("the file is outside this diff, so its lines could not be checked, no second pass for this severity.");
+    await expect(second.getByTestId("trust-line")).toContainText("No second pass for this severity.");
     await expect(second.getByTestId("checked")).toHaveCount(0);
     await expect(second.getByTestId("confidence")).toHaveCount(0);
     // The model's own estimate sits under "More" (Edit comment), labelled as its own.
@@ -221,7 +221,7 @@ test.describe("the status line", () => {
     await expect(second.getByTestId("what-to-check")).toHaveCount(0);
     await expect(second).not.toContainText("How to verify");
     await expect(second.getByTestId("evidence")).toHaveAttribute("data-status", "warn");
-    await expect(second.getByTestId("evidence")).toContainText("`src/javascripts/Badge.tsx` is not a file this PR changes.");
+    await expect(second.getByTestId("evidence")).toContainText("Not checked: `src/javascripts/Badge.tsx` is not a file this PR changes.");
     await expect(second.getByTestId("diff-snippet")).toHaveCount(0);
     await expect(second.getByTestId("finding-select")).toBeChecked(); // one flag: still staged
     // Explain opens and closes again.
@@ -302,13 +302,14 @@ test.describe("the reading guide and the evidence check", () => {
     await expect(clean.getByTestId("evidence")).toContainText("The cited lines are in this diff and mention `sleep`.");
     await expect(clean.getByTestId("trust")).toHaveText("Checked");
     await expect(clean.getByTestId("trust-line")).toHaveAttribute("data-level", "checked");
-    await expect(clean.getByTestId("trust-line")).toContainText("the cited lines exist and mention `sleep`, a second pass could not disprove it.");
-    await expect(clean.getByTestId("checked")).toContainText("Checked: stands. No cap on `sleep` anywhere in Retry.php or its callers.");
+    await expect(clean.getByTestId("trust-line")).toContainText("Stands. No cap on `sleep` anywhere in Retry.php or its callers.");
+    await expect(clean.getByTestId("checked")).toHaveCount(0);
     const offDiff = cards.nth(1);
     await expect(offDiff.getByTestId("evidence")).toHaveAttribute("data-flags", "path_not_in_diff");
     await expect(offDiff.getByTestId("trust")).toHaveText("Likely");
-    await expect(offDiff.getByTestId("trust-line")).toContainText("the file is outside this diff, so its lines could not be checked, a second pass weakened it: the catch logs at error level, so the failure is visible in the log.");
-    await expect(offDiff.getByTestId("checked")).toHaveAttribute("data-verdict", "weakened");
+    await expect(offDiff.getByTestId("evidence")).toContainText("Not checked: `app/sync/SyncJob.php` is not a file this PR changes.");
+    await expect(offDiff.getByTestId("trust-line")).toContainText("Weakened. The catch logs at error level, so the failure is visible in the log.");
+    await expect(offDiff.getByTestId("trust-line")).toHaveAttribute("data-verdict", "weakened");
     for (let i = 0; i < 2; i++) await expect(cards.nth(i).getByTestId("finding-select")).toBeChecked();
     await expect(page.getByTestId("commit-bar")).toContainText("2");
     // The clean card cites a range: the Where row reads path:start-end and the snippet marks
@@ -330,13 +331,14 @@ test.describe("the reading guide and the evidence check", () => {
     }
     const refuted = tray.filter({ hasText: "A non-retryable error is retried" });
     await expect(refuted.getByTestId("evidence")).toHaveAttribute("data-flags", "no_contrast");
-    await expect(refuted.getByTestId("trust-line")).toContainText("a blocker needs both Expected and Actual, a second pass refuted it: `run()` rethrows an `AuthException` before the retry at Retry.php:23.");
-    await expect(refuted.getByTestId("checked")).toHaveAttribute("data-verdict", "refuted");
-    await expect(tray.filter({ hasText: "The constructor still takes an unused timeout" }).getByTestId("trust-line")).toContainText("lines 80 are not in this PR's changes to `Retry.php`, no second pass for this severity.");
-    await expect(tray.filter({ hasText: "`maxAttempts` is never read" }).getByTestId("trust-line")).toContainText("`maxAttempts` does not appear in the cited lines, no second pass for this severity.");
+    await expect(refuted.getByTestId("evidence")).toContainText("A blocker needs both Expected and Actual.");
+    await expect(refuted.getByTestId("trust-line")).toContainText("Refuted. `run()` rethrows an `AuthException` before the retry at Retry.php:23.");
+    await expect(refuted.getByTestId("trust-line")).toHaveAttribute("data-verdict", "refuted");
+    await expect(tray.filter({ hasText: "The constructor still takes an unused timeout" }).getByTestId("trust-line")).toContainText("Lines 80 are not in this PR's changes to `Retry.php`.");
+    await expect(tray.filter({ hasText: "`maxAttempts` is never read" }).getByTestId("trust-line")).toContainText("`maxAttempts` does not appear in the cited lines.");
     const two = tray.filter({ hasText: "Nope.php is never loaded" });
     await expect(two.getByTestId("evidence")).toHaveAttribute("data-flags", "path_not_in_diff no_contrast");
-    await expect(two.getByTestId("trust-line")).toContainText("`app/sync/Nope.php` is not a file this PR changes. A blocker needs both Expected and Actual, no second pass for this severity.");
+    await expect(two.getByTestId("trust-line")).toContainText("`app/sync/Nope.php` is not a file this PR changes. A blocker needs both Expected and Actual.");
     // The guide on this PR names the risk word "breaks".
     await expect(page.getByTestId("guide-risk")).toHaveText("breaks");
   });

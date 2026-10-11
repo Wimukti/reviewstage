@@ -37,6 +37,7 @@ import {
   X,
 } from "lucide-react";
 import { REASON_LABELS, REASONS, type Badge as BadgeData, type Checked, type Evidence, type GuideData, type Reason, type ReadPlanRow, type Snippet, type Where } from "./api";
+import { evidenceState, lowerFirst } from "./confidence";
 import { StatusBadge, iconOf, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -345,45 +346,25 @@ export function TrustBadge({ badge, className }: { badge?: BadgeData | null; cla
   );
 }
 
-// The badge's reason, one line: "Checked: the cited lines exist, a second pass could not
-// disprove it, reviewers kept 85.0% of findings like this here."
+// The badge's one verdict row under Evidence: the badge word as the label, then the reason
+// as rs_confidence writes it ("Stands. No null guard on `$vendor` ...", "No second pass for this
+// severity.", the calibration clause). It never repeats the Evidence row.
 export function TrustLine({ badge, className }: { badge?: BadgeData | null; className?: string }) {
   if (!badge) return null;
   const Glyph = BADGE_ICON[badge.level] ?? Circle;
   const tone = badge.level === "checked" ? "text-green" : badge.level === "maybe" ? "text-amber" : "text-muted-foreground";
-  const [head, ...rest] = badge.reason.split(": ");
+  const sep = badge.reason.indexOf(": ");
+  const body = sep >= 0 ? badge.reason.slice(sep + 2) : badge.reason;
   return (
     <p
       className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-muted-foreground", className)}
       data-testid="trust-line"
       data-level={badge.level}
+      data-verdict={badge.inputs?.disproof ?? undefined}
     >
       <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", tone)} />
-      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", tone)}>{head}</span>
-      <span className="min-w-0">{rest.join(": ")}</span>
-    </p>
-  );
-}
-
-// The disproof pass's own sentence (§2.1), at the position lane 1 reserved under Evidence:
-// "Checked: stands — the second pass found no handling of a 2xx reset." Absent when the pass
-// did not run for this finding.
-const VERDICT_TONE: Record<string, string> = { stands: "text-green", weakened: "text-amber", refuted: "text-amber" };
-
-export function CheckedLine({ checked, className }: { checked?: Checked | null; className?: string }) {
-  if (!checked) return null;
-  const Glyph = checked.verdict === "stands" ? CircleCheck : TriangleAlert;
-  return (
-    <p
-      className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-muted-foreground", className)}
-      data-testid="checked"
-      data-verdict={checked.verdict}
-    >
-      <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", VERDICT_TONE[checked.verdict])} />
-      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", VERDICT_TONE[checked.verdict])}>
-        Checked: {checked.verdict}
-      </span>
-      {checked.reason && <span className="min-w-0">. {checked.reason}</span>}
+      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", tone)}>{badge.label}</span>
+      <span className="min-w-0">{body}</span>
     </p>
   );
 }
@@ -501,12 +482,16 @@ export function Contrast({ expected, actual, className }: { expected?: string; a
   );
 }
 
-// Row 6: the deterministic evidence check (§1.4) in one line. PASS reads green, WARN amber;
-// the line is the plain reason. Absent when the diff could not be checked.
+// Row 6: the deterministic evidence check (§1.4) in one line. PASS reads green, WARN amber
+// with "check" in the label; a finding the check could not hold against the diff (the file is
+// outside it) reads "Not checked:" in the muted tone. Absent when there is no evidence at all.
 export function EvidenceLine({ evidence, className }: { evidence?: Evidence | null; className?: string }) {
   if (!evidence) return null;
-  const warn = evidence.status === "warn";
-  const Glyph = warn ? TriangleAlert : CircleCheck;
+  const state = evidenceState(evidence);
+  const warn = state === "warn";
+  const unchecked = state === "none";
+  const Glyph = warn ? TriangleAlert : unchecked ? Circle : CircleCheck;
+  const tone = warn ? "text-amber" : unchecked ? "text-muted-foreground" : "text-green";
   return (
     <p
       className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-muted-foreground", className)}
@@ -514,11 +499,11 @@ export function EvidenceLine({ evidence, className }: { evidence?: Evidence | nu
       data-status={evidence.status}
       data-flags={(evidence.flags ?? []).join(" ") || undefined}
     >
-      <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", warn ? "text-amber" : "text-green")} />
-      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", warn ? "text-amber" : "text-green")}>
+      <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", tone)} />
+      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", tone)}>
         Evidence{warn ? " · check" : ""}
       </span>
-      <span className="min-w-0">{evidence.line}</span>
+      <span className="min-w-0">{unchecked ? `Not checked: ${lowerFirst(evidence.line)}` : evidence.line}</span>
     </p>
   );
 }
@@ -710,7 +695,6 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
         )}
         <EvidenceLine evidence={f.evidence} className="max-w-[72ch] text-sm" />
         <TrustLine badge={f.badge} className="max-w-[72ch] text-sm" />
-        <CheckedLine checked={f.checked} className="max-w-[72ch] text-sm" />
         {(f.criticalPath || f.agreement) && (
           <div className="flex flex-wrap gap-1.5">
             {f.criticalPath && (

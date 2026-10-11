@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Finding } from "./api";
-import { CheckedLine, ConfidenceBadge, FindingCard, HowToVerify, SelfReport, TrustBadge, TrustLine } from "./ReviewParts";
+import { ConfidenceBadge, FindingCard, HowToVerify, SelfReport, TrustBadge, TrustLine } from "./ReviewParts";
 import { PhoneFindingCard } from "./PhoneReview";
 
 const full: Finding = {
@@ -266,6 +266,14 @@ test("the evidence line reads PASS or WARN with the plain reason, and renders no
   assert.match(warn, /data-flags="path_not_in_diff no_contrast"/);
   assert.match(warn, /Evidence<!-- --> · check|Evidence · check/);
   assert.match(warn, /A blocker needs both Expected and Actual/);
+  // A lone off-diff flag is not a warning: the row says the check could not run.
+  const off = renderToStaticMarkup(
+    createElement(EvidenceLine, { evidence: { status: "warn", flags: ["path_not_in_diff"], line: "`x.php` is not a file this PR changes." } }),
+  );
+  assert.match(off, />Evidence</);
+  assert.doesNotMatch(off, /· check/);
+  assert.match(off, /Not checked: `x.php` is not a file this PR changes\./);
+  assert.doesNotMatch(off, /text-amber|text-green/);
   assert.equal(renderToStaticMarkup(createElement(EvidenceLine, { evidence: null })), "");
   assert.equal(renderToStaticMarkup(createElement(EvidenceLine, {})), "");
 });
@@ -341,11 +349,11 @@ test("the reading guide collapses to its header with a one-line peek, and render
 });
 
 // ---- earned confidence (trust-and-plain Part 2) -------------------------------------------------
-const CHECKED_B = { level: "checked" as const, label: "Checked", reason: "Checked: the cited lines exist and mention `vendor`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here." };
-const LIKELY_B = { level: "likely" as const, label: "Likely", reason: "Likely: the cited lines exist, no second pass for this severity." };
+const CHECKED_B = { level: "checked" as const, label: "Checked", reason: "Checked: Stands. No null guard on `$vendor` in Product.php or its callers. Reviewers kept 85.0% of findings like this here.", inputs: { evidence: "pass" as const, disproof: "stands" as const, keepRate: 85, n: 30 } };
+const LIKELY_B = { level: "likely" as const, label: "Likely", reason: "Likely: No second pass for this severity." };
 const MAYBE_B = { level: "maybe" as const, label: "Maybe", reason: "Maybe: `src/javascripts/Badge.tsx` is not a file this PR changes." };
+const REFUTED_B = { level: "maybe" as const, label: "Maybe", reason: "Maybe: Refuted. `guardVendor()` runs first at Product.php:38.", inputs: { evidence: "pass" as const, disproof: "refuted" as const, keepRate: null, n: null } };
 const STANDS = { verdict: "stands" as const, reason: "No null guard on `$vendor` in Product.php or its callers.", at: 1 };
-const REFUTED = { verdict: "refuted" as const, reason: "`guardVendor()` runs first at Product.php:38.", at: 1 };
 const withBadge: Finding = { ...full, evidence: { status: "pass", flags: [], line: "The cited lines are in this diff and mention `vendor`.", symbols: ["vendor"] }, checked: STANDS, badge: CHECKED_B };
 
 test("with a badge the head shows Checked / Likely / Maybe and never the self-report alone", () => {
@@ -362,33 +370,32 @@ test("with a badge the head shows Checked / Likely / Maybe and never the self-re
   }
 });
 
-test("the reason line and the Checked line sit after Evidence, in that order, on both cards", () => {
+test("one verdict row after Evidence, labelled with the badge word, on both cards; nothing restates the evidence", () => {
   for (const render of [desk, phone]) {
     const html = render(withBadge);
     assert.match(html, /data-testid="evidence"[^>]*data-status="pass"/);
-    assert.match(html, /data-testid="trust-line"[^>]*data-level="checked"/);
-    assert.match(html, /data-testid="checked"[^>]*data-verdict="stands"/);
-    assert.match(html, /Checked: stands/);
-    assert.match(html, /\. No null guard on `\$vendor` in Product.php or its callers\./);
+    assert.match(html, /data-testid="trust-line"[^>]*data-level="checked"[^>]*data-verdict="stands"/);
+    assert.doesNotMatch(html, /data-testid="checked"/, "no separate Checked line");
+    assert.equal((html.match(/data-testid="trust-line"/g) ?? []).length, 1, "exactly one verdict row");
+    assert.match(html, />Checked<\/span><span[^>]*>Stands\. No null guard on `\$vendor` in Product.php or its callers\. Reviewers kept 85\.0% of findings like this here\.</);
     assert.ok(
-      ascending(order(html, ['data-testid="why-it-matters"', 'data-testid="evidence"', 'data-testid="trust-line"', 'data-testid="checked"'])),
-      "why · evidence · reason line · checked line",
+      ascending(order(html, ['data-testid="why-it-matters"', 'data-testid="evidence"', 'data-testid="trust-line"'])),
+      "why · evidence · verdict row",
     );
-    // The chip and the line agree, and the chip's title is the full reason.
-    assert.match(html, /title="Checked: the cited lines exist and mention `vendor`, a second pass could not disprove it, reviewers kept 85\.0% of findings like this here\."/);
+    // The chip and the row agree, and the chip's title is the full reason.
+    assert.match(html, /title="Checked: Stands\. No null guard on `\$vendor` in Product.php or its callers\. Reviewers kept 85\.0% of findings like this here\."/);
   }
 });
 
-test("no verdict: the reason line still renders, the Checked line does not; a refuted verdict reads as a warning", () => {
+test("no verdict: the row says so; a refuted verdict reads as a Maybe in the warning tone", () => {
   const none = desk({ ...withBadge, checked: null, badge: LIKELY_B });
   assert.match(none, /data-testid="trust-line"[^>]*data-level="likely"/);
-  assert.doesNotMatch(none, /data-testid="checked"/);
-  assert.match(none, /no second pass for this severity/);
-  const refuted = renderToStaticMarkup(createElement(CheckedLine, { checked: REFUTED }));
-  assert.match(refuted, /data-verdict="refuted"/);
+  assert.doesNotMatch(none, /data-verdict=/);
+  assert.match(none, />Likely<\/span><span[^>]*>No second pass for this severity\.</);
+  const refuted = renderToStaticMarkup(createElement(TrustLine, { badge: REFUTED_B }));
+  assert.match(refuted, /data-level="maybe"[^>]*data-verdict="refuted"/);
   assert.match(refuted, /text-amber/);
-  assert.match(refuted, /`guardVendor\(\)` runs first at Product.php:38\./);
-  assert.equal(renderToStaticMarkup(createElement(CheckedLine, { checked: null })), "");
+  assert.match(refuted, />Maybe<\/span><span[^>]*>Refuted\. `guardVendor\(\)` runs first at Product.php:38\.</);
   assert.equal(renderToStaticMarkup(createElement(TrustBadge, { badge: null })), "");
   assert.equal(renderToStaticMarkup(createElement(TrustLine, { badge: undefined })), "");
 });

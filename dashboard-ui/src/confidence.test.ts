@@ -80,18 +80,22 @@ test("rule table — Maybe", () => {
   assert.equal(isMaybe(null), false);
 });
 
-test("reason lines read as the Python module writes them", () => {
-  assert.equal(
-    badge(PASS, STANDS, GOOD).reason,
-    "Checked: the cited lines exist and mention `attempts`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here.",
-  );
-  assert.equal(badge(WARN_LINES).reason, "Maybe: lines 80 are not in this PR's changes to `Retry.php`.");
-  assert.equal(badge(PASS, REFUTED).reason, "Maybe: the cited lines exist and mention `attempts`, a second pass refuted it: `resetAttempts()` at retry.ts:71 runs after a 2xx.");
-  assert.equal(badge(PASS_PLAIN, WEAK).reason, "Likely: the cited lines exist, a second pass weakened it: only the 6th call is lost, not every retry.");
-  assert.equal(badge(PASS_PLAIN).reason, "Likely: the cited lines exist.");
-  assert.equal(badge(PASS_PLAIN, null, null, DONE).reason, "Likely: the cited lines exist, no second pass for this severity.");
-  assert.equal(badge(PASS_PLAIN, null, null, { status: "failed" }).reason, "Likely: the cited lines exist, the second pass failed.");
-  assert.equal(badge(null).reason, "Likely: the diff could not be checked.");
-  assert.equal(badge(OFF_DIFF, null, null, DONE).reason, "Likely: the file is outside this diff, so its lines could not be checked, no second pass for this severity.");
+test("reason lines read as the Python module writes them: the one verdict row under Evidence", () => {
+  assert.equal(badge(PASS, STANDS, GOOD).reason, "Checked: Stands. No reset of `attempts` after a 2xx anywhere. Reviewers kept 85.0% of findings like this here.");
+  assert.equal(badge(PASS, STANDS).reason, "Checked: Stands. No reset of `attempts` after a 2xx anywhere.");
+  assert.equal(badge(WARN_LINES).reason, "Maybe: Lines 80 are not in this PR's changes to `Retry.php`.");
+  assert.equal(badge(WARN_TWO, null, null, DONE).reason, "Maybe: `Nope.php` is not a file this PR changes. A blocker needs both Expected and Actual.");
+  assert.equal(badge(PASS, REFUTED).reason, "Maybe: Refuted. `resetAttempts()` at retry.ts:71 runs after a 2xx.");
+  assert.equal(badge(PASS_PLAIN, WEAK).reason, "Likely: Weakened. Only the 6th call is lost, not every retry.");
+  assert.equal(badge(PASS_PLAIN).reason, "Likely: No second pass ran.");
+  assert.equal(badge(PASS_PLAIN, null, null, DONE).reason, "Likely: No second pass for this severity.");
+  assert.equal(badge(PASS_PLAIN, null, null, { status: "failed" }).reason, "Likely: The second pass failed.");
+  assert.equal(badge(null).reason, "Likely: The diff could not be checked. No second pass ran.");
+  assert.equal(badge(OFF_DIFF, null, null, DONE).reason, "Likely: No second pass for this severity.");
+  assert.equal(badge(PASS_PLAIN, null, MID, DONE).reason, "Likely: No second pass for this severity. Reviewers kept 55.0% of findings like this here.");
+  // Never a restatement of the Evidence row.
+  for (const ev of [PASS, PASS_PLAIN, OFF_DIFF]) for (const chk of [STANDS, WEAK, null]) {
+    assert.doesNotMatch(badge(ev, chk, null, DONE).reason, /cited lines|outside this diff/);
+  }
   assert.deepEqual(badge(PASS, STANDS, GOOD).inputs, { evidence: "pass", disproof: "stands", keepRate: 85, n: 30 });
 });

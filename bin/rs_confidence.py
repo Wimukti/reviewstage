@@ -44,9 +44,10 @@ def evidence_state(evidence):
     return "warn"
 
 
-def _lower_first(text):
-    t = (text or "").strip().rstrip(".")
-    return (t[0].lower() + t[1:]) if t and t[0].isalpha() else t
+def _sentence(text):
+    """A stripped string closed with a full stop, or "" for nothing."""
+    t = (text or "").strip()
+    return (t + ".") if t and t[-1] not in ".!?" else t
 
 
 def _pct(rate):
@@ -70,34 +71,30 @@ def badge(evidence, checked=None, calibration=None, disproof=None):
     else:
         level = "likely"
 
+    # The reason is the card's one verdict row under Evidence, so it never repeats what the
+    # Evidence row already says: the verdict word and the second pass's own sentence when there
+    # is one; otherwise why there is no verdict (the evidence note only when no Evidence row is
+    # shown: a WARN the badge rests on, or no evidence at all). The calibration clause last.
     parts = []
-    if ev == "pass":
-        syms = [s for s in (evidence.get("symbols") or []) if s][:2]
-        parts.append("the cited lines exist" + (" and mention " + ", ".join(f"`{s}`" for s in syms)
-                                                if syms else ""))
-    elif ev == "warn":
-        parts.append(_lower_first(evidence.get("line")) or "the evidence check failed")
-    elif isinstance(evidence, dict) and evidence_state(evidence) == "none" \
-            and evidence.get("flags"):
-        parts.append("the file is outside this diff, so its lines could not be checked")
+    reason_txt = _sentence((checked or {}).get("reason") if isinstance(checked, dict) else "")
+    if verdict in ("stands", "weakened", "refuted"):
+        parts.append(verdict.capitalize() + "." + (f" {reason_txt}" if reason_txt else ""))
     else:
-        parts.append("the diff could not be checked")
-    reason_txt = (checked or {}).get("reason") if isinstance(checked, dict) else ""
-    if verdict == "stands":
-        parts.append("a second pass could not disprove it")
-    elif verdict == "weakened":
-        parts.append("a second pass weakened it" + (f": {_lower_first(reason_txt)}" if reason_txt else ""))
-    elif verdict == "refuted":
-        parts.append("a second pass refuted it" + (f": {_lower_first(reason_txt)}" if reason_txt else ""))
-    elif isinstance(disproof, dict):
-        st = disproof.get("status")
-        if st == "failed":
-            parts.append("the second pass failed")
-        elif st in ("done", "partial") and checked is None:
-            parts.append("no second pass for this severity")
+        if ev == "warn":
+            parts.append(_sentence(evidence.get("line")) or "The evidence check failed.")
+        elif evidence is None:
+            parts.append("The diff could not be checked.")
+        if ev != "warn":
+            st = disproof.get("status") if isinstance(disproof, dict) else None
+            if st == "failed":
+                parts.append("The second pass failed.")
+            elif st in ("done", "partial"):
+                parts.append("No second pass for this severity.")
+            else:
+                parts.append("No second pass ran.")
     if rate is not None:
-        parts.append(f"reviewers kept {_pct(rate)} of findings like this here")
-    reason = f"{LABELS[level]}: " + ", ".join(parts) + "."
+        parts.append(f"Reviewers kept {_pct(rate)} of findings like this here.")
+    reason = f"{LABELS[level]}: " + " ".join(parts)
     return {"level": level, "label": LABELS[level], "reason": reason,
             "inputs": {"evidence": ev, "disproof": verdict,
                        "keepRate": rate, "n": int(cal["n"]) if cal else None}}

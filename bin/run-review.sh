@@ -195,7 +195,7 @@ git -C "$BASE" worktree add -q --force -B "review-$PR-$slug" "$wt" "origin/$bran
   || fail "could not create worktree"
 WT_PATH="$wt"; WT_BRANCH="review-$PR-$slug"   # the EXIT trap removes both, however we leave
 
-status "reviewing the diff"
+status "drafting findings from the diff"
 # Whose Claude account this runs on: the dashboard sets RS_RUN_AS (and, for a connected
 # user, CLAUDE_CODE_OAUTH_TOKEN) when it spawns us. Recorded so the page can say so.
 echo "${RS_RUN_AS:-shared}" > "$DIR/runner" || fail "cannot write to $DIR (disk full?)"

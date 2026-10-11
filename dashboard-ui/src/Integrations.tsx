@@ -167,7 +167,7 @@ function WebhookInfo({ notify }: { notify: IntegrationsData["notify"] }) {
       <p className={cn(HINT, "mt-0")}>
         {e.webhook_url ? (
           <span className="text-green">
-            <code>WEBHOOK_URL</code> is set{e.webhook_secret ? " and requests are signed (WEBHOOK_SECRET)" : " — unsigned; set WEBHOOK_SECRET to sign requests"}.
+            <code>WEBHOOK_URL</code> is set{e.webhook_secret ? " and requests are signed (WEBHOOK_SECRET)" : ": unsigned; set WEBHOOK_SECRET to sign requests"}.
           </span>
         ) : (
           <>
@@ -269,7 +269,7 @@ export function ClaudeCtl({
         </Button>
       )}
       <p className={HINT}>
-        Opens Claude in a new tab — sign in with <em>your</em> account and click <b>Authorize</b>.
+        Opens Claude in a new tab: sign in with <em>your</em> account and click <b>Authorize</b>.
         Claude shows you a code; paste it below.
       </p>
       {reveal && (
@@ -488,7 +488,7 @@ export function Integrations({ me }: { me: Me }) {
           icon={BrandIcon.webhook}
           name="Generic webhook"
           chip={d.notify.env.webhook_url ? ON : OFF}
-          sub="Teams, Zapier, n8n or your own endpoint — the raw event JSON, HMAC-signed."
+          sub="Teams, Zapier, n8n or your own endpoint: the raw event JSON, HMAC-signed."
         >
           <WebhookInfo notify={d.notify} />
         </Row>

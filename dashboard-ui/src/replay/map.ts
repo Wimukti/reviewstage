@@ -163,10 +163,10 @@ const gist = (body: string) => body.split(/\r?\n/)[0].replace(/[`*_#>]/g, "").tr
 export function defaultApproveMsg(comments: FixtureComment[]): string {
   const items = comments.filter((c) => c.severity === "blocker" || c.severity === "should-fix");
   if (!items.length) return "LGTM 🚀";
-  const lines = ["LGTM — just handle these before merge:", ""];
+  const lines = ["LGTM. Just handle these before merge:", ""];
   for (const c of items) {
     const where = c.line ? `\`${c.path}:${c.line}\`` : `\`${c.path}\``;
-    lines.push(`- ${where} — ${gist(c.body || "")}`);
+    lines.push(`- ${where}: ${gist(c.body || "")}`);
   }
   return lines.join("\n");
 }
@@ -262,7 +262,7 @@ export function prData(fx: ReplayFixture): PrData {
     runForm: {
       suggested: "standard",
       levels: [
-        { key: "quick", name: "Quick", sub: "Diff only — a first pass" },
+        { key: "quick", name: "Quick", sub: "Diff only, a first pass" },
         { key: "standard", name: "Standard", sub: "The diff and the files it touches" },
         { key: "deep", name: "Deep", sub: "Follows calls across the repository" },
       ],

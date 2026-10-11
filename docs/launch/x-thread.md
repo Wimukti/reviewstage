@@ -1,4 +1,4 @@
-# X / Twitter thread — D0, 13:00 US Eastern
+# X / Twitter thread. D0, 13:00 US Eastern
 
 Attach the vertical cut to post 1 (native upload). Keep each post under 280 characters.
 
@@ -18,7 +18,7 @@ thing nobody owns it.
 ReviewStage is a staging area. Findings stay private until you pick them.
 
 3/
-It runs on your own Claude plan through Claude Code — no API key.
+It runs on your own Claude plan through Claude Code: no API key.
 
 Quick / Standard / Deep effort, pick the model, every run kept.
 
@@ -39,4 +39,4 @@ Open source (MIT). Mac + Linux desktop app, or Docker for a team.
 https://reviewstage.dev
 https://github.com/Wimukti/reviewstage
 
-Built on Claude Code — @AnthropicAI @claudeai
+Built on Claude Code: @AnthropicAI @claudeai

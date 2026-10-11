@@ -118,7 +118,7 @@ test("errMessage prefers the server's words and never returns empty", () => {
   assert.equal(errMessage(new ApiError("GitHub said no.", {}, 422)), "GitHub said no.");
   assert.match(errMessage(new Unauthorized()), /session has expired/i);
   assert.equal(errMessage(null, "fallback"), "fallback");
-  assert.equal(errMessage(new Error("")), "That didn't work — try again.");
+  assert.equal(errMessage(new Error("")), "That didn't work: try again.");
 });
 
 test("errBanner escapes the server's message instead of injecting it", () => {

@@ -165,7 +165,7 @@ test.describe("pwa", () => {
       await page.goto(`${base}/settings`);
       await expect(page.getByTestId("offline")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Your Mac isn't reachable" })).toBeVisible();
-      await expect(page.getByText("The phone reaches ReviewStage on your Mac. Open it there — or wake the Mac — and try again.")).toBeVisible();
+      await expect(page.getByText("The phone reaches ReviewStage on your Mac. Open it there, or wake the Mac, and try again.")).toBeVisible();
       await expect(page.getByText(/open the newest link from your notifications/)).toBeVisible();
       await expect(page.getByText(/1033/)).toHaveCount(0);
       const { scrollWidth, innerWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));

@@ -21,8 +21,8 @@ export const EVENT_ROWS: { event: string; dims: string; when: string }[] = [
   { event: "review_completed", dims: "outcome: done, failed, stopped, timeout", when: "a review ends" },
   { event: "run_duration_bucket", dims: "bucket: lt1m, 1to3m, 3to10m, gt10m", when: "a review ends" },
   { event: "findings_shown", dims: "count", when: "a review ends" },
-  { event: "plain_warnings", dims: "count", when: "a review ends (sentences over the writing-rule limits and hedges the linter flagged — never the text)" },
-  { event: "disproof_run", dims: "verdict: stands, weakened, refuted, failed", when: "the second pass ends (how many findings it held up, weakened, refuted or could not answer — never which)" },
+  { event: "plain_warnings", dims: "count", when: "a review ends (sentences over the writing-rule limits and hedges the linter flagged: never the text)" },
+  { event: "disproof_run", dims: "verdict: stands, weakened, refuted, failed", when: "the second pass ends (how many findings it held up, weakened, refuted or could not answer: never which)" },
   { event: "findings_kept · findings_edited · findings_dropped", dims: "count", when: "a review is posted (or dry-run posted)" },
   { event: "dismissal_reason", dims: "reason: a short slug from the dismissal menu", when: "a finding is dropped with a reason" },
   { event: "post_attempted · post_succeeded", dims: "dry: 0, 1", when: "a post is attempted and when it lands" },
@@ -80,7 +80,7 @@ export function TelemetrySchema({ endpointSet, compact }: { endpointSet: boolean
       <p className="m-0 mt-3 text-muted-foreground" data-testid="telemetry-endpoint">
         {endpointSet
           ? "An endpoint is configured on this server; with your consent one summary per day is posted to it."
-          : "No endpoint is configured on this server — nothing is sent either way. Consent only decides what happens if one is set later."}
+          : "No endpoint is configured on this server: nothing is sent either way. Consent only decides what happens if one is set later."}
       </p>
     </div>
   );
@@ -104,17 +104,17 @@ export function ConsentCard({ me, onDone }: { me: Me; onDone: () => void }) {
       await api.telemetryConsent(share);
       onDone();
     } catch (e) {
-      setErr(errMessage(e, "Could not save your choice — try again."));
+      setErr(errMessage(e, "Could not save your choice: try again."));
       setBusy("");
     }
   };
   return (
     <div data-testid="welcome-privacy">
-      <h2 className="mt-6 text-sm font-medium">One question: share anonymous product counters?</h2>
+      <h2 className="mt-6 text-sm font-medium">One question: share optional usage counts?</h2>
       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        {me.brand} keeps a few counters on this machine — how many reviews ran, how many findings you kept or dropped —
-        so you can see them in Settings → Privacy. Sharing them is off unless you say otherwise, and nothing is sent
-        while no endpoint is configured.
+        {me.brand} keeps a few counters on this machine (how many reviews ran, how many findings you kept or dropped),
+        so you can see them in Settings → Privacy. Optional usage counts: no names, repositories, paths, or text. Sharing
+        is off unless you say otherwise, and nothing is sent while no endpoint is configured.
       </p>
       <TelemetrySchema endpointSet={!!t?.endpointSet} compact />
       {err && (
@@ -127,7 +127,7 @@ export function ConsentCard({ me, onDone }: { me: Me; onDone: () => void }) {
           {busy === "local" ? "Saving…" : "Keep it local"}
         </Button>
         <Button type="button" variant="outline" disabled={!!busy} onClick={() => void choose(true)} data-testid="telemetry-share">
-          {busy === "share" ? "Saving…" : "Share anonymous product events"}
+          {busy === "share" ? "Saving…" : "Share usage counts"}
         </Button>
       </div>
       <p className="mb-0 mt-3 text-center text-xs text-muted-foreground">You can change this any time in Settings → Privacy.</p>
@@ -188,7 +188,7 @@ export function PrivacyRows({ initial, adminRow }: { initial?: TelemetryData; ad
         <StatusBadge kind={s.kind} label={s.label} data-testid="telemetry-state" data-state={t.state} />
       </Row>
       <Row
-        label="Share anonymous product events"
+        label="Share usage counts"
         hint={
           locked ? (
             <span data-testid="telemetry-locked">
@@ -206,7 +206,7 @@ export function PrivacyRows({ initial, adminRow }: { initial?: TelemetryData; ad
         }
       >
         <Switch
-          aria-label="Share anonymous product events"
+          aria-label="Share usage counts"
           checked={t.consented}
           disabled={busy || locked}
           onCheckedChange={(v) => void run(() => api.telemetryConsent(v))}
@@ -241,7 +241,7 @@ export function PrivacyRows({ initial, adminRow }: { initial?: TelemetryData; ad
       <div className="py-4">
         <TelemetrySchema endpointSet={t.endpointSet} />
       </div>
-      <Row label="Export" hint="A JSON file of the counters, the consent record and the queue — exactly what is on disk.">
+      <Row label="Export" hint="A JSON file of the counters, the consent record and the queue: exactly what is on disk.">
         <Button asChild variant="outline" size="sm">
           <a href={TELEMETRY_EXPORT_URL} download="reviewstage-telemetry.json" data-testid="telemetry-export">
             <Download aria-hidden="true" />

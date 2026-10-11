@@ -93,7 +93,7 @@ class Probe(unittest.TestCase):
 
     def test_lock_free_dead_pid_old_status_is_stalled(self):
         self._dead_pid()
-        self._status("reviewing the diff", S.STARTUP_GRACE + 60)
+        self._status("drafting findings from the diff", S.STARTUP_GRACE + 60)
         pr = S.probe(self.udir)
         self.assertEqual(pr["state"], S.STALLED)
         self.assertFalse(pr["lock_held"])

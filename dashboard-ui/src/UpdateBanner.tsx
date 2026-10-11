@@ -51,7 +51,7 @@ export function UpdateBanner() {
         size="icon"
         type="button"
         className="ml-auto size-7"
-        aria-label={`Dismiss — remind me about the next version`}
+        aria-label={`Dismiss: remind me about the next version`}
         onClick={() => {
           dismissVersion(u.latest || "");
           setDismissed(u.latest || "");

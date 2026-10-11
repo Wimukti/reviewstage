@@ -166,7 +166,7 @@ function ClaudeStep({ me, reload }: { me: Me; reload: () => Promise<unknown> }) 
       </div>
       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
         Reviews run on <em>your</em> Claude subscription, never a shared account. You can do this later
-        from Integrations — nothing runs until it is connected.
+        from Integrations, nothing runs until it is connected.
       </p>
       <div className="mt-4">
         <RawBanner html={banner} />

@@ -41,7 +41,7 @@ export function StageQueueCard({ state = "new", showRepo = true }: { state?: Que
             <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="row-running">
               <StatusBadge kind="reviewing" live />
               <span className="text-amber">{fixture.phases[2]}</span>
-              <span className="text-muted-foreground">— open to watch</span>
+              <span className="text-muted-foreground">, open to watch</span>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2" data-testid="row-state">

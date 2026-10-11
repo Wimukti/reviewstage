@@ -19,7 +19,7 @@ export function ReplayBanner({ fixture }: { fixture: ReplayFixture }) {
           <b>Precomputed example.</b> Nothing leaves this page.
         </span>
         <span className="text-muted-foreground max-[599px]:hidden" data-testid="replay-hint">
-          Three findings — one to keep, one to drop, one to edit.
+          Three findings, one to keep, one to drop, one to edit.
         </span>
         <span className="ml-auto flex items-center gap-3 text-sm">
           <a href={`${EXAMPLES_URL}${fixture.slug}/`} className="min-h-[44px] inline-flex items-center text-primary" data-testid="replay-readme">

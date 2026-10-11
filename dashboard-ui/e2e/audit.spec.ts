@@ -266,7 +266,7 @@ test.describe("the running view and the counts", () => {
           repo: REPO,
           num: PR4,
           title: "Retry the vendor sync on a 502",
-          status: "reviewing the diff",
+          status: "drafting findings from the diff",
           href: prUrl(REPO, PR4),
         },
         {
@@ -283,7 +283,7 @@ test.describe("the running view and the counts", () => {
     await page.goto("/?running=1");
     const list = page.getByTestId("running-list");
     await expect(list.getByTestId("queue-row")).toHaveCount(2);
-    await expect(list).toContainText(/reviewing the diff/i);
+    await expect(list).toContainText(/drafting findings from the diff/i);
     await expect(list).toContainText(/reading the diff/i);
     await expect(list).toContainText("QA guide");
     await expect(page.getByText(/nothing running/i)).toHaveCount(0);

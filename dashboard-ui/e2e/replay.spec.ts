@@ -86,7 +86,7 @@ test.describe("the replay on a desktop", () => {
     // Part 2, with no server: the badge from the fixture's second-pass verdicts — Checked,
     // Likely (weakened), Likely (not in the pass) — and the Checked line on the first card.
     await expect(cards.nth(0).getByTestId("trust")).toHaveText("Checked");
-    await expect(cards.nth(0).getByTestId("checked")).toContainText("Checked: stands — `deliver()` retries on `!res.ok`");
+    await expect(cards.nth(0).getByTestId("checked")).toContainText("Checked: stands. `deliver()` retries on `!res.ok`");
     await expect(cards.nth(1).getByTestId("trust")).toHaveText("Likely");
     await expect(cards.nth(1).getByTestId("trust-line")).toContainText("a second pass weakened it: `backoffMs` is unbounded");
     await expect(cards.nth(2).getByTestId("trust")).toHaveText("Likely");
@@ -114,7 +114,7 @@ test.describe("the replay on a desktop", () => {
     await bar.locator("button[data-post]").click();
     const sheet = page.getByTestId("replay-post-preview");
     await expect(sheet).toBeVisible();
-    await expect(sheet).toContainText("Precomputed example — nothing was sent");
+    await expect(sheet).toContainText("Precomputed example: nothing was sent");
     const posted = sheet.getByTestId("replay-post-comment");
     await expect(posted).toHaveCount(2);
     await expect(posted.nth(0)).toContainText("src/webhooks/deliver.ts:25");

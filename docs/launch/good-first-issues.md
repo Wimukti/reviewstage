@@ -1,13 +1,13 @@
-# Good first issues (opened 10/10/26 as Wimukti/reviewstage#19–#30, label `good first issue` + an area label)
+# Good first issues (opened 10/10/26 as Wimukti/reviewstage#19 to #30, label `good first issue` + an area label)
 
 Each has a file, the expected behaviour and the test that proves it. Keep the body to what is
 here; link the contributing guide.
 
 1. **Windows: `npx reviewstage` should fail with a helpful message instead of a stack trace.**
-   `desktop/bin/reviewstage.js` — detect `win32`, print the Docker/WSL path from
+   `desktop/bin/reviewstage.js`: detect `win32`, print the Docker/WSL path from
    `docs/INSTALL-DESKTOP.md` and exit 1. Test: `desktop/test/tools.test.mjs` with
    `process.platform` stubbed.
-2. **Doctor: report the fetched tool versions in `ROOT/bin`.** `bin/doctor.sh` — read the
+2. **Doctor: report the fetched tool versions in `ROOT/bin`.** `bin/doctor.sh`: read the
    `.<tool>.version` stamps and print one PASS line each. Test: a shell test under
    `bin/test-*.sh` with a temp ROOT.
 3. **Queue: keyboard shortcut `j`/`k` to move between rows, `Enter` to open.**

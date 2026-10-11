@@ -369,7 +369,7 @@ test("the reason line and the Checked line sit after Evidence, in that order, on
     assert.match(html, /data-testid="trust-line"[^>]*data-level="checked"/);
     assert.match(html, /data-testid="checked"[^>]*data-verdict="stands"/);
     assert.match(html, /Checked: stands/);
-    assert.match(html, /— No null guard on `\$vendor` in Product.php or its callers\./);
+    assert.match(html, /\. No null guard on `\$vendor` in Product.php or its callers\./);
     assert.ok(
       ascending(order(html, ['data-testid="why-it-matters"', 'data-testid="evidence"', 'data-testid="trust-line"', 'data-testid="checked"'])),
       "why · evidence · reason line · checked line",

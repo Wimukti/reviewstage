@@ -3,17 +3,28 @@
  * the real job script that enforces it (bin/lib-common.sh, bin/run-review.sh). The band is the
  * stage light's second placement; in the light theme it inverts to an ink band. */
 import { withBase } from "../../content/site-links";
+const facts = [
+  "The AI draft stays private until you choose to publish.",
+  "You decide which findings are correct and worth saying.",
+  "The review you publish appears under your GitHub identity.",
+  "Approving a pull request requires a separate human action.",
+  "The drafting agent cannot write to GitHub.",
+];
 const barriers = [
-  { t: "No credentials", d: "Every GitHub token is removed from the agent's environment before it starts.", code: "env -u GH_TOKEN -u GITHUB_TOKEN \\\n    -u GITHUB_PAT … claude -p" },
-  { t: "No tools that write", d: "A deny list the prompt cannot lift, whatever a file in the diff says.", code: "--disallowedTools \"Bash(gh:*)\n  Bash(git push:*) Bash(curl:*) …\"" },
-  { t: "Proof afterwards", d: "The PR's reviews, comments and threads are counted before and after. Any change fails the run.", code: "gh_before=$(pr_write_fingerprint)\n…\n[ \"$gh_before\" != \"$gh_after\" ] && fail" },
+  { t: "No credentials", d: "Every GitHub token is removed before the agent starts.", code: "env -u GH_TOKEN -u GITHUB_TOKEN \\\n    -u GITHUB_PAT … claude -p" },
+  { t: "No tools that write", d: "A deny list the prompt cannot lift.", code: "--disallowedTools \"Bash(gh:*)\n  Bash(git push:*) Bash(curl:*) …\"" },
+  { t: "Proof afterwards", d: "Reviews, comments and threads are counted before and after; any change fails the run.", code: "gh_before=$(pr_write_fingerprint)\n…\n[ \"$gh_before\" != \"$gh_after\" ] && fail" },
 ];
 ---
 <section id="gate" class="gate home-section" aria-labelledby="gate-title">
   <div class="container-page section-inner">
     <div class="grid max-w-[44rem] gap-3">
-      <h2 id="gate-title" class="section-title">Enforced, not promised.</h2>
-      <p class="gate-lede m-0 text-base">A prompt-injected diff cannot post under your name. The agent that drafts the review has no way to reach GitHub, and the run checks that nothing landed.</p>
+      <h2 id="gate-title" class="section-title">You decide what becomes a review</h2>
+      <ul class="gate-lede m-0 grid list-disc gap-1.5 pl-5 text-base">
+        {facts.map((f) => <li>{f}</li>)}
+      </ul>
+      <h3 class="m-0 mt-2 text-base font-semibold">Enforced, not promised.</h3>
+      <p class="gate-lede m-0 text-base">A prompt-injected diff cannot post under your name: the agent cannot reach GitHub, and the run checks nothing landed.</p>
     </div>
     <ul class="m-0 grid list-none gap-4 p-0 md:grid-cols-3">
       {barriers.map((b) => (

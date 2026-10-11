@@ -409,7 +409,7 @@ const review: Demo = {
     await page.getByTestId("progress-panel").waitFor();
     const stage = (async () => {
       await sleep(1500); writeRun("checking out the branch");
-      await sleep(1800); writeRun("reviewing the diff");
+      await sleep(1800); writeRun("drafting findings from the diff");
       await sleep(2200); writeRun("done", PR4_REVIEW);
     })();
     await page.locator(".finding").first().waitFor({ timeout: 25_000 });

@@ -207,7 +207,7 @@ test.describe("Your Mac isn't reachable (F5)", () => {
       const s = page.getByTestId("unreachable");
       await expect(s).toBeVisible();
       await expect(s.getByRole("heading", { name: "Your Mac isn't reachable" })).toBeVisible();
-      await expect(s).toContainText("The phone reaches ReviewStage on your Mac. Open it there — or wake the Mac — and try again.");
+      await expect(s).toContainText("The phone reaches ReviewStage on your Mac. Open it there, or wake the Mac, and try again.");
       await expect(s).toContainText("If ReviewStage was restarted, open the newest link from your notifications or scan a new code.");
       await expect(page.getByText(/1033|error code/)).toHaveCount(0);
     });

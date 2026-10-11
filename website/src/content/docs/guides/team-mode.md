@@ -1,6 +1,6 @@
 ---
 title: Self-host ReviewStage for a team
-description: Reference for a shared server — the poller, many repositories, per-reviewer identity, independent reviews, webhooks and owner notes.
+description: "Reference for a shared server: the poller, many repositories, per-reviewer identity, independent reviews, webhooks and owner notes."
 sidebar:
   label: Team mode
   order: 7
@@ -41,7 +41,7 @@ That is it. The next review request pings them within three minutes.
 
 | Action | Whose credentials |
 | --- | --- |
-| Poll review requests, discover org repos, clone the base repos | The **service token** in `.env`. It needs *Pull requests: Read and write* to reach review threads, but nothing in the service or review path writes with it — the guarantee is structural, not the token's scope. |
+| Poll review requests, discover org repos, clone the base repos | The **service token** in `.env`. It needs *Pull requests: Read and write* to reach review threads, but nothing in the service or review path writes with it: the guarantee is structural, not the token's scope. |
 | Run a review or QA guide | The **clicker's Claude account**. |
 | Post comments | The **clicker's GitHub token**. |
 | Approve | The **clicker's GitHub token**. GitHub's self-approval rule applies to them. |
@@ -62,7 +62,7 @@ Cards carry PR titles, authors and diff sizes, and the review-ready card carries
 
 Two ways the queue learns about a review request:
 
-- **GitHub webhooks** (recommended for teams): set `GITHUB_WEBHOOK_SECRET` and add a webhook on the repository or the organization pointing at `<PUBLIC_URL>/webhooks/github`. The card goes out within a second of the request; a push flags the review stale at once; a closed PR leaves the queue at once. GitHub must be able to reach that one path — see [Configuration](/operations/configuration/#github-webhooks) and the proxy notes in `deploy/README.md`.
+- **GitHub webhooks** (recommended for teams): set `GITHUB_WEBHOOK_SECRET` and add a webhook on the repository or the organization pointing at `<PUBLIC_URL>/webhooks/github`. The card goes out within a second of the request; a push flags the review stale at once; a closed PR leaves the queue at once. GitHub must be able to reach that one path: see [Configuration](/operations/configuration/#github-webhooks) and the proxy notes in `deploy/README.md`.
 - **Polling** (the default, and the right choice for firewalled installs): `pr-watch.sh` searches GitHub every few minutes with the service token. Nothing inbound is needed, so it works on a laptop, behind a corporate proxy or inside a tailnet with no public hostname.
 
 With webhooks on, keep the poller running: it is the safety net for a missed delivery and it says so in its log (`webhooks active; poll is a safety net`). Settings → Webhooks shows which mode is in effect, and once webhooks are active you can lower the poll interval from the Poller card.

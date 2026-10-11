@@ -1,4 +1,4 @@
-# Design partners — recruit 10, observe 3 real reviews each
+# Design partners: recruit 10, observe 3 real reviews each
 
 The next proof point is not a feature. It is a real reviewer who installs, receives a private
 draft, verifies a useful finding, posts under their own name, and comes back on their own.
@@ -30,7 +30,7 @@ Prefer: senior/staff; at least two on Linux; at least two whose team has muted a
 > let me watch the first one over a call? ~45 min first time, then I stay out of your way.
 > It runs on your own Claude plan; the diff never comes to me.
 
-## Session 1 — observed first use (45 min, screen share, record with permission)
+## Session 1: observed first use (45 min, screen share, record with permission)
 
 Observe. Take control **only** if they are blocked for more than 3 minutes.
 
@@ -38,7 +38,7 @@ Observe. Take control **only** if they are blocked for more than 3 minutes.
 | --- | --- |
 | t0 | `npx reviewstage` typed → app window visible. Time it. |
 | | GitHub sign-in: did the device-flow page open? Did they read the code? Hesitation? |
-| | Claude connect: did they understand it uses their plan? Any "is this safe?" question — quote it. |
+| | Claude connect: did they understand it uses their plan? Any "is this safe?" question: quote it. |
 | | Repository selection: did they find their repo first try? |
 | | First draft arrives: time from "Review" click to findings shown. |
 | | **Before they read findings:** did they open the diff on GitHub themselves? |
@@ -51,9 +51,9 @@ Observe. Take control **only** if they are blocked for more than 3 minutes.
 
 Close with three questions, not more: "What made a finding trustworthy or not?" "What would
 have made you drop the whole draft?" "Will you run it on your next requested review without
-me?" — record the answer to the third as yes / maybe / no, no persuasion.
+me?": record the answer to the third as yes / maybe / no, no persuasion.
 
-## Sessions 2 and 3 — unobserved
+## Sessions 2 and 3: unobserved
 
 They review two more real PRs on their own. After each, one message: "Anything that stopped
 you, confused you or was wrong?" Read their learnings file with them only if they offer.
@@ -66,10 +66,10 @@ you, confused you or was wrong?" Read their learnings file with them only if the
 4. What did you edit before posting, and what was wrong with the draft wording?
 5. Did anyone on your team react to a posted review? Did they know it was drafted?
 6. What would make you stop using it? What would make you tell a colleague?
-7. What were you using before — `/code-review`, Plannotator, a bot, nothing?
+7. What were you using before: `/code-review`, Plannotator, a bot, nothing?
 8. Ask for a return commitment **only if they volunteered value in 5 or 6.**
 
-## What to record per partner (one row in `docs/launch/partners.csv`, kept private — add to .gitignore)
+## What to record per partner (one row in `docs/launch/partners.csv`, kept private: add to .gitignore)
 
 `partner_id, os, agent_used, install_seconds, first_draft_seconds, rescued (y/n), findings_shown,
 kept, edited, dropped, drop_reasons, opened_diff_independently (y/n), posted (y/n),

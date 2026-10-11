@@ -6,7 +6,7 @@ import { Check, Loader2, Circle, MessageSquare } from "lucide-react";
 import Avatar from "./Avatar.astro";
 import Sev from "./Sev.astro";
 import Mark from "../marketing/Mark.astro";
-const phases = ["Fetching the PR", "Checking out the branch", "Reviewing the diff", "Writing the findings"];
+const phases = ["Fetching the PR", "Checking out the branch", "Drafting findings from the diff", "Checking the findings", "Writing the findings"];
 ---
 <section id="how-it-works" class="home-section" aria-labelledby="how-title">
   <div class="container-page section-inner">
@@ -29,7 +29,7 @@ const phases = ["Fetching the PR", "Checking out the branch", "Reviewing the dif
           </div>
         </div>
         <h3 class="step-title"><span class="step-n">1</span>Requested</h3>
-        <p class="step-line">A request lands in your queue and on your phone. Nothing runs until you click.</p>
+        <p class="step-line">A request lands in your queue and phone. Nothing runs until you click.</p>
       </li>
       <li class="step">
         <div class="step-visual" aria-hidden="true">
@@ -44,7 +44,7 @@ const phases = ["Fetching the PR", "Checking out the branch", "Reviewing the dif
           </div>
         </div>
         <h3 class="step-title"><span class="step-n">2</span>Drafted</h3>
-        <p class="step-line">Claude Code reads the real diff, on your own plan, at the effort you chose.</p>
+        <p class="step-line">Claude Code reads the real diff on your plan, at your chosen effort.</p>
       </li>
       <li class="step">
         <div class="step-visual" aria-hidden="true">
@@ -60,7 +60,7 @@ const phases = ["Fetching the PR", "Checking out the branch", "Reviewing the dif
           </div>
         </div>
         <h3 class="step-title"><span class="step-n">3</span>Staged</h3>
-        <p class="step-line">Findings wait privately under a reading guide. Keep what's worth your name, edit it, drop the rest.</p>
+        <p class="step-line">Start with a reading guide, then check each finding against the code. Keep what's worth your name, edit it, drop the rest.</p>
       </li>
       <li class="step">
         <div class="step-visual" aria-hidden="true">

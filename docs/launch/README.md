@@ -8,7 +8,7 @@ post is a file in this folder, ready to paste. Dates are MM/DD/YY.
 **AI wrote the PR. You still have to review it.** ReviewStage drafts the review on your own
 Claude plan; you keep what's worth saying and post it as yourself. Nothing posts until you click.
 
-Say it the same way everywhere. The foil is the review *bot* — the thing that comments on every
+Say it the same way everywhere. The foil is the review *bot*: the thing that comments on every
 PR under a bot account and gets muted in two weeks. We are the opposite: a colleague-shaped
 review, signed by a human. Three proof points, in this order, whenever there is room:
 
@@ -34,14 +34,14 @@ the one-liner, the 20-second recording and the command. Keep it that way: nothin
 above the fold, a star is one scroll away (the recording ends where the eye is), and the first
 link after the command is the site.
 
-## Order (one week, US Eastern; Tuesday–Thursday mornings get the most eyes)
+## Order (one week, US Eastern; Tuesday, Thursday mornings get the most eyes)
 
 | Day | Time | Channel | File | Notes |
 | --- | --- | --- | --- | --- |
-| D-7 → D-1 | — | Be a person on the subs you'll post in | — | Answer 5–10 questions in r/ClaudeAI / r/ClaudeCode. Reddit's rule of thumb: ~90% of your activity is not about your product. Accounts with no history get filtered. |
-| D-1 | evening | Repo ready | — | Social preview uploaded, Discussions on, 8–12 good-first-issues open (`good-first-issues.md`), release v1.0.0 visible. |
-| D0 | 08:30 | **Show HN** | `show-hn.md` | Post the repo URL; your first comment within a minute. Stay in the thread 4–6 hours. |
-| D0 | 09:00 | **r/ClaudeAI** (flair *Built with Claude*) | `reddit-claudeai.md` | Native video upload, not a YouTube link — native video autoplays. |
+| D-7 → D-1 | — | Be a person on the subs you'll post in | — | Answer 5 to 10 questions in r/ClaudeAI / r/ClaudeCode. Reddit's rule of thumb: ~90% of your activity is not about your product. Accounts with no history get filtered. |
+| D-1 | evening | Repo ready | — | Social preview uploaded, Discussions on, 8 to 12 good-first-issues open (`good-first-issues.md`), release v1.0.0 visible. |
+| D0 | 08:30 | **Show HN** | `show-hn.md` | Post the repo URL; your first comment within a minute. Stay in the thread 4 to 6 hours. |
+| D0 | 09:00 | **r/ClaudeAI** (flair *Built with Claude*) | `reddit-claudeai.md` | Native video upload, not a YouTube link: native video autoplays. |
 | D0 | 12:00 | **r/ClaudeCode** | `reddit-claudecode.md` | Different text from r/ClaudeAI; never cross-post the same body. |
 | D0 | 13:00 | **X / Twitter** thread + **LinkedIn** | `x-thread.md`, `linkedin.md` | Vertical cut on X; tag @AnthropicAI and @claudeai once, in the last post. |
 | D1 | 09:00 | **r/selfhosted** | `reddit-selfhosted.md` | Lead with "your data stays on your box". |
@@ -61,7 +61,7 @@ link after the command is the site.
   issue if you want it" beats a defence.
 - **Turn every bug report into an issue on the spot** and link it in your reply. People star
   projects that visibly respond.
-- **Never ask for upvotes or stars**, and never have friends vote — Reddit and HN both detect it
+- **Never ask for upvotes or stars**, and never have friends vote. Reddit and HN both detect it
   and bury the post. Asking for *feedback* is fine.
 - **Ship something within 48 hours** from what people said, then reply to them that it's in.
 
@@ -71,7 +71,7 @@ link after the command is the site.
 | --- | --- | --- |
 | Stars | GitHub | 100+ (enough for awesome-claude-code without waiting) |
 | npm installs | `npm view reviewstage` / npmjs.com weekly downloads | 300+ |
-| Site visits | GitHub Pages has none — add a privacy-friendly counter if you want this | — |
+| Site visits | GitHub Pages has none: add a privacy-friendly counter if you want this | — |
 | Issues from strangers | GitHub | 5+ (people only file issues for things they use) |
 | Comments → clicks | the posts | reply rate matters more than score |
 
@@ -83,5 +83,5 @@ link after the command is the site.
   for the desktop app.
 - **What leaves my machine?** The diff, to Anthropic, through Claude Code on your account, and
   the review you choose to post, to GitHub. Also GitHub for sign-in, npm for update checks, push services and the Cloudflare tunnel if you turn the phone on. No telemetry.
-- **Can it auto-approve?** No — not as an option, not behind a flag. Approve is your click.
+- **Can it auto-approve?** No: not as an option, not behind a flag. Approve is your click.
 - **Windows?** Docker install under WSL2 today; native is on the roadmap.

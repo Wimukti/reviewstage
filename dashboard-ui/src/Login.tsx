@@ -15,7 +15,7 @@ const GitHubMark = () => <span className="inline-flex size-4 items-center [&>svg
 const NEW_TOKEN = "https://github.com/settings/personal-access-tokens/new";
 const NEW_CLASSIC_TOKEN =
   "https://github.com/settings/tokens/new?" +
-  new URLSearchParams({ scopes: "repo", description: "ReviewStage — PR reviews" }).toString();
+  new URLSearchParams({ scopes: "repo", description: "ReviewStage: PR reviews" }).toString();
 
 const TEAM_DOCS = "https://reviewstage.dev/start/team-mode/";
 
@@ -337,7 +337,7 @@ export function LoginForm({
             </p>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground" data-testid="device-phishing-warning">
               <b className="text-foreground">Only continue a sign-in you started yourself.</b> If someone sent you this code
-              or asked you to type one at github.com, stop — approving it would sign{" "}
+              or asked you to type one at github.com, stop: approving it would sign{" "}
               <i>them</i> in as you.
             </p>
           </>
@@ -345,7 +345,7 @@ export function LoginForm({
         {st.step === "done" && (
           <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
             <Check className="size-4 text-green" aria-hidden="true" />
-            Signed in{st.login ? ` as ${st.login}` : ""} — loading…
+            Signed in{st.login ? ` as ${st.login}` : ""}: loading…
           </p>
         )}
       </div>

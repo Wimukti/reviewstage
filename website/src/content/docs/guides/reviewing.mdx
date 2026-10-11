@@ -10,11 +10,11 @@ import Shot from "../../../components/marketing/Shot.astro";
 
 This is the reference for the PR page. For the guided walk-through, see [Your first review](/start/first-review/).
 
-<Shot name="hero" alt="The PR page for acme/widgets #38849: the agent’s assessment — “1 thing to fix before merge” with three bullets — above two staged finding cards, each with a ticked checkbox, a severity word, its file and line, and a one-line why-it-matters; the commit bar at the foot reads “2 staged” with a single Post selected to GitHub button." label="pr · 2 staged · COMMENT review" loading="eager" />
+<Shot name="hero" alt="The PR page for acme/widgets #38849: the agent’s assessment, “1 thing to fix before merge” with three bullets, above two staged finding cards, each with a ticked checkbox, a severity word, its file and line, and a one-line why-it-matters; the commit bar at the foot reads “2 staged” with a single Post selected to GitHub button." label="pr · 2 staged · COMMENT review" loading="eager" />
 
 ## Addressing a PR
 
-A PR page is `/pr?repo=owner/name&pr=123`; the header reads `owner/name #123` and the breadcrumb's repository link filters the queue to that repository. The shorter `/pr?pr=123` still works when the server reviews one repository, or when that number exists under exactly one of them; otherwise the page offers a repository picker. In the paste box and the command palette (⌘K) you can paste a GitHub PR URL (the repository is derived from it), `owner/name#123`, or a bare number — with several repositories configured a bare number shows a picker.
+A PR page is `/pr?repo=owner/name&pr=123`; the header reads `owner/name #123` and the breadcrumb's repository link filters the queue to that repository. The shorter `/pr?pr=123` still works when the server reviews one repository, or when that number exists under exactly one of them; otherwise the page offers a repository picker. In the paste box and the command palette (⌘K) you can paste a GitHub PR URL (the repository is derived from it), `owner/name#123`, or a bare number, with several repositories configured a bare number shows a picker.
 
 ## The run form
 
@@ -22,10 +22,10 @@ Starting a review is a small form, not a link, because a review is a real agent 
 
 | Field | What it does |
 | --- | --- |
-| **Effort** | *Quick* / *Standard* / *Deep*. Pre-selected from the diff size. Sets a depth instruction and a timeout ceiling. Typical durations are about 2–5, 3–10 and 8–25 minutes; once your install has three or more runs at a level the form shows that install's own median instead ("typically ~N min here"). *Deep* tells the agent to search the whole repository for impact before judging. |
+| **Effort** | *Quick* / *Standard* / *Deep*. Pre-selected from the diff size. Sets a depth instruction and a timeout ceiling. The form shows a rough estimate per level (a few minutes for *Quick*, longer for *Deep*); it is an estimate, not a measurement. Once your install has three or more runs at a level the form shows that install's own median instead ("typically ~N min here"). *Deep* tells the agent to search the whole repository for impact before judging. |
 | **Model** | Your plan's default, or *Opus* (deepest), *Sonnet* (balanced), *Haiku* (light PRs). Validated server-side. |
 | **Focus** | Free text appended to the prompt on top of the skill. Use it to steer at *this* PR: "the retry path", "anything touching money". |
-| **Check all findings** | A second run, on your own account, tries to disprove each finding before you see it (see [What the badge means](#what-the-badge-means)). It always runs on findings whose severity can break something (`blocker`, `should-fix`); this toggle runs it on every finding. The helper text states the cost: about 40 seconds more per finding. Off by default, per run. |
+| **Check all findings** | A second run, on your own account, tries to disprove each finding before you see it (see [What the badge means](#what-the-badge-means)). It always runs on findings whose severity can break something (`blocker`, `should-fix`); this toggle runs it on every finding. The helper text shows the cost as a fixed estimate of 40 seconds per finding, not a measurement. Off by default, per run. |
 
 The form also shows **who already reviewed this commit** and with what skill, model and effort, so you can decide whether an independent run is worth the tokens.
 
@@ -40,7 +40,7 @@ A run whose process has died no longer sits on `reviewing` for ever: the state i
 ## The result
 
 - **Assessment.** One or two sentences: is it safe to merge, and the minimum change set. Shown to you only; never becomes a GitHub state.
-- **Reading guide.** A card above the findings: *what this PR does*, *why* (from the PR body, or nothing if it does not say), a fixed **risk word** — `breaks`, `can break`, `safe-looking`, `unclear` — *read in this order* (two to five hunks, each with one sentence on why; click a row and the page scrolls to the card that shows that hunk, or opens the PR's Files tab when no finding cites it) and *not reviewed* (what the run skipped). Open on first view, collapses to its header. On the phone it is the first card. A run from before the guide existed shows no card.
+- **Reading guide.** A card above the findings: *what this PR does*, *why* (from the PR body, or nothing if it does not say), a fixed **risk word**: `breaks`, `can break`, `safe-looking`, `unclear`: *read in this order* (two to five hunks, each with one sentence on why; click a row and the page scrolls to the card that shows that hunk, or opens the PR's Files tab when no finding cites it) and *not reviewed* (what the run skipped). Open on first view, collapses to its header. On the phone it is the first card. A run from before the guide existed shows no card.
 - **What this PR does.** A junior-engineer-level explainer.
 - **Analysis.** What was checked, what was dropped after being falsified, the file-by-file change list.
 - **Findings.** See below.
@@ -51,7 +51,7 @@ A run whose process has died no longer sits on `reviewing` for ever: the state i
 
 | Banner | Meaning |
 | --- | --- |
-| **Stale** | The PR's head moved since this review. Nothing re-runs automatically. It fires reliably now: the reviewed head SHA is written into the run's metadata, which it was not before — which also meant the re-run cache served the *previous* commit's findings under a banner claiming they were current. |
+| **Stale** | The PR's head moved since this review. Nothing re-runs automatically. It fires reliably now: the reviewed head SHA is written into the run's metadata, which it was not before: which also meant the re-run cache served the *previous* commit's findings under a banner claiming they were current. |
 | **Focus** | The focus note this run used. |
 | **Risk** | The PR touches paths configured as sensitive. Context only; it never gates or routes. |
 
@@ -59,30 +59,30 @@ A run whose process has died no longer sits on `reviewing` for ever: the state i
 
 Each finding is a card. The rows are always in this order, and a row the run did not supply is omitted rather than labelled empty:
 
-1. **Title** with the **severity** (`blocker`, `should-fix`, `nit`, `question` — rendered from a field, so the body never repeats it) and the **badge** — **Checked**, **Likely** or **Maybe** — earned from signals the model did not write about itself (see [What the badge means](#what-the-badge-means)). The run's own `high` / `medium` / `low confidence` estimate is still requested, still steers the *maybe* tray, and sits under *Edit comment* labelled *the run's own estimate*; it is never shown alone. A review from an older server shows that estimate in the head as it used to.
-2. **Where** — `file:line` or `file:start-end` in the new version of the file, with a copy button, and under it the **cited diff lines**: 8–12 lines of the hunk, changed lines highlighted, the cited lines marked. You read the evidence without opening the diff.
-3. **What to check** — one imperative sentence: where to look and what to confirm ("Open retry.ts lines 44–51. Check that `attempts` resets after a success."). Older runs show their **how to verify** line here instead; when a run gave both, the verify line sits under *Edit comment*.
-4. **Expected / Actual** — two short lines: what the code should do, what it does instead.
-5. **Why it matters** — one sentence on who is affected and what breaks for them.
-6. **Evidence** — the result of the local check described below.
-7. **The badge's reason** — one line: *Checked: the cited lines exist and mention `attempts`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here.*
-8. **Checked: stands / weakened / refuted — …** — the second pass's own sentence, when it ran on this finding.
+1. **Title** with the **severity** (`blocker`, `should-fix`, `nit`, `question`: rendered from a field, so the body never repeats it) and the **badge**. **Checked**, **Likely** or **Maybe**: earned from signals the model did not write about itself (see [What the badge means](#what-the-badge-means)). The run's own `high` / `medium` / `low confidence` estimate is still requested, still steers the *maybe* tray, and sits under *Edit comment* labelled *the run's own estimate*; it is never shown alone. A review from an older server shows that estimate in the head as it used to.
+2. **Where**: `file:line` or `file:start-end` in the new version of the file, with a copy button, and under it the **cited diff lines**: 8 to 12 lines of the hunk, changed lines highlighted, the cited lines marked. You read the evidence without opening the diff.
+3. **What to check**, one imperative sentence: where to look and what to confirm ("Open retry.ts lines 44 to 51. Check that `attempts` resets after a success."). Older runs show their **how to verify** line here instead; when a run gave both, the verify line sits under *Edit comment*.
+4. **Expected / Actual**: two short lines: what the code should do, what it does instead.
+5. **Why it matters**: one sentence on who is affected and what breaks for them.
+6. **Evidence**: the result of the local check described below.
+7. **The badge's reason**: one line: *Checked: the cited lines exist and mention `attempts`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here.*
+8. **Checked: stands / weakened / refuted, …**, the second pass's own sentence, when it ran on this finding.
 
-Everything else — the full comment that posts to GitHub, the model's explanation, the run's own confidence estimate — is under *Edit comment* and *Explain simply*.
+Everything else, the full comment that posts to GitHub, the model's explanation, the run's own confidence estimate, is under *Edit comment* and *Explain simply*.
 
 - **Reply vs New**, **Agreement**, **Body** and **Explain simply** are described below.
-- Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)). Anchorability is a tri-state: when the check genuinely could not run — a failed `gh pr diff`, a binary file, a file past GitHub's size cutoff — the page says so and retries, rather than reporting every finding as pointing at lines the PR does not change.
+- Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)). Anchorability is a tri-state: when the check genuinely could not run, a failed `gh pr diff`, a binary file, a file past GitHub's size cutoff, the page says so and retries, rather than reporting every finding as pointing at lines the PR does not change.
 
 ### How to read a finding
 
-Start at the title: it is written so that it makes sense without the diff. Then look at **Where** — the cited lines are right there, with the change highlighted. **What to check** tells you the one thing to confirm in them; **Expected / Actual** tells you what you should see and what the run says you will see. If those two lines match what the code does, the finding is real; **Why it matters** tells you whether it is worth a comment.
+Start at the title: it is written so that it makes sense without the diff. Then look at **Where**: the cited lines are right there, with the change highlighted. **What to check** tells you the one thing to confirm in them; **Expected / Actual** tells you what you should see and what the run says you will see. If those two lines match what the code does, the finding is real; **Why it matters** tells you whether it is worth a comment.
 
 The **Evidence** line is a check the dashboard runs itself, locally, with no model, against the PR's own diff:
 
 | It checks that | If not |
 | --- | --- |
 | the cited file is one this PR changes | *`path` is not a file this PR changes.* |
-| the cited lines fall inside a hunk of that file | *Lines 44–51 are not in this PR's changes to `retry.ts`.* |
+| the cited lines fall inside a hunk of that file | *Lines 44 to 51 are not in this PR's changes to `retry.ts`.* |
 | a name quoted in backticks in the title or what-to-check appears in the cited lines | *`attempts` does not appear in the cited lines.* |
 | a `blocker` carries both Expected and Actual | *A blocker needs both Expected and Actual.* |
 
@@ -95,8 +95,8 @@ Every string on the card is written to a fixed set of rules (one sentence, one i
 The badge is three words, not a percentage, and it is never the model's opinion of itself. Three signals feed it:
 
 - **The evidence check** above: *pass*, *warn*, or *not checked* (GitHub gave no diff, or only the file is outside the diff).
-- **The second pass.** After the main run, a second Claude run on the same account is handed each finding — title, where, what to check, expected, actual, impact — and the files it cites, with the opposite brief: *find the strongest reason this is wrong, already handled, or harmless*. It answers **stands**, **weakened** or **refuted** with one sentence, which the card shows as *Checked: stands — …*. It runs on `blocker` and `should-fix` findings by default and on every finding when **Check all findings** is on. It writes one JSON file and nothing else: it runs through the same stripped environment and tool deny-list as the main run, and the PR is fingerprinted before and after it exactly as it is for the main run.
-- **What reviewers kept** of findings like this one — same skill, same repository, same self-reported confidence — from the [learnings](/guides/skills-and-learnings/). This counts only once that bucket holds **20** posted decisions, and only while the model's high and low buckets actually differ (ten points or more); the Learnings page says when they do not.
+- **The second pass.** After the main run, a second Claude run on the same account is handed each finding, title, where, what to check, expected, actual, impact, and the files it cites, with the opposite brief: *find the strongest reason this is wrong, already handled, or harmless*. It answers **stands**, **weakened** or **refuted** with one sentence, which the card shows as *Checked: stands: …*. It runs on `blocker` and `should-fix` findings by default and on every finding when **Check all findings** is on. It writes one JSON file and nothing else: it runs through the same stripped environment and tool deny-list as the main run, and the PR is fingerprinted before and after it exactly as it is for the main run.
+- **What reviewers kept** of findings like this one, same skill, same repository, same self-reported confidence, from the [learnings](/guides/skills-and-learnings/). This counts only once that bucket holds **20** posted decisions, and only while the model's high and low buckets actually differ (ten points or more); the Learnings page says when they do not.
 
 The rule, in plain words:
 
@@ -107,28 +107,28 @@ The rule, in plain words:
 | **Maybe** | the evidence check failed, or the second pass said *refuted*, or reviewers kept fewer than 40% of findings like this |
 
 A **Maybe** is not pre-ticked and sits in the *maybe* tray. The reason line under each card spells out which signals produced the word, so you can disagree with it on the facts: *Maybe: the cited lines are not in this diff.* · *Likely: the cited lines exist, no second pass for this severity.* · *Checked: the cited lines exist and mention `attempts`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here.*
-- **Reply vs New** — when an existing thread on the PR already covers this, the finding is marked as a reply and opens with an acknowledgement, so it reads as a continuation rather than a re-raise.
-- **Agreement** — `✓ N independent` when other reviewers' runs with a different configuration raised it too; `only your run` otherwise.
-- **Body** — editable, with a markdown preview. GitHub-flavoured: backticked symbols, fenced code, and optionally a **suggestion** (an exact one-line replacement that becomes a ```` ```suggestion ```` block the author can apply in one click).
-- **Explain simply** — rewrites the finding in plain words with how to verify it. One short call on your own account, cached per finding content.
+- **Reply vs New**, when an existing thread on the PR already covers this, the finding is marked as a reply and opens with an acknowledgement, so it reads as a continuation rather than a re-raise.
+- **Agreement**: `✓ N independent` when other reviewers' runs with a different configuration raised it too; `only your run` otherwise.
+- **Body**: editable, with a markdown preview. GitHub-flavoured: backticked symbols, fenced code, and optionally a **suggestion** (an exact one-line replacement that becomes a ```` ```suggestion ```` block the author can apply in one click).
+- **Explain simply**: rewrites the finding in plain words with how to verify it. One short call on your own account, cached per finding content.
 
 Editing a finding keeps the original alongside it. On post, each original is scored *kept*, *edited* or *dropped* for the [learnings loop](/guides/skills-and-learnings/).
 
 ## Findings outside the diff
 
-A review is not confined to the diff. The [repository profile](/guides/skills-and-learnings/) tells it to trace the callers, the consumers and the tests of whatever changed, so the most valuable finding on a two-line PR is frequently a test that now asserts the wrong thing, or a screen that still passes the old shape. Those lines are not in the diff, and **GitHub only accepts an inline review comment on a line the PR changed** — there is nowhere to hang it.
+A review is not confined to the diff. The [repository profile](/guides/skills-and-learnings/) tells it to trace the callers, the consumers and the tests of whatever changed, so the most valuable finding on a two-line PR is frequently a test that now asserts the wrong thing, or a screen that still passes the old shape. Those lines are not in the diff, and **GitHub only accepts an inline review comment on a line the PR changed**: there is nowhere to hang it.
 
-So they go into the review body, in a `## Findings outside the diff` section: expanded, blocker first, each heading a link to the exact line on the commit the review ran against. Nothing is lost and nothing is hidden — a long tail of more than three nits or questions is the only thing that collapses.
+So they go into the review body, in a `## Findings outside the diff` section: expanded, blocker first, each heading a link to the exact line on the commit the review ran against. Nothing is lost and nothing is hidden: a long tail of more than three nits or questions is the only thing that collapses.
 
 A **suggestion** on such a finding renders as a plain `Suggested change:` code block rather than a ```` ```suggestion ```` block, because GitHub's one-click Apply cannot work off the diff and an Apply button that does nothing is worse than none.
 
-On the PR page each affected card carries a small **in summary** chip before you post, and the post bar splits the count — `3 selected · 1 inline · 2 in the summary` — so where everything will land is never a surprise. A review whose findings are all in the summary posted correctly; it is the common shape on a small PR, not a failure.
+On the PR page each affected card carries a small **in summary** chip before you post, and the post bar splits the count, `3 selected · 1 inline · 2 in the summary`, so where everything will land is never a surprise. A review whose findings are all in the summary posted correctly; it is the common shape on a small PR, not a failure.
 
 ## Posting
 
 **Post to GitHub** sends the selected findings as one review with event `COMMENT`. Before the call:
 
-1. Every anchor is re-validated against the diff as it stands now — the PR may have gained commits while the review sat here — so GitHub cannot reject the whole review because one `path:line` is outside it. Anything that no longer anchors moves into the body section above.
+1. Every anchor is re-validated against the diff as it stands now, the PR may have gained commits while the review sat here, so GitHub cannot reject the whole review because one `path:line` is outside it. Anything that no longer anchors moves into the body section above.
 2. The GitHub reads it depends on are checked for shape and retried once; on anything odd it refuses rather than posting a degraded review. A file GitHub would not resolve is reported to you rather than silently demoted.
 3. The PR is confirmed still open, on the same trip that already fetches the files.
 4. The exact payload is saved with the PR so you can see what went out.
@@ -139,7 +139,7 @@ With `DRY_RUN=1` the button reports what it would have done and saves the payloa
 
 ### Posting is scoped to the run, not the pull request
 
-The product's ordinary rhythm — review, post, the author pushes, review again, post again — now works. It did not before: a single per-(PR, reviewer) marker was set by the first post and cleared by nothing, so the second post was refused with *"Already posted to GitHub as your review"* and the post bar disappeared entirely. Worse, a review the reviewer left on GitHub's own Files tab wrote that same marker and stranded their whole staged draft.
+The product's ordinary rhythm, review, post, the author pushes, review again, post again, now works. It did not before: a single per-(PR, reviewer) marker was set by the first post and cleared by nothing, so the second post was refused with *"Already posted to GitHub as your review"* and the post bar disappeared entirely. Worse, a review the reviewer left on GitHub's own Files tab wrote that same marker and stranded their whole staged draft.
 
 The gate is now one entry per post this dashboard actually made, each naming the head SHA and a content hash of the run it posted. So:
 
@@ -154,9 +154,9 @@ Two ceilings worth knowing: a review is refused above **50** comments in one all
 
 A separate panel. Enabled only when the PR is **open**, **not a draft**, **not yours**, and has a review on this server. Deliberately *not* gated on "still a requested reviewer": GitHub clears the request the moment any review is submitted, which would make post-then-approve impossible.
 
-**A merged or closed PR says so before you click.** The PR page carries the pull request's own state on GitHub — the same `prState` / `merged` / `canApprove` the queue rows show — so a shipped or abandoned PR is banded at the top, pilled *merged* or *closed* in the Details rail, and its Approve button is disabled with the reason on it. The server refused these already; what changed is that you find out before pressing rather than after.
+**A merged or closed PR says so before you click.** The PR page carries the pull request's own state on GitHub, the same `prState` / `merged` / `canApprove` the queue rows show, so a shipped or abandoned PR is banded at the top, pilled *merged* or *closed* in the Details rail, and its Approve button is disabled with the reason on it. The server refused these already; what changed is that you find out before pressing rather than after.
 
-**Approval knows which commit you read.** The run records the head it reviewed. If the branch has moved since, approving is refused with the two short SHAs named — *"New commits have landed since this review ran"* — and goes through only when you tick the confirmation to approve the current commit anyway. Approving the same head twice is refused outright, because a second click would post a second approval; a new commit makes approving possible again.
+**Approval knows which commit you read.** The run records the head it reviewed. If the branch has moved since, approving is refused with the two short SHAs named, *"New commits have landed since this review ran"*, and goes through only when you tick the confirmation to approve the current commit anyway. Approving the same head twice is refused outright, because a second click would post a second approval; a new commit makes approving possible again.
 
 The body is pre-filled with `LGTM` plus a checklist of blocker and should-fix findings (nits omitted). Edit it, then **Approve**: it posts the comment and the approval, as you. Once approved, the panel is replaced by a card showing when and with what text.
 
@@ -166,10 +166,10 @@ If the PR is part of a chain where each base branch is the previous head (Graphi
 
 ## While a review is running
 
-A review takes minutes, and you do not have to sit on the PR page waiting for it. Wherever you go, the sidebar shows a **1 review running** pill under *Review a PR* — click it to jump back (with several in flight it shows the count and opens the queue filtered to them). In your queue the PR's row shows a pulsing dot and the live progress phrase ("reviewing the diff") in place of its usual meta line, and clicking it returns you to the progress panel.
+A review takes minutes, and you do not have to sit on the PR page waiting for it. Wherever you go, the sidebar shows a **1 review running** pill under *Review a PR*: click it to jump back (with several in flight it shows the count and opens the queue filtered to them). In your queue the PR's row shows a pulsing dot and the live progress phrase ("drafting findings from the diff") in place of its usual meta line, and clicking it returns you to the progress panel.
 
 ## Other actions
 
-- **Mark done** — take a PR out of your working set without posting.
-- **Archive** — hide it from your tabs.
-- **Re-run** — a new run with new settings; the old one goes to history.
+- **Mark done**: take a PR out of your working set without posting.
+- **Archive**: hide it from your tabs.
+- **Re-run**: a new run with new settings; the old one goes to history.

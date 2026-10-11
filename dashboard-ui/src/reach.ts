@@ -9,7 +9,7 @@ import { ApiError } from "./api";
 
 export const UNREACHABLE = {
   title: "Your Mac isn't reachable",
-  body: "The phone reaches ReviewStage on your Mac. Open it there — or wake the Mac — and try again.",
+  body: "The phone reaches ReviewStage on your Mac. Open it there, or wake the Mac, and try again.",
   moved: "If ReviewStage was restarted, open the newest link from your notifications or scan a new code.",
 };
 

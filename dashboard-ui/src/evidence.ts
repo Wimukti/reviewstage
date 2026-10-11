@@ -139,7 +139,7 @@ export function check(c: EvidenceInput, patches: Map<string, string | null> | nu
     const cited = [...lines.entries()].filter(([n]) => start <= n && n <= (end ?? start));
     if (!cited.length) {
       flags.push("lines_not_in_diff");
-      const rng = start === end ? `${start}` : `${start}–${end}`;
+      const rng = start === end ? `${start}` : `${start} to ${end}`;
       const base = path!.split("/").pop();
       notes.push(`Lines ${rng} are not in this PR's changes to ${tick(base!)}.`);
     } else if (quoted.length) {

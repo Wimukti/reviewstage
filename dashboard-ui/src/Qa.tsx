@@ -171,7 +171,7 @@ function QaIndex({ me }: { me: Me }) {
                     <span className="flex flex-wrap items-center gap-2 text-xs" data-testid="row-running">
                       <StatusBadge kind="reviewing" live>Building</StatusBadge>
                       <span className="text-amber">{status}</span>
-                      <span className="text-muted-foreground">— open to watch</span>
+                      <span className="text-muted-foreground">, open to watch</span>
                     </span>
                   ) : (
                     <span className="flex flex-wrap items-center gap-2">
@@ -334,7 +334,7 @@ function QaDetailView({ pr }: { pr: PrRef }) {
               : "The last attempt failed."}
           </b>{" "}
           {d.md
-            ? "The guide below is the one already on disk — it is unchanged, not a result of that run."
+            ? "The guide below is the one already on disk: it is unchanged, not a result of that run."
             : "No guide was written."}
           {d.failed && <div className="mt-1.5 [overflow-wrap:anywhere]">{d.failed}</div>}
           {d.logTail && d.logTail.length > 0 && (
@@ -390,7 +390,7 @@ function QaDetailView({ pr }: { pr: PrRef }) {
         setStarting(false);
         setErr(
           r.reason ||
-            "Nothing started — a job for this PR may already be running, or the box is busy. " +
+            "Nothing started: a job for this PR may already be running, or the box is busy. " +
               "Try again in a moment.",
         );
         return;
@@ -589,7 +589,7 @@ function QaDetailView({ pr }: { pr: PrRef }) {
         >
           {d.connected
             ? "Risk-tiered manual test cases, grounded in the diff and the review history. It takes a few minutes."
-            : "Connect your Claude account first — generating a QA guide runs on your own Claude subscription."}
+            : "Connect your Claude account first: generating a QA guide runs on your own Claude subscription."}
         </EmptyState>
       </Card>
     </>

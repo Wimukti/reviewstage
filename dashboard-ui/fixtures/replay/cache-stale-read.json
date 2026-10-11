@@ -48,24 +48,24 @@
   ],
   "review": {
     "event": "COMMENT",
-    "summary": "Puts a 60 s TTL cache in front of `getProduct`, keyed by tenant and id, with FIFO eviction at 5,000 entries. The cache class is small and correct. The wiring has one bug: `updateProduct` invalidates by `id` alone while the entries are stored under `tenant:id`, so the delete never matches and a product reads stale for up to a minute after it is edited — the exact case the one new test does not cover.",
+    "summary": "Puts a 60 s TTL cache in front of `getProduct`, keyed by tenant and id, with FIFO eviction at 5,000 entries. The cache class is small and correct. The wiring has one bug: `updateProduct` invalidates by `id` alone while the entries are stored under `tenant:id`, so the delete never matches and a product reads stale for up to a minute after it is edited, the exact case the one new test does not cover.",
     "keyPoints": [
-      "Invalidation deletes `id` but entries are keyed `tenant:id` — updates read stale for 60 s.",
+      "Invalidation deletes `id` but entries are keyed `tenant:id`: updates read stale for 60 s.",
       "Entry count is bounded by FIFO eviction; worth confirming the bound is right for this service.",
       "The TTL is a literal in the service module."
     ],
     "explainer": "Product lookups are the hottest query in the catalog API. This PR remembers each product for a minute after it is first read so repeated lookups skip the database, and forgets a product when it is updated so the change shows immediately.",
-    "analysis": "Checked: expiry is lazy on read (fine for this size); `set` evicts the oldest insertion when full — `Map` preserves insertion order so `keys().next()` is the oldest; a miss on a null row is not cached (every lookup of a missing product still hits the DB — acceptable, flagged nowhere). Dropped: a suggestion to cache nulls (a product decision, not a review finding); a note that `hit` would skip a product whose value is falsy (a `Product` is an object, never falsy).",
+    "analysis": "Checked: expiry is lazy on read (fine for this size); `set` evicts the oldest insertion when full, `Map` preserves insertion order so `keys().next()` is the oldest; a miss on a null row is not cached (every lookup of a missing product still hits the DB, acceptable, flagged nowhere). Dropped: a suggestion to cache nulls (a product decision, not a review finding); a note that `hit` would skip a product whose value is falsy (a `Product` is an object, never falsy).",
     "comments": [
       {
         "path": "src/catalog/service.ts",
         "line": 18,
         "severity": "should-fix",
         "confidence": "high",
-        "title": "Invalidation uses the wrong key — updated products read stale for up to 60 s",
+        "title": "Invalidation uses the wrong key: updated products read stale for up to 60 s",
         "impact": "An edit to a product (price, availability) is invisible to the API for up to a minute, on every instance that has the old entry cached.",
         "how_to_verify": "Read a product, update its price, read it again inside 60 s: the old price comes back. The new test passes because it never updates.",
-        "body": "Entries go in under `key(tenant, id)` — `\"acme:p1\"` — but `updateProduct` calls `cache.delete(id)`, which looks for `\"p1\"` and deletes nothing. Use the same key builder so the update really evicts the entry.",
+        "body": "Entries go in under `key(tenant, id)`, that is `\"acme:p1\"`, but `updateProduct` calls `cache.delete(id)`, which looks for `\"p1\"` and deletes nothing. Use the same key builder so the update really evicts the entry.",
         "suggestion": "cache.delete(key(tenant, id));",
         "reply_to": null,
         "teach": "keep",
@@ -83,7 +83,7 @@
         "line": 20,
         "severity": "should-fix",
         "confidence": "medium",
-        "title": "Unbounded growth — entries are never evicted, only expired on read",
+        "title": "Unbounded growth: entries are never evicted, only expired on read",
         "impact": "A catalog with millions of products and a scan-style client (a crawler, an export job) fills the map until the process runs out of memory; expired entries are only removed if the same key is read again.",
         "how_to_verify": "Call `set` with 1,000,000 distinct keys and watch heap usage.",
         "body": "`set()` adds to the `Map` without any size check, and `get()` only removes the entry it is asked for. Under a wide key space (a crawler walking the catalog) the map grows without bound until the process is OOM-killed. Add a maximum entry count and evict when it is reached, or sweep expired entries on a timer.",
@@ -106,7 +106,7 @@
         "severity": "nit",
         "confidence": "high",
         "title": "TTL is a literal in the service module",
-        "impact": "Tuning the cache lifetime — the first thing ops will want to do once it is live — needs a code change and a deploy.",
+        "impact": "Tuning the cache lifetime, the first thing ops will want to do once it is live, needs a code change and a deploy.",
         "how_to_verify": "Search `src/config.ts` for the other catalog settings; the TTL is the only one not there.",
         "body": "Why is the TTL hardcoded? Magic numbers everywhere. `60_000` should obviously be in config like everything else.",
         "suggestion": "",
@@ -162,12 +162,12 @@
     },
     {
       "action": "edit",
-      "reason": "A real nit — the other catalog settings live in config — but \"magic numbers everywhere\" is both rude and false (there is one). Said what to do and where.",
+      "reason": "A real nit, the other catalog settings live in config, but \"magic numbers everywhere\" is both rude and false (there is one). Said what to do and where.",
       "edited_body": "Could the 60 s TTL move to `src/config.ts` next to the other catalog settings? It is the first value ops will want to tune once this is live, and today that needs a deploy."
     }
   ],
   "explain": {
-    "0": "The cache files each product under a label like \"shop-A / product-1\". When a product changes, the code tries to throw away the stale copy — but it looks for a label that says just \"product-1\", finds nothing, and leaves the old copy in place for up to a minute.",
+    "0": "The cache files each product under a label like \"shop-A / product-1\". When a product changes, the code tries to throw away the stale copy, but it looks for a label that says just \"product-1\", finds nothing, and leaves the old copy in place for up to a minute.",
     "1": "The reviewer thought the cache could grow forever. It cannot: once it holds 5,000 items it throws out the oldest before adding a new one. The limit is right there in the cache class, a few lines above the spot the reviewer pointed at.",
     "2": "\"Remember each product for 60 seconds\" is written straight into the code. Moving that number to the settings file means someone can change it without a new release."
   }

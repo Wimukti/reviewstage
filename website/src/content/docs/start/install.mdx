@@ -22,11 +22,11 @@ You need Node 20 or newer, Git and [Claude Code](https://docs.anthropic.com/en/d
 
 A window opens and walks you through three steps:
 
-1. **Continue with GitHub** — a short code at github.com/login/device.
-2. **Connect Claude** — your own account; reviews bill to your plan.
-3. **Pick repositories** — the ones you review. Change them any time on the **Repositories** page in the sidebar.
+1. **Continue with GitHub**: a short code at github.com/login/device.
+2. **Connect Claude**: your own account; reviews bill to your plan.
+3. **Pick repositories**: the ones you review. Change them any time on the **Repositories** page in the sidebar.
 
-Then one question, once: whether to share usage counters (counts only; no names, repositories, paths or text). **Keep it local** is the default, nothing is sent in any case while no endpoint is configured (none is), and the answer can be changed in **Settings → Privacy**. See [Telemetry](/security/telemetry/).
+Then one question, once, about optional usage counts: no names, repositories, paths, or text. **Keep it local** is the default. Nothing is sent in any case while no endpoint is configured, and none is configured by default. The answer can be changed in **Settings → Privacy**. See [Telemetry](/security/telemetry/).
 
 <Demo name="wizard" alt="The three wizard steps in the desktop app: Continue with GitHub, Connect Claude, then a searchable list of repositories with a Start reviewing button." label="first launch · three steps" />
 
@@ -34,9 +34,9 @@ Then your queue. The dock badge counts review requests; a notification fires whe
 
 **Your phone.** In the app, **Settings → Your phone → Enable phone access** opens a secure tunnel to your laptop and shows a QR code on the card (the app menu has the same, **Enable phone access…**, in a window of its own). Scan it with the camera: the phone is signed in as you, no second GitHub login. Share → **Add to Home Screen**, open it from there, and turn on **Settings → Push → This device**. The code is single-use and valid for 30 minutes; **New code** mints a new one.
 
-<Demo name="phone-access" alt="The desktop app's phone window: a QR code, the tunnel address under it, and the line 'Scanning signs you in as octocat. Code valid until 14:32 — reopen this window for a new one.'" label="phone access · QR" />
+<Demo name="phone-access" alt="The desktop app's phone window: a QR code, the tunnel address under it, and the line 'Scanning signs you in as octocat. Code valid until 14:32: reopen this window for a new one.'" label="phone access · QR" />
 
-**It keeps running.** `npx reviewstage` prints `ReviewStage is running. You can close this terminal.` — closing the terminal leaves the app open. Closing the window keeps it in the menu bar (**Open ReviewStage**, **Phone access: On/Off**, **Check for updates**, **Quit ReviewStage**), so phone access and notifications keep working. **Settings → Desktop app** shows the running version and turns on **Open at login**. When a new version is out, a banner offers **Restart to update**.
+**It keeps running.** `npx reviewstage` prints `ReviewStage is running. You can close this terminal.`: closing the terminal leaves the app open. Closing the window keeps it in the menu bar (**Open ReviewStage**, **Phone access: On/Off**, **Check for updates**, **Quit ReviewStage**), so phone access and notifications keep working. **Settings → Desktop app** shows the running version and turns on **Open at login**. When a new version is out, a banner offers **Restart to update**.
 
 **What if my Wi-Fi drops?** The tunnel reconnects by itself after a dropped connection or sleep, and the address stays the same for as long as the app runs. Phone access is remembered and comes back on at the next launch, with a new address; a phone with notifications on gets "Your Mac has a new address" with a sign-in link for it. While the Mac sleeps, the phone says "Your Mac isn't reachable" and offers **Try again**.
 
@@ -69,7 +69,7 @@ docker compose exec app doctor
 
 One PASS / WARN / FAIL line per check. Then:
 
-1. **Sign in with GitHub** — a short code at github.com/login/device, nothing to register.
+1. **Sign in with GitHub**: a short code at github.com/login/device, nothing to register.
 2. **Connect Claude** on the welcome checklist; reviews bill to your plan.
 3. Paste a PR URL: your [first review](/start/first-review/).
 

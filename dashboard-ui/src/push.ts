@@ -124,7 +124,7 @@ export async function subscribe(name: string): Promise<PushDevicesData> {
   if (perm !== "granted") {
     throw new Error(
       perm === "denied"
-        ? "Notifications are blocked for this site — allow them in the browser's site settings, then try again."
+        ? "Notifications are blocked for this site: allow them in the browser's site settings, then try again."
         : "Notifications were not allowed.",
     );
   }
@@ -263,8 +263,8 @@ export function usePush(): PushState {
     test: () =>
       run(async () => {
         const r = await sendTest();
-        if (!r.ok) throw new Error(`Nothing arrived: ${r.failed} failed, ${r.gone} gone — see the server log.`);
-        setNotice(`Sent to ${r.sent} device${r.sent === 1 ? "" : "s"} — check your notifications.`);
+        if (!r.ok) throw new Error(`Nothing arrived: ${r.failed} failed, ${r.gone} gone: see the server log.`);
+        setNotice(`Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}: check your notifications.`);
       }),
     refresh,
   };

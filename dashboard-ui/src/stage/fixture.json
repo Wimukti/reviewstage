@@ -1,5 +1,5 @@
 {
-  "source": "dashboard-ui/e2e/fixture.ts — written by scripts/stage-fixture.mjs; do not edit",
+  "source": "dashboard-ui/e2e/fixture.ts: written by scripts/stage-fixture.mjs; do not edit",
   "repo": "acme/widgets",
   "pr": "38849",
   "title": "Add lead-time badge to product cards",
@@ -11,7 +11,7 @@
   "phases": [
     "Fetching the PR",
     "Checking out the branch",
-    "Reviewing the diff",
+    "Drafting findings from the diff",
     "Checking the findings",
     "Writing the findings"
   ],
@@ -46,11 +46,11 @@
       "mode": "default"
     },
     "keyPoints": [
-      "The badge logic is sound — no blockers.",
+      "The badge logic is sound: no blockers.",
       "Guard a null vendor before reading its lead time.",
       "One nit: prefer const over let in the badge component."
     ],
-    "explainer": "A COMMENT review — nothing here blocks the merge.",
+    "explainer": "A COMMENT review: nothing here blocks the merge.",
     "findings": [
       {
         "i": 0,
@@ -134,7 +134,7 @@
         "path": "src/javascripts/Badge.tsx",
         "line": 10,
         "title": "Use const instead of let",
-        "impact": "Style only — no effect on behavior.",
+        "impact": "Style only, no effect on behavior.",
         "confidence": "medium",
         "howToVerify": "",
         "where": {

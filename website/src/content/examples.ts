@@ -54,8 +54,8 @@ export function verdictOf(fx: ReplayFixture): { tone: "red" | "amber" | "green";
   if (rev.event === "REQUEST_CHANGES") return { tone: "red", text: "Changes requested" };
   if (b) return { tone: "red", text: `${b} blocker${b > 1 ? "s" : ""} to resolve before merge` };
   if (f) return { tone: "amber", text: `${f} thing${f > 1 ? "s" : ""} to fix before merge` };
-  if (rev.count === 0) return { tone: "green", text: "Looks good — nothing to fix" };
-  return { tone: "green", text: "Looks good — comments only, nothing blocking" };
+  if (rev.count === 0) return { tone: "green", text: "Looks good, nothing to fix" };
+  return { tone: "green", text: "Looks good: comments only, nothing blocking" };
 }
 
 export const DECISION_WORD: Record<FixtureDecision["action"], string> = { keep: "Kept", drop: "Dropped", edit: "Edited" };

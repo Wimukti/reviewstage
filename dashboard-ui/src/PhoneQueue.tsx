@@ -209,7 +209,7 @@ export function PhoneQueue({ me, views, base = "/" }: Props) {
 
       {data && !data.slackOk && (
         <Banner kind="warn">
-          No Slack member ID yet — review requests won't ping you. <Link to="/integrations">Add it in Integrations.</Link>
+          No Slack member ID yet: review requests won't ping you. <Link to="/integrations">Add it in Integrations.</Link>
         </Banner>
       )}
 
@@ -295,7 +295,7 @@ export function PhoneQueue({ me, views, base = "/" }: Props) {
                 testid="setup-needed"
               />
             ) : tab === "todo" ? (
-              <PhoneEmpty text="You're all caught up — nothing is waiting on your review." action={["Review a PR", openSearch]} />
+              <PhoneEmpty text="You're all caught up: nothing is waiting on your review." action={["Review a PR", openSearch]} />
             ) : (
               <PhoneEmpty
                 text={EMPTY[tab]?.[2] || "This view is empty."}

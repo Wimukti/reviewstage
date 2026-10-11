@@ -1,6 +1,6 @@
 # r/opensource
 
-**Title:** ReviewStage (MIT): a human-gated AI code review assistant — it drafts, you post under your own name
+**Title:** ReviewStage (MIT): a human-gated AI code review assistant: it drafts, you post under your own name
 
 **Body:**
 
@@ -10,7 +10,7 @@ person decides what in that file becomes a review comment, and it goes out under
 Approve is a separate click. That gate is the whole product; everything else (learning from
 what you drop, QA guides from the same diff, Insights) sits behind it.
 
-`npx reviewstage` for one person; Docker Compose for a team. Claude Code only (on purpose — it
+`npx reviewstage` for one person; Docker Compose for a team. Claude Code only (on purpose: it
 runs on the reviewer's own subscription, not a shared key). Python stdlib + bash + React,
 no database.
 

@@ -4,4 +4,4 @@
 export const categorySentence =
   "ReviewStage is the human review layer for AI-written pull requests. Claude drafts the review privately; you verify, edit and post it as yourself.";
 export const categoryStatement = "The human review layer for AI-written pull requests.";
-export const homeTitle = "ReviewStage — the human review layer for AI-written pull requests";
+export const homeTitle = "ReviewStage: the human review layer for AI-written pull requests";

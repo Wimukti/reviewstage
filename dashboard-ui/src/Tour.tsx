@@ -26,7 +26,7 @@ interface TourStep {
 const TOUR: TourStep[] = [
   {
     title: "Welcome to ReviewStage",
-    text: "ReviewStage drafts the PR reviews you owe your team. You tick what's worth saying and post it — as yourself. Here's the 30-second setup.",
+    text: "ReviewStage drafts the PR reviews you owe your team. You tick what's worth saying and post it, as yourself. Here's the 30-second setup.",
   },
   {
     sel: '[data-tour="integrations"]',
@@ -36,17 +36,17 @@ const TOUR: TourStep[] = [
   {
     sel: '[data-tour="skills"]',
     title: "2. Pick a review skill",
-    text: "ReviewStage follows a review skill. The shared team default works out of the box — or bring your own here. You can switch any time.",
+    text: "ReviewStage follows a review skill. The shared team default works out of the box, or bring your own here. You can switch any time.",
   },
   {
     // The list when there is one; the card (empty state included) otherwise.
     sel: '[data-tour="queuelist"], [data-tour="queue"]',
     title: "3. Your review queue",
-    text: "PRs waiting on your review land here. Open one, choose an effort level, and ReviewStage drafts the review — nothing posts to GitHub without your click.",
+    text: "PRs waiting on your review land here. Open one, choose an effort level, and ReviewStage drafts the review: nothing posts to GitHub without your click.",
   },
   {
     title: "You're set",
-    text: "Open a PR from your queue to run your first review. You stay the reviewer — ReviewStage just does the reading and drafting.",
+    text: "Open a PR from your queue to run your first review. You stay the reviewer. ReviewStage just does the reading and drafting.",
     cta: { label: "Go to Integrations", to: "/integrations" },
   },
 ];

@@ -37,7 +37,7 @@ export interface Reply {
 const json = (status: number, body: unknown): Reply => ({ status, json: body });
 
 const NOT_HERE =
-  "This is a precomputed example — nothing runs or posts from this page. " +
+  "This is a precomputed example: nothing runs or posts from this page. " +
   "Install ReviewStage to do this on your own PR.";
 
 export class ReplayStore {
@@ -139,7 +139,7 @@ export class ReplayStore {
     const n = comments.length;
     return {
       bannerHtml:
-        "<div class='banner warn'><span>🧪</span><div><b>Dry run — nothing was sent.</b> " +
+        "<div class='banner warn'><span>🧪</span><div><b>Dry run: nothing was sent.</b> " +
         `This is a precomputed example: on your own PR, ${n} comment${n === 1 ? "" : "s"} would ` +
         `have posted to GitHub as you just now.</div></div>`,
     };

@@ -137,6 +137,14 @@ try {
     const labelOk = !docs || (label.length > 0 && (label === h1 || label.length < h1.length));
     check(dt === `${h1} | ReviewStage` && labelOk, `${path} <title> "${dt}" = h1 + suffix${docs ? `; sidebar "${label}"` : " (marketing page)"}`);
   }
+  // No dash as punctuation in any rendered text (scripts/no-dashes.sh guards the source; this
+  // guards what the reader sees, including text the layouts or Starlight add).
+  const textOf = (html) => decode(html.replace(/<(script|style)[\s\S]*?<\/\1>/g, " ").replace(/&mdash;|&#8212;|&#x2014;/gi, "\u2014").replace(/&ndash;|&#8211;|&#x2013;/gi, "\u2013"));
+  for (const path of ["/", ...entries.map((e) => new URL(e.loc).pathname).filter((p) => p !== "/")]) {
+    const html = await (await fetch(BASE + path)).text();
+    const hits = [...textOf(html).matchAll(/.{0,30}[\u2014\u2013].{0,30}/g)].map((m) => m[0].trim());
+    check(hits.length === 0, `${path} renders no em or en dash${hits.length ? ": " + hits.slice(0, 3).join(" | ") : ""}`);
+  }
   // Lane 4: the replay is in place with its CSP, the host page embeds it, and every fixture has
   // its page with the parts the design names.
   const shell = await fetch(BASE + "/try/app/");

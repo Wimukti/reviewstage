@@ -84,7 +84,7 @@ test.describe("devices", () => {
     await expect(tokEl).toBeVisible();
     const token = (await tokEl.textContent())!.trim();
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    await expect(card.getByText(`Token for “${name}” — copy it now.`)).toBeVisible();
+    await expect(card.getByText(`Token for “${name}”: copy it now.`)).toBeVisible();
     const row = card.getByTestId("device-row").filter({ hasText: name });
     await expect(row).toBeVisible();
 

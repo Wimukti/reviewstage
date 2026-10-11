@@ -466,18 +466,20 @@ test.describe("the PR page on a phone", () => {
     await expect(card.getByTestId("actual")).toContainText("throws on a null vendor");
     await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
     await expect(card.getByTestId("evidence")).toHaveAttribute("data-status", "pass");
-    await expect(card.getByTestId("trust-line")).toContainText("a second pass could not disprove it");
-    await expect(card.getByTestId("checked")).toContainText("Checked: stands");
+    await expect(card.getByTestId("trust-line")).toContainText("Stands. No null guard on `$vendor`");
+    await expect(card.getByTestId("checked")).toHaveCount(0);
     await expect(card.getByTestId("how-to-verify")).toHaveCount(0);
     const ys = await Promise.all(
-      ["finding-title", "finding-path", "what-to-check", "contrast", "why-it-matters", "evidence", "trust-line", "checked"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
+      ["finding-title", "finding-path", "what-to-check", "contrast", "why-it-matters", "evidence", "trust-line"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
     );
     for (let i = 1; i < ys.length; i++) expect(ys[i], `row ${i} is below row ${i - 1}`).toBeGreaterThan(ys[i - 1]);
     const nit = page.getByTestId("finding").nth(1);
     await expect(nit.getByTestId("how-to-verify")).toHaveCount(0);
     await expect(nit.getByTestId("what-to-check")).toHaveCount(0);
     await expect(nit.getByTestId("evidence")).toHaveAttribute("data-status", "warn");
+    await expect(nit.getByTestId("evidence")).toContainText("Not checked:");
     await expect(nit.getByTestId("trust")).toHaveText("Likely");
+    await expect(nit.getByTestId("trust-line")).toContainText("No second pass for this severity.");
     await expect(nit.getByTestId("checked")).toHaveCount(0);
     await card.getByTestId("finding-expand").click();
     await expect(card.getByTestId("finding-detail")).toBeVisible();

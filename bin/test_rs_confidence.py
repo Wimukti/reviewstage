@@ -118,39 +118,54 @@ class RuleTable(unittest.TestCase):
 
 
 class ReasonLine(unittest.TestCase):
-    def test_checked_names_all_three_signals(self):
+    """The reason is the card's one verdict row: the badge word, the verdict, the second pass's
+    sentence, the calibration clause. It never restates the Evidence row above it."""
+
+    def test_checked_is_the_verdict_then_the_second_pass_then_calibration(self):
         b = C.badge(PASS, STANDS, GOOD)
         self.assertEqual(b["label"], "Checked")
-        self.assertEqual(b["reason"], "Checked: the cited lines exist and mention `attempts`, "
-                                      "a second pass could not disprove it, reviewers kept "
-                                      "85.0% of findings like this here.")
+        self.assertEqual(b["reason"], "Checked: Stands. No reset of `attempts` after a 2xx "
+                                      "anywhere. Reviewers kept 85.0% of findings like this here.")
         self.assertEqual(b["inputs"], {"evidence": "pass", "disproof": "stands",
                                        "keepRate": 85.0, "n": 30})
+        self.assertEqual(C.badge(PASS, STANDS)["reason"],
+                         "Checked: Stands. No reset of `attempts` after a 2xx anywhere.")
+
+    def test_the_reason_never_repeats_the_evidence_row(self):
+        for ev in (PASS, PASS_PLAIN, OFF_DIFF):
+            for chk in (STANDS, WEAK, None):
+                self.assertNotIn("cited lines", C.badge(ev, chk, None, DONE)["reason"])
+                self.assertNotIn("outside this diff", C.badge(ev, chk, None, DONE)["reason"])
 
     def test_maybe_quotes_the_evidence_note(self):
         self.assertEqual(C.badge(WARN_LINES)["reason"],
-                         "Maybe: lines 80 are not in this PR's changes to `Retry.php`.")
+                         "Maybe: Lines 80 are not in this PR's changes to `Retry.php`.")
         self.assertEqual(C.badge(WARN_SYMBOL)["reason"],
                          "Maybe: `maxAttempts` does not appear in the cited lines.")
+        self.assertEqual(C.badge(WARN_TWO, None, None, DONE)["reason"],
+                         "Maybe: `Nope.php` is not a file this PR changes. A blocker needs both "
+                         "Expected and Actual.")
 
     def test_refuted_and_weakened_carry_the_second_pass_sentence(self):
         self.assertEqual(C.badge(PASS, REFUTED)["reason"],
-                         "Maybe: the cited lines exist and mention `attempts`, a second pass "
-                         "refuted it: `resetAttempts()` at retry.ts:71 runs after a 2xx.")
+                         "Maybe: Refuted. `resetAttempts()` at retry.ts:71 runs after a 2xx.")
         self.assertEqual(C.badge(PASS_PLAIN, WEAK)["reason"],
-                         "Likely: the cited lines exist, a second pass weakened it: only the "
-                         "6th call is lost, not every retry.")
+                         "Likely: Weakened. Only the 6th call is lost, not every retry.")
+        self.assertEqual(C.badge(PASS_PLAIN, {**WEAK, "reason": ""})["reason"], "Likely: Weakened.")
 
     def test_no_verdict_says_why(self):
-        self.assertEqual(C.badge(PASS_PLAIN)["reason"], "Likely: the cited lines exist.")
+        self.assertEqual(C.badge(PASS_PLAIN)["reason"], "Likely: No second pass ran.")
         self.assertEqual(C.badge(PASS_PLAIN, None, None, DONE)["reason"],
-                         "Likely: the cited lines exist, no second pass for this severity.")
+                         "Likely: No second pass for this severity.")
         self.assertEqual(C.badge(PASS_PLAIN, None, None, {**DONE, "status": "failed"})["reason"],
-                         "Likely: the cited lines exist, the second pass failed.")
-        self.assertEqual(C.badge(None)["reason"], "Likely: the diff could not be checked.")
+                         "Likely: The second pass failed.")
+        self.assertEqual(C.badge(None)["reason"],
+                         "Likely: The diff could not be checked. No second pass ran.")
         self.assertEqual(C.badge(OFF_DIFF, None, None, DONE)["reason"],
-                         "Likely: the file is outside this diff, so its lines could not be "
-                         "checked, no second pass for this severity.")
+                         "Likely: No second pass for this severity.")
+        self.assertEqual(C.badge(PASS_PLAIN, None, MID, DONE)["reason"],
+                         "Likely: No second pass for this severity. Reviewers kept 55.0% of "
+                         "findings like this here.")
 
     def test_the_self_report_is_not_an_input(self):
         # design §2.3: the model's confidence steers the tray before other signals exist, but

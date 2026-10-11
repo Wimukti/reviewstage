@@ -226,6 +226,10 @@ def normalize_checked(v, i=0, warnings=None):
                         f"{'|'.join(CHECK_VERDICTS)}; dropped")
         return None
     reason = " ".join((_text(v.get("reason")) or "").split())[:CHECK_REASON_CAP]
+    reason, dashes = undash(reason)
+    if dashes:
+        warnings.append(f"finding {i}: checked.reason: plain: dash used as punctuation "
+                        f"({dashes} replaced with a comma)")
     try:
         at = int(v.get("at") or 0)
     except (TypeError, ValueError):
@@ -359,7 +363,8 @@ def normalize_guide(g, warnings=None):
     for alias in NOT_COVERED_SYNONYMS:
         if nc is None:
             nc = g.get(alias)
-    out["not_covered"] = _str_list(nc, NOT_COVERED_CAP)
+    out["not_covered"] = [lint_text(x, DESCRIPTION_WORDS, f"guide: not_covered[{j}]", warnings)
+                          for j, x in enumerate(_str_list(nc, NOT_COVERED_CAP))]
     for f in ("does", "why"):
         if out[f] is not None:
             out[f] = " ".join(out[f].split())
@@ -394,6 +399,13 @@ def normalize(review):
     review["disproof"] = normalize_disproof(review.get("disproof"), warnings)
     if isinstance(review.get("summary"), str):
         review["summary"] = lint_text(review["summary"], DESCRIPTION_WORDS, "summary", warnings)
+    if isinstance(review.get("explainer"), str):
+        review["explainer"] = lint_text(review["explainer"], DESCRIPTION_WORDS, "explainer", warnings)
+    # The assessment's bullets are read aloud on the card too: the same rules, dashes included.
+    if isinstance(review.get("keyPoints"), list):
+        review["keyPoints"] = [lint_text(x, DESCRIPTION_WORDS, f"keyPoints[{j}]", warnings)
+                               if isinstance(x, str) else x
+                               for j, x in enumerate(review["keyPoints"])]
     comments = review.get("comments")
     if comments is None:
         review["comments"] = []

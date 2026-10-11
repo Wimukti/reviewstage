@@ -860,21 +860,17 @@ class ConfidenceBadgeInThePayload(PlainContractInThePayload):
             files=self.FILES)
         a, b, c = data["findings"]
         self.assertEqual(a["badge"]["level"], "checked")
-        self.assertEqual(a["badge"]["reason"], "Checked: the cited lines exist and mention "
-                                               "`pay`, `charge`, a second pass could not "
-                                               "disprove it.")
+        self.assertEqual(a["badge"]["reason"], "Checked: Stands. No second charge path.")
         self.assertEqual(a["checked"], {"verdict": "stands", "reason": "No second charge path.",
                                         "at": 5})
         self.assertTrue(a["preselect"])
         self.assertEqual(b["badge"]["level"], "maybe")
-        self.assertIn("a second pass refuted it: `MAX_RETRIES` caps it at pay.py:3.",
-                      b["badge"]["reason"])
+        self.assertEqual(b["badge"]["reason"], "Maybe: Refuted. `MAX_RETRIES` caps it at pay.py:3.")
         self.assertTrue(b["low"])
         self.assertFalse(b["preselect"])
         self.assertEqual(b["confidence"], "high")             # still sent, never the badge
         self.assertEqual(c["badge"]["level"], "likely")
-        self.assertEqual(c["badge"]["reason"], "Likely: the cited lines exist and mention "
-                                               "`charge`, no second pass for this severity.")
+        self.assertEqual(c["badge"]["reason"], "Likely: No second pass for this severity.")
         self.assertIsNone(c["checked"])
         self.assertTrue(c["preselect"])
         self.assertEqual(data["disproof"], {"status": "done", "n": 2, "checked": 2,
@@ -898,10 +894,10 @@ class ConfidenceBadgeInThePayload(PlainContractInThePayload):
         data = self.payload(rev, files=self.FILES)
         a, _, c = data["findings"]
         self.assertEqual(a["badge"]["level"], "checked")
-        self.assertIn("reviewers kept 85.0% of findings like this here", a["badge"]["reason"])
+        self.assertIn("Reviewers kept 85.0% of findings like this here", a["badge"]["reason"])
         self.assertEqual(a["badge"]["inputs"]["n"], 20)
         self.assertEqual(c["badge"]["level"], "maybe")
-        self.assertIn("reviewers kept 20.0%", c["badge"]["reason"])
+        self.assertIn("Reviewers kept 20.0%", c["badge"]["reason"])
         # Below the sample the bucket is not read at all.
         decide(5, "medium", 0, "93")
         data = self.payload(self.rev(), files=self.FILES)

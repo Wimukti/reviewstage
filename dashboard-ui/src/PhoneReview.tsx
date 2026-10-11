@@ -39,7 +39,7 @@ import { api, REASON_LABELS, type Finding, type PrData, type QueueRow, type Reas
 import { useSwipe } from "./gestures";
 import { NavBarAction, useNavBar } from "./nav";
 import { prUrl } from "./pr";
-import { CheckedLine, ConfidenceBadge, Contrast, DiffSnippet, EvidenceLine, ExplainBody, HowToVerify, locOf, OFFDIFF_HINT, placementOf, ReasonChips, SelfReport, TrustBadge, TrustLine, UNKNOWN_HINT, useExplain, WhatToCheck } from "./ReviewParts";
+import { ConfidenceBadge, Contrast, DiffSnippet, EvidenceLine, ExplainBody, HowToVerify, locOf, OFFDIFF_HINT, placementOf, ReasonChips, SelfReport, TrustBadge, TrustLine, UNKNOWN_HINT, useExplain, WhatToCheck } from "./ReviewParts";
 import { goBack, Link } from "./router";
 import { StatusBadge, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
@@ -411,7 +411,6 @@ export function PhoneFindingCard({
           )}
           <EvidenceLine evidence={f.evidence} className="text-[13px]" />
           <TrustLine badge={f.badge} className="text-[13px]" />
-          <CheckedLine checked={f.checked} className="text-[13px]" />
           <span className="flex w-full items-center justify-end text-[13px] text-muted-foreground">
             <ChevronRight aria-hidden="true" className={cn("ml-auto size-4 shrink-0 transition-transform", open && "rotate-90")} />
           </span>

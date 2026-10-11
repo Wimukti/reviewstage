@@ -31,8 +31,15 @@ export function evidenceState(evidence: Evidence | null | undefined): EvidenceSt
   return "warn";
 }
 
-const lowerFirst = (text: string | undefined | null): string => {
-  const t = (text ?? "").trim().replace(/\.+$/, "");
+/** A stripped string closed with a full stop, or "" for nothing. */
+const sentence = (text: string | undefined | null): string => {
+  const t = (text ?? "").trim();
+  return t && !/[.!?]$/.test(t) ? `${t}.` : t;
+};
+
+/** The first letter lowered, so a note can follow a label and a colon. A backtick stays. */
+export const lowerFirst = (text: string | undefined | null): string => {
+  const t = (text ?? "").trim();
   return t && /[A-Za-z]/.test(t[0]) ? t[0].toLowerCase() + t.slice(1) : t;
 };
 
@@ -55,31 +62,29 @@ export function badge(
   else if (ev === "pass" && verdict === "stands" && (rate === null || rate >= CHECKED_RATE)) level = "checked";
   else level = "likely";
 
+  // The reason is the card's one verdict row under Evidence, so it never repeats what the
+  // Evidence row already says: the verdict word and the second pass's own sentence when there
+  // is one; otherwise why there is no verdict (the evidence note only when no Evidence row is
+  // shown: a WARN the badge rests on, or no evidence at all). The calibration clause last.
   const parts: string[] = [];
-  if (ev === "pass") {
-    const syms = (evidence?.symbols ?? []).filter(Boolean).slice(0, 2);
-    parts.push("the cited lines exist" + (syms.length ? " and mention " + syms.map((s) => `\`${s}\``).join(", ") : ""));
-  } else if (ev === "warn") {
-    parts.push(lowerFirst(evidence?.line) || "the evidence check failed");
-  } else if (evidence && (evidence.flags ?? []).length) {
-    parts.push("the file is outside this diff, so its lines could not be checked");
+  const reasonTxt = sentence(checked?.reason);
+  if (verdict === "stands" || verdict === "weakened" || verdict === "refuted") {
+    parts.push(verdict[0].toUpperCase() + verdict.slice(1) + "." + (reasonTxt ? ` ${reasonTxt}` : ""));
   } else {
-    parts.push("the diff could not be checked");
+    if (ev === "warn") parts.push(sentence(evidence?.line) || "The evidence check failed.");
+    else if (!evidence) parts.push("The diff could not be checked.");
+    if (ev !== "warn") {
+      const st = disproof && typeof disproof === "object" ? disproof.status : undefined;
+      if (st === "failed") parts.push("The second pass failed.");
+      else if (st === "done" || st === "partial") parts.push("No second pass for this severity.");
+      else parts.push("No second pass ran.");
+    }
   }
-  const reasonTxt = checked?.reason ?? "";
-  if (verdict === "stands") parts.push("a second pass could not disprove it");
-  else if (verdict === "weakened") parts.push("a second pass weakened it" + (reasonTxt ? `: ${lowerFirst(reasonTxt)}` : ""));
-  else if (verdict === "refuted") parts.push("a second pass refuted it" + (reasonTxt ? `: ${lowerFirst(reasonTxt)}` : ""));
-  else if (disproof && typeof disproof === "object") {
-    const st = disproof.status;
-    if (st === "failed") parts.push("the second pass failed");
-    else if ((st === "done" || st === "partial") && !checked) parts.push("no second pass for this severity");
-  }
-  if (rate !== null) parts.push(`reviewers kept ${pct(rate)} of findings like this here`);
+  if (rate !== null) parts.push(`Reviewers kept ${pct(rate)} of findings like this here.`);
   return {
     level,
     label: LABELS[level],
-    reason: `${LABELS[level]}: ${parts.join(", ")}.`,
+    reason: `${LABELS[level]}: ${parts.join(" ")}`,
     inputs: { evidence: ev, disproof: verdict, keepRate: rate, n: cal ? cal.n : null },
   };
 }

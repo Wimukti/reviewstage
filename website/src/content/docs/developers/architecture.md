@@ -15,6 +15,7 @@ Read this before changing anything. Most of the layout decisions look arbitrary 
 | `bin/pr-watch.sh` | poller, every 3 min | Finds PRs awaiting any signed-in user's review → `queue.json` + a notification card. Never runs a review. |
 | `bin/server.py` | the dashboard service, `127.0.0.1:8899` | Serves the React SPA shell and a JSON API: sessions, queue, PR pages, runs, posting, approving, skills, learnings, insights, QA. |
 | `bin/run-review.sh` | spawned per click, detached | Worktree → `claude -p` with the chosen skill + output contract → `review.json`. **Never writes to GitHub.** |
+| `bin/run-disproof.sh` | called by `run-review.sh` after the main pass | Same account, same stripped environment, the opposite brief (`skills/pr-disproof/`): tries to disprove each selected finding → `stands` / `weakened` / `refuted` written back into `review.json`. **Never writes to GitHub**; never fails the review. |
 | `bin/run-qa.sh` | spawned per click | Same shape, runs the QA-guide skill → `qa.md`. |
 | `bin/profile-repo.sh` | spawned per click, or by the poller | Deterministic signals → one Sonnet call with `skills/repo-profile` → validated `profiles/<slug>/profile.json` + `profile.md`. |
 | `bin/rs_profile.py` | imported + CLI | The profile: signals gathering, prompt, validation against the tree, risk-rule merge, the critical-path prompt block, markdown round-trip, versioning. |
@@ -29,7 +30,7 @@ Read this before changing anything. Most of the layout decisions look arbitrary 
 | `bin/lib-common.sh` | sourced | Config (`REPOS`, `REPO_ALLOW_ORG`), the bash twins of the path helpers, HMAC link signing, Slack posting (webhook or bot token). |
 | `bin/lib-limits.sh` | sourced | `MIN_FREE_MB` and `MIN_FREE_DISK_MB`, defined once so `lib-common.sh` (the job scripts) and `doctor.sh` cannot disagree about the floor. |
 | `dashboard-ui/` | built once | React 19 + TypeScript SPA: queue, PR page, stack page, QA, skills, learnings, insights, integrations, tour, command palette. |
-| `skills/pr-review/` · `skills/pr-qa-guide/` | installed | The built-in review and QA-guide procedures, as Claude Code skills. |
+| `skills/pr-review/` · `skills/pr-disproof/` · `skills/pr-qa-guide/` | installed | The built-in review, second-pass (disproof) and QA-guide procedures, as Claude Code skills. |
 
 The backend is Python's standard library plus bash, `gh`, `jq`, `git`, `openssl` and `claude`. There is no database; state is files.
 
@@ -116,7 +117,7 @@ ROOT/skills/repos/<owner>__<name>/SKILL.md  optional per-repo team default
 ```
 bin/            server, scripts, Python helpers
 dashboard-ui/   React SPA (esbuild, node --test, Playwright)
-skills/         built-in Claude Code skills (pr-review, pr-qa-guide) and the seeded team default
+skills/         built-in Claude Code skills (pr-review, pr-disproof, pr-qa-guide) and the seeded team default
 docs/           SETUP, ARCHITECTURE, SECURITY, OPERATIONS (source for this site)
 website/        this site (Astro + Starlight)
 docker-compose.yml, .env.example, bin/doctor.sh

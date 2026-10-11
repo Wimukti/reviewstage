@@ -155,8 +155,22 @@ fails a run. The server applies the same normaliser when it renders, so a review
 before a field existed renders identically. At render the server also runs `rs_evidence.py`
 over each finding against the PR's own patches (the same files payload the anchor check reads):
 file in diff, lines in a hunk, a backticked symbol present, a blocker with both `expected` and
-`actual`; the verdict and the 8–12 cited diff lines ride with the finding, and two failed checks
-demote it to the maybe tray.
+`actual`; the verdict and the 8–12 cited diff lines ride with the finding.
+
+Between the normaliser and the cache write, while the worktree still exists, `run-review.sh`
+runs `run-disproof.sh`: a second headless Claude run on the same account, through the same
+`agent_env` and deny list, handed the selected findings (title, where, what to check, expected,
+actual, impact — never the GitHub body) and the files they cite with the opposite brief
+(`skills/pr-disproof/SKILL.md`, `rs_disproof.py`). It answers `stands` / `weakened` /
+`refuted` with one sentence per finding into `disproof.json`; `rs_disproof.py merge` writes
+that into `review.json` as `checked = {verdict, reason, at}` per finding and a review-level
+`disproof = {status, n, checked, duration_ms, mode}`, and tallies `disproof_run{verdict}`.
+`RS_DISPROOF` (`default` = blockers and should-fixes, `all` = the "Check all findings" toggle,
+`off`) selects the findings. The pass never fails the review and the PR is fingerprinted again
+after it. At render `rs_confidence.py` folds the evidence verdict, the stored disproof verdict
+and the calibration bucket from `rs_learn` (keep-rate per skill + repo + self-reported
+confidence, counted from 20 decisions) into the three-level badge — Checked / Likely / Maybe —
+with one reason line; a Maybe is demoted to the maybe tray with lane 1's two-flag rule.
 
 The agent is launched through `agent_env` (`lib-common.sh`), which strips every GitHub, Slack,
 webhook and HMAC credential from the environment and points `GH_CONFIG_DIR` at an empty

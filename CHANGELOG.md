@@ -62,6 +62,13 @@ third-pass strategy memo. No auto-post, no auto-approve, nothing new leaves your
   in 1.1.0. Settings → Privacy lets you view, export, clear or disable. Schema and exact fields
   are in the docs; tests prove zero egress when off.
 
+## 1.0.0 to 1.0.2 — 10/05/26 to 10/10/26
+
+1.0.0 is the first stable release: the desktop app (`npx reviewstage`), personal mode, phone
+pairing by QR, and everything below from the release candidates. 1.0.1 fixed the first-run
+install path; 1.0.2 added the npm keywords and the category description (no code changes).
+The notes that follow were written during the candidates and apply to 1.0.0.
+
 ### Upgrading, sign-in and rate limits — 09/18/26
 
 Four things found by running a real install rather than by reading the code.

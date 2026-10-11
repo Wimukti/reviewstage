@@ -4,6 +4,33 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+## 1.2.0 — 10/11/26
+
+Findings you can read in seconds and a confidence you can trust. Nothing new leaves your
+machine: every check below runs locally or on your own Claude account.
+
+- **A reading guide at the top of every review.** What this PR does, why (from the PR or its
+  ticket), how risky it looks, and which hunks to read in which order and why. Click a row to
+  jump there. On the phone it is the first card.
+- **Every finding in the same six rows.** Title in plain words · where (the file and lines, with
+  the cited lines shown on the card) · what to check (one instruction) · expected / actual ·
+  why it matters · how it was checked. Everything else is under "More".
+- **Plain language, enforced.** The review writes to Simplified Technical English rules: one
+  idea per sentence, 20 words for instructions, 25 for descriptions, active voice, named things.
+  A linter counts the words and logs when the model slips.
+- **Evidence check, by code not by the model.** Do the cited lines exist in this diff? Do they
+  mention the thing the finding names? Two misses and the finding drops to the "maybe" tray,
+  whatever the model claimed.
+- **A second pass tries to disprove each serious finding.** A separate Claude run with the
+  opposite brief answers *stands / weakened / refuted* with one sentence. On by default for
+  *breaks* and *can break*; "Check all findings" runs it for every one. It cannot write to GitHub.
+- **Checked · Likely · Maybe, with a reason.** The badge is now earned from the evidence check,
+  the disproof verdict and, once your team has 20 or more decisions on findings like this, the
+  real keep-rate ("reviewers kept 85% of findings like this here"). The model's own confidence is
+  never shown alone. No percentages until they are measured.
+- **Learnings → "What reviewers kept, by confidence."** The calibration table behind the badge,
+  per skill and repository, and a plain sentence when the buckets do not separate.
+
 ## 1.1.0 — 10/11/26
 
 Five changes that make a review easier to trust and the product easier to prove, from the

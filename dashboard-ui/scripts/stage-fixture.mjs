@@ -4,7 +4,8 @@
 // as the Playwright run builds it, then read back: the review, the queue row, and the fake gh's
 // answer for the PR's files, which decides which findings can be anchored inline.
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFixture, FIXTURE, PR, REPO, USER } from "../e2e/fixture.ts";
@@ -24,6 +25,18 @@ const files = JSON.parse(
 ).flat();
 const inDiff = new Set(files.map((f) => f.filename));
 
+// Where, the evidence verdict and the inline snippet exactly as the server computes them
+// (bin/rs_evidence.py, trust-and-plain §1.3–1.4), so src/evidence.test.ts can hold the
+// TypeScript port used by the replay to the Python module's own output.
+const tmp = mkdtempSync(join(tmpdir(), "rs-stage-"));
+writeFileSync(join(tmp, "files.json"), JSON.stringify(files));
+const evidence = JSON.parse(
+  execFileSync("python3", [join(HERE, "..", "..", "bin", "rs_evidence.py"), join(FIXTURE, "state", slug, PR, "review.json"), join(tmp, "files.json")], {
+    env: { ...process.env, PYTHONPATH: join(HERE, "..", "..", "bin") },
+  }).toString(),
+);
+rmSync(tmp, { recursive: true, force: true });
+
 // The review phases the server reports while a run is in flight (bin/server.py, api_pr).
 const server = readFileSync(join(HERE, "..", "..", "bin", "server.py"), "utf8");
 const m = server.match(/out\["reviewing"\] = \{\s*"phases": \[([^\]]+)\]/);
@@ -39,6 +52,12 @@ const findings = review.comments.map((c, i) => ({
   impact: c.impact ?? c.why_it_matters ?? "",
   confidence: c.confidence ?? null,
   howToVerify: c.how_to_verify ?? "",
+  where: evidence.findings[i].where,
+  whatToCheck: c.what_to_check ?? "",
+  expected: c.expected ?? "",
+  actual: c.actual ?? "",
+  snippet: evidence.findings[i].snippet,
+  evidence: evidence.findings[i].evidence,
   body: c.body,
   suggestion: c.suggestion || "",
   anchorable: inDiff.has(c.path),
@@ -57,6 +76,16 @@ const out = {
   phases,
   review: {
     summary: review.summary,
+    // The reading guide in the server's wire shape (server.py _guide_data).
+    guide: evidence.guide
+      ? {
+          does: evidence.guide.does ?? "",
+          why: evidence.guide.why ?? "",
+          risk: evidence.guide.risk ?? null,
+          readPlan: evidence.guide.read_plan.map((r) => ({ path: r.path, lines: r.lines ?? null, why: r.why ?? "" })),
+          notCovered: evidence.guide.not_covered,
+        }
+      : null,
     keyPoints: review.keyPoints ?? [],
     explainer: review.explainer ?? "",
     findings,

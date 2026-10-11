@@ -22,6 +22,11 @@ test("fixture.json is the e2e fixture's PR #38849 review", () => {
   assert.deepEqual(fixture.review.findings.map((f) => f.severity), ["should-fix", "nit"]);
   assert.deepEqual(fixture.review.findings.map((f) => f.anchorable), [true, false]);
   assert.equal(fixture.phases.length, 4);
+  // trust-and-plain: the guide and the evidence verdicts ride along from the Python module.
+  assert.equal(fixture.review.guide?.risk, "can break");
+  assert.equal(fixture.review.guide?.readPlan.length, 2);
+  assert.deepEqual(fixture.review.findings.map((f) => f.evidence?.status), ["pass", "warn"]);
+  assert.ok(fixture.review.findings[0].snippet);
 });
 
 test("StageScene staged: two .finding.is-staged and a commit bar reading 2 staged", () => {

@@ -25,7 +25,7 @@ const base: TelemetryData = {
 // The schema the server ships (bin/rs_telemetry.py SCHEMA). The card must name every class.
 const SHIPPED = [
   "install_completed", "connect_result", "review_started", "review_completed", "run_duration_bucket",
-  "findings_shown", "findings_kept", "findings_edited", "findings_dropped", "dismissal_reason",
+  "findings_shown", "plain_warnings", "findings_kept", "findings_edited", "findings_dropped", "dismissal_reason",
   "post_attempted", "post_succeeded", "return_7d", "return_28d",
 ];
 
@@ -34,7 +34,7 @@ test("the schema table names every shipped event class and the never-list", () =
   for (const ev of SHIPPED) assert.match(html, new RegExp(ev), ev);
   for (const n of NEVER) assert.ok(html.includes(n.replace(/'/g, "&#x27;")), n);
   assert.match(html, /No endpoint is configured on this server — nothing is sent either way/);
-  assert.equal(EVENT_ROWS.length, 10);
+  assert.equal(EVENT_ROWS.length, 11);
   const withEndpoint = renderToStaticMarkup(createElement(TelemetrySchema, { endpointSet: true }));
   assert.match(withEndpoint, /An endpoint is configured on this server/);
 });

@@ -277,6 +277,18 @@ export interface Finding {
   // One imperative line on how to confirm the finding in under two minutes; "" when the run
   // gave none, and the card then shows no row for it. Not posted to GitHub.
   howToVerify?: string;
+  // Where / what to check / expected / actual (trust-and-plain §1.3). `where` is normalised from
+  // path:line (plus an optional end line); the text fields are "" when the run gave none.
+  where?: Where | null;
+  whatToCheck?: string;
+  expected?: string;
+  actual?: string;
+  // The 8–12 cited diff lines around `where`, cut server-side from the PR's patch; null when the
+  // file is not in the diff or GitHub withheld its patch.
+  snippet?: Snippet | null;
+  // The deterministic evidence check (§1.4), computed once on the server. null when the diff
+  // could not be fetched. Two or more flags demote the finding to the maybe tray (`low`).
+  evidence?: Evidence | null;
   criticalPath?: string; // the profile glob this finding concerns, "" when none
   // Tri-state. true: GitHub will take an inline comment on this line. false: the line is
   // outside the PR's diff, so the finding goes into the review body instead. null/undefined:
@@ -289,6 +301,50 @@ export interface Finding {
   // Whether this exact complaint has already been turned into a rule, by anyone. Absent on
   // older servers, which is why every read of it is optional rather than defaulted to false.
   taught?: boolean;
+}
+
+export interface Where {
+  path: string;
+  start: number;
+  end: number;
+}
+
+export interface SnippetLine {
+  n: number | null; // new-file line number; null for a removed line
+  text: string;
+  kind: "add" | "ctx" | "del";
+  cited: boolean;
+}
+
+export interface Snippet {
+  start: number;
+  end: number;
+  lines: SnippetLine[];
+}
+
+export type EvidenceFlag = "path_not_in_diff" | "lines_not_in_diff" | "symbol_not_found" | "no_contrast";
+
+export interface Evidence {
+  status: "pass" | "warn";
+  flags: EvidenceFlag[] | string[];
+  line: string; // the one-line result the card shows
+  symbols?: string[];
+}
+
+// The reading guide (§1.2): what the PR does, why, the risk word, the hunks to read in order
+// and what the run did not review. null for a review from before it existed.
+export interface ReadPlanRow {
+  path: string;
+  lines: string | null; // "40-72" or null
+  why: string;
+}
+
+export interface GuideData {
+  does: string;
+  why: string;
+  risk: "breaks" | "can break" | "safe-looking" | "unclear" | null;
+  readPlan: ReadPlanRow[];
+  notCovered: string[];
 }
 
 export interface ApprovedData {
@@ -306,6 +362,8 @@ export interface ReviewData {
   reviewKey?: string;
   event: string;
   summary: string;
+  // The reading guide; absent on older servers, null for an older review.
+  guide?: GuideData | null;
   keyPoints: string[];
   explainer: string;
   analysis: string;

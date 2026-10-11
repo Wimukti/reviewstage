@@ -12,7 +12,9 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  BookOpen,
   Check,
+  ChevronDown,
   Circle,
   CircleCheck,
   CircleDot,
@@ -25,19 +27,21 @@ import {
   Loader2,
   Pencil,
   Route,
+  Search,
   Send,
   Sparkles,
+  TriangleAlert,
   Users,
   X,
 } from "lucide-react";
-import { REASON_LABELS, REASONS, type Reason } from "./api";
+import { REASON_LABELS, REASONS, type Evidence, type GuideData, type Reason, type ReadPlanRow, type Snippet, type Where } from "./api";
 import { StatusBadge, iconOf, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -57,6 +61,14 @@ export interface FindingView {
   // narrows to, because the stage fixture is plain JSON.
   confidence?: string | null;
   howToVerify?: string;
+  // Where / what to check / expected / actual, the cited diff lines and the evidence verdict
+  // (trust-and-plain §1.3–1.4). All optional: an older review omits every row.
+  where?: Where | null;
+  whatToCheck?: string;
+  expected?: string;
+  actual?: string;
+  snippet?: Snippet | null;
+  evidence?: Evidence | null;
   thread?: string | null;
   criticalPath?: string;
   // Tri-state: true inline, false into the review body, null/undefined genuinely unknown.
@@ -316,6 +328,230 @@ export function HowToVerify({ text, className }: { text?: string; className?: st
   );
 }
 
+// `path:start-end` for a finding with a cited range, `path:line` otherwise.
+export function locOf(f: Pick<FindingView, "path" | "line" | "where">): string {
+  const w = f.where;
+  if (w && w.end > w.start) return `${f.path}:${w.start}-${w.end}`;
+  return `${f.path}:${f.line}`;
+}
+
+// The cited diff lines (§1.3 row 2): 8–12 lines of the hunk around the cited range, the changed
+// lines highlighted, the cited ones marked. Mono, numbered on the new side; a removed line
+// shows with no number. The reviewer reads the evidence without opening the diff.
+export function DiffSnippet({ snippet, className }: { snippet?: Snippet | null; className?: string }) {
+  if (!snippet || !snippet.lines.length) return null;
+  return (
+    <pre
+      className={cn("m-0 max-w-full overflow-x-auto rounded-md border border-border bg-background/60 py-1.5 font-mono text-[12px] leading-[1.45]", className)}
+      data-testid="diff-snippet"
+      data-start={snippet.start}
+      data-end={snippet.end}
+      aria-label={`Diff lines ${snippet.start} to ${snippet.end}`}
+    >
+      {snippet.lines.map((l, i) => (
+        <span
+          key={i}
+          className={cn(
+            "flex min-w-max gap-2 px-2",
+            l.kind === "add" && "bg-green/12",
+            l.kind === "del" && "bg-red/10 text-muted-foreground line-through decoration-muted-foreground/40",
+            l.cited && "border-l-2 border-l-primary bg-primary/10",
+            !l.cited && "border-l-2 border-l-transparent",
+          )}
+          data-kind={l.kind}
+          data-cited={l.cited ? "1" : undefined}
+        >
+          <span className="w-8 shrink-0 select-none text-right text-muted-foreground/70 tabular-nums">{l.n ?? ""}</span>
+          <span className="w-3 shrink-0 select-none text-muted-foreground/70">{l.kind === "add" ? "+" : l.kind === "del" ? "−" : " "}</span>
+          <span className="whitespace-pre">{l.text || " "}</span>
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+// Row 2 of the card: the location (copyable) and the cited lines under it.
+export function WhereRow({ f, className }: { f: FindingView; className?: string }) {
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)} data-testid="where">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">Where</span>
+        <CopyPath loc={locOf(f)} />
+      </div>
+      <DiffSnippet snippet={f.snippet} />
+    </div>
+  );
+}
+
+// Row 3: the one imperative sentence (§1.3). Falls back to the older `how_to_verify` line so a
+// review from before the field still has one row that tells the reviewer what to do.
+export function WhatToCheck({ text, className }: { text?: string; className?: string }) {
+  if (!text) return null;
+  return (
+    <p className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-foreground", className)} data-testid="what-to-check">
+      <Search aria-hidden="true" className="relative top-[2px] size-3.5 shrink-0 text-muted-foreground" />
+      <span className="shrink-0 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">What to check</span>
+      <span className="min-w-0">{text}</span>
+    </p>
+  );
+}
+
+// Row 4: expected against actual, two short lines. Either alone still renders.
+export function Contrast({ expected, actual, className }: { expected?: string; actual?: string; className?: string }) {
+  if (!expected && !actual) return null;
+  return (
+    <dl className={cn("m-0 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 leading-relaxed", className)} data-testid="contrast">
+      {expected && (
+        <>
+          <dt className="font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">Expected</dt>
+          <dd className="m-0 min-w-0" data-testid="expected">{expected}</dd>
+        </>
+      )}
+      {actual && (
+        <>
+          <dt className="font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">Actual</dt>
+          <dd className="m-0 min-w-0" data-testid="actual">{actual}</dd>
+        </>
+      )}
+    </dl>
+  );
+}
+
+// Row 6: the deterministic evidence check (§1.4) in one line. PASS reads green, WARN amber;
+// the line is the plain reason. Absent when the diff could not be checked.
+export function EvidenceLine({ evidence, className }: { evidence?: Evidence | null; className?: string }) {
+  if (!evidence) return null;
+  const warn = evidence.status === "warn";
+  const Glyph = warn ? TriangleAlert : CircleCheck;
+  return (
+    <p
+      className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-muted-foreground", className)}
+      data-testid="evidence"
+      data-status={evidence.status}
+      data-flags={(evidence.flags ?? []).join(" ") || undefined}
+    >
+      <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", warn ? "text-amber" : "text-green")} />
+      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", warn ? "text-amber" : "text-green")}>
+        Evidence{warn ? " · check" : ""}
+      </span>
+      <span className="min-w-0">{evidence.line}</span>
+    </p>
+  );
+}
+
+// ---- the reading guide ------------------------------------------------------------------------
+
+const RISK_TONE: Record<string, Tone> = { breaks: "red", "can break": "amber", "safe-looking": "green", unclear: "graphite" };
+
+export interface ReadingGuideProps {
+  guide: GuideData;
+  // Open by default on first view; the caller may remember a collapse.
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  // A row click goes to the hunk: the caller resolves path + lines to a card or a GitHub link.
+  onJump?: (row: ReadPlanRow) => void;
+  className?: string;
+}
+
+// The Reading guide card (§1.2): what this PR does · why · read in this order · not reviewed.
+// Sits above the findings on the desk and is the first card on the phone. Collapsible; the
+// header stays so the risk word is always one glance away.
+export function ReadingGuide({ guide, defaultOpen = true, onOpenChange, onJump, className }: ReadingGuideProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const has = guide.does || guide.why || guide.readPlan.length > 0 || guide.notCovered.length > 0 || guide.risk;
+  if (!has) return null;
+  const risk = guide.risk ? RISK_TONE[guide.risk] ?? "graphite" : null;
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        onOpenChange?.(v);
+      }}
+      className={className}
+    >
+      <Card data-testid="reading-guide" data-open={open ? "1" : "0"} className="mb-3 gap-0 rounded-lg border-0 py-0 shadow-sm">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-4 py-2.5 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[899px]:min-h-[44px]"
+            aria-expanded={open}
+            data-testid="guide-toggle"
+          >
+            <BookOpen aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <span className="font-medium">Reading guide</span>
+            {guide.risk && risk && (
+              <StatusBadge tone={risk} icon={risk === "green" ? CircleCheck : risk === "graphite" ? CircleHelp : TriangleAlert} data-testid="guide-risk" data-risk={guide.risk} title="The run's read of this PR's risk">
+                {guide.risk}
+              </StatusBadge>
+            )}
+            <span className="min-w-0 flex-1" />
+            {!open && guide.does && <span className="min-w-0 flex-1 basis-full truncate text-sm text-muted-foreground min-[900px]:basis-auto" data-testid="guide-peek">{guide.does}</span>}
+            <ChevronDown aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="flex flex-col gap-3 px-4 pb-3.5 pt-0.5 text-sm leading-relaxed">
+            {guide.does && (
+              <p className="m-0 max-w-[72ch]" data-testid="guide-does">
+                <span className="mr-1.5 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">What this PR does</span>
+                {guide.does}
+              </p>
+            )}
+            {guide.why && (
+              <p className="m-0 max-w-[72ch] text-muted-foreground" data-testid="guide-why">
+                <span className="mr-1.5 font-mono text-xs font-medium uppercase tracking-wide">Why</span>
+                {guide.why}
+              </p>
+            )}
+            {guide.readPlan.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">Read in this order</span>
+                <ol className="m-0 flex list-none flex-col gap-0.5 p-0" data-testid="guide-plan">
+                  {guide.readPlan.map((r, i) => {
+                    const loc = r.lines ? `${r.path}:${r.lines}` : r.path;
+                    const inner = (
+                      <>
+                        <span className="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}.</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium [overflow-wrap:anywhere]" data-testid="guide-row-loc">{loc}</span>
+                          {r.why && <span className="text-muted-foreground"> — {r.why}</span>}
+                        </span>
+                      </>
+                    );
+                    return (
+                      <li key={i} className="flex" data-testid="guide-row" data-path={r.path} data-lines={r.lines ?? undefined}>
+                        {onJump ? (
+                          <button
+                            type="button"
+                            className="-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[899px]:min-h-[44px]"
+                            onClick={() => onJump(r)}
+                            title="Go to this hunk"
+                          >
+                            {inner}
+                          </button>
+                        ) : (
+                          <span className="flex min-w-0 flex-1 items-baseline gap-2 py-1">{inner}</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            )}
+            {guide.notCovered.length > 0 && (
+              <p className="m-0 text-muted-foreground" data-testid="guide-not-covered">
+                <span className="mr-1.5 font-mono text-xs font-medium uppercase tracking-wide">Not reviewed</span>
+                {guide.notCovered.join(" · ")}
+              </p>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
 export function FindingCard({ f, checked, onToggle, disabled, explain, editor, teach, reason, askReason, onReason, onReasonDismiss }: FindingCardProps) {
   const x = useExplain(explain);
   const { expOpen, setExpOpen, runExplain } = x;
@@ -323,15 +559,19 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
   const [showDetail, setShowDetail] = useState(!f.structured);
   const [showTeach, setShowTeach] = useState(false);
   const [taught, setTaught] = useState(!!f.taught);
-  const loc = `${f.path}:${f.line}`;
   const place = placementOf(f);
   const tone = toneOf(f.severity);
   // The footer actions sit in graphite until the card is hovered or focused (or one of them is
   // open), then take the full ink; they never collapse, so the card keeps its shape.
   const anyOpen = expOpen || (f.structured && showDetail) || showTeach;
+  // One "what to check" row: the §1.3 sentence, else the older how_to_verify line. When both
+  // exist the verify line moves under "More" with the body.
+  const check = f.whatToCheck || f.howToVerify;
+  const verifyUnderMore = !!(f.whatToCheck && f.howToVerify);
   return (
     <Card
       data-testid="finding"
+      data-finding={f.i}
       data-staged={checked ? "1" : undefined}
       className={cn(
         "finding",
@@ -363,20 +603,28 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
           </StatusBadge>
         )}
         <span className="min-w-0 flex-1 basis-[200px]" />
-        <CopyPath loc={loc} />
       </div>
       <div className="flex flex-col gap-2 px-4 pb-3 pl-[18px]">
         {!checked && onReason && (reason || askReason) && (
           <ReasonChips value={reason} onPick={onReason} onClose={onReasonDismiss} />
         )}
-        {f.structured && <div className="text-sm font-medium leading-snug">{f.title}</div>}
+        {/* §1.3, top to bottom: title · where (+ cited lines) · what to check · expected/actual ·
+            why it matters · evidence. Nothing else between them. */}
+        {f.structured && <div className="text-sm font-medium leading-snug" data-testid="finding-title">{f.title}</div>}
+        <WhereRow f={f} className="text-sm" />
+        {f.whatToCheck ? (
+          <WhatToCheck text={check} className="max-w-[72ch] text-sm" />
+        ) : (
+          <HowToVerify text={f.howToVerify} className="max-w-[72ch] text-sm" />
+        )}
+        <Contrast expected={f.expected} actual={f.actual} className="max-w-[72ch] text-sm" />
         {f.structured && f.impact && (
           <p className="m-0 max-w-[72ch] text-sm leading-relaxed text-muted-foreground" data-testid="why-it-matters">
             <span className="mr-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Why it matters</span>
             {f.impact}
           </p>
         )}
-        <HowToVerify text={f.howToVerify} className="max-w-[72ch] text-sm" />
+        <EvidenceLine evidence={f.evidence} className="max-w-[72ch] text-sm" />
         {(f.criticalPath || f.agreement) && (
           <div className="flex flex-wrap gap-1.5">
             {f.criticalPath && (
@@ -455,6 +703,7 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
             unmount the panel at the exact moment it has something to confirm. The button above
             is what stops a second visit. */}
         {showTeach && teach && teach.panel(() => setTaught(true))}
+        {showDetail && verifyUnderMore && <HowToVerify text={f.howToVerify} className="max-w-[72ch] text-sm" />}
         {showDetail && editor}
       </div>
     </Card>

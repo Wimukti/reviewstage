@@ -36,6 +36,7 @@ import {
   errMessage,
   isExpiredToken,
   type Finding,
+  type ReadPlanRow,
   type ReviewData,
   type TeachDirection,
   type Me,
@@ -65,6 +66,7 @@ import {
   KeyPoints,
   placementOf,
   ProgressSteps,
+  ReadingGuide,
   StatusLineView,
   Steps,
   Verdict,
@@ -801,6 +803,31 @@ function ReviewBody({
   const [approveBody, setApproveBody] = useState(rev.approve?.defaultMsg || "");
   const [ack, setAck] = useState(false);
 
+  const shown = rev.findings.filter((f) => !f.low);
+  const maybe = rev.findings.filter((f) => f.low);
+  // The Reading guide (trust-and-plain §1.2). A row names a hunk; the card that cites that
+  // file (and overlaps the lines, when it says which) is where the hunk is already rendered, so
+  // the row scrolls there. No card on that file → GitHub's Files tab for this PR.
+  const jumpTo = (row: ReadPlanRow) => {
+    const range = row.lines ? row.lines.split(/[-–]/).map(Number) : null;
+    const overlaps = (f: Finding) => {
+      if (f.path !== row.path) return false;
+      if (!range || !f.where) return true;
+      const [a, b] = [range[0], range[1] ?? range[0]];
+      return f.where.start <= b && f.where.end >= a;
+    };
+    const target = rev.findings.find(overlaps) ?? rev.findings.find((f) => f.path === row.path);
+    const el = target !== undefined ? document.querySelector<HTMLElement>(`[data-finding="${target.i}"]`) : null;
+    if (el) {
+      if (target && !shown.some((f) => f.i === target.i)) setMaybeOpen(true);
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus?.({ preventScroll: true });
+      return;
+    }
+    window.open(`${data.ghUrl}/files`, "_blank", "noopener");
+  };
+  const guide = rev.guide ? <ReadingGuide guide={rev.guide} onJump={jumpTo} /> : null;
+
   // An explicit untick is a drop and asks why; a re-tick clears the answer. Either way the
   // tick lands first — the question never stands between the reviewer and the decision.
   const toggle = (i: number) => {
@@ -847,8 +874,6 @@ function ReviewBody({
   const selInline = sel.filter((f) => placementOf(f) === "inline").length;
   const selOff = sel.filter((f) => placementOf(f) === "summary").length;
   const selUnknown = sel.filter((f) => placementOf(f) === "unknown").length;
-  const shown = rev.findings.filter((f) => !f.low);
-  const maybe = rev.findings.filter((f) => f.low);
   // GitHub accepts a review all-or-nothing, so a batch over the server's cap is refused there
   // anyway — catch it before the click rather than after the whole review is lost.
   const maxPerPost = rev.maxPerPost ?? 0;
@@ -1160,6 +1185,7 @@ function ReviewBody({
           <ClampSummary text={rev.summary} />
         ) : null}
         <div data-testid="post-panel">
+          {guide}
           {rev.count === 0 ? (
             <p className="text-base text-muted-foreground">No findings — nothing to post.</p>
           ) : (
@@ -1245,6 +1271,10 @@ function ReviewBody({
       {/* Deliberately not a <form>: browsers implicitly submit one on Enter, and these are
           checkboxes. A stray keystroke while ticking findings would have posted the review. */}
       <div data-testid="post-panel">
+        {/* Inside the panel, not above it: the commit bar is sticky to this container, and a
+            guide outside it pushed the container's top below a short viewport's fold, so the
+            bar sat out of view until the first scroll. */}
+        {guide}
         {rev.count === 0 ? (
           <p className="text-sm text-muted-foreground">No findings — nothing to post.</p>
         ) : (

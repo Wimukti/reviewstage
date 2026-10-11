@@ -10,9 +10,25 @@
   "changedFiles": 3,
   "language": "Python 3.12 · asyncio service",
   "headline": "A bucket that never refills, a race that cannot happen in asyncio, and a Retry-After nit worth saying better.",
-  "me": { "login": "sam", "name": "Sam", "personal": true, "dry_run": true },
-  "usage": { "model": "claude-sonnet-4-5", "inputTokens": 39770, "outputTokens": 3312, "cacheReadTokens": 24400, "realTokens": 18682, "costUsd": 0.18, "durationMs": 161000 },
-  "effort": { "label": "Standard", "hint": "The default depth: reads the diff and the files it touches." },
+  "me": {
+    "login": "sam",
+    "name": "Sam",
+    "personal": true,
+    "dry_run": true
+  },
+  "usage": {
+    "model": "claude-sonnet-4-5",
+    "inputTokens": 39770,
+    "outputTokens": 3312,
+    "cacheReadTokens": 24400,
+    "realTokens": 18682,
+    "costUsd": 0.18,
+    "durationMs": 161000
+  },
+  "effort": {
+    "label": "Standard",
+    "hint": "The default depth: reads the diff and the files it touches."
+  },
   "files": [
     {
       "filename": "gateway/limits.py",
@@ -52,7 +68,11 @@
         "body": "Line 22 sets `b.last = now`, then line 23 computes the refill as `(now - b.last) * self.rate` — which is now always `0`. So tokens are only ever consumed, never restored, and once a key spends its burst it is locked out for the life of the process. Compute the elapsed time first, then stamp `last`. The existing tests cannot catch this because neither one advances the clock; a test with a fake `monotonic` would.",
         "suggestion": "now = time.monotonic()\nelapsed = now - b.last\nb.last = now\nb.tokens = min(self.capacity, b.tokens + elapsed * self.rate)",
         "reply_to": null,
-        "teach": "keep"
+        "teach": "keep",
+        "what_to_check": "Open limits.py lines 22-23. Check the order of `last` and the elapsed-time read.",
+        "end_line": 23,
+        "expected": "The bucket refills by the time since the last take.",
+        "actual": "The elapsed time is always zero, so it never refills."
       },
       {
         "path": "gateway/limits.py",
@@ -65,7 +85,11 @@
         "body": "`take()` reads `b.tokens`, compares it to 1, and then decrements — three steps with no lock. Two requests arriving together can both observe `tokens == 1`, both pass the check, and the bucket goes to `-1`. Wrap the read-check-decrement in a `threading.Lock` (or an `asyncio.Lock` per key) so the admission decision is atomic.",
         "suggestion": "",
         "reply_to": null,
-        "teach": "drop"
+        "teach": "drop",
+        "what_to_check": "Open limits.py lines 24-26. Check whether `tokens` is read and written under a lock.",
+        "end_line": 26,
+        "expected": "One token lets one request through.",
+        "actual": "Two concurrent requests can both pass on one token."
       },
       {
         "path": "gateway/middleware.py",
@@ -78,9 +102,37 @@
         "body": "A 429 with no `Retry-After`. Sloppy — clients have no idea when to come back, and you already wrote `retry_after()` so there is no excuse for not using it.",
         "suggestion": "",
         "reply_to": null,
-        "teach": "edit"
+        "teach": "edit",
+        "what_to_check": "Open middleware.py line 14. Check the headers on the 429 response.",
+        "expected": "The 429 says when to retry.",
+        "actual": "The 429 carries no Retry-After header."
       }
-    ]
+    ],
+    "guide": {
+      "does": "Adds a per-key token bucket and puts it in front of every public route.",
+      "why": "One client could flood the API and slow everyone else.",
+      "risk": "can break",
+      "read_plan": [
+        {
+          "path": "gateway/limits.py",
+          "lines": "19-27",
+          "why": "The refill and the take. The arithmetic is the risk."
+        },
+        {
+          "path": "gateway/middleware.py",
+          "lines": "10-15",
+          "why": "How a request is keyed and what a limited one gets back."
+        },
+        {
+          "path": "tests/test_limits.py",
+          "lines": "1-13",
+          "why": "The cases covered: burst and key isolation."
+        }
+      ],
+      "not_covered": [
+        "settings.py defaults"
+      ]
+    }
   },
   "decisions": [
     {

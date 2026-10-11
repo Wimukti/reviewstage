@@ -16,6 +16,27 @@
   ],
   "review": {
     "summary": "Adds a lead-time badge to product cards. Logic is sound; two small things.",
+    "guide": {
+      "does": "Shows a lead-time badge on every product card.",
+      "why": "Shoppers asked how long a product takes to arrive.",
+      "risk": "can break",
+      "readPlan": [
+        {
+          "path": "app/models/Product.php",
+          "lines": "40-43",
+          "why": "The badge reads the vendor here. A null vendor is the risk."
+        },
+        {
+          "path": "src/javascripts/Badge.tsx",
+          "lines": "1-30",
+          "why": "The component that renders the badge."
+        }
+      ],
+      "notCovered": [
+        "lockfile",
+        "generated snapshots"
+      ]
+    },
     "keyPoints": [
       "The badge logic is sound — no blockers.",
       "Guard a null vendor before reading its lead time.",
@@ -32,6 +53,53 @@
         "impact": "A shopper viewing such a product would see the card fail instead of loading.",
         "confidence": "high",
         "howToVerify": "Open a product whose vendor is null; the badge throws instead of rendering.",
+        "where": {
+          "path": "app/models/Product.php",
+          "start": 42,
+          "end": 42
+        },
+        "whatToCheck": "Open Product.php line 42. Check that `$vendor` is null-guarded before `leadTime()`.",
+        "expected": "A product with no vendor shows no badge.",
+        "actual": "The badge throws on a null vendor.",
+        "snippet": {
+          "start": 40,
+          "end": 43,
+          "lines": [
+            {
+              "n": 40,
+              "text": "ctx",
+              "kind": "ctx",
+              "cited": false
+            },
+            {
+              "n": 41,
+              "text": "$leadTime = $vendor->leadTime();",
+              "kind": "add",
+              "cited": false
+            },
+            {
+              "n": 42,
+              "text": "ctx2",
+              "kind": "ctx",
+              "cited": true
+            },
+            {
+              "n": 43,
+              "text": "ctx3",
+              "kind": "ctx",
+              "cited": false
+            }
+          ]
+        },
+        "evidence": {
+          "status": "pass",
+          "flags": [],
+          "line": "The cited lines are in this diff and mention `vendor`, `leadTime`.",
+          "symbols": [
+            "vendor",
+            "leadTime"
+          ]
+        },
         "body": "Guard against a null vendor before reading its lead time.",
         "suggestion": "if ($vendor === null) return null;",
         "anchorable": true
@@ -45,6 +113,23 @@
         "impact": "Style only — no effect on behavior.",
         "confidence": "medium",
         "howToVerify": "",
+        "where": {
+          "path": "src/javascripts/Badge.tsx",
+          "start": 10,
+          "end": 10
+        },
+        "whatToCheck": "",
+        "expected": "",
+        "actual": "",
+        "snippet": null,
+        "evidence": {
+          "status": "warn",
+          "flags": [
+            "path_not_in_diff"
+          ],
+          "line": "`src/javascripts/Badge.tsx` is not a file this PR changes.",
+          "symbols": []
+        },
         "body": "Prefer `const` over `let` here.",
         "suggestion": "",
         "anchorable": false

@@ -10,9 +10,25 @@
   "changedFiles": 4,
   "language": "TypeScript · Node 22 service",
   "headline": "A retry loop that never gives up on a 404, a backoff cap the reviewer missed, and a jitter nit said rudely.",
-  "me": { "login": "sam", "name": "Sam", "personal": true, "dry_run": true },
-  "usage": { "model": "claude-sonnet-4-5", "inputTokens": 48210, "outputTokens": 3904, "cacheReadTokens": 31050, "realTokens": 21064, "costUsd": 0.21, "durationMs": 184000 },
-  "effort": { "label": "Standard", "hint": "The default depth: reads the diff and the files it touches." },
+  "me": {
+    "login": "sam",
+    "name": "Sam",
+    "personal": true,
+    "dry_run": true
+  },
+  "usage": {
+    "model": "claude-sonnet-4-5",
+    "inputTokens": 48210,
+    "outputTokens": 3904,
+    "cacheReadTokens": 31050,
+    "realTokens": 21064,
+    "costUsd": 0.21,
+    "durationMs": 184000
+  },
+  "effort": {
+    "label": "Standard",
+    "hint": "The default depth: reads the diff and the files it touches."
+  },
   "files": [
     {
       "filename": "src/webhooks/deliver.ts",
@@ -57,7 +73,10 @@
         "body": "`if (res.ok) return;` treats every non-2xx the same, so a `400`, `404` or `410` from the receiver is retried five times with the full backoff even though it cannot succeed. Only `408`, `425`, `429` and `5xx` are worth retrying. Throw straight away on the other 4xx so a dead endpoint costs one request, not five and 31 seconds.",
         "suggestion": "if (res.ok) return;\nif (res.status >= 400 && res.status < 500 && ![408, 425, 429].includes(res.status)) {\n  throw new DeliveryError(res.status, attempt + 1);\n}",
         "reply_to": null,
-        "teach": "keep"
+        "teach": "keep",
+        "what_to_check": "Open deliver.ts line 25. Check which statuses `res.ok` lets through to a retry.",
+        "expected": "A 404 stops after one request.",
+        "actual": "A 404 is retried five times."
       },
       {
         "path": "src/webhooks/deliver.ts",
@@ -70,7 +89,10 @@
         "body": "`backoffMs(attempt)` doubles on every attempt (`BASE_MS * 2 ** (attempt - 1)`) and nothing caps it, so a sustained outage turns the fifth attempt into a very long sleep. Clamp the delay to a maximum (30 s is typical) so a down receiver degrades to a steady retry rate instead of ever-longer pauses.",
         "suggestion": "",
         "reply_to": null,
-        "teach": "drop"
+        "teach": "drop",
+        "what_to_check": "Open deliver.ts line 28. Check whether `backoffMs` caps the delay.",
+        "expected": "The delay stops growing at 30 seconds.",
+        "actual": "The delay doubles on every attempt."
       },
       {
         "path": "src/webhooks/backoff.ts",
@@ -83,9 +105,37 @@
         "body": "No jitter. This is the textbook mistake — every retry guide written in the last decade covers it. Add randomness to the delay or this will just DDoS the receiver in waves the moment it recovers.",
         "suggestion": "",
         "reply_to": null,
-        "teach": "edit"
+        "teach": "edit",
+        "what_to_check": "Open backoff.ts line 9. Check that the delay has a random part.",
+        "expected": "Retries spread out over time.",
+        "actual": "Every retry lands at the same moment."
       }
-    ]
+    ],
+    "guide": {
+      "does": "Replaces the single webhook POST with a retry loop and a `backoffMs` helper.",
+      "why": "A delivery was lost on one failed request.",
+      "risk": "can break",
+      "read_plan": [
+        {
+          "path": "src/webhooks/deliver.ts",
+          "lines": "17-29",
+          "why": "The retry loop. Everything else depends on it."
+        },
+        {
+          "path": "src/webhooks/backoff.ts",
+          "lines": "1-12",
+          "why": "The delay curve and its cap."
+        },
+        {
+          "path": "test/deliver.test.ts",
+          "lines": "22-36",
+          "why": "The two cases the author tested."
+        }
+      ],
+      "not_covered": [
+        "the error message text in errors.ts"
+      ]
+    }
   },
   "decisions": [
     {

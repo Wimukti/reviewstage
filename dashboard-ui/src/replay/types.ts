@@ -14,11 +14,24 @@ export interface FixtureComment {
   title?: string;
   impact?: string;
   how_to_verify?: string;
+  // trust-and-plain §1.3: the cited range's last line and the plain rows.
+  end_line?: number;
+  what_to_check?: string;
+  expected?: string;
+  actual?: string;
   body: string;
   suggestion?: string;
   reply_to?: string | null;
   critical_path?: string;
   teach?: Decision;
+}
+
+export interface FixtureGuide {
+  does?: string;
+  why?: string | null;
+  risk?: "breaks" | "can break" | "safe-looking" | "unclear";
+  read_plan?: { path: string; lines?: string; why?: string }[];
+  not_covered?: string[];
 }
 
 export interface FixtureFile {
@@ -60,6 +73,8 @@ export interface ReplayFixture {
   review: {
     event: string;
     summary: string;
+    // The reading guide (§1.2), in the review.json spelling.
+    guide?: FixtureGuide;
     keyPoints?: string[];
     explainer?: string;
     analysis?: string;

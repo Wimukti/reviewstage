@@ -10,9 +10,25 @@
   "changedFiles": 3,
   "language": "TypeScript · Node 22 service",
   "headline": "An invalidation that deletes the wrong key, an eviction the reviewer overlooked, and a magic-number nit worth rephrasing.",
-  "me": { "login": "sam", "name": "Sam", "personal": true, "dry_run": true },
-  "usage": { "model": "claude-sonnet-4-5", "inputTokens": 35120, "outputTokens": 2988, "cacheReadTokens": 20900, "realTokens": 17208, "costUsd": 0.16, "durationMs": 149000 },
-  "effort": { "label": "Standard", "hint": "The default depth: reads the diff and the files it touches." },
+  "me": {
+    "login": "sam",
+    "name": "Sam",
+    "personal": true,
+    "dry_run": true
+  },
+  "usage": {
+    "model": "claude-sonnet-4-5",
+    "inputTokens": 35120,
+    "outputTokens": 2988,
+    "cacheReadTokens": 20900,
+    "realTokens": 17208,
+    "costUsd": 0.16,
+    "durationMs": 149000
+  },
+  "effort": {
+    "label": "Standard",
+    "hint": "The default depth: reads the diff and the files it touches."
+  },
   "files": [
     {
       "filename": "src/catalog/cache.ts",
@@ -43,7 +59,7 @@
     "comments": [
       {
         "path": "src/catalog/service.ts",
-        "line": 20,
+        "line": 18,
         "severity": "should-fix",
         "confidence": "high",
         "title": "Invalidation uses the wrong key — updated products read stale for up to 60 s",
@@ -52,7 +68,10 @@
         "body": "Entries go in under `key(tenant, id)` — `\"acme:p1\"` — but `updateProduct` calls `cache.delete(id)`, which looks for `\"p1\"` and deletes nothing. Use the same key builder so the update really evicts the entry.",
         "suggestion": "cache.delete(key(tenant, id));",
         "reply_to": null,
-        "teach": "keep"
+        "teach": "keep",
+        "what_to_check": "Open service.ts line 18. Compare the key `cache.delete` uses with the key `cache.set` uses.",
+        "expected": "An update evicts the entry it changed.",
+        "actual": "The delete uses `id` alone and never matches `tenant:id`."
       },
       {
         "path": "src/catalog/cache.ts",
@@ -65,7 +84,11 @@
         "body": "`set()` adds to the `Map` without any size check, and `get()` only removes the entry it is asked for. Under a wide key space (a crawler walking the catalog) the map grows without bound until the process is OOM-killed. Add a maximum entry count and evict when it is reached, or sweep expired entries on a timer.",
         "suggestion": "",
         "reply_to": null,
-        "teach": "drop"
+        "teach": "drop",
+        "what_to_check": "Open cache.ts lines 20-24. Check what `set` does when the map is full.",
+        "end_line": 24,
+        "expected": "The cache stays under 5,000 entries.",
+        "actual": "Entries are only removed when read after expiry."
       },
       {
         "path": "src/catalog/service.ts",
@@ -78,9 +101,38 @@
         "body": "Why is the TTL hardcoded? Magic numbers everywhere. `60_000` should obviously be in config like everything else.",
         "suggestion": "",
         "reply_to": null,
-        "teach": "edit"
+        "teach": "edit",
+        "what_to_check": "Open service.ts line 5. Check where the 60 second TTL is defined.",
+        "expected": "The TTL is a named setting.",
+        "actual": "The TTL is a literal in the service module."
       }
-    ]
+    ],
+    "guide": {
+      "does": "Puts a 60 second cache in front of `getProduct`, keyed by tenant and id.",
+      "why": "Product lookups were the slowest query on every page.",
+      "risk": "breaks",
+      "read_plan": [
+        {
+          "path": "src/catalog/service.ts",
+          "lines": "5-18",
+          "why": "The read path and the invalidation. The keys must match."
+        },
+        {
+          "path": "src/catalog/cache.ts",
+          "lines": "10-26",
+          "why": "Expiry and eviction."
+        },
+        {
+          "path": "test/service.test.ts",
+          "lines": "30-36",
+          "why": "One test, for the hit. None for the update."
+        }
+      ],
+      "not_covered": [
+        "db.ts",
+        "types.ts"
+      ]
+    }
   },
   "decisions": [
     {

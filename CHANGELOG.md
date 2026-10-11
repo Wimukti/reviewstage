@@ -4,6 +4,15 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+## 1.2.2 — 10/11/26
+
+- Each finding card shows one verdict row, not two: "Checked: Stands. <reason>" next to the
+  evidence row, and the badge word is always the row label, so the two agree. An off-diff file
+  reads "Evidence: Not checked: <file> is not a file this PR changes."
+- The dash replacement now covers the review summary, key points, reading guide and verdict
+  reasons as well as the finding fields.
+- README and website screenshots and recordings show the 1.2 cards.
+
 ## 1.2.1 — 10/11/26
 
 Words only. The run's second phase now reads "Drafting findings from the diff" (it was "Reviewing

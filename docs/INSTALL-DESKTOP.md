@@ -42,7 +42,7 @@ desktop apps run, and why no Apple Developer account is involved.
    github.com/login/device, or paste a fine-grained token), *Connect Claude* (the same
    `claude setup-token` flow as the team install, skippable for now), *Pick repositories* (a
    searchable list of the repositories you own, collaborate on or belong to through an
-   organisation; up to 50). Then one card, once: share anonymous usage counters or keep them
+   organisation; up to 50). Then one card, once: share usage counters (counts only; no names, repositories, paths or text) or keep them
    local (the default; nothing is sent either way while no endpoint is configured, and none
    ships — see the website's Security → Telemetry page). Then your queue.
 

@@ -51,7 +51,7 @@ Closing the window keeps ReviewStage in the menu bar. Quit from the menu-bar ico
 
 ## Does it phone home?
 
-Not in 1.0.x. ReviewStage keeps a few counters about itself on your machine — reviews started, findings kept or dropped, posts attempted — from a fixed list with no names, repositories, paths or text in it; **Settings → Privacy** shows them, exports them and clears them. They can only be sent if `RS_TELEMETRY=0` is not set, the admin has not switched telemetry off, you said yes (the wizard asks once; the default is **Keep it local**), *and* an endpoint is configured — and no release configures one, so today nothing leaves the box whatever you answer. The only unprompted network call the desktop app makes is the update check against the npm registry every 6 hours. The full schema and the commitments for a future endpoint are in [Telemetry](/security/telemetry/).
+Not in 1.0.x. ReviewStage keeps a few counters about itself on your machine — reviews started, findings kept or dropped, posts attempted — from a fixed list with no names, repositories, paths or text in it; **Settings → Privacy** shows them, exports them and clears them. They can only be sent if `RS_TELEMETRY=0` is not set, the admin has not switched telemetry off, you said yes (the wizard asks once; the default is **Keep it local**), *and* an endpoint is configured — and no release configures one, so today no counter is sent, whatever you answer. The only unprompted network call the desktop app makes is the update check against the npm registry every 6 hours. The full schema and the commitments for a future endpoint are in [Telemetry](/security/telemetry/).
 
 ## Does it run on Windows?
 

@@ -36,6 +36,14 @@
 
 **ReviewStage is the human review layer for AI-written pull requests. Claude drafts the review privately; you verify, edit and post it as yourself.** It is open source and self-hosted, built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code): it drafts your review from the real diff, on your own Claude plan, and stages every finding privately in a dashboard. You tick the ones worth posting, edit any of them, and post them as a plain `COMMENT` review under your own GitHub account. Approval is a separate click. Nothing posts until you click.
 
+Five facts hold at every size:
+
+- The draft is private before publication.
+- You choose what is correct and worth saying.
+- The review posts under your own GitHub identity.
+- Approval is always a separate click of yours.
+- The drafting agent cannot write to GitHub: no GitHub credentials, write tools denied, and the PR's reviews, comments and threads fingerprinted before and after the run.
+
 ## Quick start
 
 ```bash
@@ -88,9 +96,11 @@ Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the 
 
 ## Why not an auto-review bot?
 
+Most AI review products deliver AI-written feedback directly into the pull request. ReviewStage keeps the draft private first. The reviewer decides what is correct, worth saying, and worthy of their name.
+
 **Bots get ignored.** A comment from a bot account is one more notification to scroll past, and on a busy repository it is the first thing people learn to filter. A comment from a colleague, in their words, gets read and answered. ReviewStage produces the second kind.
 
-**Accountability has to sit with a person.** A wrong nit costs a reply; a wrong approval ships a bug. So ReviewStage never requests changes, never blocks a merge, and never approves on its own. The agent's verdict is shown to you as an assessment. Posting and approving are two different buttons, and the agent can press neither: the script that runs the review has no GitHub write path at all.
+**Accountability has to sit with a person.** A wrong nit costs a reply; a wrong approval ships a bug. So ReviewStage never requests changes or approves on its own, and never blocks a merge. The agent's verdict is shown to you as an assessment. Posting and approving are two different buttons, and the agent can press neither: the script that runs the review has no GitHub write path at all.
 
 **It runs on your plan, so it runs when you click.** Each reviewer connects their own Claude account in the browser; a review is a real agent run against a real diff — a few minutes for a typical PR on Opus, longer for Deep — billed to whoever started it. That is why it is click-to-run rather than on every push, and why the run form asks for an effort level before it starts.
 
@@ -98,6 +108,7 @@ Open **http://localhost:8899**, click **Sign in with GitHub** (works out of the 
 
 - **A staging area, not a comment stream.** Tick and untick findings, edit inline with a preview, attach GitHub suggestion blocks, ask for a plain-words explanation with how to verify. Re-run at another effort or focus; every earlier run is kept.
 - **Per-reviewer identity.** Posts and approvals go out under each person's own token. The server's own service token is only ever read from — and the review agent runs with every GitHub credential stripped from its environment, an explicit tool deny list, and a before/after count of the PR's reviews, comments and threads that fails the run if anything landed. A prompt-injected write attempt is a failed run, not a comment under your name. [What that does not cover](https://reviewstage.dev/security/#prompt-injection-from-hostile-diffs).
+- **Findings you can check.** A reading guide on top of each review: what the PR does, how risky it looks, which hunks to read first. Every finding says where to look, what to check, expected versus actual, and why it matters. A local evidence check confirms the cited lines exist in the diff; a second Claude run tries to disprove each serious finding; together they earn the Checked, Likely or Maybe badge, never the model's own confidence alone.
 - **Effort, focus and model per run.** Quick, Standard or Deep (auto-suggested from the diff), a free-text focus note, and your plan's default model or Opus, Sonnet or Haiku. Tokens and model are shown per run.
 - **Profiles your repo once and makes every review walk its critical paths.** Deterministic signals (tree, churn, in-degree, CODEOWNERS, CI) plus one Sonnet call name the paths where a mistake hurts most, and every generated path is checked against the tree before it is kept. Standard and Deep reviews that touch one are told to verify callers, contracts, migrations and tests, and findings on it carry a badge. Editable in the dashboard; optional automatic re-profile when the tree changes.
 - **It learns what your team drops — and hardens it into rules.** Kept, reworded and dropped findings feed the next review of the repository, recorded once after the post actually reaches GitHub and keyed so a retry replaces rather than doubles. Drop the same complaint three times across different PRs and ReviewStage drafts it as a proposed team rule, with the evidence attached, for you to accept or dismiss with one click — nothing reaches a skill on its own. Skills are scored by how often their findings survive a human; the team default is versioned in a git repository on your server, with a revision history; add a rule in plain words.

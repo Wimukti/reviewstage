@@ -1,6 +1,6 @@
 ---
 title: "Telemetry: what is counted, what is never sent, and why nothing is sent today"
-description: The exact event schema, where the counters live, retention and deletion, the three switches, and what the endpoint would log if one were operated. In 1.0.x no endpoint exists and nothing leaves the box.
+description: The exact event schema, where the counters live, retention and deletion, the three switches, and what the endpoint would log if one were operated. In 1.0.x no endpoint exists and no counter is sent.
 sidebar:
   label: Telemetry
   order: 2
@@ -104,12 +104,12 @@ Only when all four hold is the state **active**: once a day (and on a clean shut
 If an endpoint is operated later, this section is the commitment it will be held to, and it will be updated before the first release that sets the variable:
 
 - **What it receives** is exactly the payload above — the receiver validates it against the same allowlist and discards anything else.
-- **What it logs.** Any HTTPS receiver sees the client IP address and the request headers on the wire; that is a fact about TCP, not a choice. The commitment is that the receiver **does not store** the IP address, the `User-Agent` or any header — only the payload body, keyed by `install_id` and `day`. Said plainly: the body is anonymous; the connection is not, and the receiver is required to drop what the connection reveals before anything is written.
+- **What it logs.** Any HTTPS receiver sees the client IP address and the request headers on the wire; that is a fact about TCP, not a choice. The commitment is that the receiver **does not store** the IP address, the `User-Agent` or any header — only the payload body, keyed by `install_id` and `day`. Said plainly: the body carries no name, repository, path or text; the connection is not anonymous, and the receiver is required to drop what the connection reveals before anything is written.
 - **Retention at the receiver** will be stated here when one exists, along with a deletion path keyed by `install_id` (which Export shows you).
 
 ## What the browser does fetch from elsewhere
 
-For completeness: the dashboard shows reviewer and repository avatars, and the browser loads those images from `github.com` / `avatars.githubusercontent.com` — the service you signed in with, which already knows you are looking at these pull requests. That is an image load by your browser, not a report by ReviewStage; the browser test that proves "nothing leaves" names exactly those two hosts, image resources only, and fails on anything else.
+For completeness: the dashboard shows reviewer and repository avatars, and the browser loads those images from `github.com` / `avatars.githubusercontent.com` — the service you signed in with, which already knows you are looking at these pull requests. That is an image load by your browser, not a report by ReviewStage; the browser test that proves no request goes to any other origin names exactly those two hosts, image resources only, and fails on anything else.
 
 ## Logging on your server
 

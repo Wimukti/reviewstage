@@ -1,36 +1,38 @@
 # Show HN
 
-**Title** (≤ 80 chars):
+Submit the repo URL (https://github.com/Wimukti/reviewstage) as the link. Post the text below
+as your first comment within a minute of submitting. Stay in the thread for the next 4 to 6
+hours; the HN account (`windysl`) has no history, so fast, specific replies are what carry it.
 
-Show HN: ReviewStage, Claude drafts your PR review, you post it as yourself
+**Title** (78 chars, limit 80):
 
-**Text** (first comment, posted immediately after submitting the link to https://github.com/Wimukti/reviewstage):
+Show HN: ReviewStage, Claude drafts PR reviews privately, you post as yourself
 
-I review a lot of PRs that an agent wrote. I did not want another bot leaving comments; I wanted
-the drafting done and the posting left to me, under my own name, so the author gets a review
-from a colleague and I stay accountable for it.
+**First comment** (about 250 words):
 
-ReviewStage is that. `npx reviewstage` opens a window: sign in with GitHub, connect your Claude
-account, pick repositories. Review requests show up in a queue. Click one, it runs a real
-Claude Code review over the real diff on your own Claude plan, and stages the findings
-privately: tick the ones worth posting, edit any, drop the rest. Post goes out as a plain
-COMMENT review from your account. Approve is a separate button. The agent has no GitHub write
-path at all: every credential is stripped from its environment and a before/after check of
-the PR fails the run if anything landed.
+I review a lot of pull requests that an agent wrote. Most AI review products deliver AI-written
+feedback directly into the pull request. ReviewStage keeps the draft private first. The reviewer
+decides what is correct, worth saying, and worthy of their name.
 
-What it learns: what you drop or reword feeds the next review of that repo, and a complaint you
-drop three times becomes a proposed team rule you accept or dismiss.
+`npx reviewstage` opens a desktop app: GitHub sign-in by device flow, connect Claude Code, pick
+repositories. Claude drafts findings from the real diff on your own Claude plan. You check each finding against the code, keep, edit or drop it, and post what
+is left as a plain comment review from your own account. Approve is a separate click.
 
-Phone: enable phone access, scan a QR code, you're signed in on the phone (same session, your
-own screen), add it to the home screen, turn on push. Review from the train.
+The drafting agent has no GitHub credentials and its write tools are denied. The PR's reviews,
+comments and threads are counted before and after the run; a difference fails the run.
 
-Self-hosted, MIT, Python stdlib + bash on the server, React on the front. Team install is Docker
-Compose on one box, every reviewer as themselves. It is Claude Code only, on purpose: it runs
-on your subscription, not an API key.
+1.2 makes the draft easier to check: a reading guide, where to look and what to check per
+finding with the cited lines on the card, an evidence check done by code, a second pass that
+tries to disprove serious findings, and a Checked, Likely or Maybe label with the reason.
 
-Things I would like to hear about: whether the gate (nothing posts until a signed-in person
-clicks) is enough for you to let it near your team's PRs, and what you drop that it keeps
-raising.
+Free, MIT, private repos included. macOS and Linux desktop; Windows through Docker under WSL2.
+Phone by QR code. Claude Code required.
 
-Demo (70 s): https://youtu.be/yYMtQK-sVyg · Site: https://reviewstage.dev
+What leaves your machine: the diff, to Anthropic through your Claude Code; GitHub for sign-in,
+reads and the post you authorise; npm for update checks; push and a Cloudflare tunnel only if
+phone access is on. No telemetry endpoint ships.
+
+Is this enough for you to let it near your team's PRs? Which findings would you always drop?
+
+Demo (68 s): https://youtu.be/yYMtQK-sVyg
 Security model: https://reviewstage.dev/security/

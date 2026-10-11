@@ -1,31 +1,38 @@
-# LinkedIn: D0, 13:00 US Eastern
+# LinkedIn
 
-Native upload of the vertical cut. LinkedIn rewards a first line that stands alone and
-penalises links in the body: put the links in the first comment.
+Native upload of the vertical cut (`reviewstage-launch-vertical.mp4`, 35 s). LinkedIn rewards a
+first line that stands alone and tends to show link posts to fewer people: put the links in the
+first comment. The post body is under 1,300 characters, so nothing sits behind "see more".
+Recommended slot: Tuesday 10/13/26, 13:00 US Eastern (22:30 Colombo); safe to post today
+(Sunday 10/11/26) from your own account.
 
 **Post:**
 
 AI wrote the PR. Someone still has to review it.
 
-Half the pull requests I review now were written by an agent, and the AI review bots I tried
-made it worse: a bot leaving ten comments on every PR gets muted, and when it approves the
-wrong thing, nobody owns the mistake.
+A growing share of the pull requests I review were written by an agent. Most AI review products
+deliver AI-written feedback directly into the pull request. ReviewStage keeps the draft private
+first. The reviewer decides what is correct, worth saying, and worthy of their name.
 
-So I built ReviewStage, and today it's 1.0 and open source.
+So I built it, and it is open source (MIT) and on version 1.2.
 
-It drafts the review from the real diff using Claude, on your own Claude plan. Every finding
-stays private until you decide. You keep what's worth saying, edit it, and post it as a normal
-review comment under your own name. Nothing reaches GitHub until you click, and approving is
-always a separate click.
+Claude drafts the review from the real diff, on your own Claude plan. The draft stays private.
+Each finding shows where to look and what to check, a code check confirms the cited lines, a
+second pass tries to disprove the serious ones, and each carries a Checked, Likely or Maybe
+label with the reason. You keep what is worth saying, edit it, and post it as a normal review
+comment under your own name. Approve is always a separate click.
 
-It runs as a desktop app (one command), your phone joins by scanning a QR code, and it learns
-what your team drops so the next review is quieter.
+The drafting agent cannot write to GitHub: no credentials, write tools denied, and the PR is
+checked before and after the run.
 
-If your team is reviewing more AI-written code than ever, I'd like to hear how you're handling
+One command opens the desktop app (macOS and Linux). Your phone joins by scanning a QR code.
+
+If your team is reviewing more AI-written code than ever, I would like to hear how you handle
 it. Links in the first comment.
 
 **First comment:**
 
 Site: https://reviewstage.dev
 Code (MIT): https://github.com/Wimukti/reviewstage
-Try it: `npx reviewstage`
+Try it: `npx reviewstage` (Claude Code required; Windows runs the Docker install under WSL2)
+Demo (68 s): https://youtu.be/yYMtQK-sVyg

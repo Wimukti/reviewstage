@@ -240,3 +240,14 @@ test("api.post carries the reasons map beside the selection", async () => {
   assert.deepEqual(sent.reasons, { "1": "incorrect" });
   assert.deepEqual(sent.selected, [0]);
 });
+
+test("api.review carries the Check-all-findings toggle, off by default", async () => {
+  stubFetch(200, { ok: true, started: true });
+  await api.review({ repo: "acme/widgets", num: "7" }, { exp: "1", sig: "s" }, "standard", "", "");
+  assert.equal(JSON.parse(String(calls[0].init?.body)).checkAll, false);
+  await api.review({ repo: "acme/widgets", num: "7" }, { exp: "1", sig: "s" }, "deep", "the loop", "opus", true);
+  const sent = JSON.parse(String(calls[1].init?.body));
+  assert.equal(sent.checkAll, true);
+  assert.equal(sent.effort, "deep");
+  assert.equal(sent.focus, "the loop");
+});

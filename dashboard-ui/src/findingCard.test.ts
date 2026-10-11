@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Finding } from "./api";
-import { ConfidenceBadge, FindingCard, HowToVerify } from "./ReviewParts";
+import { CheckedLine, ConfidenceBadge, FindingCard, HowToVerify, SelfReport, TrustBadge, TrustLine } from "./ReviewParts";
 import { PhoneFindingCard } from "./PhoneReview";
 
 const full: Finding = {
@@ -338,4 +338,72 @@ test("the reading guide collapses to its header with a one-line peek, and render
     const html = renderToStaticMarkup(createElement(ReadingGuide, { guide: { ...guide, risk } }));
     assert.match(html, new RegExp(`data-testid="guide-risk"[^>]*data-tone="${tone}"|data-tone="${tone}"[^>]*data-testid="guide-risk"`), risk);
   }
+});
+
+// ---- earned confidence (trust-and-plain Part 2) -------------------------------------------------
+const CHECKED_B = { level: "checked" as const, label: "Checked", reason: "Checked: the cited lines exist and mention `vendor`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here." };
+const LIKELY_B = { level: "likely" as const, label: "Likely", reason: "Likely: the cited lines exist, no second pass for this severity." };
+const MAYBE_B = { level: "maybe" as const, label: "Maybe", reason: "Maybe: `src/javascripts/Badge.tsx` is not a file this PR changes." };
+const STANDS = { verdict: "stands" as const, reason: "No null guard on `$vendor` in Product.php or its callers.", at: 1 };
+const REFUTED = { verdict: "refuted" as const, reason: "`guardVendor()` runs first at Product.php:38.", at: 1 };
+const withBadge: Finding = { ...full, evidence: { status: "pass", flags: [], line: "The cited lines are in this diff and mention `vendor`.", symbols: ["vendor"] }, checked: STANDS, badge: CHECKED_B };
+
+test("with a badge the head shows Checked / Likely / Maybe and never the self-report alone", () => {
+  for (const [b, level] of [[CHECKED_B, "checked"], [LIKELY_B, "likely"], [MAYBE_B, "maybe"]] as const) {
+    for (const render of [desk, phone]) {
+      const html = render({ ...withBadge, badge: b });
+      assert.match(html, new RegExp(`data-testid="trust"[^>]*data-level="${level}"`), `${level} chip`);
+      assert.match(html, new RegExp(`>${b.label}<`), `${level} label`);
+      // The model's own estimate is not in the closed card: it lives under "More".
+      assert.doesNotMatch(html, /data-testid="confidence"/, `${level}: no self-report in the head`);
+      assert.doesNotMatch(html, /high confidence/);
+      assert.match(html, /data-testid="trust-line"/);
+    }
+  }
+});
+
+test("the reason line and the Checked line sit after Evidence, in that order, on both cards", () => {
+  for (const render of [desk, phone]) {
+    const html = render(withBadge);
+    assert.match(html, /data-testid="evidence"[^>]*data-status="pass"/);
+    assert.match(html, /data-testid="trust-line"[^>]*data-level="checked"/);
+    assert.match(html, /data-testid="checked"[^>]*data-verdict="stands"/);
+    assert.match(html, /Checked: stands/);
+    assert.match(html, /— No null guard on `\$vendor` in Product.php or its callers\./);
+    assert.ok(
+      ascending(order(html, ['data-testid="why-it-matters"', 'data-testid="evidence"', 'data-testid="trust-line"', 'data-testid="checked"'])),
+      "why · evidence · reason line · checked line",
+    );
+    // The chip and the line agree, and the chip's title is the full reason.
+    assert.match(html, /title="Checked: the cited lines exist and mention `vendor`, a second pass could not disprove it, reviewers kept 85\.0% of findings like this here\."/);
+  }
+});
+
+test("no verdict: the reason line still renders, the Checked line does not; a refuted verdict reads as a warning", () => {
+  const none = desk({ ...withBadge, checked: null, badge: LIKELY_B });
+  assert.match(none, /data-testid="trust-line"[^>]*data-level="likely"/);
+  assert.doesNotMatch(none, /data-testid="checked"/);
+  assert.match(none, /no second pass for this severity/);
+  const refuted = renderToStaticMarkup(createElement(CheckedLine, { checked: REFUTED }));
+  assert.match(refuted, /data-verdict="refuted"/);
+  assert.match(refuted, /text-amber/);
+  assert.match(refuted, /`guardVendor\(\)` runs first at Product.php:38\./);
+  assert.equal(renderToStaticMarkup(createElement(CheckedLine, { checked: null })), "");
+  assert.equal(renderToStaticMarkup(createElement(TrustBadge, { badge: null })), "");
+  assert.equal(renderToStaticMarkup(createElement(TrustLine, { badge: undefined })), "");
+});
+
+test("the self-report lives under More: a labelled line with the old badge, nothing without a confidence", () => {
+  const html = renderToStaticMarkup(createElement(SelfReport, { confidence: "high" }));
+  assert.match(html, /data-testid="self-report"/);
+  assert.match(html, /The run&#x27;s own estimate/);
+  assert.match(html, /data-testid="confidence"[^>]*data-confidence="high"/);
+  assert.equal(renderToStaticMarkup(createElement(SelfReport, { confidence: null })), "");
+  // An unstructured (older) finding renders its "More" open, so the self-report shows there
+  // when a badge exists — and the old finding without a badge still shows the head badge only.
+  const oldWithBadge = desk({ ...old, confidence: "medium", badge: LIKELY_B });
+  assert.match(oldWithBadge, /data-testid="self-report"/);
+  assert.match(oldWithBadge, /data-testid="trust"[^>]*data-level="likely"/);
+  assert.doesNotMatch(desk(full), /data-testid="self-report"/, "no badge: the head badge is the only place");
+  assert.match(desk(full), /data-testid="confidence"/);
 });

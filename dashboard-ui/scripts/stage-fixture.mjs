@@ -35,6 +35,15 @@ const evidence = JSON.parse(
     env: { ...process.env, PYTHONPATH: join(HERE, "..", "..", "bin") },
   }).toString(),
 );
+// The three-level badge exactly as the server computes it (bin/rs_confidence.py, Part 2) from
+// that evidence output and the review's stored disproof verdicts; src/confidence.test.ts holds
+// the TypeScript port to it.
+writeFileSync(join(tmp, "evidence.json"), JSON.stringify(evidence));
+const badges = JSON.parse(
+  execFileSync("python3", [join(HERE, "..", "..", "bin", "rs_confidence.py"), join(tmp, "evidence.json"), join(FIXTURE, "state", slug, PR, "review.json")], {
+    env: { ...process.env, PYTHONPATH: join(HERE, "..", "..", "bin") },
+  }).toString(),
+).badges;
 rmSync(tmp, { recursive: true, force: true });
 
 // The review phases the server reports while a run is in flight (bin/server.py, api_pr).
@@ -58,6 +67,8 @@ const findings = review.comments.map((c, i) => ({
   actual: c.actual ?? "",
   snippet: evidence.findings[i].snippet,
   evidence: evidence.findings[i].evidence,
+  checked: c.checked ?? null,
+  badge: badges[i],
   body: c.body,
   suggestion: c.suggestion || "",
   anchorable: inDiff.has(c.path),
@@ -85,6 +96,9 @@ const out = {
           readPlan: evidence.guide.read_plan.map((r) => ({ path: r.path, lines: r.lines ?? null, why: r.why ?? "" })),
           notCovered: evidence.guide.not_covered,
         }
+      : null,
+    disproof: review.disproof
+      ? { status: review.disproof.status, n: review.disproof.n, checked: review.disproof.checked, durationMs: review.disproof.duration_ms, mode: review.disproof.mode }
       : null,
     keyPoints: review.keyPoints ?? [],
     explainer: review.explainer ?? "",

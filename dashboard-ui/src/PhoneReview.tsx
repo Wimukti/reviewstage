@@ -39,7 +39,7 @@ import { api, REASON_LABELS, type Finding, type PrData, type QueueRow, type Reas
 import { useSwipe } from "./gestures";
 import { NavBarAction, useNavBar } from "./nav";
 import { prUrl } from "./pr";
-import { ConfidenceBadge, Contrast, DiffSnippet, EvidenceLine, ExplainBody, HowToVerify, locOf, OFFDIFF_HINT, placementOf, ReasonChips, UNKNOWN_HINT, useExplain, WhatToCheck } from "./ReviewParts";
+import { CheckedLine, ConfidenceBadge, Contrast, DiffSnippet, EvidenceLine, ExplainBody, HowToVerify, locOf, OFFDIFF_HINT, placementOf, ReasonChips, SelfReport, TrustBadge, TrustLine, UNKNOWN_HINT, useExplain, WhatToCheck } from "./ReviewParts";
 import { goBack, Link } from "./router";
 import { StatusBadge, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
@@ -312,7 +312,7 @@ export function PhoneFindingCard({
             className="size-5 data-[state=checked]:border-green data-[state=checked]:bg-green dark:data-[state=checked]:bg-green"
           />
           <StatusBadge kind={f.severity} />
-          <ConfidenceBadge confidence={f.confidence} />
+          {f.badge ? <TrustBadge badge={f.badge} /> : <ConfidenceBadge confidence={f.confidence} />}
           {place === "summary" && (
             <StatusBadge tone="graphite" icon={ExternalLink} title={OFFDIFF_HINT} data-testid="placement">
               In summary
@@ -410,6 +410,8 @@ export function PhoneFindingCard({
             <span className="text-[14px] leading-snug text-muted-foreground" data-testid="why-it-matters">{f.impact}</span>
           )}
           <EvidenceLine evidence={f.evidence} className="text-[13px]" />
+          <TrustLine badge={f.badge} className="text-[13px]" />
+          <CheckedLine checked={f.checked} className="text-[13px]" />
           <span className="flex w-full items-center justify-end text-[13px] text-muted-foreground">
             <ChevronRight aria-hidden="true" className={cn("ml-auto size-4 shrink-0 transition-transform", open && "rotate-90")} />
           </span>
@@ -450,6 +452,7 @@ export function PhoneFindingCard({
             <ExplainBody x={x} />
             {showTeach && teach && teach.panel(() => setTaught(true))}
             {verifyUnderMore && <HowToVerify text={f.howToVerify} className="text-[14px]" />}
+            {f.badge && <SelfReport confidence={f.confidence} className="text-[13px]" />}
             {showEdit && editor}
           </div>
         )}

@@ -34,7 +34,7 @@ test("the schema table names every shipped event class and the never-list", () =
   for (const ev of SHIPPED) assert.match(html, new RegExp(ev), ev);
   for (const n of NEVER) assert.ok(html.includes(n.replace(/'/g, "&#x27;")), n);
   assert.match(html, /No endpoint is configured on this server — nothing is sent either way/);
-  assert.equal(EVENT_ROWS.length, 11);
+  assert.equal(EVENT_ROWS.length, 12);
   const withEndpoint = renderToStaticMarkup(createElement(TelemetrySchema, { endpointSet: true }));
   assert.match(withEndpoint, /An endpoint is configured on this server/);
 });

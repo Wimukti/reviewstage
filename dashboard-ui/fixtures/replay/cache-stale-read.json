@@ -71,7 +71,12 @@
         "teach": "keep",
         "what_to_check": "Open service.ts line 18. Compare the key `cache.delete` uses with the key `cache.set` uses.",
         "expected": "An update evicts the entry it changed.",
-        "actual": "The delete uses `id` alone and never matches `tenant:id`."
+        "actual": "The delete uses `id` alone and never matches `tenant:id`.",
+        "checked": {
+          "verdict": "stands",
+          "reason": "`cache.delete` keys on the slug; `set` keys on the id. No caller reconciles them.",
+          "at": 1778000500
+        }
       },
       {
         "path": "src/catalog/cache.ts",
@@ -88,7 +93,12 @@
         "what_to_check": "Open cache.ts lines 20-24. Check what `set` does when the map is full.",
         "end_line": 24,
         "expected": "The cache stays under 5,000 entries.",
-        "actual": "Entries are only removed when read after expiry."
+        "actual": "Entries are only removed when read after expiry.",
+        "checked": {
+          "verdict": "weakened",
+          "reason": "`store.size` is bounded by the catalog: 4,000 products, about 2 MB at most.",
+          "at": 1778000500
+        }
       },
       {
         "path": "src/catalog/service.ts",
@@ -132,6 +142,13 @@
         "db.ts",
         "types.ts"
       ]
+    },
+    "disproof": {
+      "status": "done",
+      "n": 2,
+      "checked": 2,
+      "duration_ms": 83000,
+      "mode": "default"
     }
   },
   "decisions": [

@@ -75,6 +75,7 @@ import {
 import { Banner, EmptyState, PageHeader, RawBanner, RepoPill, StatusBadge, UserAvatar, toneOf as toneOfState, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -258,6 +259,9 @@ function RunForm({
   const [effort, setEffort] = useState(form.suggested);
   const [model, setModel] = useState(defaultModelFor(form.suggested));
   const [focus, setFocus] = useState("");
+  // The disproof pass (trust-and-plain §2.1): the run always checks blockers and should-fixes
+  // with a second pass; this per-run toggle checks every finding.
+  const [checkAll, setCheckAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const focusRef = useRef<HTMLTextAreaElement>(null);
@@ -284,7 +288,7 @@ function RunForm({
         setErr("");
         setBusy(true);
         try {
-          const r = await api.review(pr, token, effort, focus, model);
+          const r = await api.review(pr, token, effort, focus, model, checkAll);
           if (r.started === false) {
             // A previous run still holds the per-PR lock (e.g. a stop that could not be confirmed).
             setErr(
@@ -361,6 +365,21 @@ function RunForm({
           placeholder="Anything specific to check? e.g. “pay close attention to the order-flow cost calculation.”"
         />
       </Field>
+      {form.disproof && (
+        <div className="flex items-start gap-3" data-testid="check-all">
+          <Switch id="run-check-all" checked={checkAll} onCheckedChange={setCheckAll} aria-describedby="run-check-all-hint" className="mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <Label htmlFor="run-check-all" className="text-xs font-medium text-muted-foreground">
+              Check all findings
+            </Label>
+            <p id="run-check-all-hint" className="m-0 max-w-[60ch] text-xs text-muted-foreground" data-testid="check-all-hint">
+              A second pass tries to disprove each finding before you see it. It always runs on findings that
+              can break something; this runs it on every one — about {form.disproof.secPerFinding} s more per
+              finding, on your own account.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-0 flex-1 basis-[200px] text-xs text-muted-foreground">
           Runs with {form.skillLabel} · deeper reviews cost more of your weekly usage.
@@ -455,6 +474,11 @@ function ProgressPanel({ pr, data, onStop }: { pr: PrRef; data: PrData; onStop: 
       <CardContent className="flex flex-col gap-3 px-4">
         <ProgressSteps phases={r.phases} cur={r.cur} />
         {r.focus && <p className="m-0 text-xs text-muted-foreground">Focusing on: “{r.focus}”</p>}
+        {r.phases[r.cur] === "Checking the findings" && (
+          <p className="m-0 text-xs text-muted-foreground" data-testid="second-pass-note">
+            A second pass is trying to disprove the findings — the badge on each card comes from it.
+          </p>
+        )}
         {r.queued && (
           <p className="m-0 text-xs text-muted-foreground">
             Waiting for another review to finish first — one runs at a time on this box.

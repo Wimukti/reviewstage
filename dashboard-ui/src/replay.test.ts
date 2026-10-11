@@ -27,6 +27,7 @@ const E2E_COMMENTS: FixtureComment[] = [
     actual: "The badge throws on a null vendor.",
     body: "Guard against a null vendor before reading its lead time.",
     reply_to: null, suggestion: "if ($vendor === null) return null;",
+    checked: { verdict: "stands", reason: "No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.", at: 1778000600 },
   },
   {
     path: "src/javascripts/Badge.tsx", line: 10, severity: "nit",
@@ -40,19 +41,20 @@ const E2E_FILES = [{
 }];
 
 test("map.ts renders the e2e fixture exactly as the server did (src/stage/fixture.json)", () => {
-  const ours = mapFindings(E2E_COMMENTS, (c) => anchorable(E2E_FILES, c), E2E_FILES);
-  // `where`, `whatToCheck`, `expected`, `actual`, `snippet` and `evidence` are the Python
-  // module's own output in the stage fixture (trust-and-plain §1.3–1.4), so this is also the
-  // parity check on the evidence port.
-  const keys = ["i", "severity", "path", "line", "title", "impact", "body", "suggestion", "anchorable", "where", "whatToCheck", "expected", "actual", "snippet", "evidence"] as const;
+  const ours = mapFindings(E2E_COMMENTS, (c) => anchorable(E2E_FILES, c), E2E_FILES, stage.review.disproof);
+  // `where`, `whatToCheck`, `expected`, `actual`, `snippet`, `evidence`, `checked` and `badge`
+  // are the Python modules' own output in the stage fixture (trust-and-plain §1.3–1.4 and
+  // Part 2), so this is also the parity check on the evidence and confidence ports.
+  const keys = ["i", "severity", "path", "line", "title", "impact", "body", "suggestion", "anchorable", "where", "whatToCheck", "expected", "actual", "snippet", "evidence", "checked", "badge"] as const;
   const pick = (f: Record<string, unknown>) => Object.fromEntries(keys.map((k) => [k, f[k]]));
   assert.deepEqual(ours.map((f) => pick(f as unknown as Record<string, unknown>)), stage.review.findings.map((f) => pick(f)));
   assert.equal(ours[0].sevLabel, "should fix");
   assert.equal(ours[0].structured, true);
   assert.equal(ours[0].preselect, true);
-  // Badge.tsx is not in the diff: one flag, a warning on the card, still pre-selected.
+  // Badge.tsx is not in the diff: one flag — "not checkable", a Likely badge, still pre-selected.
   assert.deepEqual(ours[1].evidence?.flags, ["path_not_in_diff"]);
   assert.equal(ours[1].preselect, true);
+  assert.deepEqual(ours.map((f) => f.badge?.level), ["checked", "likely"]);
   assert.deepEqual(reviewData({ ...FIXTURES[0], review: { ...FIXTURES[0].review, guide: { does: "x", read_plan: [{ path: "a" }] } } }, true).guide, {
     does: "x", why: "", risk: null, readPlan: [{ path: "a", lines: null, why: "" }], notCovered: [],
   });
@@ -116,7 +118,17 @@ test("every shipped fixture carries exactly the three teaching findings and matc
     // finding passes the evidence check, so all three stay pre-ticked in the replay.
     const g = fx.review.guide!;
     assert.ok(g.does && g.why && g.risk && (g.read_plan?.length ?? 0) >= 2 && (g.not_covered?.length ?? 0) >= 1, `${fx.slug}: guide`);
-    const mapped = mapFindings(fx.review.comments, (c) => anchorable(fx.files, c), fx.files);
+    const mapped = mapFindings(fx.review.comments, (c) => anchorable(fx.files, c), fx.files, fx.review.disproof);
+    // The second pass (Part 2): the first finding stands, the second is weakened, the nit was
+    // not in the pass — three different reason lines, every card still pre-ticked.
+    assert.deepEqual(fx.review.comments.map((c) => c.checked?.verdict ?? null), ["stands", "weakened", null], fx.slug);
+    assert.deepEqual(mapped.map((f) => f.badge?.level), ["checked", "likely", "likely"], fx.slug);
+    assert.match(mapped[0].badge!.reason, /^Checked: the cited lines exist and mention .*, a second pass could not disprove it\.$/, fx.slug);
+    assert.match(mapped[1].badge!.reason, /a second pass weakened it: /, fx.slug);
+    assert.match(mapped[2].badge!.reason, /no second pass for this severity\.$/, fx.slug);
+    assert.ok(mapped.every((f) => f.preselect), fx.slug);
+    assert.equal(fx.review.disproof?.n, 2, fx.slug);
+    assert.equal(reviewData(fx, true).disproof?.durationMs, fx.review.disproof!.duration_ms, fx.slug);
     for (const [i, c] of fx.review.comments.entries()) {
       assert.ok(fx.explain[String(i)], `${fx.slug}: explain[${i}]`);
       assert.ok(c.how_to_verify, `${fx.slug}: how_to_verify[${i}]`);

@@ -457,7 +457,8 @@ test.describe("the PR page on a phone", () => {
     // Closed, the card already carries the whole §1.3 contract: confidence in the head, then
     // where (with the cited lines), what to check, expected/actual, why it matters and the
     // evidence line. The nit has none of the new rows and its evidence warns (file not in diff).
-    await expect(card.getByTestId("confidence")).toHaveText("high confidence");
+    await expect(card.getByTestId("trust")).toHaveText("Checked");
+    await expect(card.getByTestId("confidence")).toHaveCount(0);
     await expect(card.getByTestId("finding-path")).toContainText("app/models/Product.php:42");
     await expect(card.getByTestId("diff-snippet").locator("[data-cited]")).toHaveCount(1);
     await expect(card.getByTestId("what-to-check")).toContainText("Check that `$vendor` is null-guarded");
@@ -465,17 +466,23 @@ test.describe("the PR page on a phone", () => {
     await expect(card.getByTestId("actual")).toContainText("throws on a null vendor");
     await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
     await expect(card.getByTestId("evidence")).toHaveAttribute("data-status", "pass");
+    await expect(card.getByTestId("trust-line")).toContainText("a second pass could not disprove it");
+    await expect(card.getByTestId("checked")).toContainText("Checked: stands");
     await expect(card.getByTestId("how-to-verify")).toHaveCount(0);
     const ys = await Promise.all(
-      ["finding-title", "finding-path", "what-to-check", "contrast", "why-it-matters", "evidence"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
+      ["finding-title", "finding-path", "what-to-check", "contrast", "why-it-matters", "evidence", "trust-line", "checked"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
     );
     for (let i = 1; i < ys.length; i++) expect(ys[i], `row ${i} is below row ${i - 1}`).toBeGreaterThan(ys[i - 1]);
     const nit = page.getByTestId("finding").nth(1);
     await expect(nit.getByTestId("how-to-verify")).toHaveCount(0);
     await expect(nit.getByTestId("what-to-check")).toHaveCount(0);
     await expect(nit.getByTestId("evidence")).toHaveAttribute("data-status", "warn");
+    await expect(nit.getByTestId("trust")).toHaveText("Likely");
+    await expect(nit.getByTestId("checked")).toHaveCount(0);
     await card.getByTestId("finding-expand").click();
     await expect(card.getByTestId("finding-detail")).toBeVisible();
+    // The model's own estimate is under the fold, labelled as its own.
+    await expect(card.getByTestId("finding-detail").getByTestId("self-report")).toContainText("high confidence");
     await card.getByRole("button", { name: "Edit" }).click();
     await expect(card.getByTestId("finding-body")).toBeVisible();
     await card.getByTestId("explain").click();

@@ -22,6 +22,7 @@ export const EVENT_ROWS: { event: string; dims: string; when: string }[] = [
   { event: "run_duration_bucket", dims: "bucket: lt1m, 1to3m, 3to10m, gt10m", when: "a review ends" },
   { event: "findings_shown", dims: "count", when: "a review ends" },
   { event: "plain_warnings", dims: "count", when: "a review ends (sentences over the writing-rule limits and hedges the linter flagged — never the text)" },
+  { event: "disproof_run", dims: "verdict: stands, weakened, refuted, failed", when: "the second pass ends (how many findings it held up, weakened, refuted or could not answer — never which)" },
   { event: "findings_kept · findings_edited · findings_dropped", dims: "count", when: "a review is posted (or dry-run posted)" },
   { event: "dismissal_reason", dims: "reason: a short slug from the dismissal menu", when: "a finding is dropped with a reason" },
   { event: "post_attempted · post_succeeded", dims: "dry: 0, 1", when: "a post is attempted and when it lands" },

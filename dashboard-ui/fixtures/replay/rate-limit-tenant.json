@@ -72,7 +72,12 @@
         "what_to_check": "Open limits.py lines 22-23. Check the order of `last` and the elapsed-time read.",
         "end_line": 23,
         "expected": "The bucket refills by the time since the last take.",
-        "actual": "The elapsed time is always zero, so it never refills."
+        "actual": "The elapsed time is always zero, so it never refills.",
+        "checked": {
+          "verdict": "stands",
+          "reason": "`last` is assigned before `elapsed` is computed at limits.py:22; no other path refills.",
+          "at": 1778000500
+        }
       },
       {
         "path": "gateway/limits.py",
@@ -89,7 +94,12 @@
         "what_to_check": "Open limits.py lines 24-26. Check whether `tokens` is read and written under a lock.",
         "end_line": 26,
         "expected": "One token lets one request through.",
-        "actual": "Two concurrent requests can both pass on one token."
+        "actual": "Two concurrent requests can both pass on one token.",
+        "checked": {
+          "verdict": "weakened",
+          "reason": "The gateway runs one worker per tenant today, so the race needs a config change.",
+          "at": 1778000500
+        }
       },
       {
         "path": "gateway/middleware.py",
@@ -132,6 +142,13 @@
       "not_covered": [
         "settings.py defaults"
       ]
+    },
+    "disproof": {
+      "status": "done",
+      "n": 2,
+      "checked": 2,
+      "duration_ms": 83000,
+      "mode": "default"
     }
   },
   "decisions": [

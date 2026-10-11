@@ -12,6 +12,7 @@
     "Fetching the PR",
     "Checking out the branch",
     "Reviewing the diff",
+    "Checking the findings",
     "Writing the findings"
   ],
   "review": {
@@ -36,6 +37,13 @@
         "lockfile",
         "generated snapshots"
       ]
+    },
+    "disproof": {
+      "status": "done",
+      "n": 1,
+      "checked": 1,
+      "durationMs": 41000,
+      "mode": "default"
     },
     "keyPoints": [
       "The badge logic is sound — no blockers.",
@@ -100,6 +108,22 @@
             "leadTime"
           ]
         },
+        "checked": {
+          "verdict": "stands",
+          "reason": "No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.",
+          "at": 1778000600
+        },
+        "badge": {
+          "level": "checked",
+          "label": "Checked",
+          "reason": "Checked: the cited lines exist and mention `vendor`, `leadTime`, a second pass could not disprove it.",
+          "inputs": {
+            "evidence": "pass",
+            "disproof": "stands",
+            "keepRate": null,
+            "n": null
+          }
+        },
         "body": "Guard against a null vendor before reading its lead time.",
         "suggestion": "if ($vendor === null) return null;",
         "anchorable": true
@@ -129,6 +153,18 @@
           ],
           "line": "`src/javascripts/Badge.tsx` is not a file this PR changes.",
           "symbols": []
+        },
+        "checked": null,
+        "badge": {
+          "level": "likely",
+          "label": "Likely",
+          "reason": "Likely: the file is outside this diff, so its lines could not be checked, no second pass for this severity.",
+          "inputs": {
+            "evidence": "none",
+            "disproof": null,
+            "keepRate": null,
+            "n": null
+          }
         },
         "body": "Prefer `const` over `let` here.",
         "suggestion": "",

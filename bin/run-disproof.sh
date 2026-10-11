@@ -86,7 +86,7 @@ if [ ! -s "$WTREE/disproof.json" ]; then
   record failed "$dur" "$indices" >/dev/null
   exit 0
 fi
-counts=$(record done "$dur" "$indices") || { say "could not merge the verdicts (see $LOG)"; exit 0; }
+counts=$(record "done" "$dur" "$indices") || { say "could not merge the verdicts (see $LOG)"; exit 0; }
 say "$counts (${dur}ms)"
 # Local counters, from the closed vocabulary: how many stood, weakened, were refuted, or got no
 # usable answer. Never the finding. Best effort — a counter must never fail a run.

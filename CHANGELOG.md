@@ -4,6 +4,14 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+## 1.2.1 — 10/11/26
+
+Words only. The run's second phase now reads "Drafting findings from the diff" (it was "Reviewing
+the diff"): Claude drafts, you review. Every dash used as punctuation in the app, the phone
+window, the skill prompts and the docs is gone, and a check in CI keeps it that way. The
+telemetry consent card now says "Share usage counts" with the exact exclusions, and the two
+duration labels say "2 to 5 min" as an estimate, not a measurement.
+
 ## 1.2.0 — 10/11/26
 
 Findings you can read in seconds and a confidence you can trust. Nothing new leaves your

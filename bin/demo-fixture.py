@@ -99,6 +99,16 @@ def main():
     write(st / slug(REPO) / str(PR) / "review.json", json.dumps({
         "event": "COMMENT",
         "summary": "Adds a lead-time badge to product cards. Logic is sound; two small things.",
+        "guide": {
+            "does": "Shows a lead-time badge on every product card.",
+            "why": "Shoppers asked how long a product takes to arrive.",
+            "risk": "can break",
+            "read_plan": [
+                {"path": "app/models/Product.php", "lines": "40-43",
+                 "why": "The badge reads the vendor here. A null vendor is the risk."},
+                {"path": "src/javascripts/Badge.tsx", "lines": "1-30",
+                 "why": "The component that renders the badge."}],
+            "not_covered": ["lockfile", "generated snapshots"]},
         "keyPoints": [
             "The badge logic is sound — no blockers.",
             "Guard a null vendor before reading its lead time.",
@@ -113,6 +123,10 @@ def main():
              "impact": "A shopper viewing such a product sees the card fail instead of loading.",
              "how_to_verify": "Open a product whose vendor is null; the badge throws instead "
                               "of rendering.",
+             "what_to_check": "Open Product.php line 42. Check that `$vendor` is null-guarded "
+                              "before `leadTime()`.",
+             "expected": "A product with no vendor shows no badge.",
+             "actual": "The badge throws on a null vendor.",
              "body": "Guard against a null vendor before reading its lead time.",
              "reply_to": None, "suggestion": "if ($vendor === null) return null;",
              "confidence": "high"},

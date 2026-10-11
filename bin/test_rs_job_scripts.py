@@ -286,6 +286,20 @@ class ReviewResultHandling(JobScriptCase):
         self.assertIn("[review-schema] finding 0: how_to_verify is not a single line", log)
         self.assertNotIn("finding 1", log)
 
+    def test_plain_language_warnings_reach_the_log_with_their_marker(self):
+        # trust-and-plain §1.1: a hedge is a `plain:` warning in agent.log (what the
+        # plain_warnings counter is grepped from); the finding itself is kept.
+        self.write_review({**GOOD_REVIEW, "comments": [
+            {"path": "a.py", "line": 1, "severity": "nit", "body": "x",
+             "title": "The loop might possibly never stop"}]})
+        r = self.run_job("run-review.sh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        got = json.loads((self.udir / "review.json").read_text())["comments"]
+        self.assertEqual(got[0]["title"], "The loop might possibly never stop")
+        self.assertEqual(got[0]["where"], {"path": "a.py", "start": 1, "end": 1})
+        log = (self.udir / "agent.log").read_text()
+        self.assertIn("[review-schema] finding 0: title: plain: hedge 'might possibly'", log)
+
     def test_invalid_utf8_from_the_agent_is_re_encoded(self):
         self.behave("printf '{\"summary\":\"bad \\xe2\\x28 byte\",\"comments\":[]}' > review.json\n")
         r = self.run_job("run-review.sh")

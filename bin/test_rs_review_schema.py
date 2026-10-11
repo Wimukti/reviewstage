@@ -192,7 +192,182 @@ class TheCli(unittest.TestCase):
         # Property 1: the review step has no GitHub write path, and this module runs inside it.
         imports = [ln.strip() for ln in (HERE / "rs_review_schema.py").read_text().splitlines()
                    if ln.startswith(("import ", "from "))]
-        self.assertEqual(sorted(imports), ["import json", "import os", "import sys"])
+        self.assertEqual(sorted(imports), ["import json", "import os", "import re", "import sys"])
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --- the writing rules, where, and the reading guide (trust-and-plain/design.md §1.1–1.3) --------
+class PlainLanguageLinter(unittest.TestCase):
+    """Warnings, never rejections: a long or hedged sentence still renders, and the `plain:`
+    marker is what run-review.sh counts into the plain_warnings telemetry counter."""
+
+    def test_an_instruction_over_twenty_words_warns_and_is_kept(self):
+        long = "Open the file and then " + "carefully " * 18 + "check it."
+        rev, w = S.normalize({"comments": [{"what_to_check": long}]})
+        self.assertEqual(rev["comments"][0]["what_to_check"], long)
+        self.assertEqual(len(w), 1)
+        self.assertIn("finding 0: what_to_check: plain: sentence has", w[0])
+        self.assertIn(f"(limit {S.INSTRUCTION_WORDS})", w[0])
+
+    def test_a_description_gets_twenty_five_words_and_counts_per_sentence(self):
+        twenty_two = " ".join(["word"] * 22) + "."
+        rev, w = S.normalize({"comments": [{"title": twenty_two + " Short one."}]})
+        self.assertEqual(w, [])                       # 22 < 25, and the second sentence is short
+        rev, w = S.normalize({"comments": [{"impact": " ".join(["word"] * 26) + "."}]})
+        self.assertEqual(len(w), 1)
+        self.assertIn(f"(limit {S.DESCRIPTION_WORDS})", w[0])
+
+    def test_a_hedge_in_the_middle_warns_and_stays(self):
+        rev, w = S.normalize({"comments": [{"title": "The loop might possibly never stop"}]})
+        self.assertEqual(rev["comments"][0]["title"], "The loop might possibly never stop")
+        self.assertEqual(len(w), 1)
+        self.assertIn("plain: hedge 'might possibly'", w[0])
+
+    def test_a_trailing_hedge_is_stripped_and_the_stop_kept(self):
+        rev, w = S.normalize({"comments": [{"impact": "Every page waits one second, I think."}]})
+        self.assertEqual(rev["comments"][0]["impact"], "Every page waits one second.")
+        self.assertIn("trailing hedge 'I think' removed", w[0])
+        rev, _ = S.normalize({"comments": [{"title": "The badge crashes (perhaps)"}]})
+        self.assertEqual(rev["comments"][0]["title"], "The badge crashes")
+
+    def test_a_string_that_is_only_a_hedge_is_not_emptied(self):
+        rev, w = S.normalize({"comments": [{"title": "perhaps"}]})
+        self.assertEqual(rev["comments"][0]["title"], "perhaps")
+        self.assertTrue(any("hedge 'perhaps'" in x for x in w))
+
+    def test_double_spaces_collapse_without_a_warning(self):
+        rev, w = S.normalize({"comments": [{"title": "Two  spaces   here"}]})
+        self.assertEqual(rev["comments"][0]["title"], "Two spaces here")
+        self.assertEqual(w, [])
+
+    def test_the_summary_and_the_guide_are_linted_too(self):
+        rev, w = S.normalize({"summary": "It should be noted that this is fine.",
+                              "guide": {"does": "Adds a cache, it seems."}})
+        self.assertEqual(rev["guide"]["does"], "Adds a cache.")
+        self.assertTrue(any(x.startswith("summary: plain: hedge") for x in w))
+
+    def test_clean_contract_text_produces_no_plain_warnings(self):
+        rev, w = S.normalize(copy.deepcopy(NEW))
+        self.assertEqual([x for x in w if "plain:" in x], [])
+
+
+class Where(unittest.TestCase):
+    def test_path_line_becomes_a_one_line_range(self):
+        rev, _ = S.normalize({"comments": [{"path": "a.py", "line": 42}]})
+        self.assertEqual(rev["comments"][0]["where"], {"path": "a.py", "start": 42, "end": 42})
+
+    def test_end_line_lines_range_and_a_where_object_all_widen_it(self):
+        for extra in ({"end_line": 51}, {"lines": "44-51"}, {"where": {"start": 44, "end": 51}},
+                      {"end": "51"}):
+            rev, w = S.normalize({"comments": [{"path": "a.py", "line": 44, **extra}]})
+            self.assertEqual(rev["comments"][0]["where"], {"path": "a.py", "start": 44, "end": 51},
+                             extra)
+            self.assertEqual(w, [])
+
+    def test_path_and_line_win_over_a_where_object_so_the_post_path_is_unchanged(self):
+        rev, _ = S.normalize({"comments": [{"path": "a.py", "line": 7,
+                                            "where": {"path": "b.py", "start": 1, "end": 3}}]})
+        self.assertEqual(rev["comments"][0]["path"], "a.py")
+        self.assertEqual(rev["comments"][0]["line"], 7)
+        self.assertEqual(rev["comments"][0]["where"], {"path": "a.py", "start": 7, "end": 7})
+
+    def test_an_end_before_the_start_folds_to_the_start_with_a_warning(self):
+        rev, w = S.normalize({"comments": [{"path": "a.py", "line": 10, "end_line": 4}]})
+        self.assertEqual(rev["comments"][0]["where"]["end"], 10)
+        self.assertIn("where.end 4 is before line 10", w[0])
+
+    def test_no_line_means_no_where(self):
+        for line in (None, "?", True, 0, "abc"):
+            rev, _ = S.normalize({"comments": [{"path": "a.py", "line": line}]})
+            self.assertIsNone(rev["comments"][0]["where"], line)
+        rev, _ = S.normalize({"comments": [{"line": 3}]})
+        self.assertIsNone(rev["comments"][0]["where"])
+
+    def test_the_contrast_fields_are_one_line_each(self):
+        rev, _ = S.normalize({"comments": [{"expected": "a\nb", "actual": " c \r\n d ",
+                                            "whatToCheck": "Open x."}]})
+        c = rev["comments"][0]
+        self.assertEqual(c["expected"], "a b")
+        self.assertEqual(c["actual"], "c d")
+        self.assertEqual(c["what_to_check"], "Open x.")
+
+
+GUIDE = {"does": "Adds a retry loop to the webhook sender.",
+         "why": "Deliveries were lost on one failed POST.",
+         "risk": "can break",
+         "read_plan": [{"path": "src/deliver.ts", "lines": "14-38", "why": "The loop is here."},
+                       {"path": "test/deliver.test.ts", "lines": "22-40",
+                        "why": "The tests show the cases covered."}],
+         "not_covered": ["lockfile"]}
+
+
+class ReadingGuide(unittest.TestCase):
+    def test_a_full_guide_passes_through(self):
+        rev, w = S.normalize({"summary": "Fine.", "guide": copy.deepcopy(GUIDE), "comments": []})
+        self.assertEqual(w, [])
+        self.assertEqual(rev["guide"], GUIDE)
+        self.assertEqual(rev["summary"], "Fine.")
+
+    def test_an_old_review_has_a_null_guide_and_no_warning(self):
+        rev, w = S.normalize(copy.deepcopy(OLD))
+        self.assertIsNone(rev["guide"])
+        self.assertEqual(w, [])
+
+    def test_the_designs_spelling_an_object_in_summary_is_moved_to_guide(self):
+        rev, w = S.normalize({"summary": copy.deepcopy(GUIDE), "comments": []})
+        self.assertEqual(rev["guide"], GUIDE)
+        # The verdict string every other reader expects is derived, never a dict.
+        self.assertEqual(rev["summary"], "Adds a retry loop to the webhook sender. Risk: can break.")
+        self.assertEqual(w, [])
+
+    def test_reading_guide_is_a_synonym(self):
+        rev, _ = S.normalize({"reading_guide": {"does": "Adds a cache."}})
+        self.assertEqual(rev["guide"]["does"], "Adds a cache.")
+        self.assertEqual(rev["guide"]["read_plan"], [])
+        self.assertEqual(rev["guide"]["not_covered"], [])
+
+    def test_every_field_is_optional_and_a_rowless_guide_is_null(self):
+        rev, _ = S.normalize({"guide": {"risk": "unclear"}})
+        self.assertEqual(rev["guide"], {"does": None, "why": None, "risk": "unclear",
+                                        "read_plan": [], "not_covered": []})
+        rev, _ = S.normalize({"guide": {}})
+        self.assertIsNone(rev["guide"])
+        rev, _ = S.normalize({"guide": "a string"})
+        self.assertIsNone(rev["guide"])
+
+    def test_an_unknown_risk_word_is_dropped_with_a_warning_and_variants_fold(self):
+        rev, w = S.normalize({"guide": {"does": "x", "risk": "catastrophic"}})
+        self.assertIsNone(rev["guide"]["risk"])
+        self.assertIn("risk 'catastrophic'", w[0])
+        for word, want in (("Can_Break", "can break"), ("safe", "safe-looking"),
+                           ("Safe looking", "safe-looking"), ("BREAKS", "breaks")):
+            rev, _ = S.normalize({"guide": {"risk": word}})
+            self.assertEqual(rev["guide"]["risk"], want, word)
+
+    def test_read_plan_rows_need_a_path_and_lines_must_be_a_range(self):
+        rev, w = S.normalize({"guide": {"read_plan": [
+            {"lines": "1-2", "why": "no path"}, "src/a.ts",
+            {"path": "src/b.ts", "lines": 12, "reason": "A reason."},
+            {"path": "src/c.ts", "lines": "all of it"}]}})
+        plan = rev["guide"]["read_plan"]
+        self.assertEqual([r["path"] for r in plan], ["src/a.ts", "src/b.ts", "src/c.ts"])
+        self.assertEqual(plan[1]["lines"], "12")
+        self.assertEqual(plan[1]["why"], "A reason.")
+        self.assertIsNone(plan[2]["lines"])
+        self.assertIn("read_plan[0] has no path", w[0])
+
+    def test_not_covered_accepts_a_string_and_drops_blanks(self):
+        rev, _ = S.normalize({"guide": {"not_covered": ["", "  lockfile ", None, 3]}})
+        self.assertEqual(rev["guide"]["not_covered"], ["lockfile", "3"])
+        rev, _ = S.normalize({"guide": {"notCovered": "generated files"}})
+        self.assertEqual(rev["guide"]["not_covered"], ["generated files"])
+
+    def test_normalising_a_guided_review_twice_is_the_same_as_once(self):
+        once, _ = S.normalize({"summary": copy.deepcopy(GUIDE), "comments": [
+            {"path": "a.py", "line": 1, "end_line": 3, "severity": "blocker",
+             "expected": "x", "actual": "y"}]})
+        twice, w = S.normalize(copy.deepcopy(once))
+        self.assertEqual(once, twice)
+        self.assertEqual(w, [])

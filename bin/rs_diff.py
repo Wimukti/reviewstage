@@ -95,11 +95,18 @@ def parse_full_diff(text):
     Files with no hunks (binary, pure renames/mode changes) still appear with an empty set so a
     lookup distinguishes "seen, nothing commentable" from "not in the diff".
     """
+    return {name: commentable_lines(body) for name, body in full_diff_patches(text).items()}
+
+
+def full_diff_patches(text):
+    """{new-side filename: hunk text} from a whole-PR unified diff — the per-file `patch` the
+    files API would have returned, for files it withheld it from. The evidence check and the
+    card's snippet read these; `parse_full_diff` derives its line sets from them."""
     out, cur, body = {}, None, []
 
     def flush():
         if cur is not None:
-            out[cur] = commentable_lines("\n".join(body))
+            out[cur] = "\n".join(body)
 
     for raw in (text or "").split("\n"):
         m = DIFF_HEADER.match(raw)
@@ -151,10 +158,14 @@ class Anchors:
         self.fetch_diff = fetch_diff
         self.lines, self.pending = {}, set()
         self.deleted = set()
+        # The hunk text per changed file (None when GitHub withheld it): what the evidence check
+        # reads and the card's snippet is cut from. Same source as `lines`, kept whole.
+        self.patches = {}
         for f in files or []:
             name = f.get("filename")
             if not name:
                 continue
+            self.patches[name] = f.get("patch") or None
             if (f.get("status") or "") == "removed":
                 self.deleted.add(name)
             got = file_lines(f)
@@ -190,10 +201,11 @@ class Anchors:
             self.error = self.error or ("GitHub would not return the full diff for this PR, "
                                         "so some files could not be checked")
             return                      # keep `pending`: the next call retries
-        parsed = parse_full_diff(text)
+        bodies = full_diff_patches(text)
         for name in list(self.pending):
-            if name in parsed:
-                self.lines[name] = parsed[name]
+            if name in bodies:
+                self.lines[name] = commentable_lines(bodies[name])
+                self.patches[name] = bodies[name] or None
         self.pending = set()
         self.fetched, self.error = True, None
 

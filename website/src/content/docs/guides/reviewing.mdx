@@ -25,6 +25,7 @@ Starting a review is a small form, not a link, because a review is a real agent 
 | **Effort** | *Quick* / *Standard* / *Deep*. Pre-selected from the diff size. Sets a depth instruction and a timeout ceiling. Typical durations are about 2–5, 3–10 and 8–25 minutes; once your install has three or more runs at a level the form shows that install's own median instead ("typically ~N min here"). *Deep* tells the agent to search the whole repository for impact before judging. |
 | **Model** | Your plan's default, or *Opus* (deepest), *Sonnet* (balanced), *Haiku* (light PRs). Validated server-side. |
 | **Focus** | Free text appended to the prompt on top of the skill. Use it to steer at *this* PR: "the retry path", "anything touching money". |
+| **Check all findings** | A second run, on your own account, tries to disprove each finding before you see it (see [What the badge means](#what-the-badge-means)). It always runs on findings whose severity can break something (`blocker`, `should-fix`); this toggle runs it on every finding. The helper text states the cost: about 40 seconds more per finding. Off by default, per run. |
 
 The form also shows **who already reviewed this commit** and with what skill, model and effort, so you can decide whether an independent run is worth the tokens.
 
@@ -32,7 +33,7 @@ An identical run (same commit, effort, focus, model, skill) is served from cache
 
 ## While it runs
 
-Status moves through `fetching` → `reviewing` → `done (N findings)` or `failed: …`. Runs serialise one at a time per server; a waiting run shows `queued`. **Stop** kills the run's whole process group and records `stopped`.
+Status moves through `fetching` → `reviewing` → `second pass: checking the findings` → `done (N findings)` or `failed: …`. Runs serialise one at a time per server; a waiting run shows `queued`. **Stop** kills the run's whole process group and records `stopped`. The second pass never fails the review: when it times out or answers badly, the findings it was asked about simply carry no verdict and the badge says so.
 
 A run whose process has died no longer sits on `reviewing` for ever: the state is resolved from the lock, a live pid, or a short startup grace, and a progress status with nothing behind it reads `failed` with the log tail attached. Starting a run takes the same lock across the check and the spawn, so two quick clicks cannot both start an agent and leave **Stop** killing the wrong one.
 
@@ -58,14 +59,16 @@ A run whose process has died no longer sits on `reviewing` for ever: the state i
 
 Each finding is a card. The rows are always in this order, and a row the run did not supply is omitted rather than labelled empty:
 
-1. **Title** with the **severity** (`blocker`, `should-fix`, `nit`, `question` — rendered from a field, so the body never repeats it) and the **confidence** (`high`, `medium` or `low confidence`, the run's own estimate; low-confidence findings also sit in a collapsed *maybe* tray; a run that never stated one shows no badge).
+1. **Title** with the **severity** (`blocker`, `should-fix`, `nit`, `question` — rendered from a field, so the body never repeats it) and the **badge** — **Checked**, **Likely** or **Maybe** — earned from signals the model did not write about itself (see [What the badge means](#what-the-badge-means)). The run's own `high` / `medium` / `low confidence` estimate is still requested, still steers the *maybe* tray, and sits under *Edit comment* labelled *the run's own estimate*; it is never shown alone. A review from an older server shows that estimate in the head as it used to.
 2. **Where** — `file:line` or `file:start-end` in the new version of the file, with a copy button, and under it the **cited diff lines**: 8–12 lines of the hunk, changed lines highlighted, the cited lines marked. You read the evidence without opening the diff.
 3. **What to check** — one imperative sentence: where to look and what to confirm ("Open retry.ts lines 44–51. Check that `attempts` resets after a success."). Older runs show their **how to verify** line here instead; when a run gave both, the verify line sits under *Edit comment*.
 4. **Expected / Actual** — two short lines: what the code should do, what it does instead.
 5. **Why it matters** — one sentence on who is affected and what breaks for them.
 6. **Evidence** — the result of the local check described below.
+7. **The badge's reason** — one line: *Checked: the cited lines exist and mention `attempts`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here.*
+8. **Checked: stands / weakened / refuted — …** — the second pass's own sentence, when it ran on this finding.
 
-Everything else — the full comment that posts to GitHub, the model's explanation — is under *Edit comment* and *Explain simply*.
+Everything else — the full comment that posts to GitHub, the model's explanation, the run's own confidence estimate — is under *Edit comment* and *Explain simply*.
 
 - **Reply vs New**, **Agreement**, **Body** and **Explain simply** are described below.
 - Only lines the PR changed can carry an inline comment; a finding anywhere else is chipped **in summary** and goes into the review body instead (see [Findings outside the diff](#findings-outside-the-diff)). Anchorability is a tri-state: when the check genuinely could not run — a failed `gh pr diff`, a binary file, a file past GitHub's size cutoff — the page says so and retries, rather than reporting every finding as pointing at lines the PR does not change.
@@ -83,9 +86,27 @@ The **Evidence** line is a check the dashboard runs itself, locally, with no mod
 | a name quoted in backticks in the title or what-to-check appears in the cited lines | *`attempts` does not appear in the cited lines.* |
 | a `blocker` carries both Expected and Actual | *A blocker needs both Expected and Actual.* |
 
-When everything holds the line reads *Evidence: the cited lines are in this diff and mention `attempts`*. One failed check is a warning on the card and nothing more — a finding about a file outside the diff (a test that now asserts the wrong thing) is legitimate, only un-checkable here. **Two failed checks un-tick the finding and sort it into the *maybe* tray, whatever confidence the model reported.** The verdict is computed once, on the server, when the page loads, so what you see is what decided the pre-selection.
+When everything holds the line reads *Evidence: the cited lines are in this diff and mention `attempts`*. A finding about a file outside the diff (a test that now asserts the wrong thing) is legitimate, only un-checkable here: that one flag alone is a warning on the card and nothing more. **Any other failed check, or two failed checks, makes the badge *Maybe*, which un-ticks the finding and sorts it into the *maybe* tray, whatever confidence the model reported.** The verdict is computed once, on the server, when the page loads, so what you see is what decided the pre-selection.
 
 Every string on the card is written to a fixed set of rules (one sentence, one idea; at most 20 words for an instruction, 25 for a description; no hedges; the thing named, not the abstraction). The run is told the rules and the dashboard lints the output; a sentence that breaks them is still shown, and the count of such sentences is one of the local counters in *Settings → Privacy*.
+
+### What the badge means
+
+The badge is three words, not a percentage, and it is never the model's opinion of itself. Three signals feed it:
+
+- **The evidence check** above: *pass*, *warn*, or *not checked* (GitHub gave no diff, or only the file is outside the diff).
+- **The second pass.** After the main run, a second Claude run on the same account is handed each finding — title, where, what to check, expected, actual, impact — and the files it cites, with the opposite brief: *find the strongest reason this is wrong, already handled, or harmless*. It answers **stands**, **weakened** or **refuted** with one sentence, which the card shows as *Checked: stands — …*. It runs on `blocker` and `should-fix` findings by default and on every finding when **Check all findings** is on. It writes one JSON file and nothing else: it runs through the same stripped environment and tool deny-list as the main run, and the PR is fingerprinted before and after it exactly as it is for the main run.
+- **What reviewers kept** of findings like this one — same skill, same repository, same self-reported confidence — from the [learnings](/guides/skills-and-learnings/). This counts only once that bucket holds **20** posted decisions, and only while the model's high and low buckets actually differ (ten points or more); the Learnings page says when they do not.
+
+The rule, in plain words:
+
+| Badge | When |
+| --- | --- |
+| **Checked** | the evidence check passed **and** the second pass said *stands* **and**, if reviewers have decided 20 or more findings like this, they kept at least 70% of them |
+| **Likely** | the evidence check passed and the second pass did not run on this finding or said *weakened*; also when the evidence could not be checked at all |
+| **Maybe** | the evidence check failed, or the second pass said *refuted*, or reviewers kept fewer than 40% of findings like this |
+
+A **Maybe** is not pre-ticked and sits in the *maybe* tray. The reason line under each card spells out which signals produced the word, so you can disagree with it on the facts: *Maybe: the cited lines are not in this diff.* · *Likely: the cited lines exist, no second pass for this severity.* · *Checked: the cited lines exist and mention `attempts`, a second pass could not disprove it, reviewers kept 85.0% of findings like this here.*
 - **Reply vs New** — when an existing thread on the PR already covers this, the finding is marked as a reply and opens with an acknowledgement, so it reads as a continuation rather than a re-raise.
 - **Agreement** — `✓ N independent` when other reviewers' runs with a different configuration raised it too; `only your run` otherwise.
 - **Body** — editable, with a markdown preview. GitHub-flavoured: backticked symbols, fenced code, and optionally a **suggestion** (an exact one-line replacement that becomes a ```` ```suggestion ```` block the author can apply in one click).

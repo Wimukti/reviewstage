@@ -4,6 +4,7 @@
 // server would. src/replay.test.ts asserts parity against src/stage/fixture.json, which is
 // generated from the real server's fixture.
 import type { Finding, GuideData, Me, PrData, QueueData, ReviewData, SevChip, Where } from "../api";
+import { badge as badgeOf, isMaybe } from "../confidence";
 import { annotate, demoted, patchesOf } from "../evidence";
 import type { FixtureComment, FixtureFile, FixtureGuide, ReplayFixture } from "./types";
 
@@ -109,12 +110,21 @@ export function guideOf(g: FixtureGuide | undefined): GuideData | null {
 }
 
 // `files` is the fixture's diff; `where` answers anchorability as the server's Anchors would.
-export function mapFindings(comments: FixtureComment[], where: (c: FixtureComment) => boolean | null, files: FixtureFile[] | null = null): Finding[] {
+export function mapFindings(
+  comments: FixtureComment[],
+  where: (c: FixtureComment) => boolean | null,
+  files: FixtureFile[] | null = null,
+  // Only `status` is read; the fixture's record and the wire's (`durationMs`) both fit.
+  disproof: { status: string } | null = null,
+): Finding[] {
   const shown = sortComments(comments);
   const patches = files ? patchesOf(files) : null;
   const evidence = shown.map((c) => annotate({ ...c, where: whereOf(c) }, patches));
-  // The server's maybe-tray decision (§1.4): low confidence, or two or more evidence flags.
-  const maybe = shown.map((c, i) => c.confidence === "low" || demoted(evidence[i].evidence));
+  // The badge (Part 2): evidence, the fixture's disproof verdict, no calibration (the replay
+  // has no learnings). The server's maybe-tray decision: low confidence, two or more evidence
+  // flags, or a Maybe badge.
+  const badges = shown.map((c, i) => badgeOf(evidence[i].evidence, c.checked ?? null, null, disproof ?? null));
+  const maybe = shown.map((c, i) => c.confidence === "low" || demoted(evidence[i].evidence) || isMaybe(badges[i]));
   const preselectable = maybe.map((m, i) => (m ? -1 : i)).filter((i) => i >= 0);
   const preselect = new Set(preselectable.length > PRESELECT_CAP ? preselectable.slice(0, PRESELECT_CAP) : preselectable);
   return shown.map((c, i) => ({
@@ -137,6 +147,8 @@ export function mapFindings(comments: FixtureComment[], where: (c: FixtureCommen
     actual: (c.actual || "").trim(),
     snippet: evidence[i].snippet,
     evidence: evidence[i].evidence,
+    checked: c.checked ?? null,
+    badge: badges[i],
     criticalPath: (c.critical_path || "").trim(),
     structured: !!((c.title || "").trim() && (c.impact || "").trim()),
     agreement: null,
@@ -168,11 +180,14 @@ export function reviewData(fx: ReplayFixture, dryRun: boolean): ReviewData {
     event: rev.event || "COMMENT",
     summary: asMarkdown(rev.summary),
     guide: guideOf(rev.guide),
+    disproof: rev.disproof
+      ? { status: rev.disproof.status, n: rev.disproof.n, checked: rev.disproof.checked, durationMs: rev.disproof.duration_ms, mode: rev.disproof.mode }
+      : null,
     keyPoints: (rev.keyPoints ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 6),
     explainer: asMarkdown(rev.explainer),
     analysis: asMarkdown(rev.analysis),
     chips: chipsOf(sorted),
-    findings: mapFindings(rev.comments, (c) => anchorable(fx.files, c), fx.files),
+    findings: mapFindings(rev.comments, (c) => anchorable(fx.files, c), fx.files, rev.disproof ?? null),
     count: sorted.length,
     posted: false,
     postLabel: "Post selected" + (dryRun ? " (dry run)" : " to GitHub"),

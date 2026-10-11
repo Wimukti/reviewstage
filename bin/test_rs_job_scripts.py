@@ -401,5 +401,134 @@ class QaGuide(JobScriptCase):
         self.assertIn("60m budget", budget(300, 9000))
 
 
+
+BLOCKER_REVIEW = {"event": "COMMENT", "summary": "One blocker.", "keyPoints": [],
+                  "explainer": "", "analysis": "", "comments": [
+                      {"path": "a.py", "line": 1, "severity": "blocker", "confidence": "high",
+                       "title": "`print` runs twice", "impact": "i",
+                       "what_to_check": "Open a.py line 1. Check `print`.",
+                       "expected": "once", "actual": "twice", "body": "b"},
+                      {"path": "a.py", "line": 1, "severity": "nit", "title": "t",
+                       "impact": "i", "body": "n"}]}
+
+
+class DisproofPass(JobScriptCase):
+    """run-review.sh runs bin/run-disproof.sh after the main pass (trust-and-plain §2.1): a
+    second agent call on the same account through the same stripped environment, whose
+    verdicts land in review.json and whose GitHub write path is fingerprinted like the first."""
+
+    def behave_twice(self, disproof):
+        """The fake agent: the main pass writes the review; the disproof pass (its stdin carries
+        the FILES THEY CITE block) writes the answer and records its own environment."""
+        script = (
+            'if grep -q "FILES THEY CITE" "$SHIM_DIR/stdin"; then\n'
+            '  cp "$SHIM_DIR/stdin" "$SHIM_DIR/disproof-stdin"\n'
+            '  env > "$SHIM_DIR/disproof-env"\n'
+            '  printf \'%s\\n\' "$@" > "$SHIM_DIR/disproof-argv"\n'
+            '  cp "$SHIM_DIR/approve.result" "$SHIM_DIR/disproof-approve"\n'
+            '  cat > disproof.json <<\'EOF\'\n@DISPROOF@\nEOF\n'
+            'else\n'
+            '  cat > review.json <<\'EOF\'\n@REVIEW@\nEOF\n'
+            '  printf \'{"type":"system","subtype":"init","model":"fake"}\\n\'\n'
+            '  printf \'{"type":"result","usage":{"input_tokens":1,"output_tokens":1},'
+            '"total_cost_usd":0.01,"duration_ms":5}\\n\'\n'
+            'fi\n')
+        self.behave(script.replace("@DISPROOF@", json.dumps(disproof))
+                    .replace("@REVIEW@", json.dumps(BLOCKER_REVIEW)))
+
+    def test_the_verdict_lands_in_review_json_and_the_pass_has_no_github_credential(self):
+        self.behave_twice({"results": [{"id": 0, "verdict": "weakened",
+                                        "reason": "Only the first call prints twice."}]})
+        r = self.run_job("run-review.sh")
+        self.assertEqual(r.returncode, 0, f"{r.stdout}\n{r.stderr}")
+        self.assertEqual((self.udir / "status").read_text().strip(), "done (2 findings)")
+        self.assertIn("disproof: checking 1 finding(s) (default mode", r.stdout)
+        self.assertIn("stands=0 weakened=1 refuted=0 failed=0", r.stdout)
+        rev = json.loads((self.udir / "review.json").read_text())
+        self.assertEqual(rev["comments"][0]["checked"]["verdict"], "weakened")
+        self.assertEqual(rev["comments"][0]["checked"]["reason"],
+                         "Only the first call prints twice.")
+        self.assertIsNone(rev["comments"][1]["checked"])      # a nit: not in the default pass
+        self.assertEqual((rev["disproof"]["status"], rev["disproof"]["n"],
+                          rev["disproof"]["checked"], rev["disproof"]["mode"]),
+                         ("done", 1, 1, "default"))
+        # The brief carried the plain rows, the skill, and never the GitHub body.
+        stdin = (self.shim / "disproof-stdin").read_text()
+        self.assertIn("You are the second reviewer", stdin)
+        self.assertIn("what to check: Open a.py line 1. Check `print`.", stdin)
+        self.assertIn("severity: breaks", stdin)
+        self.assertNotIn('"b"', stdin)
+        # The same stripped environment, the same deny list, the same refused approval.
+        env = {}
+        for line in (self.shim / "disproof-env").read_text().splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                env.setdefault(k, v)
+        for gone in ("GH_TOKEN", "GITHUB_TOKEN", "GITHUB_PAT", "RS_SECRET", "SLACK_BOT_TOKEN"):
+            self.assertNotIn(gone, env, f"{gone} reached the disproof agent")
+        self.assertEqual(env.get("CLAUDE_CODE_OAUTH_TOKEN"), "claude-oauth-of-the-clicker")
+        argv = (self.shim / "disproof-argv").read_text()
+        self.assertIn("Bash(gh:*)", argv)
+        self.assertEqual((self.shim / "disproof-approve").read_text().strip(), "refused rc=4")
+        self.assertFalse((self.udir / "security-violation").exists())
+        # The counter: one weakened verdict, nothing else about it.
+        counters = json.loads((self.root / "telemetry" / "counters.json").read_text())
+        day = next(iter(counters["days"].values()))
+        self.assertEqual(day.get("disproof_run|verdict=weakened"), 1)
+        self.assertNotIn("disproof_run|verdict=stands", day)
+        # The cached artefact carries the verdict too, so a reuse shows it.
+        self.assertTrue((self.udir / "disproof.log").exists())
+
+    def test_check_all_findings_covers_the_nit_too(self):
+        self.behave_twice({"results": [{"id": 0, "verdict": "stands", "reason": "r0"},
+                                       {"id": 1, "verdict": "refuted", "reason": "r1"}]})
+        r = self.run_job("run-review.sh", env={"RS_DISPROOF": "all"})
+        self.assertEqual(r.returncode, 0, f"{r.stdout}\n{r.stderr}")
+        rev = json.loads((self.udir / "review.json").read_text())
+        self.assertEqual([c["checked"]["verdict"] for c in rev["comments"]],
+                         ["stands", "refuted"])
+        self.assertEqual(rev["disproof"]["mode"], "all")
+        self.assertIn("id: 1", (self.shim / "disproof-stdin").read_text())
+
+    def test_off_skips_the_pass_and_the_review_is_unchanged(self):
+        self.behave_twice({"results": []})
+        r = self.run_job("run-review.sh", env={"RS_DISPROOF": "off"})
+        self.assertEqual(r.returncode, 0, f"{r.stdout}\n{r.stderr}")
+        self.assertFalse((self.shim / "disproof-stdin").exists())
+        rev = json.loads((self.udir / "review.json").read_text())
+        self.assertIsNone(rev["comments"][0]["checked"])       # the normaliser's null, no verdict
+        self.assertIsNone(rev.get("disproof"))
+
+    def test_a_bad_answer_never_fails_the_review(self):
+        self.behave(
+            'if grep -q "FILES THEY CITE" "$SHIM_DIR/stdin"; then\n'
+            '  echo "I refuse" > disproof.json\n'
+            'else\n'
+            '  cat > review.json <<\'EOF\'\n%s\nEOF\n'
+            'fi\n' % json.dumps(BLOCKER_REVIEW))
+        r = self.run_job("run-review.sh")
+        self.assertEqual(r.returncode, 0, f"{r.stdout}\n{r.stderr}")
+        self.assertEqual((self.udir / "status").read_text().strip(), "done (2 findings)")
+        rev = json.loads((self.udir / "review.json").read_text())
+        self.assertIsNone(rev["comments"][0]["checked"])
+        self.assertEqual(rev["disproof"]["status"], "failed")
+        self.assertIn("stands=0 weakened=0 refuted=0 failed=1", r.stdout)
+
+    def test_a_write_during_the_second_pass_is_a_security_failure(self):
+        # The disproof agent somehow posts (the fake gh bumps the fingerprint on `pr review`
+        # when it is authenticated — here we hand it a token through the answer step).
+        self.behave(
+            'if grep -q "FILES THEY CITE" "$SHIM_DIR/stdin"; then\n'
+            '  echo "1:0:0" > "$SHIM_DIR/ghcounts"\n'
+            '  echo \'{"results":[{"id":0,"verdict":"stands","reason":"r"}]}\' > disproof.json\n'
+            'else\n'
+            '  cat > review.json <<\'EOF\'\n%s\nEOF\n'
+            'fi\n' % json.dumps(BLOCKER_REVIEW))
+        r = self.run_job("run-review.sh")
+        self.assertEqual(r.returncode, 1)
+        status = (self.udir / "status").read_text()
+        self.assertIn("SECURITY: the disproof pass created a review or comment", status)
+        self.assertIn("(disproof pass)", (self.udir / "security-violation").read_text())
+
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,8 @@ export interface FixtureComment {
   suggestion?: string;
   reply_to?: string | null;
   critical_path?: string;
+  // trust-and-plain §2.1: the disproof pass's verdict, as run-disproof.sh stores it.
+  checked?: { verdict: "stands" | "weakened" | "refuted"; reason: string; at: number } | null;
   teach?: Decision;
 }
 
@@ -79,6 +81,8 @@ export interface ReplayFixture {
     explainer?: string;
     analysis?: string;
     comments: FixtureComment[];
+    // The review-level disproof record (§2.1).
+    disproof?: { status: string; n: number; checked: number; duration_ms: number; mode: string };
   };
   decisions: FixtureDecision[];
   explain: Record<string, string>;

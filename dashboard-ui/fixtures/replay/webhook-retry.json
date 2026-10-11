@@ -76,7 +76,12 @@
         "teach": "keep",
         "what_to_check": "Open deliver.ts line 25. Check which statuses `res.ok` lets through to a retry.",
         "expected": "A 404 stops after one request.",
-        "actual": "A 404 is retried five times."
+        "actual": "A 404 is retried five times.",
+        "checked": {
+          "verdict": "stands",
+          "reason": "`deliver()` retries on `!res.ok` with no status check; no caller filters 4xx.",
+          "at": 1778000500
+        }
       },
       {
         "path": "src/webhooks/deliver.ts",
@@ -92,7 +97,12 @@
         "teach": "drop",
         "what_to_check": "Open deliver.ts line 28. Check whether `backoffMs` caps the delay.",
         "expected": "The delay stops growing at 30 seconds.",
-        "actual": "The delay doubles on every attempt."
+        "actual": "The delay doubles on every attempt.",
+        "checked": {
+          "verdict": "weakened",
+          "reason": "`backoffMs` is unbounded, but `MAX_ATTEMPTS` of 5 keeps the longest sleep near 16 s.",
+          "at": 1778000500
+        }
       },
       {
         "path": "src/webhooks/backoff.ts",
@@ -135,6 +145,13 @@
       "not_covered": [
         "the error message text in errors.ts"
       ]
+    },
+    "disproof": {
+      "status": "done",
+      "n": 2,
+      "checked": 2,
+      "duration_ms": 83000,
+      "mode": "default"
     }
   },
   "decisions": [

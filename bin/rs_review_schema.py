@@ -46,6 +46,10 @@ IMPACT_SYNONYMS = ("why_it_matters", "whyItMatters")
 VERIFY_SYNONYMS = ("howToVerify", "verify", "verification")
 CHECK_SYNONYMS = ("whatToCheck", "check")
 RISKS = ("breaks", "can break", "safe-looking", "unclear")
+# The disproof pass (trust-and-plain §2.1): a second run's verdict on a finding, stored beside
+# it as `checked = {verdict, reason, at}`. Anything outside this list is dropped at load.
+CHECK_VERDICTS = ("stands", "weakened", "refuted")
+CHECK_REASON_CAP = 200
 GUIDE_SYNONYMS = ("reading_guide", "readingGuide")
 READ_PLAN_SYNONYMS = ("readPlan", "read_in_this_order", "plan")
 NOT_COVERED_SYNONYMS = ("notCovered", "not_reviewed", "skipped")
@@ -180,7 +184,49 @@ def normalize_finding(c, i=0, warnings=None):
         if c[f] is not None:
             limit = INSTRUCTION_WORDS if f in INSTRUCTION_FIELDS else DESCRIPTION_WORDS
             c[f] = lint_text(c[f], limit, f"finding {i}: {f}", warnings) or None
+    c["checked"] = normalize_checked(c.get("checked"), i, warnings)
     return c
+
+
+def normalize_checked(v, i=0, warnings=None):
+    """The disproof verdict on one finding, or None. `{verdict, reason, at}` with the verdict
+    in CHECK_VERDICTS; a malformed object is dropped with a warning, an absent one is silent."""
+    if v is None:
+        return None
+    if warnings is None:
+        warnings = []
+    if not isinstance(v, dict):
+        warnings.append(f"finding {i}: checked is not an object; dropped")
+        return None
+    verdict = _text(v.get("verdict"))
+    verdict = verdict.lower() if verdict else None
+    if verdict not in CHECK_VERDICTS:
+        warnings.append(f"finding {i}: checked.verdict {verdict!r} is not one of "
+                        f"{'|'.join(CHECK_VERDICTS)}; dropped")
+        return None
+    reason = " ".join((_text(v.get("reason")) or "").split())[:CHECK_REASON_CAP]
+    try:
+        at = int(v.get("at") or 0)
+    except (TypeError, ValueError):
+        at = 0
+    return {"verdict": verdict, "reason": reason, "at": at}
+
+
+def normalize_disproof(v, warnings=None):
+    """The review-level record of the disproof pass, or None: `{status, n, checked, duration_ms,
+    mode}`. Counts are ints, the status a short word; nothing else is kept."""
+    if not isinstance(v, dict):
+        return None
+
+    def num(k):
+        try:
+            return max(0, int(v.get(k) or 0))
+        except (TypeError, ValueError):
+            return 0
+    status = (_text(v.get("status")) or "done").lower()[:20]
+    mode = (_text(v.get("mode")) or "default").lower()[:20]
+    return {"status": status, "n": num("n"), "checked": num("checked"),
+            "duration_ms": num("duration_ms"), "mode": mode}
 
 
 def _line_no(v):
@@ -324,6 +370,7 @@ def normalize(review):
         risk = _text(block.get("risk"))
         review["summary"] = " ".join(x for x in (does, f"Risk: {risk}." if risk else None) if x)
     review["guide"] = normalize_guide(guide_src, warnings)
+    review["disproof"] = normalize_disproof(review.get("disproof"), warnings)
     if isinstance(review.get("summary"), str):
         review["summary"] = lint_text(review["summary"], DESCRIPTION_WORDS, "summary", warnings)
     comments = review.get("comments")

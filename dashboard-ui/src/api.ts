@@ -289,6 +289,11 @@ export interface Finding {
   // The deterministic evidence check (§1.4), computed once on the server. null when the diff
   // could not be fetched. Two or more flags demote the finding to the maybe tray (`low`).
   evidence?: Evidence | null;
+  // The disproof pass's verdict on this finding (trust-and-plain §2.1); null when the pass
+  // did not run for it. The badge (Part 2) folds evidence, this verdict and the calibration
+  // bucket into Checked / Likely / Maybe with one plain reason line; a Maybe is also `low`.
+  checked?: Checked | null;
+  badge?: Badge | null;
   criticalPath?: string; // the profile glob this finding concerns, "" when none
   // Tri-state. true: GitHub will take an inline comment on this line. false: the line is
   // outside the PR's diff, so the finding goes into the review body instead. null/undefined:
@@ -331,6 +336,30 @@ export interface Evidence {
   symbols?: string[];
 }
 
+export type CheckVerdict = "stands" | "weakened" | "refuted";
+export interface Checked {
+  verdict: CheckVerdict;
+  reason: string;
+  at: number;
+}
+export type BadgeLevel = "checked" | "likely" | "maybe";
+export interface Badge {
+  level: BadgeLevel;
+  label: string;
+  // "Checked: the lines exist, a second pass could not disprove it, reviewers kept 85.0% of
+  // findings like this here."
+  reason: string;
+  inputs?: { evidence: "pass" | "warn" | "none"; disproof: CheckVerdict | null; keepRate: number | null; n: number | null };
+}
+// The review-level record of the disproof pass; null for a review from before it existed.
+export interface DisproofData {
+  status: string;
+  n: number;
+  checked: number;
+  durationMs: number;
+  mode: string;
+}
+
 // The reading guide (§1.2): what the PR does, why, the risk word, the hunks to read in order
 // and what the run did not review. null for a review from before it existed.
 export interface ReadPlanRow {
@@ -364,6 +393,8 @@ export interface ReviewData {
   summary: string;
   // The reading guide; absent on older servers, null for an older review.
   guide?: GuideData | null;
+  // The disproof pass's record (§2.1): status, how many findings it checked, how long.
+  disproof?: DisproofData | null;
   keyPoints: string[];
   explainer: string;
   analysis: string;
@@ -425,6 +456,9 @@ export interface RunFormData {
   skillLabel: string;
   othersOnHead: OtherRun[];
   estimates?: Record<string, EffortEstimate>;
+  // The disproof pass (§2.1): seconds it adds per finding and the severities the default
+  // run checks, for the "Check all findings" toggle's helper text. Absent on older servers.
+  disproof?: { secPerFinding: number; defaults: string[] };
 }
 export interface Risk { icon: string; title: string; note: string }
 export interface HistoryRun {
@@ -764,7 +798,29 @@ export interface LearningsData {
   // All-time drops by dismissal reason — every id in REASONS plus `unspecified` for drops made
   // without one. Absent on older servers.
   reasons?: Record<string, number>;
+  // What reviewers kept, by the model's self-reported confidence and by the evidence result
+  // (trust-and-plain §2.2). Absent on older servers.
+  calibration?: CalibrationData;
   rows: LearningRow[];
+}
+
+export interface CalibrationBucket {
+  n: number;
+  keepRate: number | null;
+  ratable: boolean;
+}
+export interface CalibrationData {
+  minSample: number;
+  separationPoints: number;
+  byConfidence: ({ skill: string; repo: string; confidence: string } & CalibrationBucket)[];
+  overall: ({ confidence: string } & CalibrationBucket)[];
+  byEvidence: ({ status: string } & CalibrationBucket)[];
+  decided: number;
+  // true/false when both high and low buckets are ratable; null when not enough is known.
+  separates: boolean | null;
+  points: number | null;
+  // One plain sentence when the buckets do not separate or there is not enough data; "" else.
+  note: string;
 }
 
 // Repository profile ($ROOT/profiles/<slug>/): the critical paths every review of the repo walks.
@@ -990,8 +1046,8 @@ export const api = {
   teach: (ref: PrRef, t: Token, idx: number, direction: TeachDirection,
           action: "draft" | "add", rule?: string) =>
     post<TeachResult>("/teach", { ...prBody(ref), ...t, idx, direction, action, rule }),
-  review: (ref: PrRef, t: Token, effort: string, focus: string, model: string) =>
-    post<{ ok: boolean; started?: boolean }>("/review", { ...prBody(ref), ...t, effort, focus, model }),
+  review: (ref: PrRef, t: Token, effort: string, focus: string, model: string, checkAll = false) =>
+    post<{ ok: boolean; started?: boolean }>("/review", { ...prBody(ref), ...t, effort, focus, model, checkAll }),
   stop: (ref: PrRef, t: Token) =>
     post<{ ok: boolean; confirmed: boolean }>("/stop", { ...prBody(ref), ...t }),
   markdone: (ref: PrRef, t: Token) => post<{ ok: boolean }>("/markdone", { ...prBody(ref), ...t }),

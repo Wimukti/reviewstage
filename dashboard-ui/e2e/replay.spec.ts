@@ -83,6 +83,16 @@ test.describe("the replay on a desktop", () => {
     await expect(cards.nth(0).getByTestId("expected")).toContainText("A 404 stops after one request.");
     await expect(cards.nth(0).getByTestId("evidence")).toHaveAttribute("data-status", "pass");
     await expect(cards.nth(0).getByTestId("evidence")).toContainText("mention `res`, `ok`");
+    // Part 2, with no server: the badge from the fixture's second-pass verdicts — Checked,
+    // Likely (weakened), Likely (not in the pass) — and the Checked line on the first card.
+    await expect(cards.nth(0).getByTestId("trust")).toHaveText("Checked");
+    await expect(cards.nth(0).getByTestId("checked")).toContainText("Checked: stands — `deliver()` retries on `!res.ok`");
+    await expect(cards.nth(1).getByTestId("trust")).toHaveText("Likely");
+    await expect(cards.nth(1).getByTestId("trust-line")).toContainText("a second pass weakened it: `backoffMs` is unbounded");
+    await expect(cards.nth(2).getByTestId("trust")).toHaveText("Likely");
+    await expect(cards.nth(2).getByTestId("trust-line")).toContainText("no second pass for this severity");
+    await expect(cards.nth(2).getByTestId("checked")).toHaveCount(0);
+    await expect(page.locator(".fhead [data-testid=confidence]")).toHaveCount(0);
 
     // Drop the second (the plausible-but-wrong one).
     await cards.nth(1).getByTestId("finding-select").uncheck();

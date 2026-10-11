@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, Info, Lightbulb } from "lucide-react";
-import { api, errMessage, isReason, reasonLabel, REASONS, type LearningsData, type Me } from "./api";
+import { api, errMessage, isReason, reasonLabel, REASONS, type CalibrationData, type LearningsData, type Me } from "./api";
 import { Banner, EmptyState, PageHeader, RepoPill, StatusBadge, wordOf, type Tone } from "./ui";
 import { useIsPhone } from "./theme";
 import { cn } from "@/lib/utils";
@@ -67,6 +67,83 @@ function WhyDropped({ reasons }: { reasons?: Record<string, number> }) {
 const H2 = "mb-2 mt-6 text-sm font-medium";
 const TH = "h-10 whitespace-nowrap border-0 px-4 text-left font-medium";
 const TD = "border-0 px-4 py-2.5 align-top";
+
+const CONF_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, unknown: 3 };
+const confLabel = (c: string) => (c === "unknown" ? "not stated" : c);
+const pctOf = (b: { n: number; keepRate: number | null }) => (b.keepRate === null || b.n === 0 ? "—" : `${b.keepRate.toFixed(1)}%`);
+
+// What reviewers kept, by the model's self-reported confidence (trust-and-plain §2.2): the
+// install's combined buckets, then one row per skill + repository bucket. A bucket under the
+// sample is listed with its n and no verdict; when the high and low buckets do not separate
+// (or cannot be compared yet) the one sentence under the table says so, and the badge on the
+// PR page reads the evidence check and the second pass only.
+export function CalibrationTable({ calibration, multi }: { calibration?: CalibrationData; multi: boolean }) {
+  if (!calibration || calibration.decided === 0) return null;
+  const overall = [...calibration.overall].sort((a, b) => (CONF_ORDER[a.confidence] ?? 9) - (CONF_ORDER[b.confidence] ?? 9));
+  const rows = calibration.byConfidence.slice(0, 12);
+  const evidence = calibration.byEvidence.filter((r) => r.n > 0);
+  return (
+    <>
+      <h2 className={H2}>What reviewers kept, by confidence</h2>
+      <Card className="gap-0 overflow-x-auto py-0" data-testid="calibration">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-muted-foreground">
+              <th scope="col" className={TH}>The run said</th>
+              <th scope="col" className={TH}>Decisions</th>
+              <th scope="col" className={TH}>Kept</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {overall.map((b) => (
+              <tr key={b.confidence} data-testid="calibration-row" data-confidence={b.confidence} data-ratable={b.ratable ? "1" : "0"}>
+                <td className={TD}>{confLabel(b.confidence)} confidence</td>
+                <td className={cn(TD, "tabular-nums")}>{b.n.toLocaleString("en-US")}</td>
+                <td className={cn(TD, "tabular-nums")}>
+                  {pctOf(b)}
+                  {!b.ratable && b.n > 0 && (
+                    <span className={cn(NOTE, "ml-1.5")} title={`Rated from ${calibration.minSample} decisions`}>
+                      (under {calibration.minSample})
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length > 1 && (
+          <details className="border-t border-border px-4 py-2 text-xs text-muted-foreground" data-testid="calibration-buckets">
+            <summary className="cursor-pointer">By skill{multi ? " and repository" : ""}</summary>
+            <ul className="my-1 list-none pl-0">
+              {rows.map((r) => (
+                <li key={`${r.skill}|${r.repo}|${r.confidence}`} className="tabular-nums" data-testid="calibration-bucket">
+                  {r.skill}
+                  {multi ? ` · ${r.repo}` : ""} · {confLabel(r.confidence)}: {r.n.toLocaleString("en-US")} decisions, {pctOf(r)} kept
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {evidence.length > 0 && (
+          <p className={cn(NOTE, "border-t border-border px-4 py-2 tabular-nums")} data-testid="calibration-evidence">
+            By the evidence check:{" "}
+            {evidence.map((r) => `${r.status === "unknown" ? "not checked" : r.status} ${pctOf(r)} kept of ${r.n.toLocaleString("en-US")}`).join(" · ")}
+          </p>
+        )}
+      </Card>
+      {calibration.note ? (
+        <p className={cn(NOTE, "mt-2 max-w-[72ch]")} data-testid="calibration-note">
+          {calibration.note}
+        </p>
+      ) : (
+        <p className={cn(NOTE, "mt-2 max-w-[72ch]")} data-testid="calibration-note">
+          The model's confidence separates here ({calibration.points?.toFixed(1)} points between high and low), so the badge on a
+          finding can quote it once its bucket has {calibration.minSample} decisions.
+        </p>
+      )}
+    </>
+  );
+}
 
 // A stat tile: the same Card the Insights page uses, a number in display type and a label.
 function Tile({ value, label, testId }: { value: number; label: string; testId?: string }) {
@@ -212,6 +289,7 @@ export function Learnings({ me }: { me: Me }) {
         </>
       )}
       <WhyDropped reasons={d.reasons} />
+      <CalibrationTable calibration={d.calibration} multi={multi} />
       {d.rows.length === 0 ? (
         <Card className="mt-6 py-0">
           <EmptyState icon={Lightbulb} title="Nothing learned yet">

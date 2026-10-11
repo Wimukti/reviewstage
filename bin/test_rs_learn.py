@@ -496,5 +496,126 @@ class DismissalReasons(Base):
         self.assertNotIn("Extract the magic timeout into a constant (", block)
 
 
+
+class Calibration(Base):
+    """What reviewers kept, by self-reported confidence and by evidence status (trust-and-plain
+    §2.2): additive tally keys, the unknown bucket for old rows, small-n and the separation rule,
+    and the badge's per-bucket input."""
+
+    def decide(self, n, conf, keep, pr="1", skill="global", repo="acme/widgets",
+               evidence=None, dry=False):
+        originals = [{"path": "a.py", "line": 3, "severity": "nit", "confidence": conf,
+                      "body": f"finding {i} {conf} {pr}"} for i in range(n)]
+        form = {}
+        for i in range(n):
+            if i < keep:
+                form[f"sel_{i}"] = ["1"]
+                form[f"body_{i}"] = [originals[i]["body"]]
+        self.L.record(repo, pr, "acme-dev", originals, form, skill=skill, key=f"{pr}-{conf}",
+                      evidence=evidence, dry=dry)
+
+    def test_rows_carry_the_signals_only_when_known(self):
+        originals = [{"path": "a.py", "line": 1, "severity": "nit", "confidence": "high",
+                      "body": "x", "checked": {"verdict": "stands", "reason": "r", "at": 1}},
+                     {"path": "a.py", "line": 2, "severity": "nit", "body": "y",
+                      "confidence": "sure", "checked": {"verdict": "nope"}}]
+        self.L.record("acme/widgets", "1", "u", originals, {"sel_0": ["1"], "body_0": ["x"]},
+                      evidence=[{"status": "pass", "flags": []}, None])
+        a, b = self.L._read()
+        self.assertEqual((a["confidence"], a["evidence"], a["checked"]), ("high", "pass", "stands"))
+        for k in ("confidence", "evidence", "checked"):
+            self.assertNotIn(k, b)
+
+    def test_buckets_are_additive_and_old_rows_read_as_unknown(self):
+        self.write([row("old one", pr="1", outcome="kept"), row("old two", pr="2")])
+        t = self.L.load_totals()                       # rebuilt from rows with no signals
+        self.assertEqual(t["calibration"]["confidence"]["global|acme/widgets|unknown"],
+                         {"kept": 1, "edited": 0, "dropped": 1})
+        self.assertEqual(t["calibration"]["evidence"]["unknown"]["dropped"], 1)
+        # A tally file written before the key existed loads and gains it on the next decision.
+        self.L.TOTALS.write_text(json.dumps({"version": self.L.TOTALS_VERSION, "cap": 300,
+                                             "complete": True, "outcomes": self.L._blank(),
+                                             "criticalPath": self.L._blank(), "dryDecisions": 0,
+                                             "repos": {}, "repoCriticalPath": {}, "skills": {},
+                                             "days": {}}))
+        self.decide(2, "high", 2, pr="3", evidence=["pass", "warn"])
+        t = self.L.load_totals()
+        self.assertEqual(t["calibration"]["confidence"]["global|acme/widgets|high"]["kept"], 2)
+        self.assertEqual(t["calibration"]["evidence"]["pass"]["kept"], 1)
+        self.assertEqual(t["calibration"]["evidence"]["warn"]["kept"], 1)
+
+    def test_a_dry_decision_is_in_no_bucket(self):
+        self.decide(3, "high", 3, dry=True)
+        self.assertEqual(self.L.load_totals().get("calibration"),
+                         {"confidence": {}, "evidence": {}})
+        self.assertEqual(self.L.calibration()["decided"], 0)
+
+    def test_small_n_is_listed_but_not_rated_and_the_note_says_so(self):
+        self.decide(5, "high", 5, pr="1")
+        self.decide(5, "low", 1, pr="2")
+        c = self.L.calibration()
+        self.assertEqual(c["minSample"], 20)
+        hi = next(r for r in c["byConfidence"] if r["confidence"] == "high")
+        self.assertEqual((hi["n"], hi["keepRate"], hi["ratable"]), (5, 100.0, False))
+        self.assertIsNone(c["separates"])
+        self.assertIn("Not enough decisions yet", c["note"])
+        self.assertIn("20 posted decisions", c["note"])
+        # The badge never reads a small bucket.
+        self.assertEqual(self.L.calibration_for("global", "acme/widgets", "high"),
+                         {"keepRate": 100.0, "n": 5, "usable": False})
+        self.assertIsNone(self.L.calibration_for("global", "acme/widgets", "medium"))
+
+    def test_buckets_that_separate(self):
+        self.decide(20, "high", 18, pr="1")              # 90%
+        self.decide(20, "low", 6, pr="2")                # 30%
+        c = self.L.calibration()
+        self.assertTrue(c["separates"])
+        self.assertEqual(c["points"], 60.0)
+        self.assertEqual(c["note"], "")
+        self.assertEqual(self.L.calibration_for("global", "acme/widgets", "high"),
+                         {"keepRate": 90.0, "n": 20, "usable": True})
+        self.assertEqual(self.L.calibration_for("global", "acme/widgets", "low"),
+                         {"keepRate": 30.0, "n": 20, "usable": True})
+
+    def test_buckets_that_do_not_separate_fall_back(self):
+        self.decide(20, "high", 15, pr="1")              # 75%
+        self.decide(20, "low", 14, pr="2")               # 70% — 5 points apart
+        c = self.L.calibration()
+        self.assertFalse(c["separates"])
+        self.assertEqual(c["points"], 5.0)
+        self.assertIn("does not separate", c["note"])
+        self.assertIn("75.0% of high-confidence findings and 70.0% of low-confidence", c["note"])
+        self.assertIn("5.0 points apart", c["note"])
+        self.assertIn("evidence check and the second pass only", c["note"])
+        got = self.L.calibration_for("global", "acme/widgets", "high")
+        self.assertEqual((got["n"], got["usable"]), (20, False))
+
+    def test_exactly_ten_points_separates_and_the_pair_is_per_skill_and_repo(self):
+        self.decide(20, "high", 16, pr="1")                            # 80%
+        self.decide(20, "low", 14, pr="2")                             # 70%
+        self.assertTrue(self.L.calibration()["separates"])
+        # Another repo's buckets do not pollute this pair's verdict, and a pair with no low
+        # bucket is "unknown", which still lets its own ratable bucket count.
+        self.decide(20, "high", 10, pr="3", repo="acme/api")
+        self.assertEqual(self.L.calibration_for("global", "acme/api", "high"),
+                         {"keepRate": 50.0, "n": 20, "usable": True})
+        self.assertEqual(len(self.L.calibration(repo="acme/api")["byConfidence"]), 1)
+        self.assertEqual(len(self.L.calibration(skill="global")["byConfidence"]), 3)
+        self.assertEqual(self.L.calibration(skill="nobody")["byConfidence"], [])
+
+    def test_the_evidence_readout_lists_every_status(self):
+        self.decide(4, "medium", 3, pr="1", evidence=["pass", "pass", "warn", None])
+        rows = {r["status"]: r for r in self.L.calibration()["byEvidence"]}
+        self.assertEqual(sorted(rows), ["pass", "unknown", "warn"])
+        self.assertEqual((rows["pass"]["n"], rows["pass"]["keepRate"]), (2, 100.0))
+        self.assertEqual((rows["warn"]["n"], rows["warn"]["keepRate"]), (1, 100.0))
+        self.assertEqual((rows["unknown"]["n"], rows["unknown"]["keepRate"]), (1, 0.0))
+
+    def test_a_retry_under_the_same_key_moves_its_rows_between_buckets(self):
+        self.decide(2, "high", 2, pr="1")
+        self.decide(2, "high", 0, pr="1")                # same key: replaced, not added
+        b = self.L.load_totals()["calibration"]["confidence"]["global|acme/widgets|high"]
+        self.assertEqual(b, {"kept": 0, "edited": 0, "dropped": 2})
+
 if __name__ == "__main__":
     unittest.main()

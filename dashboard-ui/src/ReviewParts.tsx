@@ -29,12 +29,14 @@ import {
   Route,
   Search,
   Send,
+  ShieldCheck,
+  ShieldQuestionMark,
   Sparkles,
   TriangleAlert,
   Users,
   X,
 } from "lucide-react";
-import { REASON_LABELS, REASONS, type Evidence, type GuideData, type Reason, type ReadPlanRow, type Snippet, type Where } from "./api";
+import { REASON_LABELS, REASONS, type Badge as BadgeData, type Checked, type Evidence, type GuideData, type Reason, type ReadPlanRow, type Snippet, type Where } from "./api";
 import { StatusBadge, iconOf, toneOf, wordOf, type Tone } from "./ui";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +71,10 @@ export interface FindingView {
   actual?: string;
   snippet?: Snippet | null;
   evidence?: Evidence | null;
+  // Part 2: the disproof verdict and the earned-confidence badge. Both optional; an older
+  // server sends neither and the head shows the self-report alone, as it did.
+  checked?: Checked | null;
+  badge?: BadgeData | null;
   thread?: string | null;
   criticalPath?: string;
   // Tri-state: true inline, false into the review body, null/undefined genuinely unknown.
@@ -314,6 +320,84 @@ export function ConfidenceBadge({ confidence }: { confidence?: FindingView["conf
     >
       {confidence} confidence
     </StatusBadge>
+  );
+}
+
+// Earned confidence (trust-and-plain Part 2): three levels — Checked / Likely / Maybe — from
+// the evidence check, the disproof pass and the calibration readout, never from the model's own
+// estimate. The chip carries the level; the reason line under the card's rows says why.
+const BADGE_TONE: Record<string, Tone> = { checked: "green", likely: "blue", maybe: "amber" };
+const BADGE_ICON: Record<string, LucideIcon> = { checked: ShieldCheck, likely: Circle, maybe: ShieldQuestionMark };
+
+export function TrustBadge({ badge, className }: { badge?: BadgeData | null; className?: string }) {
+  if (!badge) return null;
+  return (
+    <StatusBadge
+      tone={BADGE_TONE[badge.level] ?? "graphite"}
+      icon={BADGE_ICON[badge.level] ?? null}
+      title={badge.reason}
+      data-testid="trust"
+      data-level={badge.level}
+      className={cn("text-[11px]", className)}
+    >
+      {badge.label}
+    </StatusBadge>
+  );
+}
+
+// The badge's reason, one line: "Checked: the cited lines exist, a second pass could not
+// disprove it, reviewers kept 85.0% of findings like this here."
+export function TrustLine({ badge, className }: { badge?: BadgeData | null; className?: string }) {
+  if (!badge) return null;
+  const Glyph = BADGE_ICON[badge.level] ?? Circle;
+  const tone = badge.level === "checked" ? "text-green" : badge.level === "maybe" ? "text-amber" : "text-muted-foreground";
+  const [head, ...rest] = badge.reason.split(": ");
+  return (
+    <p
+      className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-muted-foreground", className)}
+      data-testid="trust-line"
+      data-level={badge.level}
+    >
+      <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", tone)} />
+      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", tone)}>{head}</span>
+      <span className="min-w-0">{rest.join(": ")}</span>
+    </p>
+  );
+}
+
+// The disproof pass's own sentence (§2.1), at the position lane 1 reserved under Evidence:
+// "Checked: stands — the second pass found no handling of a 2xx reset." Absent when the pass
+// did not run for this finding.
+const VERDICT_TONE: Record<string, string> = { stands: "text-green", weakened: "text-amber", refuted: "text-amber" };
+
+export function CheckedLine({ checked, className }: { checked?: Checked | null; className?: string }) {
+  if (!checked) return null;
+  const Glyph = checked.verdict === "stands" ? CircleCheck : TriangleAlert;
+  return (
+    <p
+      className={cn("m-0 flex items-baseline gap-1.5 leading-relaxed text-muted-foreground", className)}
+      data-testid="checked"
+      data-verdict={checked.verdict}
+    >
+      <Glyph aria-hidden="true" className={cn("relative top-[2px] size-3.5 shrink-0", VERDICT_TONE[checked.verdict])} />
+      <span className={cn("shrink-0 font-mono text-xs font-medium uppercase tracking-wide", VERDICT_TONE[checked.verdict])}>
+        Checked: {checked.verdict}{" "}
+      </span>
+      {checked.reason && <span className="min-w-0">— {checked.reason}</span>}
+    </p>
+  );
+}
+
+// The model's own estimate (design §2.3): still requested, never shown alone. It sits under
+// "More" beside the raw comment once a badge exists; with no badge (an older server) the head
+// shows it as before.
+export function SelfReport({ confidence, className }: { confidence?: FindingView["confidence"]; className?: string }) {
+  if (!confidence) return null;
+  return (
+    <p className={cn("m-0 flex flex-wrap items-center gap-1.5 text-muted-foreground", className)} data-testid="self-report">
+      <span className="font-mono text-xs font-medium uppercase tracking-wide">The run's own estimate</span>
+      <ConfidenceBadge confidence={confidence} />
+    </p>
   );
 }
 
@@ -591,7 +675,7 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
           className="size-[18px] max-[899px]:size-5"
         />
         <StatusBadge kind={f.severity} />
-        <ConfidenceBadge confidence={f.confidence} />
+        {f.badge ? <TrustBadge badge={f.badge} /> : <ConfidenceBadge confidence={f.confidence} />}
         {place === "summary" && (
           <StatusBadge tone="graphite" icon={ExternalLink} title={OFFDIFF_HINT} data-testid="placement">
             In summary
@@ -625,6 +709,8 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
           </p>
         )}
         <EvidenceLine evidence={f.evidence} className="max-w-[72ch] text-sm" />
+        <TrustLine badge={f.badge} className="max-w-[72ch] text-sm" />
+        <CheckedLine checked={f.checked} className="max-w-[72ch] text-sm" />
         {(f.criticalPath || f.agreement) && (
           <div className="flex flex-wrap gap-1.5">
             {f.criticalPath && (
@@ -704,6 +790,7 @@ export function FindingCard({ f, checked, onToggle, disabled, explain, editor, t
             is what stops a second visit. */}
         {showTeach && teach && teach.panel(() => setTaught(true))}
         {showDetail && verifyUnderMore && <HowToVerify text={f.howToVerify} className="max-w-[72ch] text-sm" />}
+        {showDetail && f.badge && <SelfReport confidence={f.confidence} className="text-sm" />}
         {showDetail && editor}
       </div>
     </Card>

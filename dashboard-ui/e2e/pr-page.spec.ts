@@ -169,7 +169,10 @@ test.describe("the status line", () => {
     await expect(head.getByTestId("status-badge")).toHaveText("Should fix");
     await expect(head.getByTestId("placement")).toHaveCount(0);
     await expect(head.getByTestId("finding-path")).toHaveCount(0);
-    await expect(head.getByTestId("confidence")).toHaveText("high confidence");
+    // Part 2: the head carries the earned badge, never the model's own estimate alone.
+    await expect(head.getByTestId("trust")).toHaveText("Checked");
+    await expect(head.getByTestId("trust")).toHaveAttribute("data-level", "checked");
+    await expect(head.getByTestId("confidence")).toHaveCount(0);
     // The Where row: the path whole, in sans, with a copy button, and the cited diff lines
     // under it with the changed line highlighted and the cited line marked.
     const where = card.getByTestId("where");
@@ -193,15 +196,27 @@ test.describe("the status line", () => {
     await expect(card.getByTestId("why-it-matters")).toContainText("A shopper viewing such a product");
     await expect(card.getByTestId("evidence")).toHaveAttribute("data-status", "pass");
     await expect(card.getByTestId("evidence")).toContainText("The cited lines are in this diff and mention `vendor`, `leadTime`.");
+    // Part 2: the badge's reason line, then the second pass's own sentence, under Evidence.
+    await expect(card.getByTestId("trust-line")).toContainText("the cited lines exist and mention `vendor`, `leadTime`, a second pass could not disprove it.");
+    await expect(card.getByTestId("checked")).toHaveAttribute("data-verdict", "stands");
+    await expect(card.getByTestId("checked")).toContainText("Checked: stands — No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.");
     await expect(card.getByTestId("how-to-verify")).toHaveCount(0);
     const ys = await Promise.all(
-      ["finding-title", "where", "what-to-check", "contrast", "why-it-matters", "evidence"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
+      ["finding-title", "where", "what-to-check", "contrast", "why-it-matters", "evidence", "trust-line", "checked"].map(async (id) => (await card.getByTestId(id).boundingBox())!.y),
     );
     for (let i = 1; i < ys.length; i++) expect(ys[i], `row ${i} is below row ${i - 1}`).toBeGreaterThan(ys[i - 1]);
     // The second card's run gave neither a what_to_check nor a verify line, so it has no such
     // row; its file is not in the diff, so the evidence line warns and no snippet is cut.
     const second = page.locator(".finding").nth(1);
-    await expect(second.getByTestId("confidence")).toHaveText("medium confidence");
+    await expect(second.getByTestId("trust")).toHaveText("Likely");
+    await expect(second.getByTestId("trust-line")).toContainText("the file is outside this diff, so its lines could not be checked, no second pass for this severity.");
+    await expect(second.getByTestId("checked")).toHaveCount(0);
+    await expect(second.getByTestId("confidence")).toHaveCount(0);
+    // The model's own estimate sits under "More" (Edit comment), labelled as its own.
+    await second.getByRole("button", { name: "Edit comment" }).click();
+    await expect(second.getByTestId("self-report")).toContainText("The run's own estimate");
+    await expect(second.getByTestId("self-report").getByTestId("confidence")).toHaveText("medium confidence");
+    await second.getByRole("button", { name: "Edit comment" }).click();
     await expect(second.getByTestId("how-to-verify")).toHaveCount(0);
     await expect(second.getByTestId("what-to-check")).toHaveCount(0);
     await expect(second).not.toContainText("How to verify");
@@ -272,45 +287,84 @@ test.describe("the reading guide and the evidence check", () => {
       .toBe(true);
   });
 
-  test("the evidence check: one plain line per card, a warning keeps a single-flag finding staged, two flags send it to the maybe tray", async ({ page }) => {
+  test("the evidence check and the second pass: Checked, Likely and Maybe from the rule table; a Maybe is in the tray whatever the model said", async ({ page }) => {
     await page.goto(prPath(REPO, PR6));
     await settled(page);
-    // Five cards in the list — blockers, then should-fixes, then the nit — and one in the tray.
+    // Two cards in the list: the clean blocker (evidence PASS, second pass `stands` → Checked)
+    // and the should-fix on a file outside the diff (a lone off-diff flag is "not checkable",
+    // not a warning; the second pass weakened it → Likely). The other four are Maybe: three
+    // on an evidence warning (no_contrast + refuted, lines_not_in_diff, symbol_not_found), one
+    // on two flags — all unticked, in the tray, whatever confidence the model reported.
     const cards = page.locator("[data-testid=post-panel] .finding");
-    await expect(cards).toHaveCount(5);
-    const expectEvidence = async (i: number, status: string, flags: string | null, text: string) => {
-      const ev = cards.nth(i).getByTestId("evidence");
-      await expect(ev).toHaveAttribute("data-status", status);
-      if (flags) await expect(ev).toHaveAttribute("data-flags", flags);
-      else expect(await ev.getAttribute("data-flags")).toBeNull();
-      await expect(ev).toContainText(text);
-    };
-    await expectEvidence(0, "pass", null, "The cited lines are in this diff and mention `sleep`.");
-    await expectEvidence(1, "warn", "no_contrast", "A blocker needs both Expected and Actual.");
-    await expectEvidence(2, "warn", "path_not_in_diff", "`app/sync/SyncJob.php` is not a file this PR changes.");
-    await expectEvidence(3, "warn", "lines_not_in_diff", "Lines 80 are not in this PR's changes to `Retry.php`.");
-    await expectEvidence(4, "warn", "symbol_not_found", "`maxAttempts` does not appear in the cited lines.");
-    // One flag never unticks a finding: all five are staged.
-    for (let i = 0; i < 5; i++) await expect(cards.nth(i).getByTestId("finding-select")).toBeChecked();
-    await expect(page.getByTestId("commit-bar")).toContainText("5");
+    await expect(cards).toHaveCount(2);
+    const clean = cards.nth(0);
+    await expect(clean.getByTestId("evidence")).toHaveAttribute("data-status", "pass");
+    await expect(clean.getByTestId("evidence")).toContainText("The cited lines are in this diff and mention `sleep`.");
+    await expect(clean.getByTestId("trust")).toHaveText("Checked");
+    await expect(clean.getByTestId("trust-line")).toHaveAttribute("data-level", "checked");
+    await expect(clean.getByTestId("trust-line")).toContainText("the cited lines exist and mention `sleep`, a second pass could not disprove it.");
+    await expect(clean.getByTestId("checked")).toContainText("Checked: stands — No cap on `sleep` anywhere in Retry.php or its callers.");
+    const offDiff = cards.nth(1);
+    await expect(offDiff.getByTestId("evidence")).toHaveAttribute("data-flags", "path_not_in_diff");
+    await expect(offDiff.getByTestId("trust")).toHaveText("Likely");
+    await expect(offDiff.getByTestId("trust-line")).toContainText("the file is outside this diff, so its lines could not be checked, a second pass weakened it: the catch logs at error level, so the failure is visible in the log.");
+    await expect(offDiff.getByTestId("checked")).toHaveAttribute("data-verdict", "weakened");
+    for (let i = 0; i < 2; i++) await expect(cards.nth(i).getByTestId("finding-select")).toBeChecked();
+    await expect(page.getByTestId("commit-bar")).toContainText("2");
     // The clean card cites a range: the Where row reads path:start-end and the snippet marks
     // both cited lines, with the added lines highlighted.
-    const clean = cards.nth(0);
     await expect(clean.getByTestId("finding-path")).toHaveText("app/sync/Retry.php:26-27");
     await expect(clean.getByTestId("diff-snippet").locator("[data-cited]")).toHaveCount(2);
     await expect(clean.getByTestId("diff-snippet").locator("[data-cited]").first()).toContainText("if ($attempts > 5) throw $e;");
     expect(await clean.getByTestId("diff-snippet").locator("[data-kind=add]").count()).toBeGreaterThanOrEqual(7);
-    // Two flags: the finding is in the maybe tray, unticked, although the model said high.
+    // The tray: every Maybe, each with its reason, none ticked, the self-report nowhere in the head.
     const maybe = page.getByTestId("maybe");
-    await expect(maybe).toContainText("1 lower-confidence finding");
+    await expect(maybe).toContainText("4 lower-confidence findings");
     await maybe.getByRole("button").first().click();
-    const demoted = maybe.locator(".finding");
-    await expect(demoted).toHaveCount(1);
-    await expect(demoted.getByTestId("evidence")).toHaveAttribute("data-flags", "path_not_in_diff no_contrast");
-    await expect(demoted.getByTestId("confidence")).toHaveText("high confidence");
-    await expect(demoted.getByTestId("finding-select")).not.toBeChecked();
+    const tray = maybe.locator(".finding");
+    await expect(tray).toHaveCount(4);
+    for (let i = 0; i < 4; i++) {
+      await expect(tray.nth(i).getByTestId("trust")).toHaveText("Maybe");
+      await expect(tray.nth(i).getByTestId("finding-select")).not.toBeChecked();
+      await expect(tray.nth(i).locator(".fhead").getByTestId("confidence")).toHaveCount(0);
+    }
+    const refuted = tray.filter({ hasText: "A non-retryable error is retried" });
+    await expect(refuted.getByTestId("evidence")).toHaveAttribute("data-flags", "no_contrast");
+    await expect(refuted.getByTestId("trust-line")).toContainText("a blocker needs both Expected and Actual, a second pass refuted it: `run()` rethrows an `AuthException` before the retry at Retry.php:23.");
+    await expect(refuted.getByTestId("checked")).toHaveAttribute("data-verdict", "refuted");
+    await expect(tray.filter({ hasText: "The constructor still takes an unused timeout" }).getByTestId("trust-line")).toContainText("lines 80 are not in this PR's changes to `Retry.php`, no second pass for this severity.");
+    await expect(tray.filter({ hasText: "`maxAttempts` is never read" }).getByTestId("trust-line")).toContainText("`maxAttempts` does not appear in the cited lines, no second pass for this severity.");
+    const two = tray.filter({ hasText: "Nope.php is never loaded" });
+    await expect(two.getByTestId("evidence")).toHaveAttribute("data-flags", "path_not_in_diff no_contrast");
+    await expect(two.getByTestId("trust-line")).toContainText("`app/sync/Nope.php` is not a file this PR changes. A blocker needs both Expected and Actual, no second pass for this severity.");
     // The guide on this PR names the risk word "breaks".
     await expect(page.getByTestId("guide-risk")).toHaveText("breaks");
+  });
+
+  test("the Check all findings toggle: off by default, explained in the helper text, sent with the run", async ({ page }) => {
+    const runs: unknown[] = [];
+    await page.route("**/api/review", (route) => {
+      runs.push(route.request().postDataJSON());
+      return route.fulfill({ json: { ok: true, started: true } });
+    });
+    await patchJson(page, "**/api/pr?*", { claudeConnected: true });
+    await page.goto(prPath(REPO, PR));
+    await settled(page);
+    await page.getByTestId("sec-rerun").click();
+    const form = page.getByTestId("run-form");
+    const toggle = form.locator("#run-check-all");
+    await expect(toggle).toHaveAttribute("data-state", "unchecked");
+    await expect(form.getByTestId("check-all-hint")).toContainText("about 40 s more per finding, on your own account");
+    await expect(form.getByTestId("check-all-hint")).toContainText("always runs on findings that can break something");
+    await form.getByRole("button", { name: "Re-run review" }).click();
+    await expect.poll(() => runs.length).toBe(1);
+    expect(runs[0]).toMatchObject({ checkAll: false });
+    await page.getByTestId("sec-rerun").click();
+    await form.getByText("Check all findings").click();
+    await expect(toggle).toHaveAttribute("data-state", "checked");
+    await form.getByRole("button", { name: "Re-run review" }).click();
+    await expect.poll(() => runs.length).toBe(2);
+    expect(runs[1]).toMatchObject({ checkAll: true, repo: REPO, pr: PR });
   });
 });
 

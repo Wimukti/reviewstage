@@ -21,6 +21,7 @@ Counters, per UTC day, from a closed list. There are no per-event rows: a day is
 | `run_duration_bucket` | `bucket`: `lt1m`, `1to3m`, `3to10m`, `gt10m` | a review ends |
 | `findings_shown` | count | a review ends (how many findings it produced) |
 | `plain_warnings` | count | a review ends (how many sentences over the writing-rule limits, and hedges, the plain-language linter flagged — a number, never the text) |
+| `disproof_run` | `verdict`: `stands`, `weakened`, `refuted`, `failed` | the second pass ends (how many findings it held up, weakened, refuted, or gave no usable answer for — never which) |
 | `findings_kept` · `findings_edited` · `findings_dropped` | count | a review is posted, or dry-run posted |
 | `dismissal_reason` | `reason`: a short slug from the dismissal menu (`^[a-z][a-z0-9_-]{0,31}$`), never typed text | a finding is dropped with a reason |
 | `post_attempted` · `post_succeeded` | `dry`: `0`, `1` | a post is attempted; a post lands (or completes as a dry run) |

@@ -307,9 +307,12 @@ export function buildFixture() {
       keyPoints: ["The backoff has no cap.", "The attempt counter is never read."],
       explainer: "",
       analysis: "",
+      // The disproof pass ran on the three blockers and should-fixes in the diff (Part 2).
+      disproof: { status: "done", n: 4, checked: 3, duration_ms: 142000, mode: "default" },
       comments: [
         {
-          // Clean: the file and lines are in the diff and the cited lines mention `sleep`.
+          // Clean: the file and lines are in the diff and the cited lines mention `sleep`; the
+          // second pass could not disprove it → Checked.
           path: "app/sync/Retry.php", line: 26, end_line: 27, severity: "blocker", confidence: "high",
           title: "The `sleep` backoff grows without a cap",
           impact: "After five failures the sync sleeps for over a minute and the job times out.",
@@ -318,15 +321,18 @@ export function buildFixture() {
           actual: "The delay doubles on every attempt with no ceiling.",
           how_to_verify: "Fail the sync six times in a row and time the gaps between attempts.",
           body: "`sleep(2 ** $attempts)` has no ceiling.", reply_to: null, suggestion: "",
+          checked: { verdict: "stands", reason: "No cap on `sleep` anywhere in Retry.php or its callers.", at: 1778000600 },
         },
         {
-          // path_not_in_diff — one flag: a warning, still pre-selected.
+          // path_not_in_diff — alone it is "not checkable", not a warning: the second pass
+          // weakened it → Likely, still pre-selected.
           path: "app/sync/SyncJob.php", line: 10, severity: "should-fix", confidence: "high",
           title: "The job still catches the exception the retry now throws",
           impact: "A sync that fails five times is logged as a success.",
           what_to_check: "Open SyncJob.php line 10. Check what happens to the thrown exception.",
           expected: "The job fails loudly.", actual: "The job swallows it and reports success.",
           body: "SyncJob.php catches Throwable around run().", reply_to: null, suggestion: "",
+          checked: { verdict: "weakened", reason: "The catch logs at error level, so the failure is visible in the log.", at: 1778000600 },
         },
         {
           // lines_not_in_diff — the file is in the PR, line 80 is not in its hunk.
@@ -353,6 +359,7 @@ export function buildFixture() {
           impact: "A bad credential is retried five times before anyone hears about it.",
           what_to_check: "Open Retry.php line 24. Check which exceptions the catch lets through.",
           body: "catch (Throwable) retries everything.", reply_to: null, suggestion: "",
+          checked: { verdict: "refuted", reason: "`run()` rethrows an `AuthException` before the retry at Retry.php:23.", at: 1778000600 },
         },
         {
           // Two flags (path_not_in_diff + no_contrast): not pre-selected, in the maybe tray,
@@ -392,6 +399,8 @@ export function buildFixture() {
       ],
       explainer: "A COMMENT review — nothing here blocks the merge.",
       analysis: "",
+      // The disproof pass (Part 2) checked the one should-fix; the nit was not in the pass.
+      disproof: { status: "done", n: 1, checked: 1, duration_ms: 41000, mode: "default" },
       comments: [
         {
           path: "app/models/Product.php",
@@ -409,6 +418,7 @@ export function buildFixture() {
           body: "Guard against a null vendor before reading its lead time.",
           reply_to: null,
           suggestion: "if ($vendor === null) return null;",
+          checked: { verdict: "stands", reason: "No null guard on `$vendor` in Product.php or the three callers of `leadTime()`.", at: 1778000600 },
         },
         {
           // No how_to_verify: the card must show no row for it (an older run looks like this).

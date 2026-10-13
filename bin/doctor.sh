@@ -185,6 +185,24 @@ esac
 
 # --- tools ---------------------------------------------------------------------------------
 section tools
+# The desktop app downloads its pinned helper tools into ROOT/bin and writes the version it
+# fetched beside each one.  Report those stamps separately from the PATH checks below: a
+# desktop install intentionally does not put them on the system-wide PATH.
+shopt -s nullglob
+for stamp in "$ROOT"/bin/.*.version; do
+  tool="${stamp##*/.}"
+  tool="${tool%.version}"
+  version=$(tr -d '\r\n' < "$stamp")
+  if [ -n "$version" ]; then
+    check tools.fetched
+    pass "fetched tool $tool $version"
+  else
+    check tools.fetched
+    warn "fetched tool $tool has an empty version stamp ($stamp)"
+  fi
+done
+shopt -u nullglob
+
 check tools.git; if command -v git >/dev/null; then pass "git $(git --version | awk '{print $3}')"; else fail "git not on PATH"; fi
 check tools.gh;  if command -v gh >/dev/null; then pass "gh $(gh --version | head -1 | awk '{print $3}')"; else fail "gh not on PATH"; fi
 check claude.cli

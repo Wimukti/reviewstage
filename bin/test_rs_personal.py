@@ -32,11 +32,13 @@ import rs_queue as Q  # noqa: E402  (reloaded per test by load_server)
 SECRET = "b" * 64
 USER = "ann"
 TOKEN = "ghp_personal_test_token_000000000000"
-PAGE1 = [{"full_name": "ann/widgets", "private": False, "pushed_at": "2026-10-01T10:00:00Z",
+PAGE1 = [{"full_name": "ann/widgets", "private": False, "archived": False, "pushed_at": "2026-10-01T10:00:00Z",
           "owner": {"avatar_url": "https://avatars.example/ann"}},
-         {"full_name": "acme/api", "private": True, "pushed_at": "2026-09-30T10:00:00Z",
+         {"full_name": "acme/api", "private": True, "archived": False, "pushed_at": "2026-09-30T10:00:00Z",
           "owner": {"avatar_url": "https://avatars.example/acme"}}]
-PAGE2 = [{"full_name": "acme/billing", "private": True, "pushed_at": "2026-09-01T10:00:00Z",
+PAGE2 = [{"full_name": "acme/billing", "private": True, "archived": False, "pushed_at": "2026-09-01T10:00:00Z",
+          "owner": {"avatar_url": "https://avatars.example/acme"}},
+         {"full_name": "acme/old", "private": False, "archived": True, "pushed_at": "2025-01-01T10:00:00Z",
           "owner": {"avatar_url": "https://avatars.example/acme"}}]
 PR = {"number": 7, "title": "Add a lead-time badge", "author": {"login": "carol", "is_bot": False},
       "headRefOid": "abc123", "url": "https://github.com/acme/api/pull/7", "additions": 3,
@@ -227,10 +229,11 @@ class GithubReposRoute(Base):
         self.assertEqual(out["status"], 200)
         rows = out["body"]["repos"]
         self.assertEqual([r["full_name"] for r in rows], ["ann/widgets", "acme/api",
-                                                           "acme/billing"])
-        self.assertEqual(sorted(rows[0]), ["already", "full_name", "owner_avatar", "private",
-                                           "pushed_at"])
-        self.assertEqual([r["already"] for r in rows], [False, True, False])
+                                                           "acme/billing", "acme/old"])
+        self.assertEqual(sorted(rows[0]), ["already", "archived", "full_name", "owner_avatar",
+                                           "private", "pushed_at"])
+        self.assertEqual([r["already"] for r in rows], [False, True, False, False])
+        self.assertEqual([r["archived"] for r in rows], [False, False, False, True])
         self.assertEqual(rows[1]["owner_avatar"], "https://avatars.example/acme")
         self.assertTrue(rows[1]["private"])
         # The token gh saw is the USER's, and it reached gh through the environment only.

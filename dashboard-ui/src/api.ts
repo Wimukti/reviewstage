@@ -146,6 +146,7 @@ export interface Me {
 export interface GithubRepo {
   full_name: string;
   private: boolean;
+  archived: boolean;
   pushed_at: string;
   owner_avatar: string;
   already: boolean; // already configured on this install

@@ -17,6 +17,7 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
   const [q, setQ] = useState("");
   const [needle, setNeedle] = useState("");
   const [rows, setRows] = useState<GithubRepo[] | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
@@ -56,6 +57,11 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
   }, [needle]);
 
   const pickedSet = useMemo(() => new Set(picked.map((r) => r.toLowerCase())), [picked]);
+  const visibleRows = useMemo(
+    () => rows?.filter((r) => showArchived || !r.archived) ?? null,
+    [rows, showArchived],
+  );
+  const hasArchived = rows?.some((r) => r.archived) ?? false;
   const full = picked.length >= MAX_REPOS;
 
   function toggle(name: string, on: boolean) {
@@ -102,6 +108,16 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
           <Banner kind="err" role="alert">{err}</Banner>
         </div>
       )}
+      {hasArchived && (
+        <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted-foreground" data-testid="show-archived-toggle">
+          <Checkbox
+            checked={showArchived}
+            onCheckedChange={(v) => setShowArchived(v === true)}
+            aria-label="Show archived repositories"
+          />
+          Show archived repositories
+        </label>
+      )}
       <ul className="m-0 mt-3 max-h-[min(52vh,420px)] list-none overflow-y-auto overflow-x-hidden rounded-lg bg-muted/40 p-0" data-testid="repo-list" aria-busy={rows === null}>
         {rows === null &&
           [0, 1, 2, 3, 4].map((i) => (
@@ -111,14 +127,24 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
               <Skeleton className="ml-auto h-3 w-16" />
             </li>
           ))}
-        {rows && rows.length === 0 && !err && (
+        {visibleRows && visibleRows.length === 0 && !err && (
           <li>
-            <EmptyState icon={FolderGit2} title={needle ? "No match" : "No repositories"} className="py-8">
-              {needle ? <>Nothing you can see is called “{needle}”.</> : <>GitHub lists no repositories for your account.</>}
+            <EmptyState
+              icon={FolderGit2}
+              title={needle ? "No match" : hasArchived ? "No active repositories" : "No repositories"}
+              className="py-8"
+            >
+              {needle ? (
+                <>Nothing you can see is called “{needle}”.</>
+              ) : hasArchived ? (
+                <>All repositories in this result are archived. Show archived repositories to include them.</>
+              ) : (
+                <>GitHub lists no repositories for your account.</>
+              )}
             </EmptyState>
           </li>
         )}
-        {rows?.map((r) => {
+        {visibleRows?.map((r) => {
           const on = pickedSet.has(r.full_name.toLowerCase());
           const id = `repo-${r.full_name.replace(/[^a-z0-9]/gi, "-")}`;
           return (

@@ -733,7 +733,7 @@ export interface SettingsData {
   bannerHtml?: string;
 }
 
-// Why a reviewer dropped a finding (openspec/changes/p0-proof/lane2-reasons.md). The ids are
+// Why a reviewer dropped a finding (openspec/changes/archive/2026-10-18-p0-proof/lane2-reasons.md). The ids are
 // the server's — rs_learn.REASONS, mirrored here verbatim and checked by a unit test — so
 // `_post_form` can refuse anything else with a 400. The labels are UI copy.
 export const REASONS = [

@@ -30,13 +30,13 @@ Priorities, not promises. Open an issue to argue for reordering.
 - Docker Compose install with `team` and `demo` profiles; `bin/doctor.sh`.
 - Guided first-run tour; command palette.
 - Repository profile: deterministic signals + one Sonnet call name each repo's critical paths (validated against the tree); Standard/Deep reviews walk the ones a PR touches; editable, versioned and restorable, schema-versioned, with staleness reported against the current head; optional auto re-profile; kept rate on critical paths in Insights.
+- Confidence per finding: Checked, Likely or Maybe on every card, each with its reason line, a disproof pass before the review is shown, and a calibration readout of whether confidence predicted keep rate (1.2.0).
+- Installable PWA: manifest, root-scoped service worker, offline page, phone-width layout. See [Mobile](/developers/mobile/).
 
 ## P1, in flight
 
 - **Settings page, continued.** Repositories and devices in the dashboard instead of `.env` edits (notifiers and the poller already live there).
-- **Confidence per finding.** The agent states how sure it is; the card shows it; learnings record whether confidence predicted keep rate.
 - **Reviewer handoff UI.** Explicitly pass a PR you have opened to a teammate, with your ticks and edits, instead of them starting cold.
-- **Installable PWA.** Manifest, root-scoped service worker, offline page, phone-width layout. Shipped; see [Mobile](/developers/mobile/).
 - **Public keep rate.** An opt-in badge for a repository: "N% of assistant findings were posted unchanged over the last 90 days."
 
 ## P2: later

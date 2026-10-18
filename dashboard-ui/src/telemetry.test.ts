@@ -1,4 +1,4 @@
-// The consent card and the Privacy section (openspec/changes/p0-proof/lane1-telemetry.md):
+// The consent card and the Privacy section (openspec/changes/archive/2026-10-18-p0-proof/lane1-telemetry.md):
 // both list the exact shipped schema and the never-list, the card offers two equal choices with
 // "Keep it local" first, and the section states the decision and why. Rendered with
 // react-dom/server, so no browser and no API: PrivacyRows takes its data as a prop.

@@ -2,7 +2,7 @@
 // desktop bridge, personal mode), offline.html and the in-app unreachable state at 390. Runs
 // against the e2e fixture server; start it the way playwright.config.ts does, then, from
 // dashboard-ui/:
-//   RS_E2E_PORT=8997 OUT=../openspec/changes/desktop-always-on/after node --import tsx e2e/shots-always-on.ts
+//   RS_E2E_PORT=8997 OUT=../openspec/changes/archive/2026-10-18-desktop-always-on/after node --import tsx e2e/shots-always-on.ts
 import { chromium, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

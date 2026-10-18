@@ -1,5 +1,5 @@
 """rs_telemetry.py — zero-by-default product telemetry: local counters always, sending never
-unless four gates agree (openspec/changes/p0-proof/lane1-telemetry.md).
+unless four gates agree (openspec/changes/archive/2026-10-18-p0-proof/lane1-telemetry.md).
 
 What is counted is a closed list of EVENT CLASSES with fixed vocabularies (SCHEMA below). A
 counter key is built only from that allowlist, so no diff, finding text, repository name, user

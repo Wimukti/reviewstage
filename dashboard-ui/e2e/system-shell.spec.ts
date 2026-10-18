@@ -1,4 +1,4 @@
-// Lane S1 of the system rebuild (openspec/changes/rebuild-on-a-system/design.md §2–§4): the
+// Lane S1 of the system rebuild (openspec/changes/archive/2026-10-18-rebuild-on-a-system/design.md §2–§4): the
 // shell and the queue are built from the components, not from bespoke rules. No dot-and-word
 // status anywhere on the queue, a glyph on every nav item, the theme switch inside the account
 // menu, avatars and a repository pill on every row, no monospace outside code, a Radix dialog

@@ -1,6 +1,6 @@
 // Lane D1 screenshots: the three wizard steps, both themes, 1440 and 390, against the personal
 // fixture server welcome.spec.ts boots (or one you start the same way). Usage:
-//   RS_E2E_PORT=8981 OUT=../openspec/changes/npx-desktop/after/d1 node --import tsx e2e/shots-welcome.ts
+//   RS_E2E_PORT=8981 OUT=../openspec/changes/archive/2026-10-18-npx-desktop/after/d1 node --import tsx e2e/shots-welcome.ts
 // The GitHub step is shot with the device flow advertised (the desktop app's .env sets
 // GH_DEVICE_FLOW=1), the Claude step signed in and unconnected, the repositories step with two
 // rows checked.

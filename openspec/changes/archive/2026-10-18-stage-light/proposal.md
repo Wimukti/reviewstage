@@ -6,7 +6,7 @@ The "one identity" redesign made the product consistent, accessible and honest. 
 it attractive. The maintainer's verdict after using it for a day: the home page is a wall of
 text nobody will read, and the tool, from the login screen onward, looks old.
 
-Both are right, and the evidence is in `openspec/changes/one-identity-redesign/after/`:
+Both are right, and the evidence is in `openspec/changes/archive/2026-10-18-one-identity-redesign/after/`:
 
 - **The home page is a document.** Seven feature sections, each a mock beside four to six
   paragraphs, then tiers, then steps, then a CTA. About 2,400 words. Above the fold alone:

@@ -1,5 +1,5 @@
 /* ReviewStage tokens. Shared verbatim by the app (dashboard-ui/src/tokens.css) and the site
-   (website/src/styles/tokens.css); the contract is openspec/changes/stage-light/design.md §1.
+   (website/src/styles/tokens.css); the contract is openspec/changes/archive/2026-10-18-stage-light/design.md §1.
    No other colour literal may appear in any stylesheet. Dark is the default; light is opt-in,
    and "system" is stamped as an attribute so the media query below can target it. */
 :root {

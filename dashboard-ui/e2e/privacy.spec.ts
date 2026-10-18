@@ -1,4 +1,4 @@
-// Zero-by-default telemetry (openspec/changes/p0-proof/lane1-telemetry.md): through a whole
+// Zero-by-default telemetry (openspec/changes/archive/2026-10-18-p0-proof/lane1-telemetry.md): through a whole
 // keep / drop / post flow and the Privacy controls, NOT ONE request leaves the browser for any
 // origin but the fixture server — and the server itself reports `no_consent`. The fixture has
 // no RS_TELEMETRY_ENDPOINT, so even consenting changes nothing on the wire.

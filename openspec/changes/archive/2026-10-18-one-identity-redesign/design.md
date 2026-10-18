@@ -147,7 +147,7 @@ descriptor), all rendered from `assets/logo.svg`; `<head>` links all of them plu
 
 - `tokens.test.ts` (contrast) passes for both themes.
 - Every page screenshotted at 1440 and 390, both themes, into
-  `openspec/changes/one-identity-redesign/after/`, alongside the `before/` set copied from
+  `openspec/changes/archive/2026-10-18-one-identity-redesign/after/`, alongside the `before/` set copied from
   the audit's screenshots. Reviewed side by side.
 - `document.documentElement.scrollWidth <= innerWidth` at 390 on every page, in a test.
 - Every interactive element reachable by Tab with the ring visible, in a test that walks

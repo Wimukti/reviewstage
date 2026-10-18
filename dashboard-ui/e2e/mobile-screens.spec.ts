@@ -496,7 +496,7 @@ test.describe("the PR page on a phone", () => {
     await expect(card.getByTestId("teach")).toBeVisible();
   });
 
-  // Dismissal reasons (openspec/changes/p0-proof/lane2-reasons.md) on the phone: the drop is
+  // Dismissal reasons (openspec/changes/archive/2026-10-18-p0-proof/lane2-reasons.md) on the phone: the drop is
   // the swipe and has already happened; a bottom chip row above the pill asks why for ~6 s.
   test("a swipe-drop opens the reason bar above the pill; a pick marks the dropped line and rides the post", async ({ page }) => {
     const posts = await stub(page, "**/api/post", { bannerHtml: DRY_BANNER });

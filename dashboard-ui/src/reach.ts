@@ -1,4 +1,4 @@
-// "Your Mac isn't reachable" (openspec/changes/desktop-always-on F5). On a phone the server is
+// "Your Mac isn't reachable" (openspec/changes/archive/2026-10-18-desktop-always-on F5). On a phone the server is
 // the desktop app on the person's Mac, reached through a tunnel: when the Mac sleeps or the app
 // quit, Cloudflare answers 530 (or a 502/503/504), or the request fails outright. Those are not
 // errors the person can act on in the page, so the app shows one full-screen state instead of

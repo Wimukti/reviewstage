@@ -29,7 +29,7 @@ cpSync(join(repo, "bin", "static"), join(out, "bin", "static"), { recursive: tru
 cpSync(join(repo, "skills"), join(out, "skills"), { recursive: true, filter: (src) => !/\/examples\//.test(src) || true });
 for (const f of ["LICENSE"]) if (existsSync(join(repo, f))) cpSync(join(repo, f), join(out, "..", f));
 
-// The menu-bar icon (openspec/changes/desktop-always-on F2): a macOS template image — black on
+// The menu-bar icon (openspec/changes/archive/2026-10-18-desktop-always-on F2): a macOS template image — black on
 // transparent, the `Template` suffix tells AppKit to tint it for a light or dark menu bar —
 // rendered from the app mark at 16 px and 32 px (@2x). sharp is the dashboard's dev dependency
 // (it renders the PWA icons the same way); the desktop package itself does not depend on it.

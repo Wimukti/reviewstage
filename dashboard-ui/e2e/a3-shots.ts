@@ -1,5 +1,5 @@
 // Lane A3 proof shots: every page this lane owns, both themes, 1440 and 390, into
-// openspec/changes/stage-light/after/a3/. Modelled on pages-shot.ts. Reuses a running e2e server
+// openspec/changes/archive/2026-10-18-stage-light/after/a3/. Modelled on pages-shot.ts. Reuses a running e2e server
 // when one answers on PORT; otherwise builds the fixture and boots one for the duration.
 //   node --import tsx e2e/a3-shots.ts
 import { chromium } from "@playwright/test";

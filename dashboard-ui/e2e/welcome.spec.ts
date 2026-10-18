@@ -1,4 +1,4 @@
-// The first-run wizard of personal mode (openspec/changes/npx-desktop §4), against a server
+// The first-run wizard of personal mode (openspec/changes/archive/2026-10-18-npx-desktop §4), against a server
 // booted HERE on the personal fixture: RS_PERSONAL=1, zero repositories, one user with a stored
 // dummy token, a fake gh. Serial, because the steps build on each other the way a first run
 // does — sign in, skip Claude, pick two repositories, land on the queue.

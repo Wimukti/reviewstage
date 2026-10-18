@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // `npx reviewstage` lands here. The job is small: find the Electron binary npm installed next
 // to this package, hand it main.js, and get out of the terminal's way — the app runs detached,
-// so closing the terminal leaves it running (openspec/changes/desktop-always-on F1).
+// so closing the terminal leaves it running (openspec/changes/archive/2026-10-18-desktop-always-on F1).
 // Everything that matters happens in main.js.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";

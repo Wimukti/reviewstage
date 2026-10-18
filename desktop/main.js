@@ -2,9 +2,9 @@
 // starts and owns. Everything the Docker install does with Compose and a browser happens here:
 // a root with a secret, the tools the scripts need, the server on a free port, the queue count
 // on the dock, a notification when a review arrives, and on request a public tunnel for the
-// phone. See openspec/changes/npx-desktop/design.md.
+// phone. See openspec/changes/archive/2026-10-18-npx-desktop/design.md.
 //
-// It is a resident app (openspec/changes/desktop-always-on): the launcher detaches it from the
+// It is a resident app (openspec/changes/archive/2026-10-18-desktop-always-on): the launcher detaches it from the
 // terminal, one instance runs per profile, closing the window leaves it in the menu bar, phone
 // access comes back on by itself after a restart, and a newer published version is offered and
 // installed from inside the app.

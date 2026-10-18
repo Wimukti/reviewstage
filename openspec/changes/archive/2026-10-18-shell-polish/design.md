@@ -57,6 +57,6 @@ Two things the maintainer flagged on 10/04/26 after using rc.31:
 `pnpm typecheck && pnpm test && pnpm build`; `RS_E2E_PORT=8993 pnpm test:browser` full, run
 twice; desktop `RS_SKIP_UI_BUILD=1 node scripts/prepack.mjs && node --test test/*.test.mjs`;
 website `pnpm build && pnpm check && pnpm verify` (docs changed). Screenshots to
-`openspec/changes/shell-polish/after/`: Settings with the phone card off and on (QR via the fake
+`openspec/changes/archive/2026-10-18-shell-polish/after/`: Settings with the phone card off and on (QR via the fake
 bridge), the account menu open, Settings → Appearance, the Queue "?" popover; 1440 and 390,
 dark. Look at each.

@@ -1,5 +1,5 @@
 // A TypeScript port of bin/rs_evidence.py — the deterministic evidence check and the inline
-// snippet (openspec/changes/trust-and-plain/design.md §1.4). The server runs the Python module
+// snippet (openspec/changes/archive/2026-10-18-trust-and-plain/design.md §1.4). The server runs the Python module
 // once per render; this port exists for the one place that has no server, the public replay
 // (src/replay/map.ts), whose fixtures carry the diff hunks. src/evidence.test.ts holds it to the
 // Python module's own output for the e2e fixture (src/stage/fixture.json, written by the Python

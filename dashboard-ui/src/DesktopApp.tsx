@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 
-// Settings → Desktop app (openspec/changes/desktop-always-on F2 + F4): the running version and
+// Settings → Desktop app (openspec/changes/archive/2026-10-18-desktop-always-on F2 + F4): the running version and
 // its update state, and open at login. The section header carries the title; this is the card.
 export function DesktopApp() {
   const update = updateBridge();

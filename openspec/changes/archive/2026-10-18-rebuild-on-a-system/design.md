@@ -65,7 +65,7 @@ and Vite from one source `dashboard-ui/src/tw.css`, twenty shadcn/ui components 
 Lanes run one at a time. Each lane's gate: `pnpm typecheck && pnpm test && pnpm build`,
 `RS_E2E_PORT=<unique> pnpm test:browser` once, `python3 -m unittest discover -s bin`, grep
 gates from §2, screenshots of every rebuilt view in both themes at 1440 and 390 into
-`openspec/changes/rebuild-on-a-system/after/<lane>/`, each one looked at.
+`openspec/changes/archive/2026-10-18-rebuild-on-a-system/after/<lane>/`, each one looked at.
 
 ## 4. Done when
 

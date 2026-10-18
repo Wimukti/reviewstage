@@ -17,7 +17,6 @@ Prefer: senior/staff; at least two on Linux; at least two whose team has muted a
 
 ## Where to find them (no public posts)
 
-- Blind-name-test participants who answered "yes" to "may we contact you".
 - Former colleagues who now run teams that ship agent-written code.
 - Authors of recent r/ClaudeCode / r/ExperiencedDevs threads about reviewing AI PRs (DM, don't reply publicly).
 - People who starred Plannotator or `mitchellh/vouch` in the last 30 days and show GitHub review activity.

@@ -32,3 +32,6 @@ docs/launch/partners.csv
 # lane 4: the public replay build and its copy inside the site
 dashboard-ui/replay-dist/
 website/public/try/
+
+# Default output of website/scripts/verify-site.mjs; it changes on every run.
+openspec/changes/landing-v2/after/verify/

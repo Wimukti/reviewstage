@@ -41,6 +41,8 @@ for _m in (P, Q, W):
 assert Q.QUEUE.parent == Path(_TMP), "test ROOT did not take"
 
 REPO = "acme/widgets"
+# A fixed date ages past max_pr_age_days and the PR gets suppressed, so keep it recent.
+CREATED = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
 
 
 def row(num=42, logins=("alice",), title="Add lead-time badge"):
@@ -48,8 +50,8 @@ def row(num=42, logins=("alice",), title="Add lead-time badge"):
                         "url": f"https://github.com/{REPO}/pull/{num}",
                         "additions": 1, "deletions": 0, "changedFiles": 1,
                         "requested": list(logins), "author": "carol", "isBot": False,
-                        "isDraft": False, "head": "abc", "createdAt": "2026-09-01T10:00:00Z",
-                        "updatedAt": "2026-09-02T10:00:00Z"})
+                        "isDraft": False, "head": "abc", "createdAt": CREATED,
+                        "updatedAt": CREATED})
 
 
 class Base(unittest.TestCase):
@@ -162,8 +164,8 @@ class SeenAfterSend(Base):
                 "requested_reviewer": {"login": "alice"},
                 "pull_request": {"number": num, "title": "t", "draft": draft,
                                  "user": {"login": "carol", "type": "User"},
-                                 "head": {"sha": "abc"}, "created_at": "2026-09-01T10:00:00Z",
-                                 "updated_at": "2026-09-02T10:00:00Z"}}
+                                 "head": {"sha": "abc"}, "created_at": CREATED,
+                                 "updated_at": CREATED}}
 
     def test_a_failed_send_is_not_marked_seen(self):
         W.handle("pull_request", self.payload(), self.ctx(ok=False))
@@ -314,9 +316,9 @@ FAKE_GH = """#!/usr/bin/env bash
 if [ "${MODE:-ok}" = fail ]; then echo "gh: HTTP 401: Bad credentials" >&2; exit 1; fi
 echo '[{"number":77,"title":"live","author":{"login":"carol","is_bot":false},
   "headRefOid":"abc","url":"https://github.com/acme/widgets/pull/77","additions":1,
-  "deletions":0,"changedFiles":1,"isDraft":false,"createdAt":"2026-09-01T10:00:00Z",
-  "updatedAt":"2026-09-02T10:00:00Z"}]'
-"""
+  "deletions":0,"changedFiles":1,"isDraft":false,"createdAt":"@CREATED@",
+  "updatedAt":"@CREATED@"}]'
+""".replace("@CREATED@", CREATED)
 
 
 @unittest.skipUnless(shutil.which("jq") and shutil.which("bash"), "jq/bash not installed")

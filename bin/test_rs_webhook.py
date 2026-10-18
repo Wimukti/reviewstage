@@ -34,16 +34,18 @@ for _m in (P, Q, W):
 assert P.ROOT == Path(_TMP) and Q.QUEUE.parent == Path(_TMP), "test ROOT did not take"
 
 REPO = "acme/widgets"
+# A fixed date ages past max_pr_age_days and the PR gets suppressed, so keep it recent.
+CREATED = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
 SECRET = "unit-test-secret"
 USERS = {"alice": {"slack_id": "U1", "discord_id": "D1"}, "bob": {"slack_id": ""}}
 
 
-def pr_obj(number=42, head="abc123", draft=False, bot=False, created="2026-09-01T10:00:00Z"):
+def pr_obj(number=42, head="abc123", draft=False, bot=False, created=CREATED):
     return {
         "number": number, "title": "Add lead-time badge", "html_url": f"https://github.com/{REPO}/pull/{number}",
         "additions": 42, "deletions": 8, "changed_files": 5, "draft": draft,
         "user": {"login": "carol", "type": "Bot" if bot else "User"},
-        "head": {"sha": head}, "created_at": created, "updated_at": "2026-09-02T10:00:00Z",
+        "head": {"sha": head}, "created_at": created, "updated_at": CREATED,
     }
 
 
@@ -313,8 +315,8 @@ class PollerParity(Base):
         gh_row = {  # what `gh pr list --json <fields>` returns, tagged as pr-watch does
             "number": 42, "title": "Add lead-time badge", "author": {"login": "carol", "is_bot": False},
             "headRefOid": "abc123", "url": f"https://github.com/{REPO}/pull/42", "additions": 42,
-            "deletions": 8, "changedFiles": 5, "isDraft": False, "createdAt": "2026-09-01T10:00:00Z",
-            "updatedAt": "2026-09-02T10:00:00Z", "requested": ["alice"], "repo": REPO,
+            "deletions": 8, "changedFiles": 5, "isDraft": False, "createdAt": CREATED,
+            "updatedAt": CREATED, "requested": ["alice"], "repo": REPO,
         }
         # Two tagged lines (alice, bob) for the same PR, as two `gh` searches would produce.
         tagged = json.dumps(gh_row) + "\n" + json.dumps({**gh_row, "requested": ["bob"]}) + "\n"

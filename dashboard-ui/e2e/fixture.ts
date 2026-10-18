@@ -811,9 +811,14 @@ export async function patchJson(
   patch: Record<string, unknown> | ((body: any) => Record<string, unknown>),
 ) {
   await page.route(glob, async (route) => {
-    const r = await route.fetch();
-    const body = await r.json();
-    const extra = typeof patch === "function" ? patch(body) : patch;
-    await route.fulfill({ response: r, json: { ...body, ...extra } });
+    try {
+      const r = await route.fetch();
+      const body = await r.json();
+      const extra = typeof patch === "function" ? patch(body) : patch;
+      await route.fulfill({ response: r, json: { ...body, ...extra } });
+    } catch (e) {
+      // A page poll can still be in flight when the test ends; that rejection is not a failure.
+      if (!/Test ended|has been closed/.test(String(e))) throw e;
+    }
   });
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Personal mode (RS_PERSONAL=1) — openspec/changes/npx-desktop, lane D1.
+"""Personal mode (RS_PERSONAL=1) — openspec/changes/archive/2026-10-18-npx-desktop, lane D1.
 
 The desktop app starts the server with a .env that names no repository and holds no service
 token. Everything that assumed one has to bend: the boot guard, the repo list (now .env ∪
@@ -346,7 +346,7 @@ class PublicUrlRoute(Base):
 
 
 class PairRoute(Base):
-    """QR pairing (openspec/changes/phone-pairing-and-ease, A1): the desktop mints a nonce for
+    """QR pairing (openspec/changes/archive/2026-10-18-phone-pairing-and-ease, A1): the desktop mints a nonce for
     the person signed in on the Mac; the phone that opens it gets that person's session."""
 
     def mint(self, **kw):
@@ -436,7 +436,7 @@ class PairRoute(Base):
 
 
 class NewAddressPush(Base):
-    """openspec/changes/desktop-always-on F3: the quick tunnel's address changes when the app
+    """openspec/changes/archive/2026-10-18-desktop-always-on F3: the quick tunnel's address changes when the app
     restarts. Once the launcher announces the new address, every subscribed device is pushed a
     single-use sign-in link for its own login on it — the same pairing nonce the QR carries."""
 

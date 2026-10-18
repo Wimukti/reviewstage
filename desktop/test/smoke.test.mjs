@@ -65,7 +65,7 @@ test("a fresh root gets a secret and personal-mode defaults", async (t) => {
   assert.equal(code, 0);
 });
 
-// openspec/changes/desktop-always-on F1, for real: no RS_SMOKE, no --foreground. The launcher
+// openspec/changes/archive/2026-10-18-desktop-always-on F1, for real: no RS_SMOKE, no --foreground. The launcher
 // prints one line and exits while the app keeps serving; a second launch on the same ROOT
 // exits and leaves the first alone; SIGTERM takes the Quit path and the server goes with it.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

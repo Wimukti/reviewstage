@@ -1,4 +1,4 @@
-// Lane S2 of the system rebuild (openspec/changes/rebuild-on-a-system/design.md §2–§4): the PR
+// Lane S2 of the system rebuild (openspec/changes/archive/2026-10-18-rebuild-on-a-system/design.md §2–§4): the PR
 // page and the stack are built from the components, not from bespoke rules. No dot-and-word
 // status anywhere on the PR page; the repository is a pill on the breadcrumb line, never in the
 // title; every finding carries a severity badge and a sans path; the staged card's one border is

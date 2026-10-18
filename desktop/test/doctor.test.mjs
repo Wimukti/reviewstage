@@ -1,4 +1,4 @@
-// `npx reviewstage --doctor` (openspec/changes/p0-proof lane 5): the launcher forwards the
+// `npx reviewstage --doctor` (openspec/changes/archive/2026-10-18-p0-proof lane 5): the launcher forwards the
 // doctor flags, reports its node and Electron to the server-side checks, records the port it
 // chose in desktop.json so the doctor can find the running app, and relays the exit code.
 import { test } from "node:test";

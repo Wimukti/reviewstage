@@ -16,7 +16,7 @@ exposure, or they are judgments only the maintainer should make.
 | 2 | **Trademark advice before purchase** — commission or skip. | Diligence checklist in `name-test.md`. | Purchase. |
 | 3 | **Choose the final brand** after test + diligence. | Shortlist: KeepDrop (lead), DiffKeeper, PeerLayer. | Entire migration. |
 | 4 | **Buy domains and reserve namespaces** — `<name>.dev`, `<name>.app` (defensive), npm `<name>`, GitHub rename. | `openspec/changes/rename/inventory.md` lists exactly what changes and the rollback. | Migration execution. |
-| 5 | **Telemetry endpoint** — operate a first-party endpoint (where, who pays, log retention) or ship local-only counters with no endpoint at launch. | Lane 1 design in `openspec/changes/p0-proof/`. | Only the network half; local counters ship regardless. |
+| 5 | **Telemetry endpoint** — operate a first-party endpoint (where, who pays, log retention) or ship local-only counters with no endpoint at launch. | Lane 1 design in `openspec/changes/archive/2026-10-18-p0-proof/`. | Only the network half; local counters ship regardless. |
 | 6 | **Design-partner recruiting** — the DMs come from the maintainer. | `docs/launch/design-partners.md`. | Evidence for P1. |
 | 7 | **Re-record one word** in the voice-over once the name is chosen. | `docs/launch/video/voiceover-script.md`. | Launch video. |
 | 8 | **Search Console + Bing** sitemap submission (needs the maintainer's Google/Microsoft login). | Live sitemap index. | Search visibility monitoring. |

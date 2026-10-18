@@ -1,4 +1,4 @@
-// The verification contract on a finding card (openspec/changes/p0-proof/lane3-verify.md):
+// The verification contract on a finding card (openspec/changes/archive/2026-10-18-p0-proof/lane3-verify.md):
 // claim · severity · confidence · path:line · why it matters · how to verify, in that order, and
 // every row the run did not supply is omitted rather than labelled empty. Both cards — the desk
 // FindingCard and the phone PhoneFindingCard — render with react-dom/server so the check needs no
@@ -112,7 +112,7 @@ test("the two pieces render nothing at all for an absent value", () => {
   assert.match(renderToStaticMarkup(createElement(ConfidenceBadge, { confidence: "low" })), /low confidence/);
 });
 
-// ---- dismissal reasons (openspec/changes/p0-proof/lane2-reasons.md) ---------------------------
+// ---- dismissal reasons (openspec/changes/archive/2026-10-18-p0-proof/lane2-reasons.md) ---------------------------
 // The drop is the tick: a card rendered unticked is unticked in the same render that opens the
 // "Why?" row — nothing about the row gates the decision. Both cards render with react-dom/server.
 import { REASONS, type Reason } from "./api";

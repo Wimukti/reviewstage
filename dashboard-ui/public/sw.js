@@ -20,7 +20,7 @@
  *                       A gateway answer (502, 503, 504, or Cloudflare's 530 for a quick
  *                       tunnel whose Mac is asleep or whose app has quit) counts as no answer:
  *                       the person sees the app or "Your Mac isn't reachable", never a raw
- *                       error page (openspec/changes/desktop-always-on F5).
+ *                       error page (openspec/changes/archive/2026-10-18-desktop-always-on F5).
  *
  *   - push             shows the notification the server encrypted for this device (title,
  *                       one line, the page to open). A notification only ever opens a page.

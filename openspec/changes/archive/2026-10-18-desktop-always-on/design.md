@@ -82,6 +82,6 @@ tests: version comparison, LaunchAgent plist contents, the detach decision, sing
 retry); dashboard-ui typecheck/test/build + full browser suite twice (new: update banner via a
 fake bridge, unreachable state via routed 530s, sw navigation fallback on 530 in `pwa.spec.ts`);
 python suite (the new-address push); docs: INSTALL-DESKTOP, desktop/README, install.mdx, FAQ.
-Screenshots into `openspec/changes/desktop-always-on/after/`: update banner, Settings → Desktop
+Screenshots into `openspec/changes/archive/2026-10-18-desktop-always-on/after/`: update banner, Settings → Desktop
 app, phone offline page at 390, unreachable state at 390. Prove F1 for real on this Mac: run
 the launcher, kill its parent shell, confirm the Electron process and `/health` survive.

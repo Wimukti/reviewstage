@@ -3,7 +3,7 @@ import { ArrowUpCircle, X } from "lucide-react";
 import { dismissVersion, dismissedVersion, updateBridge, useUpdate, refreshUpdate } from "./desktop";
 import { Button } from "@/components/ui/button";
 
-// The desktop app's update banner (openspec/changes/desktop-always-on F4): one slim line at the
+// The desktop app's update banner (openspec/changes/archive/2026-10-18-desktop-always-on F4): one slim line at the
 // top of the shell when a newer version is published. "Restart to update" starts the new version
 // and quits this one; the new one opens on the same data. Dismissed for that version only.
 export function UpdateBanner() {

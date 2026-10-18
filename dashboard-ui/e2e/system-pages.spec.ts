@@ -1,4 +1,4 @@
-// Lane S3 of the system rebuild (openspec/changes/rebuild-on-a-system/design.md §2–§4): Skills,
+// Lane S3 of the system rebuild (openspec/changes/archive/2026-10-18-rebuild-on-a-system/design.md §2–§4): Skills,
 // Insights, Learnings, QA guides, Integrations and Settings are built from the components, not
 // from bespoke rules. No dot-and-word status on any of them, no sentence under a title, Radix
 // tabs on Skills with the scores as a real table and the editor as a code surface, one row of

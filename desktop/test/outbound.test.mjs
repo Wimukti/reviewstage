@@ -1,4 +1,4 @@
-// Zero-by-default telemetry (openspec/changes/p0-proof/lane1-telemetry.md): the desktop app
+// Zero-by-default telemetry (openspec/changes/archive/2026-10-18-p0-proof/lane1-telemetry.md): the desktop app
 // makes exactly the outbound calls named here and no other. Every shipped JavaScript file is
 // scanned for fetch / https.request / http.request / net.request; a new caller has to be added
 // to this list by hand, with its reason, so an unasked-for network call cannot slip in.

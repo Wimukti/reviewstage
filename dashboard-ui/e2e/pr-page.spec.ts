@@ -424,7 +424,7 @@ test.describe("the stack page", () => {
   });
 });
 
-// Dismissal reasons (openspec/changes/p0-proof/lane2-reasons.md). The drop is the untick and
+// Dismissal reasons (openspec/changes/archive/2026-10-18-p0-proof/lane2-reasons.md). The drop is the untick and
 // is instant; the "Why?" chip row appears under the card for ~6 s or until the next decision;
 // a chosen reason rides the post body as `reasons[i]` for dropped indices only.
 test.describe("dismissal reasons", () => {

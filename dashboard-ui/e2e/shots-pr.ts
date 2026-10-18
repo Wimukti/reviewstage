@@ -1,6 +1,6 @@
 // Screenshots for the design review (design.md §8): the PR page, the blocker PR and the stack
 // page in both themes at 1440 and 390, against a server already running on RS_E2E_PORT with the
-// fixture built. Usage: RS_E2E_PORT=8992 OUT=../openspec/changes/one-identity-redesign/after/pages \
+// fixture built. Usage: RS_E2E_PORT=8992 OUT=../openspec/changes/archive/2026-10-18-one-identity-redesign/after/pages \
 //   node --import tsx e2e/shots.ts
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";

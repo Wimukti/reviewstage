@@ -18,7 +18,7 @@ text_files() {
   find website/src -type f \( -name '*.md' -o -name '*.mdx' \)
   find docs/launch -type f \( -name '*.md' -o -name '*.srt' \)
   printf '%s\n' README.md desktop/README.md docs/INSTALL-DESKTOP.md \
-    skills/pr-review/SKILL.md skills/pr-disproof/SKILL.md openspec/changes/copy-audit/audit.md
+    skills/pr-review/SKILL.md skills/pr-disproof/SKILL.md openspec/changes/archive/2026-10-18-copy-audit/audit.md
 }
 code_files() {
   find website/src -type f \( -name '*.astro' -o -name '*.ts' -o -name '*.tsx' -o -name '*.mjs' \)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rs_doctor.py and the doctor.sh that merges it (openspec/changes/p0-proof lane 5).
+"""rs_doctor.py and the doctor.sh that merges it (openspec/changes/archive/2026-10-18-p0-proof lane 5).
 
 The two false results the lane fixes, pinned: a personal install must not FAIL for a missing
 GITHUB_PAT (it has none by design), and the port probe must use the port the desktop recorded

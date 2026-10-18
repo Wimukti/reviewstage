@@ -1,7 +1,7 @@
 // The pieces of "always on" that do not need Electron, so they can be tested with node --test:
 // when the launcher detaches, the single-instance retry, version comparison for updates, the
 // open-at-login files, and ROOT/desktop.json (what the app remembers between launches).
-// See openspec/changes/desktop-always-on/design.md.
+// See openspec/changes/archive/2026-10-18-desktop-always-on/design.md.
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 

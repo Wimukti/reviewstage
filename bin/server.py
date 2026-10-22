@@ -544,6 +544,7 @@ def user_github_repos(login, now=None):
             continue
         seen.add(name.lower())
         out.append({"full_name": name, "private": bool(x.get("private")),
+                    "archived": bool(x.get("archived")),
                     "pushed_at": x.get("pushed_at") or "",
                     "owner_avatar": (x.get("owner") or {}).get("avatar_url") or ""})
         if len(out) >= GITHUB_REPOS_CAP:

@@ -26,7 +26,11 @@ export const PERSONAL_REPOS = [
     owner: { avatar_url: "https://avatars.example.test/acme.png" } },
   { full_name: "acme/billing", private: true, pushed_at: "2026-09-04T09:00:00Z",
     owner: { avatar_url: "https://avatars.example.test/acme.png" } },
+  { full_name: "acme/legacy", private: false, archived: true, pushed_at: "2025-02-01T09:00:00Z",
+    owner: { avatar_url: "https://avatars.example.test/acme.png" } },
 ];
+// What the picker lists by default: archived repositories wait behind a toggle.
+export const PERSONAL_ACTIVE_REPOS = PERSONAL_REPOS.filter((r) => !r.archived);
 
 function write(path: string, body: string) {
   mkdirSync(dirname(path), { recursive: true });

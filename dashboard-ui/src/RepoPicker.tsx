@@ -2,7 +2,7 @@
 // repositories), tick the ones to watch, POST /api/repos. The wizard's third step and the
 // /repos page both render it; `onSaved` is where each one goes afterwards.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, FolderGit2, Lock, Search } from "lucide-react";
+import { Archive, Check, FolderGit2, Lock, Search } from "lucide-react";
 import { api, errMessage, type GithubRepo, type Me } from "./api";
 import { Banner, EmptyState, RepoPill, StatusBadge } from "./ui";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
   const [q, setQ] = useState("");
   const [needle, setNeedle] = useState("");
   const [rows, setRows] = useState<GithubRepo[] | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
@@ -56,6 +57,13 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
   }, [needle]);
 
   const pickedSet = useMemo(() => new Set(picked.map((r) => r.toLowerCase())), [picked]);
+  // A repo someone already reviews stays visible when archived, or they could not uncheck it.
+  const visibleRows = useMemo(
+    () => rows?.filter((r) => showArchived || !r.archived || pickedSet.has(r.full_name.toLowerCase())) ?? null,
+    [rows, showArchived, pickedSet],
+  );
+  const hasArchived = rows?.some((r) => r.archived) ?? false;
+  const hiddenArchived = (rows?.length ?? 0) - (visibleRows?.length ?? 0);
   const full = picked.length >= MAX_REPOS;
 
   function toggle(name: string, on: boolean) {
@@ -102,6 +110,16 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
           <Banner kind="err" role="alert">{err}</Banner>
         </div>
       )}
+      {hasArchived && (
+        <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted-foreground" data-testid="show-archived-toggle">
+          <Checkbox
+            checked={showArchived}
+            onCheckedChange={(v) => setShowArchived(v === true)}
+            aria-label="Show archived repositories"
+          />
+          Show archived repositories
+        </label>
+      )}
       <ul className="m-0 mt-3 max-h-[min(52vh,420px)] list-none overflow-y-auto overflow-x-hidden rounded-lg bg-muted/40 p-0" data-testid="repo-list" aria-busy={rows === null}>
         {rows === null &&
           [0, 1, 2, 3, 4].map((i) => (
@@ -111,14 +129,24 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
               <Skeleton className="ml-auto h-3 w-16" />
             </li>
           ))}
-        {rows && rows.length === 0 && !err && (
+        {visibleRows && visibleRows.length === 0 && !err && (
           <li>
-            <EmptyState icon={FolderGit2} title={needle ? "No match" : "No repositories"} className="py-8">
-              {needle ? <>Nothing you can see is called “{needle}”.</> : <>GitHub lists no repositories for your account.</>}
+            <EmptyState
+              icon={FolderGit2}
+              title={hiddenArchived ? "Only archived repositories" : needle ? "No match" : "No repositories"}
+              className="py-8"
+            >
+              {hiddenArchived ? (
+                <>{hiddenArchived.toLocaleString("en-US")} archived {hiddenArchived === 1 ? "repository is" : "repositories are"} hidden. Turn on “Show archived repositories” to see them.</>
+              ) : needle ? (
+                <>Nothing you can see is called “{needle}”.</>
+              ) : (
+                <>GitHub lists no repositories for your account.</>
+              )}
             </EmptyState>
           </li>
         )}
-        {rows?.map((r) => {
+        {visibleRows?.map((r) => {
           const on = pickedSet.has(r.full_name.toLowerCase());
           const id = `repo-${r.full_name.replace(/[^a-z0-9]/gi, "-")}`;
           return (
@@ -127,6 +155,7 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
                 <Checkbox id={id} checked={on} disabled={!on && full} onCheckedChange={(v) => toggle(r.full_name, v === true)} aria-label={r.full_name} />
                 <RepoPill repo={r.full_name} avatar={r.owner_avatar} className="max-w-[min(100%,320px)]" />
                 {r.private && <Lock aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" />}
+                {r.archived && <StatusBadge tone="graphite" icon={Archive} label="Archived" className="shrink-0" data-testid="repo-archived" />}
                 {r.already && <StatusBadge tone="green" icon={Check} label="Reviewing" className="shrink-0" data-testid="repo-already" />}
                 <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground max-[599px]:hidden">{pushedAgo(r.pushed_at)}</span>
               </label>

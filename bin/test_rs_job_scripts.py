@@ -499,15 +499,27 @@ class DisproofPass(JobScriptCase):
         self.assertIsNone(rev["comments"][0]["checked"])       # the normaliser's null, no verdict
         self.assertIsNone(rev.get("disproof"))
 
-    def test_a_plan_limit_is_said_in_the_status_not_a_generic_failure(self):
+    def test_a_refused_model_is_said_in_the_clis_own_words(self):
         self.behave('echo \'{"type":"rate_limit_event","rate_limit_info":{"status":"rejected",'
-                    '"errorCode":"credits_required","resetsAt":1793491200}}\'; exit 1')
+                    '"errorCode":"credits_required","resetsAt":1793491200}}\'; '
+                    'echo \'{"type":"result","is_error":true,"result":"Fable 5.1 requires usage '
+                    'credits. Switch to another model to continue."}\'; exit 1')
         r = self.run_job("run-review.sh", "acme/widgets", "7")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         status = (self.udir / "status").read_text()
-        self.assertIn("your Claude plan has reached its usage limit (credits_required)", status)
-        self.assertIn("It resets at", status)
+        self.assertIn("Claude refused the run: Fable 5.1 requires usage credits.", status)
+        self.assertIn("Pick another model", status)
+        self.assertNotIn("resets at", status)
         self.assertNotIn("produced no review.json", status)
+
+    def test_a_full_usage_window_says_when_it_resets(self):
+        self.behave('echo \'{"type":"rate_limit_event","rate_limit_info":{"status":"rejected",'
+                    '"errorCode":"rate_limited","resetsAt":1793491200}}\'; exit 1')
+        r = self.run_job("run-review.sh", "acme/widgets", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        status = (self.udir / "status").read_text()
+        self.assertIn("Claude refused the run (rate_limited)", status)
+        self.assertIn("It resets at", status)
 
     def test_a_bad_answer_never_fails_the_review(self):
         self.behave(

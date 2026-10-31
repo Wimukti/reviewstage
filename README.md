@@ -10,7 +10,12 @@
 
 <h1 align="center">ReviewStage</h1>
 
-<p align="center"><strong>Stage your PR review. Post it as yourself.</strong></p>
+<p align="center"><strong>Claude drafts your PR review. You edit, keep or drop findings, then publish as yourself.</strong></p>
+
+<p align="center">
+  <a href="https://reviewstage.dev/try/?example=webhook-retry"><strong>Try it without installing</strong></a> ·
+  <a href="#quick-start"><strong>Install: <code>npx reviewstage</code></strong></a>
+</p>
 
 <p align="center">
   <a href="https://reviewstage.dev/">Website</a> ·
@@ -29,10 +34,7 @@
   <a href="docs/demos/review.mp4"><img alt="A 20 second recording of a review: a PR URL is pasted into the queue and opened, Run review is clicked, the phases tick through, the reading guide and three findings appear with their Checked and Likely badges, one finding is unticked and marked Already handled with a chip, the sticky bar reads 2 staged, Post selected to GitHub is clicked and the bar switches to Posted as acme-dev." src="docs/demos/review.gif" width="960"></a>
 </p>
 
-<p align="center"><a href="https://youtu.be/yYMtQK-sVyg"><strong>Watch the 70-second demo, with voice</strong></a></p>
-
-> [!NOTE]
-> ReviewStage 1.0. The gate (nothing reaches GitHub without a signed-in person clicking, under their own name) has held since the first version. From 1.0 the configuration keys and the install follow semantic versioning: anything that would break an existing install waits for a major version.
+<p align="center"><a href="https://youtu.be/yYMtQK-sVyg"><strong>Watch the 70-second demo, with voice</strong></a> · <a href="https://reviewstage.dev/examples/">Three real reviews, and what a person did with them</a></p>
 
 **ReviewStage is the human review layer for AI-written pull requests. Claude drafts the review privately; you verify, edit and post it as yourself.** It is open source and self-hosted, built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code): it drafts your review from the real diff, on your own Claude plan, and stages every finding privately in a dashboard. You tick the ones worth posting, edit any of them, and post them as a plain `COMMENT` review under your own GitHub account. Approval is a separate click. Nothing posts until you click.
 
@@ -66,6 +68,11 @@ plan, and posting is live from the first run: the Post button is the gate.
   GitHub account** is in the account ⋯ menu.
 
 Details: [docs/INSTALL-DESKTOP.md](docs/INSTALL-DESKTOP.md) · [FAQ](https://reviewstage.dev/operations/faq/).
+
+If this workflow is useful to you, consider [starring ReviewStage on GitHub](https://github.com/Wimukti/reviewstage). It helps other reviewers find it.
+
+> [!NOTE]
+> ReviewStage 1.0. The gate (nothing reaches GitHub without a signed-in person clicking, under their own name) has held since the first version. From 1.0 the configuration keys and the install follow semantic versioning: anything that would break an existing install waits for a major version.
 
 ### For a team: Docker Compose
 

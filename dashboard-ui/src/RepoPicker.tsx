@@ -2,7 +2,7 @@
 // repositories), tick the ones to watch, POST /api/repos. The wizard's third step and the
 // /repos page both render it; `onSaved` is where each one goes afterwards.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, FolderGit2, Lock, Search } from "lucide-react";
+import { Archive, Check, FolderGit2, Lock, Search } from "lucide-react";
 import { api, errMessage, type GithubRepo, type Me } from "./api";
 import { Banner, EmptyState, RepoPill, StatusBadge } from "./ui";
 import { cn } from "@/lib/utils";
@@ -57,11 +57,13 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
   }, [needle]);
 
   const pickedSet = useMemo(() => new Set(picked.map((r) => r.toLowerCase())), [picked]);
+  // A repo someone already reviews stays visible when archived, or they could not uncheck it.
   const visibleRows = useMemo(
-    () => rows?.filter((r) => showArchived || !r.archived) ?? null,
-    [rows, showArchived],
+    () => rows?.filter((r) => showArchived || !r.archived || pickedSet.has(r.full_name.toLowerCase())) ?? null,
+    [rows, showArchived, pickedSet],
   );
   const hasArchived = rows?.some((r) => r.archived) ?? false;
+  const hiddenArchived = (rows?.length ?? 0) - (visibleRows?.length ?? 0);
   const full = picked.length >= MAX_REPOS;
 
   function toggle(name: string, on: boolean) {
@@ -131,13 +133,13 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
           <li>
             <EmptyState
               icon={FolderGit2}
-              title={needle ? "No match" : hasArchived ? "No active repositories" : "No repositories"}
+              title={hiddenArchived ? "Only archived repositories" : needle ? "No match" : "No repositories"}
               className="py-8"
             >
-              {needle ? (
+              {hiddenArchived ? (
+                <>{hiddenArchived.toLocaleString("en-US")} archived {hiddenArchived === 1 ? "repository is" : "repositories are"} hidden. Turn on “Show archived repositories” to see them.</>
+              ) : needle ? (
                 <>Nothing you can see is called “{needle}”.</>
-              ) : hasArchived ? (
-                <>All repositories in this result are archived. Show archived repositories to include them.</>
               ) : (
                 <>GitHub lists no repositories for your account.</>
               )}
@@ -153,6 +155,7 @@ export function RepoPicker({ me, onSaved, cta = "Start reviewing" }: { me: Me; o
                 <Checkbox id={id} checked={on} disabled={!on && full} onCheckedChange={(v) => toggle(r.full_name, v === true)} aria-label={r.full_name} />
                 <RepoPill repo={r.full_name} avatar={r.owner_avatar} className="max-w-[min(100%,320px)]" />
                 {r.private && <Lock aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" />}
+                {r.archived && <StatusBadge tone="graphite" icon={Archive} label="Archived" className="shrink-0" data-testid="repo-archived" />}
                 {r.already && <StatusBadge tone="green" icon={Check} label="Reviewing" className="shrink-0" data-testid="repo-already" />}
                 <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground max-[599px]:hidden">{pushedAgo(r.pushed_at)}</span>
               </label>

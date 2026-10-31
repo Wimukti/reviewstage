@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { onPath, platformKey, sha256, TOOLS, ensureFlock } from "../tools.js";
+import { spawnSync } from "node:child_process";
+import { onPath, platformKey, sha256, TOOLS, ensureFlock, ensureTimeout } from "../tools.js";
 
 test("every tool has a pinned sha256 and url for this platform", () => {
   const key = platformKey();
@@ -49,4 +50,23 @@ test("the flock shim is installed only where the OS has no flock", () => {
   } finally {
     process.env.PATH = saved;
   }
+});
+
+test("the timeout shim is installed only where the OS has no timeout, and it works", () => {
+  const root = mkdtempSync(join(tmpdir(), "rs-timeout-"));
+  mkdirSync(join(root, "bin"), { recursive: true });
+  const saved = process.env.PATH;
+  process.env.PATH = root;
+  let p;
+  try {
+    p = ensureTimeout(root);
+  } finally {
+    process.env.PATH = saved;
+  }
+  assert.equal(p, join(root, "bin", "timeout"));
+  const ok = spawnSync("python3", [p, "5s", "echo", "hi"], { encoding: "utf8" });
+  assert.equal(ok.status, 0);
+  assert.equal(ok.stdout, "hi\n");
+  const late = spawnSync("python3", [p, "1", "sleep", "30"], { encoding: "utf8" });
+  assert.equal(late.status, 124);
 });

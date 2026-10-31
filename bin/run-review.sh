@@ -184,14 +184,18 @@ have_free_disk "$ROOT" || fail "not enough free disk to start a review (MIN_FREE
 status "checking out the branch"
 [ -d "$BASE/.git" ] || ensure_base_clone "$REPO" >>"$ROOT/clone.log" 2>&1 \
   || fail "could not clone $REPO (see $ROOT/clone.log)"
-# `--` before the branch: it comes from the GitHub API, and a ref called `--upload-pack=…` would
-# otherwise be read as an option to git fetch.
-git -C "$BASE" fetch -q origin -- "$branch" || fail "could not fetch $branch"
+# refs/pull/N/head is served for every GitHub PR, including one from a fork whose branch does
+# not exist on origin (fetching by branch name failed for exactly those). A remote without pull
+# refs (a mirror, the test fixture) still works through the branch name. `--` before the
+# branch: it comes from the GitHub API and must never be read as an option.
+git -C "$BASE" fetch -q origin "+refs/pull/$PR/head:refs/reviewstage/pr-$PR" 2>/dev/null \
+  || git -C "$BASE" fetch -q origin -- "+refs/heads/$branch:refs/reviewstage/pr-$PR" \
+  || fail "could not fetch PR #$PR (branch $branch)"
 slug="${ACTOR:-shared}"
 wt="$WT/$(repo_slug "$REPO")-$PR-$slug"   # per repo + reviewer — no cross-reviewer collisions
 git -C "$BASE" worktree remove --force "$wt" 2>/dev/null || true
 git -C "$BASE" worktree prune >/dev/null 2>&1 || true   # drop records left by an earlier crash
-git -C "$BASE" worktree add -q --force -B "review-$PR-$slug" "$wt" "origin/$branch" \
+git -C "$BASE" worktree add -q --force -B "review-$PR-$slug" "$wt" "refs/reviewstage/pr-$PR" \
   || fail "could not create worktree"
 WT_PATH="$wt"; WT_BRANCH="review-$PR-$slug"   # the EXIT trap removes both, however we leave
 

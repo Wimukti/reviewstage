@@ -134,6 +134,18 @@ export function ensureFlock(root) {
   return dest;
 }
 
+/** macOS also lacks coreutils' timeout(1), which every agent run is wrapped in. Same shim pattern. */
+export function ensureTimeout(root) {
+  if (onPath("timeout")) return null;
+  const dest = join(toolsDir(root), "timeout");
+  const src = join(here, "timeout.py");
+  if (!existsSync(dest) || statSync(dest).size !== statSync(src).size) {
+    writeFileSync(dest, readFileSync(src));
+    chmodSync(dest, 0o755);
+  }
+  return dest;
+}
+
 /** Everything the server needs, in order. Resolves to { path, missing } where `missing` lists
  *  what cannot be provided (only `claude`, by design). */
 export async function ensureTools(root, onProgress = () => {}) {
@@ -143,5 +155,6 @@ export async function ensureTools(root, onProgress = () => {}) {
   await ensureTool("gh", root, onProgress);
   await ensureTool("jq", root, onProgress);
   ensureFlock(root);
+  ensureTimeout(root);
   return { binDir: toolsDir(root), missing };
 }

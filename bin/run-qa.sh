@@ -271,7 +271,11 @@ fi
 # The exit code used to be thrown away, and `[ -s qa.md ]` was the only gate — so a run killed by
 # `timeout` at 60% handed QA a guide that stopped mid-sentence, announced as "Guide ready".
 [ "$rc" = 124 ] && fail "the guide timed out after $QA_TIMEOUT — try again, or split the PR (see qa_agent.log)"
-[ -s "$wt/qa.md" ] || fail "the agent produced no qa.md (exit $rc, see qa_agent.log)"
+if [ ! -s "$wt/qa.md" ]; then
+  limit=$(agent_limit_message "$DIR/qa_agent.log")
+  [ -n "$limit" ] && fail "$limit"
+  fail "the agent produced no qa.md (exit $rc, see qa_agent.log)"
+fi
 [ "$rc" = 0 ] || fail "the agent exited $rc before finishing the guide (see qa_agent.log)"
 
 # Completeness, not just non-emptiness: the mandated end marker plus the three tiers and at

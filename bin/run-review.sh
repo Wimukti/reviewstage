@@ -378,7 +378,11 @@ if [ -n "$gh_before" ] && [ -n "$gh_after" ] && [ "$gh_before" != "$gh_after" ];
 fi
 
 [ "$rc" = 124 ] && fail "the review timed out after $TIMEOUT (see $DIR/agent.log)"
-[ -s "$wt/review.json" ] || fail "agent produced no review.json (exit $rc, see $DIR/agent.log)"
+if [ ! -s "$wt/review.json" ]; then
+  limit=$(agent_limit_message "$DIR/agent.log")
+  [ -n "$limit" ] && fail "$limit"
+  fail "agent produced no review.json (exit $rc, see $DIR/agent.log)"
+fi
 # Shape, not just "is JSON". `jq -e .` accepts a bare array, and the dashboard then threw on
 # .comments for every page load of that PR — permanently, since the file is what it re-reads.
 # jq's own output re-encodes invalid UTF-8 as U+FFFD, so this copy is always decodable.

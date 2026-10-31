@@ -499,6 +499,16 @@ class DisproofPass(JobScriptCase):
         self.assertIsNone(rev["comments"][0]["checked"])       # the normaliser's null, no verdict
         self.assertIsNone(rev.get("disproof"))
 
+    def test_a_plan_limit_is_said_in_the_status_not_a_generic_failure(self):
+        self.behave('echo \'{"type":"rate_limit_event","rate_limit_info":{"status":"rejected",'
+                    '"errorCode":"credits_required","resetsAt":1793491200}}\'; exit 1')
+        r = self.run_job("run-review.sh", "acme/widgets", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        status = (self.udir / "status").read_text()
+        self.assertIn("your Claude plan has reached its usage limit (credits_required)", status)
+        self.assertIn("It resets at", status)
+        self.assertNotIn("produced no review.json", status)
+
     def test_a_bad_answer_never_fails_the_review(self):
         self.behave(
             'if grep -q "FILES THEY CITE" "$SHIM_DIR/stdin"; then\n'

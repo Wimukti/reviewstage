@@ -219,6 +219,23 @@ agent_env_args() {
   while IFS= read -r -d '' x; do AGENT_ENV+=("$x"); done < <(agent_env)
 }
 
+# agent_limit_message <agent.log>: when the CLI refused the run because the person's Claude plan
+# is out of usage, say that and when it resets, instead of the generic "produced no review.json".
+# The CLI emits one stream-json line for it: {"type":"rate_limit_event","rate_limit_info":{...}}.
+agent_limit_message() {
+  local line reset code when
+  line=$(grep -a '"type":"rate_limit_event"' "$1" 2>/dev/null | grep -a '"status":"rejected"' | tail -1)
+  [ -n "$line" ] || return 0
+  code=$(printf '%s' "$line" | jq -r '.rate_limit_info.errorCode // .rate_limit_info.status // "limit"')
+  reset=$(printf '%s' "$line" | jq -r '.rate_limit_info.resetsAt // empty')
+  when=""
+  if [ -n "$reset" ]; then
+    when=$(date -r "$reset" '+%H:%M %Z' 2>/dev/null || date -d "@$reset" '+%H:%M %Z' 2>/dev/null || true)
+    [ -n "$when" ] && when=" It resets at $when."
+  fi
+  printf 'your Claude plan has reached its usage limit (%s), so the agent did not run.%s' "$code" "$when"
+}
+
 # --- write guards ------------------------------------------------------------------------------
 # A failed write is a real failure, not a quiet one. The job scripts deliberately do not run
 # under `set -e` (they handle their own errors), so every write the dashboard later reads goes

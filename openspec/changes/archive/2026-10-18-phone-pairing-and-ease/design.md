@@ -74,7 +74,7 @@ person who is already signed in on the Mac; it never introduces a shared or serv
 `python3 -m unittest discover -s bin -p 'test_*.py'`; `pnpm typecheck && pnpm test && pnpm build`;
 `RS_E2E_PORT=89xx pnpm test:browser` full; `desktop`: `node scripts/prepack.mjs && node --test
 test/*.test.mjs` (smoke included). Screenshots of the phone window with a pair code and of
-`/repos` into `openspec/changes/phone-pairing-and-ease/after/a/`.
+`/repos` into `openspec/changes/archive/2026-10-18-phone-pairing-and-ease/after/a/`.
 
 ## Lane B — documentation (website + docs/ + READMEs)
 
@@ -126,5 +126,5 @@ that gets it, ≤ 500 words unless it is reference. No prose about internals on 
 
 Work in your own worktree and branch; commit; do not push or merge. Verify every claim you make
 in your report with a command you ran. No new identity, token or write path beyond A1. Screens
-go to `openspec/changes/phone-pairing-and-ease/after/<lane>/`. Report: tip sha, gate numbers,
+go to `openspec/changes/archive/2026-10-18-phone-pairing-and-ease/after/<lane>/`. Report: tip sha, gate numbers,
 exact API shapes (lane A), files added/moved (lanes B, C), anything you could not do.

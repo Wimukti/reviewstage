@@ -1,4 +1,4 @@
-// The "Why?" prompt after a drop (openspec/changes/p0-proof/lane2-reasons.md §2.2).
+// The "Why?" prompt after a drop (openspec/changes/archive/2026-10-18-p0-proof/lane2-reasons.md §2.2).
 //
 // A drop is instant — the checkbox or the swipe has already done its work before this is
 // consulted. What this owns is only WHEN the chip row asking for a reason is on screen: it opens

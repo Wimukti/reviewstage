@@ -142,7 +142,7 @@ PAT = ENV.get("GITHUB_PAT", "")
 # REPO_ALLOW_ORG additionally accepts any repo under that org on demand (see repo_ok).
 REPOS = P.parse_repos(ENV)
 ALLOW_ORG = P.allow_org(ENV)
-# Personal mode (`npx reviewstage`, see openspec/changes/npx-desktop): one person, their own
+# Personal mode (`npx reviewstage`, see openspec/changes/archive/2026-10-18-npx-desktop): one person, their own
 # token, no service PAT. The server may boot with no repository — the first-run wizard adds
 # them to settings.json while it runs — and polls GitHub itself (rs_personal) instead of cron.
 PERSONAL = (ENV.get("RS_PERSONAL") or os.environ.get("RS_PERSONAL", "")) == "1"
@@ -2694,7 +2694,7 @@ def session_cookie(login, host="", epoch=None, secure=None):
             f"Max-Age={SESSION_TTL}; HttpOnly;{flag} SameSite=Lax")
 
 
-# --- phone pairing (openspec/changes/phone-pairing-and-ease, A1) ------------------------------
+# --- phone pairing (openspec/changes/archive/2026-10-18-phone-pairing-and-ease, A1) ------------------------------
 # The desktop app mints a single-use nonce for the person signed in on the Mac and puts it in
 # the QR code; the phone that scans it gets that person's session. In memory only: a restart
 # drops every pending code, and nothing here outlives the app that showed it.
@@ -2735,7 +2735,7 @@ def take_pair(nonce, now=None):
     return rec["login"]
 
 
-# --- a new public address (openspec/changes/desktop-always-on, F3) ---------------------------
+# --- a new public address (openspec/changes/archive/2026-10-18-desktop-always-on, F3) ---------------------------
 # A quick tunnel gets a new hostname every time the desktop app starts it, so the phone's
 # home-screen app points at an address that no longer answers. The launcher announces each
 # address once it is up; when it differs from the last one announced, every subscribed device
@@ -4931,7 +4931,7 @@ class Handler(BaseHTTPRequestHandler):
                               f"{cluster['prs']} PRs: <b>{html.escape(tidy_rule(rule))}</b>"
                               f"</div></div>"}, 200
 
-    # -- personal mode: the first-run wizard's routes (openspec/changes/npx-desktop §3) --------
+    # -- personal mode: the first-run wizard's routes (openspec/changes/archive/2026-10-18-npx-desktop §3) --------
     def api_github_repos(self, user, q=""):
         """GET /api/github/repos?q= — the signed-in user's repositories, through THEIR token."""
         repos, err = user_github_repos(user)

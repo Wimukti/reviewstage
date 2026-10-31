@@ -1,7 +1,7 @@
 // Screenshots for the stage-light review (design.md §9, lane A2): the PR page at rest, with the
 // stage lit after a re-tick, and posted; the queue and its empty state. Both themes, 1440 and
 // 390, against a server already running on RS_E2E_PORT with the fixture built.
-//   RS_E2E_PORT=8973 OUT=../openspec/changes/stage-light/after/a2 node --import tsx e2e/shots-a2.ts
+//   RS_E2E_PORT=8973 OUT=../openspec/changes/archive/2026-10-18-stage-light/after/a2 node --import tsx e2e/shots-a2.ts
 import { chromium, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

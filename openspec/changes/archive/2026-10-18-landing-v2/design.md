@@ -99,5 +99,5 @@ different → what does it do → can I trust it → how do I start.
 `pnpm build && pnpm check && pnpm verify` in website/ (update verify-site.mjs for the new
 sections: assert the contrast, features, gate, compare, FAQ headings exist; no sideways scroll at
 390 in both themes; Lighthouse ≥ 95). Screenshots at 1440 and 390, dark and light, of the whole
-page and of each section into `openspec/changes/landing-v2/after/`; look at every one, compare
+page and of each section into `openspec/changes/archive/2026-10-18-landing-v2/after/`; look at every one, compare
 with `before-*.png` (capture the live page first), fix what looks off.

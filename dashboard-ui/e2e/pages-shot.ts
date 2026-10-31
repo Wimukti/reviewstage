@@ -1,5 +1,5 @@
 // Lane S proof shots: every page this lane owns, both themes, 1440 and 390, into
-// openspec/changes/one-identity-redesign/after/pages/. Reuses a running e2e server when one
+// openspec/changes/archive/2026-10-18-one-identity-redesign/after/pages/. Reuses a running e2e server when one
 // answers on PORT (start it with `pnpm test:browser --grep nothing` or run this after a suite);
 // otherwise builds the fixture and boots one for the duration.
 //   node --import tsx e2e/pages-shot.ts

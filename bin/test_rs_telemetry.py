@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zero-by-default telemetry (bin/rs_telemetry.py, openspec/changes/p0-proof/lane1-telemetry.md).
+"""Zero-by-default telemetry (bin/rs_telemetry.py, openspec/changes/archive/2026-10-18-p0-proof/lane1-telemetry.md).
 
 What these prove:
   1. Nothing leaves the box unless every gate agrees. With urlopen replaced by a function that

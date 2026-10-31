@@ -1,7 +1,7 @@
 // Lane A screenshots (phone-pairing-and-ease): the desktop phone window with a pair code,
 // driven from desktop/pages/phone.html with fake data, and /repos at 1440 and 390, dark,
 // against the personal fixture. Usage, from dashboard-ui/:
-//   RS_E2E_PORT=8991 OUT=../openspec/changes/phone-pairing-and-ease/after/a node --import tsx e2e/shots-ease-a.ts
+//   RS_E2E_PORT=8991 OUT=../openspec/changes/archive/2026-10-18-phone-pairing-and-ease/after/a node --import tsx e2e/shots-ease-a.ts
 import { chromium } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";

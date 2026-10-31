@@ -1,4 +1,4 @@
-// openspec/changes/desktop-always-on: the parts of the resident app that do not need Electron —
+// openspec/changes/archive/2026-10-18-desktop-always-on: the parts of the resident app that do not need Electron —
 // the detach decision, the single-instance retry, version comparison, the open-at-login files,
 // ROOT/desktop.json, the update check and install command, and the Tailscale commands.
 import { test } from "node:test";

@@ -6,7 +6,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { ORIGIN, PR3, REPO2, sessionCookie } from "./fixture";
 
-const out = process.argv[2] || join(process.cwd(), "..", "openspec/changes/one-identity-redesign/after/pages");
+const out = process.argv[2] || join(process.cwd(), "..", "openspec/changes/archive/2026-10-18-one-identity-redesign/after/pages");
 mkdirSync(out, { recursive: true });
 
 type Shot = { name: string; path: string; prep?: (page: import("@playwright/test").Page) => Promise<void> };

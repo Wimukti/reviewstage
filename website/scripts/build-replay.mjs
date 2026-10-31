@@ -1,4 +1,4 @@
-// Builds the public replay (dashboard-ui/src/replay, see openspec/changes/p0-proof/recon.md
+// Builds the public replay (dashboard-ui/src/replay, see openspec/changes/archive/2026-10-18-p0-proof/recon.md
 // lane 4) and copies it to public/try/app/, where the /try/ page embeds it. Runs in
 // `pnpm build` before `astro build`, so the site always ships the replay built from the same
 // checkout. dashboard-ui needs its own `pnpm install` first — CI does that in website.yml.

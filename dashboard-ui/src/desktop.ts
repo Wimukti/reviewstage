@@ -1,4 +1,4 @@
-// The desktop app's own controls (openspec/changes/desktop-always-on): updates (F4) and open at
+// The desktop app's own controls (openspec/changes/archive/2026-10-18-desktop-always-on): updates (F4) and open at
 // login (F2). desktop/preload.cjs exposes them next to `phone`; in a browser, or in a desktop app
 // older than this change, they are absent and nothing here renders.
 import { useEffect, useState } from "react";

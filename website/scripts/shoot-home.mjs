@@ -1,5 +1,5 @@
 // Screenshots of the home page for review: the whole page and each section, at 1440 and 390,
-// dark and light, into openspec/changes/landing-v2/after/ (or the dir given). Serves dist/
+// dark and light, into website/.shots/home/ (or the dir given). Serves dist/
 // through `astro preview` on its own port, so run `pnpm build` first.
 // Usage: node scripts/shoot-home.mjs [outDir]
 import { spawn } from "node:child_process";
@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "@playwright/test";
 
-const outDir = resolve(process.argv[2] ?? "../openspec/changes/landing-v2/after");
+const outDir = resolve(process.argv[2] ?? ".shots/home");
 mkdirSync(outDir, { recursive: true });
 const PORT = Number(process.env.RS_SHOOT_PORT || 4879), BASE = `http://127.0.0.1:${PORT}`;
 const sections = ["hero", "why", "how-it-works", "features", "gate", "compare", "install", "faq", "final"];

@@ -1,6 +1,6 @@
 // Proof harness for the site: serves dist/ through `astro preview`, screenshots the home and a
 // handful of docs pages in both themes at 1440 and 390, and asserts the contract of
-// openspec/changes/landing-v2/design.md — the nine home sections with their headings, at most 900
+// openspec/changes/archive/2026-10-18-landing-v2/design.md — the nine home sections with their headings, at most 900
 // words, two equal contrast columns, four steps, six feature tiles, three gate snippets, a
 // six-row comparison, six script-free FAQ disclosures, the hero command pill, the videos'
 // preload rules and the hero above a 390x844 fold, the demo lightbox loading only on open, 44px
@@ -9,7 +9,7 @@
 // discovery contract (openspec/changes/go-to-tool, lane seo-discovery): robots.txt names the
 // sitemap, every sitemap entry carries <lastmod>, the SoftwareApplication JSON-LD is complete,
 // the title and the one <h1> carry the category, and each docs page's <title> is its heading.
-// Lane 4 (openspec/changes/p0-proof/recon.md): the replay is built into /try/app/ with its
+// Lane 4 (openspec/changes/archive/2026-10-18-p0-proof/recon.md): the replay is built into /try/app/ with its
 // Content-Security-Policy, the /try/ page embeds it, /examples/ and every /examples/<slug>/
 // render from the fixtures (verdict, three findings, decisions, the posted review), and the
 // new pages hold the phone contract (no sideways scroll at 390) in both themes.
@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "@playwright/test";
 
-const outDir = resolve(process.argv[2] ?? "../openspec/changes/landing-v2/after/verify");
+const outDir = resolve(process.argv[2] ?? ".shots/verify");
 mkdirSync(outDir, { recursive: true });
 const PORT = Number(process.env.RS_SITE_PORT || 4877), BASE = `http://127.0.0.1:${PORT}`;
 const PERF_MIN = Number(process.env.RS_SITE_PERF_MIN || 95);

@@ -1,4 +1,4 @@
-// openspec/changes/desktop-always-on: the dashboard's half of the resident desktop app.
+// openspec/changes/archive/2026-10-18-desktop-always-on: the dashboard's half of the resident desktop app.
 //   F4  the update banner and Settings → Desktop app, driven by a fake preload bridge (a STRING
 //       init script: tsx's function init scripts inject a `__name` helper the page lacks).
 //   F5  "Your Mac isn't reachable": what a phone sees when the tunnel answers 530 (Cloudflare's

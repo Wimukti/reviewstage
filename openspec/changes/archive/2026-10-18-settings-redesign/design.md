@@ -48,7 +48,7 @@ Nothing scrolls past six cards any more.
 - Typography and spacing from the design system only (`tokens.css`, shadcn). No new colours.
   Density: section header `mb-5`, card rows `py-4`, hints `text-xs leading-relaxed`.
 - Screenshot script `dashboard-ui/e2e/shots-settings.ts` → every section at 1440 dark, and
-  `#phone`, `#poller`, `#notifications` at 390, into `openspec/changes/settings-redesign/after/`.
+  `#phone`, `#poller`, `#notifications` at 390, into `openspec/changes/archive/2026-10-18-settings-redesign/after/`.
   Look at each. Before/after pair for `#poller` and the page top.
 
 ## Gates

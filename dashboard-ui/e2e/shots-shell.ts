@@ -1,7 +1,7 @@
 // Lane A1 screenshots (stage-light design review): the login card, the queue inside the shell at
 // 1440 and 390, and the phone More sheet, in both themes, against a server already running on
 // RS_E2E_PORT with the fixture built. Usage:
-//   RS_E2E_PORT=8972 OUT=../openspec/changes/stage-light/after/a1 node --import tsx e2e/shots-shell.ts
+//   RS_E2E_PORT=8972 OUT=../openspec/changes/archive/2026-10-18-stage-light/after/a1 node --import tsx e2e/shots-shell.ts
 import { chromium, type BrowserContext } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

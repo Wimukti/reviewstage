@@ -1,7 +1,7 @@
 // Lane S3 screenshots (rebuild-on-a-system): Skills (which, rules, editors, profiles), Insights,
 // Learnings, QA guides and one guide, Integrations and Settings, in both themes at 1440 and 390,
 // against a server already running on RS_E2E_PORT with the fixture built. Usage:
-//   RS_E2E_PORT=8968 OUT=../openspec/changes/rebuild-on-a-system/after/s3 node --import tsx e2e/shots-s3.ts
+//   RS_E2E_PORT=8968 OUT=../openspec/changes/archive/2026-10-18-rebuild-on-a-system/after/s3 node --import tsx e2e/shots-s3.ts
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

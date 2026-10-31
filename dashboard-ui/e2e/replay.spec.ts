@@ -1,4 +1,4 @@
-// Lane 4 (openspec/changes/p0-proof/recon.md §4.5): the public replay is the shipped PR page
+// Lane 4 (openspec/changes/archive/2026-10-18-p0-proof/recon.md §4.5): the public replay is the shipped PR page
 // running with no server. On a static origin with no /api: the disclosure banner is visible,
 // keep / drop / edit all work, Post opens the would-post sheet with the kept bodies (edits
 // included) and the install CTA, not one request leaves the static origin, and the local

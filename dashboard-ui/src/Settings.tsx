@@ -36,7 +36,7 @@ import { Switch } from "@/components/ui/switch";
 // the scripts re-read the file every cycle. Admin-only to save; everyone else sees a read-only
 // view. DRY_RUN is deliberately absent: it stays in .env as a restart-gated safety.
 //
-// The page shows one section at a time (openspec/changes/settings-redesign/design.md §E2): a
+// The page shows one section at a time (openspec/changes/archive/2026-10-18-settings-redesign/design.md §E2): a
 // secondary nav of sections on the left, the section on the right, the URL hash naming it.
 
 const NOTE = "text-xs text-muted-foreground";

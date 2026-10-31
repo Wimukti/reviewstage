@@ -1,7 +1,7 @@
 // Lane S1 screenshots (rebuild-on-a-system): the queue, its empty state, the command palette and
 // the More sheet (the account menu on the desktop), in both themes at 1440 and 390, against a
 // server already running on RS_E2E_PORT with the fixture built. Usage:
-//   RS_E2E_PORT=8961 OUT=../openspec/changes/rebuild-on-a-system/after/s1 node --import tsx e2e/shots-s1.ts
+//   RS_E2E_PORT=8961 OUT=../openspec/changes/archive/2026-10-18-rebuild-on-a-system/after/s1 node --import tsx e2e/shots-s1.ts
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

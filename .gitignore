@@ -33,5 +33,5 @@ docs/launch/partners.csv
 dashboard-ui/replay-dist/
 website/public/try/
 
-# Default output of website/scripts/verify-site.mjs; it changes on every run.
-openspec/changes/landing-v2/after/verify/
+# Default output of the site screenshot scripts; it changes on every run.
+website/.shots/

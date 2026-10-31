@@ -1,7 +1,7 @@
 // shell-polish screenshots: Settings with the phone card off and on (QR via a fake bridge, as
 // phone-access.spec.ts drives it), the account menu, Settings → Appearance and the Queue "?"
 // popover; 1440 and 390, dark, against the personal fixture. Usage, from dashboard-ui/:
-//   RS_E2E_PORT=8993 RS_E2E_PERSONAL_PORT=8997 OUT=../openspec/changes/shell-polish/after node --import tsx e2e/shots-shell-polish.ts
+//   RS_E2E_PORT=8993 RS_E2E_PERSONAL_PORT=8997 OUT=../openspec/changes/archive/2026-10-18-shell-polish/after node --import tsx e2e/shots-shell-polish.ts
 import { chromium, type Page } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";

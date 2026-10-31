@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rs_doctor.py and the doctor.sh that merges it (openspec/changes/p0-proof lane 5).
+"""rs_doctor.py and the doctor.sh that merges it (openspec/changes/archive/2026-10-18-p0-proof lane 5).
 
 The two false results the lane fixes, pinned: a personal install must not FAIL for a missing
 GITHUB_PAT (it has none by design), and the port probe must use the port the desktop recorded
@@ -419,6 +419,20 @@ class DoctorShell(Fixture):
         r = self.sh("--strict")
         self.assertEqual(r.returncode, 2, r.stdout)
         self.assertIn("exit 2 (--strict)", r.stdout.strip().splitlines()[-1])
+
+    def test_fetched_tool_versions_have_a_stable_json_check_id(self):
+        self.write("desktop.json", {"port": 51777})
+        (self.root / "bin").mkdir(exist_ok=True)
+        (self.root / "bin" / ".gh.version").write_text("2.81.0\n")
+        (self.root / "bin" / ".jq.version").write_text("")
+        r = self.sh("--json")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rows = json.loads(r.stdout)["checks"]
+        fetched = [row for row in rows if row["id"] == "tools.fetched"]
+        self.assertEqual([(row["status"], row["text"]) for row in fetched], [
+            ("PASS", "fetched tool gh 2.81.0"),
+            ("WARN", f"fetched tool jq has an empty version stamp ({self.root}/bin/.jq.version)"),
+        ])
 
     def test_team_mode_still_fails_without_a_service_token(self):
         """The team install keeps its guard: no desktop.json, no RS_PERSONAL, no GITHUB_PAT."""

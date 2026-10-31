@@ -1,4 +1,4 @@
-// The four demo recordings (openspec/changes/phone-pairing-and-ease/design.md, lane C), made
+// The four demo recordings (openspec/changes/archive/2026-10-18-phone-pairing-and-ease/design.md, lane C), made
 // from the offline e2e fixtures so no real repository, person or review ever appears:
 //
 //   review        paste a PR URL → Start review → findings arrive → tick two → Post → posted

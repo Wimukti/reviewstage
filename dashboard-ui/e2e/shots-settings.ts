@@ -1,7 +1,7 @@
 // settings-redesign screenshots: every Settings section at 1440 dark, and #phone, #poller and
 // #notifications at 390, against the personal fixture with a fake desktop phone bridge (so the
 // Your phone section exists), plus the save bar in its dirty state. Usage, from dashboard-ui/:
-//   RS_E2E_PORT=8993 RS_E2E_PERSONAL_PORT=8997 OUT=../openspec/changes/settings-redesign/after node --import tsx e2e/shots-settings.ts
+//   RS_E2E_PORT=8993 RS_E2E_PERSONAL_PORT=8997 OUT=../openspec/changes/archive/2026-10-18-settings-redesign/after node --import tsx e2e/shots-settings.ts
 import { chromium, type Page } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";

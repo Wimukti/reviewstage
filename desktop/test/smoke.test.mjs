@@ -42,6 +42,7 @@ test("launches, boots the server, loads the window, quits", async (t) => {
   assert.match(env, new RegExp(`PUBLIC_URL=http://127\\.0\\.0\\.1:${ok[1]}`), "the launcher records the port it chose");
   assert.equal(JSON.parse(readFileSync(join(root, "desktop.json"), "utf8")).port, Number(ok[1]), "desktop.json carries the port so --doctor can find the running app");
   assert.ok(existsSync(join(root, "bin", "flock")) || process.platform === "linux", "the flock shim is installed where the OS lacks flock");
+  assert.ok(existsSync(join(root, "bin", "timeout")) || process.platform === "linux", "the timeout shim is installed where the OS lacks timeout");
   assert.match(env, /DRY_RUN=0/, "a pre-stamp personal .env is upgraded to live");
   assert.match(env, /RS_DESKTOP_DEFAULTS=2/);
   if (process.platform === "darwin") assert.equal(ok[2], "1", "the menu-bar icon was created");

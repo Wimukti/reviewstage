@@ -10,7 +10,7 @@ import {
   PERSONAL_FIXTURE,
   PERSONAL_ORIGIN,
   PERSONAL_PORT,
-  PERSONAL_REPOS,
+  PERSONAL_ACTIVE_REPOS,
   PERSONAL_USER,
 } from "./personal-fixture";
 
@@ -140,18 +140,18 @@ test("the repository step lists the user's repositories with their owners' avata
   });
   await page.goto("/welcome/repos");
   const rows = page.getByTestId("repo-row");
-  await expect(rows).toHaveCount(PERSONAL_REPOS.length);
+  await expect(rows).toHaveCount(PERSONAL_ACTIVE_REPOS.length);
   // Newest push first, as GitHub sorted them.
   expect(await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-repo")))).toEqual(
-    PERSONAL_REPOS.map((r) => r.full_name),
+    PERSONAL_ACTIVE_REPOS.map((r) => r.full_name),
   );
-  for (const r of PERSONAL_REPOS) {
+  for (const r of PERSONAL_ACTIVE_REPOS) {
     const row = page.locator(`[data-testid=repo-row][data-repo="${r.full_name}"]`);
     await expect(row.getByTestId("repo-pill")).toHaveText(r.full_name);
     // The pill shows GitHub's own owner avatar from the API — not a URL guessed from the name.
     await expect(row.locator("[data-testid=repo-pill] img")).toHaveAttribute("src", r.owner.avatar_url);
   }
-  expect(new Set(avatarHits)).toEqual(new Set(PERSONAL_REPOS.map((r) => r.owner.avatar_url)));
+  expect(new Set(avatarHits)).toEqual(new Set(PERSONAL_ACTIVE_REPOS.map((r) => r.owner.avatar_url)));
   await expect(page.getByLabel("Private")).toHaveCount(2);
   await expect(page.getByText(/pushed \d+(m|h|d|mo|y) ago/).first()).toBeVisible();
   await expect(page.getByTestId("start-reviewing")).toBeDisabled();
@@ -169,6 +169,22 @@ test("search filters on the server; no match shows the empty state", async ({ br
   await expect(page.getByTestId("repo-row")).toHaveAttribute("data-repo", "acme/billing");
   await page.getByTestId("repo-search").fill("zzz-nothing");
   await expect(page.getByTestId("empty-state")).toContainText("No match");
+  await ctx.close();
+});
+
+test("archived repositories hide behind a toggle, and a search that hits only archived ones says so", async ({ browser }) => {
+  const ctx = await signedIn(browser);
+  const page = await ctx.newPage();
+  await page.goto("/welcome/repos");
+  await expect(page.getByTestId("repo-row")).toHaveCount(PERSONAL_ACTIVE_REPOS.length);
+  await expect(page.locator('[data-testid=repo-row][data-repo="acme/legacy"]')).toHaveCount(0);
+  await page.getByTestId("show-archived-toggle").getByRole("checkbox").click();
+  const legacy = page.locator('[data-testid=repo-row][data-repo="acme/legacy"]');
+  await expect(legacy).toHaveCount(1);
+  await expect(legacy.getByTestId("repo-archived")).toHaveText("Archived");
+  await page.getByTestId("show-archived-toggle").getByRole("checkbox").click();
+  await page.getByTestId("repo-search").fill("legacy");
+  await expect(page.getByTestId("empty-state")).toContainText("1 archived repository is hidden");
   await ctx.close();
 });
 

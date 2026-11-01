@@ -1,6 +1,7 @@
 # Four real pull requests, reviewed with ReviewStage on 11/01/26
 
-Nothing here was posted to any of the PRs. Dates are MM/DD/YY.
+The kept findings were posted on 11/01/26 as inline review comments under the maintainer's
+own GitHub account. The links are in each section. Dates are MM/DD/YY.
 
 Who decided: the maintainer delegated the keep or drop decisions to the assistant that ran
 the reviews. Each decision below rests on a check of the code at the reviewed commit, and the
@@ -41,6 +42,8 @@ this code, and all new tests put parentheses after `!`, so none shows the differ
 **Decision: keep, as a question.** The difference is real, the PR rewrites that code, and a
 question is the right weight for behavior that is older than the PR.
 
+**Posted:** https://github.com/pyvisa/pyvisa/pull/1000#discussion_r4434109950
+
 ## 2. dbfixtures/pytest-redis #1107: "Allow passing any redis-server option to redis_proc"
 
 **What the PR does.** It adds an `options` list, a `--redis-option` flag and a `redis_options`
@@ -71,6 +74,8 @@ be on purpose.
 
 **Decision A: keep.** It is the same class of bypass the author already fixed once on this PR.
 
+**Posted:** https://github.com/dbfixtures/pytest-redis/pull/1107#discussion_r4434110047
+
 **Decision B: drop.** `options=[]` works like `modules`, so it reads as a design choice. Posting
 it would add noise next to finding A.
 
@@ -95,6 +100,8 @@ points.
 
 **Decision: keep.** The overflow is real. The body already says that current tests do not
 reach it, which is the honest weight.
+
+**Posted:** https://github.com/Python-roborock/python-roborock/pull/1000#discussion_r4434110162
 
 ## 4. coder/xum #7845: "share one origin fetch across a burst of worktree creations"
 
@@ -122,7 +129,8 @@ path where an untrusted project reaches the fetch. This finding should not be po
 One product note from this case: the review summary still read "Do not merge yet" after the
 disproof pass refuted the only finding. The summary must be rebuilt after the pass.
 
-**Decision: drop.** Refuted by the disproof pass, and confirmed by reading the code.
+**Decision: drop.** Refuted by the disproof pass, and confirmed by reading the code. Nothing
+was posted on this PR.
 
 ## Result
 

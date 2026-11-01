@@ -4,6 +4,27 @@ All notable changes to ReviewStage. Dates are MM/DD/YY.
 
 ## Unreleased
 
+## 1.2.3 — 11/01/26
+
+Found by running ReviewStage on four real open-source PRs from a Mac.
+
+- Pull requests from forks can be reviewed. The job scripts fetched the head branch by name
+  from origin, and a fork's branch is not there. They now fetch `refs/pull/N/head`, and fall
+  back to the branch name on a remote without pull refs. (#46)
+- A Mac without Homebrew coreutils has no `timeout`, and every agent run is wrapped in it. The
+  desktop launcher now installs a small shim next to the `flock` one, so a fresh Mac can run a
+  review instead of failing with exit 127. (#46)
+- When the CLI refuses to run the agent, the status says why in the CLI's own words, for
+  example "Fable 5.1 requires usage credits. Switch to another model to continue", with a hint
+  to pick another model. Before it said "agent produced no review.json". (#47, #48)
+- The repository picker hides archived repositories behind a "Show archived repositories"
+  toggle, labels them when shown, keeps a repository you already review visible even when it is
+  archived, and says how many are hidden when a search matches only archived ones. Thanks to
+  KeuqS. (#32)
+- README: the one-sentence workflow, the no-install demo link and a star line come first. (#45)
+- Dependencies: react and react-dom 19.3.1, lucide-react 1.63.0, radix-ui 1.8.1. (#33, #34,
+  #35, #43, #44)
+
 ## 1.2.2 — 10/11/26
 
 - Each finding card shows one verdict row, not two: "Checked: Stands. <reason>" next to the
